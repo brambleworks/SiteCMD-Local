@@ -151,7 +151,7 @@ const TIERS = [
   [
     {
       name: "rust-perf-gates",
-      cmd: "cargo test --lib -- --ignored resolver_p95_under_60ms preview_deploy_risk_p95_under_200ms",
+      cmd: "cargo nextest run -p sitecmd-runtime --lib --run-ignored only --no-tests fail -- resolver_p95_under_60ms preview_deploy_risk_p95_under_200ms",
       cwd: "apps/desktop/src-tauri",
     },
   ],

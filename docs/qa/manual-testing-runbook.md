@@ -154,7 +154,7 @@ then run:
 
 ```bash
 SITECMD_POSTGRES_TEST_URL=postgresql://sitecmd_test:test-fixture-sitecmd-postgres@127.0.0.1:55432/postgres \
-  cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml postgres_live -- --ignored --nocapture
+  cargo test -p sitecmd-runtime --manifest-path apps/desktop/src-tauri/Cargo.toml postgres_live -- --ignored --nocapture
 ```
 
 ## Time Savings Check

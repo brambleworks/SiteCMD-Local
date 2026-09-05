@@ -95,4 +95,4 @@ jobs:
           workspaces: apps/desktop/src-tauri -> target
 
       - name: Run ignored localhost Postgres integration tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml postgres_live -- --ignored --nocapture
+        run: cargo test -p sitecmd-runtime --manifest-path apps/desktop/src-tauri/Cargo.toml postgres_live -- --ignored --nocapture
