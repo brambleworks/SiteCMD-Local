@@ -69,7 +69,6 @@ try {
     framework: null,
     urls: [{ url, environment: "local", source: "manual" }],
   });
-  evidence.projectId = projectId;
   const database = path.join(env.XDG_DATA_HOME, "com.sitecmd.app/sitecmd.db");
   const connect = async () => {
     const client = new Client({ name: "codex", version: "native-smoke" });
@@ -143,7 +142,6 @@ try {
   evidence.result = "passed";
 } catch (error) {
   evidence.result = "failed";
-  evidence.error = error.stack;
   throw error;
 } finally {
   try {

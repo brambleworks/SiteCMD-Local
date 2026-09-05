@@ -21,8 +21,9 @@ a Code Scan dispatched through MCP, persisted issue state after a process
 restart, and verification after removing a known TLS configuration finding.
 It assigns temporary XDG data, config, and cache directories under
 `.artifacts/native-smoke/`. It stops only its own WebDriver process group.
-Each run leaves a result JSON and desktop log there for diagnosis. The CI job
-uploads those two files; it does not upload the database or source fixture.
+Each run leaves a result JSON with completed steps and the outcome, plus a desktop
+log. Driver and assertion errors appear in the test output. The CI job uploads
+the JSON and desktop log; it does not upload the database or source fixture.
 
 `SITECMD_SMOKE_BINARY` and `SITECMD_SMOKE_MCP` can point to an existing build.
 The default paths use the debug desktop and the repository's MCP bundle.
