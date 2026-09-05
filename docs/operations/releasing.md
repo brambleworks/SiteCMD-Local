@@ -153,6 +153,7 @@ pnpm release <patch|minor|major|X.Y.Z>
 git diff --check
 git add CHANGELOG.md apps/desktop/package.json apps/desktop/src-tauri/tauri.conf.json \
   apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/crates/cli/Cargo.toml \
+  apps/desktop/src-tauri/crates/runtime/Cargo.toml \
   apps/desktop/src-tauri/Cargo.lock apps/mcp-server/package.json \
   apps/mcp-server/src/version.ts
 git commit -S -m "Prepare vX.Y.Z"
@@ -169,7 +170,7 @@ git push origin vX.Y.Z
 
 - Requires a clean working tree on a `release/*` branch and refuses `main`.
 - Bumps every release version carrier: the desktop package and Tauri config,
-  the desktop and CLI Cargo manifests, the Cargo lockfile, and the MCP package
+  the desktop, runtime, and CLI Cargo manifests, the Cargo lockfile, and the MCP package
   and protocol version constant.
 - Freezes the `Unreleased` changelog entries into `## [X.Y.Z] - YYYY-MM-DD`
   and leaves a new empty `Unreleased` section for the next release.

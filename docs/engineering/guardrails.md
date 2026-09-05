@@ -71,10 +71,14 @@ expresses the invariant.
    tooling. Prefer a narrow scope (a specific directory or file set) so the ban
    cannot false-positive on unrelated code.
 
-3. **Presence / structure checks.** Assert that a required construct exists:
-   a serde field, a test name, a permission registration, a CSS class. These are
-   `read(file).includes("...")` chains wrapped in a single `check(condition, message)`.
-   Keep the message specific enough that a failure tells the reader what to add.
+3. **Structure checks.** Prefer compiler-checked types, parsed configuration,
+   or syntax-aware checks for registrations and call placement. When inspecting
+   Rust or TypeScript text, use `stripNonCode` with the source filename so
+   comments and literals cannot satisfy the rule. Scope the check to its actual
+   entry point; an unrelated call elsewhere in a file proves nothing about it.
+   Behavioral assertions belong in executable tests, not checks for test names.
+   The scan-persistence rule demonstrates call-placement checks and regression
+   fixtures for comments, raw strings, unrelated calls, and missing awaits.
 
 4. **Ordering pins.** Assert that A appears before B (rate-limit before auth,
    test before deploy, migrations before deploy). Use

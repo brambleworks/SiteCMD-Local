@@ -106,7 +106,8 @@
     "prepare": "lefthook install",
     "facts:generate": "node tools/scripts/generate-product-facts.mjs",
     "legal:generate": "node tools/scripts/generate-third-party-artifacts.mjs",
-    "legal:check": "node tools/scripts/generate-third-party-artifacts.mjs --check"
+    "legal:check": "node tools/scripts/generate-third-party-artifacts.mjs --check",
+    "e2e:native": "node ./tools/scripts/native-desktop-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

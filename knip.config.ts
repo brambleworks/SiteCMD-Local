@@ -6,8 +6,10 @@ const config: KnipConfig = {
   // Exclude local benchmark clones missed by nested gitignore handling.
   ignore: ["tools/benchmark/.work/**"],
   ignoreBinaries: [
-    // OS browser launcher used by tools/scripts/sitecmd.mjs.
-    "xdg-open",
+    // Separately installed native desktop WebDriver.
+    "tauri-driver",
+    // POSIX utility used to construct benchmark filesystem fixtures.
+    "mkfifo",
     // OS process lookup used by the development restart preflight.
     "pgrep",
     // Rustup-provided toolchain binary.

@@ -60,7 +60,7 @@ mod tests {
     fn license_constants_json_is_in_sync_with_consumers() {
         let expected = licensing_manifest_json();
 
-        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let manifest_dir = std::path::PathBuf::from(env!("SITECMD_SOURCE_ROOT"));
         let desktop_root = manifest_dir.parent().expect("desktop app root");
         let apps_root = desktop_root.parent().expect("apps root");
         let target = apps_root

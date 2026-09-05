@@ -860,7 +860,7 @@ fn every_emitted_check_id_literal_has_explicit_policy() {
 
     // Both check trees: the desktop's and the engine crate's, which check
     // modules move into as the connected-service extraction proceeds.
-    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest_dir = std::path::Path::new(env!("SITECMD_SOURCE_ROOT"));
     let mut sources = Vec::new();
     collect_sources(&manifest_dir.join("src/checks"), &mut sources);
     collect_sources(&manifest_dir.join("crates/engine/src/checks"), &mut sources);

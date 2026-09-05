@@ -186,7 +186,7 @@ pub fn validate_and_normalize_config(
 
     if let Some(api_key) = normalized.api_key.as_deref() {
         let api_key = bounded_text(api_key, "Integration credential", MAX_API_KEY_CHARS)?;
-        if api_key == crate::keyring::KEYRING_PLACEHOLDER {
+        if api_key == crate::constants::KEYRING_PLACEHOLDER {
             return Err(
                 "Integration credentials must be entered directly when saving.".to_string(),
             );
@@ -324,7 +324,7 @@ mod tests {
     fn renderer_cannot_reuse_the_internal_keyring_placeholder() {
         let config = IntegrationConfig {
             integration_type: IntegrationType::GitHub,
-            api_key: Some(crate::keyring::KEYRING_PLACEHOLDER.to_string()),
+            api_key: Some(crate::constants::KEYRING_PLACEHOLDER.to_string()),
             site_id: Some("brambleworks/SiteCMD".to_string()),
             extra: None,
             enabled: true,

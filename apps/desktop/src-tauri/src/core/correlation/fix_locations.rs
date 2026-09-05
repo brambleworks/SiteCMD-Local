@@ -321,7 +321,7 @@ mod tests {
 
         let expected = serde_json::to_string_pretty(&map).expect("serialize fix_locations") + "\n";
 
-        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let manifest_dir = std::path::PathBuf::from(env!("SITECMD_SOURCE_ROOT"));
         let json_path = manifest_dir
             .parent()
             .and_then(|p| p.parent())

@@ -26,7 +26,7 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
     /\["tag",\s*"-s",\s*"--cleanup=verbatim",\s*"-m",\s*`Release \$\{tag\}`,\s*"-m",\s*`\$\{releaseNotes\}\\n`,\s*tag\]/.test(
       tagReleaseScript,
     );
-  const desktopBuildScript = read("apps/desktop/src-tauri/build.rs");
+  const desktopBuildScript = read("apps/desktop/src-tauri/build_config.rs");
   const connectedClient = read("apps/desktop/src-tauri/src/connected_service.rs");
   const jobSection = (jobName) => {
     const match = releaseWorkflow.match(

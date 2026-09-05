@@ -1,7 +1,5 @@
 //! External service clients and credential-safe integration types.
 
-#[cfg(feature = "desktop")]
-pub mod adapters;
 pub mod bing;
 pub mod cloudflare;
 pub mod github;

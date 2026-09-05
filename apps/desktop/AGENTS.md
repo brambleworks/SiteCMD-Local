@@ -71,8 +71,9 @@ folder is linked.
 - Local fix guides contain at most two bounded baseline steps with a quick,
   moderate, or involved effort. Deep stack-aware content comes from the private
   catalog.
-- Adding a check requires the matching local baseline guide and private catalog
-  entry.
+- Adding a check requires its local baseline guide and public regression fixtures.
+  Follow `../../docs/engineering/adding-a-detector.md`. Maintainers coordinate
+  private catalog content separately before an official release.
 - Baseline acceptance and dismissal are separate controls. Acceptance sends the
   displayed revision and value digest; `stale_revision` is shown, not retried.
 - Deploy-regression copy must keep detector-change findings separate from

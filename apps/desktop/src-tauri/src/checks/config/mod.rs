@@ -35,7 +35,7 @@ mod copy_guardrails {
     fn accessibility_compliance_config_sources_have_no_banned_tokens() {
         // "a" + "11y": the abbreviation of Accessibility.
         let abbreviation = format!("a{}", "11y");
-        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let manifest = std::path::Path::new(env!("SITECMD_SOURCE_ROOT"));
         let mut offenders = Vec::new();
         for base in [
             manifest.join("src/checks"),

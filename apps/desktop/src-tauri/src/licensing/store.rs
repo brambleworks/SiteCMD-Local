@@ -63,7 +63,7 @@ pub fn save(conn: &Connection, state: &LicenseState) -> Result<(), String> {
         rusqlite::params![
             // SQLite stores only the keyring placeholder; licensing commands
             // own the secret because this layer has no AppHandle.
-            crate::keyring::KEYRING_PLACEHOLDER,
+            crate::constants::KEYRING_PLACEHOLDER,
             state.instance_id,
             i64_from_u64(state.variant_id)?,
             tier_value,
@@ -183,7 +183,7 @@ mod tests {
         let loaded = load(&conn).unwrap().expect("should have a state");
 
         // License keys live in the keyring; SQLite retains only the placeholder.
-        assert_eq!(loaded.license_key, crate::keyring::KEYRING_PLACEHOLDER);
+        assert_eq!(loaded.license_key, crate::constants::KEYRING_PLACEHOLDER);
         assert_eq!(loaded.instance_id, "inst-abc");
         assert_eq!(loaded.tier, Tier::Core);
         assert_eq!(loaded.status, "active");
@@ -210,7 +210,7 @@ mod tests {
         save(&conn, &state2).unwrap();
 
         let loaded = load(&conn).unwrap().expect("should have a state");
-        assert_eq!(loaded.license_key, crate::keyring::KEYRING_PLACEHOLDER);
+        assert_eq!(loaded.license_key, crate::constants::KEYRING_PLACEHOLDER);
         assert_eq!(loaded.tier, Tier::Pro);
     }
 
@@ -241,7 +241,7 @@ mod tests {
         assert_eq!(loaded.status, "expired");
         assert_eq!(loaded.last_validated_at, "2026-04-08T12:00:00+00:00");
         // Original fields preserved (license_key is the keyring placeholder).
-        assert_eq!(loaded.license_key, crate::keyring::KEYRING_PLACEHOLDER);
+        assert_eq!(loaded.license_key, crate::constants::KEYRING_PLACEHOLDER);
         assert_eq!(loaded.tier, Tier::Core);
     }
 

@@ -1,5 +1,5 @@
 export function desktopOAuthSafetyFailures(read) {
-  const buildScript = read("apps/desktop/src-tauri/build.rs");
+  const buildScript = read("apps/desktop/src-tauri/build_config.rs");
   const oauthCommands = read("apps/desktop/src-tauri/src/commands/oauth.rs");
   const googleOAuth = read("apps/desktop/src-tauri/src/integrations/google_oauth.rs");
   const githubOAuth = read("apps/desktop/src-tauri/src/integrations/github_oauth.rs");

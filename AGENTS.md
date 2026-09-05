@@ -24,7 +24,9 @@ React 19, TypeScript, and an authored CSS design-token system.
   lifecycle-filtered issue groups. Source-specific scores are historical engine
   data, not competing product scores.
 
-The standalone CLI is a separate headless Rust package. It ships as `sitecmd`
+The standalone CLI is a separate headless Rust package. It and the desktop depend
+on `sitecmd-runtime`; Tauri adapters remain in the desktop package. See
+`docs/engineering/native-runtime-boundary.md` for source ownership. It ships as `sitecmd`
 and must run Web Scan and the full Code Scan audit without Tauri or a GUI.
 
 ## Repository map
@@ -67,7 +69,7 @@ pnpm test:desktop
 pnpm test:mcp
 pnpm guardrails:repo:test
 pnpm e2e
-cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+cargo test --workspace --manifest-path apps/desktop/src-tauri/Cargo.toml
 
 pnpm typecheck
 pnpm lint

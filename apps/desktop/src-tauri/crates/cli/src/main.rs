@@ -1,13 +1,13 @@
 //! SiteCMD CLI for local scanning and connected CI/CD pipelines.
 
-use app_lib::cli::check::{self, CheckArgs};
-use app_lib::cli::connected::{self, ConnectedArgs, GateArgs};
-use app_lib::cli::connected_submit::{self, DeployArgs, SubmitArgs};
-use app_lib::cli::fix::{self, FixArgs};
-use app_lib::cli::init::{self, InitArgs};
-use app_lib::cli::scan::{self, ScanArgs};
-use app_lib::cli::watch::{self, WatchArgs};
-use app_lib::connected_ci::{DeploymentFacts, PublishOrdering};
+use sitecmd_runtime::cli::check::{self, CheckArgs};
+use sitecmd_runtime::cli::connected::{self, ConnectedArgs, GateArgs};
+use sitecmd_runtime::cli::connected_submit::{self, DeployArgs, SubmitArgs};
+use sitecmd_runtime::cli::fix::{self, FixArgs};
+use sitecmd_runtime::cli::init::{self, InitArgs};
+use sitecmd_runtime::cli::scan::{self, ScanArgs};
+use sitecmd_runtime::cli::watch::{self, WatchArgs};
+use sitecmd_runtime::connected_ci::{DeploymentFacts, PublishOrdering};
 use std::process::ExitCode;
 
 mod audit_dispatch;
@@ -62,11 +62,11 @@ fn parse_init_args(mut args: impl Iterator<Item = String>) -> Result<InitArgs, S
 }
 
 fn parse_scan_args(mut args: impl Iterator<Item = String>) -> Result<ScanArgs, String> {
-    use app_lib::core::scanner::ScanType;
+    use sitecmd_runtime::core::scanner::ScanType;
     let mut url: Option<String> = None;
     let mut scan_type = ScanType::Health;
     let mut fail_under: Option<u32> = None;
-    let mut fail_on: Option<app_lib::checks::Severity> = None;
+    let mut fail_on: Option<sitecmd_runtime::checks::Severity> = None;
     let mut json = false;
     let mut timeout: Option<u64> = None;
     let mut categories: Option<Vec<String>> = None;

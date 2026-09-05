@@ -62,7 +62,7 @@ jobs:
       - name: Generate coverage (LCOV + summary)
         working-directory: apps/desktop/src-tauri
         run: |
-          cargo llvm-cov nextest --no-fail-fast --lcov --output-path lcov.info
+          cargo llvm-cov nextest --workspace --no-fail-fast --lcov --output-path lcov.info
           cargo llvm-cov report --summary-only | tee coverage-summary.txt
 
       - name: Upload coverage artifacts

@@ -1,10 +1,9 @@
-//! LemonSqueezy activation, validation, persistence, and desktop commands.
+//! LemonSqueezy activation, validation, persistence, and write generations.
 
 pub mod access;
 pub mod activation_errors;
 pub mod api;
-#[cfg(feature = "desktop")]
-pub mod commands;
 pub mod config;
+pub mod generation;
 pub mod manifest;
 pub mod store;

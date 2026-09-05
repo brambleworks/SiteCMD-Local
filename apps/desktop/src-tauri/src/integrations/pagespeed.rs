@@ -146,7 +146,7 @@ pub async fn fetch_pagespeed_report(
     parse_psi_response(&json, url, strategy)
 }
 
-pub(crate) fn is_pagespeed_rate_limit_error(error: &str) -> bool {
+pub fn is_pagespeed_rate_limit_error(error: &str) -> bool {
     let normalized = error.to_ascii_lowercase();
     normalized.contains("429")
         || normalized.contains("too many requests")

@@ -39,7 +39,7 @@ fn lowercase_origin(url: &str) -> String {
 /// Normalize an optional environment URL into its DB key form, returning an
 /// empty string when absent. The single shared env-url normalizer for the db
 /// layer; modules import this instead of re-deriving `normalize_url(...).0`.
-pub(crate) fn normalize_env_url(url: Option<&str>) -> String {
+pub fn normalize_env_url(url: Option<&str>) -> String {
     url.map(|value| normalize_url(value).0).unwrap_or_default()
 }
 

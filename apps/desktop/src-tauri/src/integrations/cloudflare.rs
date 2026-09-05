@@ -113,7 +113,7 @@ pub(crate) fn normalize_cloudflare_zone_ref(value: &str) -> Option<String> {
     Some(trimmed.trim_end_matches('.').to_ascii_lowercase())
 }
 
-pub(crate) fn looks_like_cloudflare_zone_id(value: &str) -> bool {
+pub fn looks_like_cloudflare_zone_id(value: &str) -> bool {
     let trimmed = value.trim();
     trimmed.len() == 32 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit())
 }

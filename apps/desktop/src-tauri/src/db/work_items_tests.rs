@@ -775,7 +775,7 @@ fn upsert_writes_promoted_columns_matching_the_code_issue_blob() {
         confidence_reason: None,
         verify_hint: None,
     };
-    let input = crate::commands::scan::work_items::code_issue_to_work_item_input(
+    let input = crate::core::work_item_projection::code_issue_to_work_item_input(
         &issue,
         1,
         "https://example.com",
@@ -800,7 +800,7 @@ fn upsert_writes_promoted_columns_matching_the_code_issue_blob() {
 
     // Re-observation refreshes the columns together with the blob.
     issue.confidence = IssueConfidence::NeedsReview;
-    let updated = crate::commands::scan::work_items::code_issue_to_work_item_input(
+    let updated = crate::core::work_item_projection::code_issue_to_work_item_input(
         &issue,
         1,
         "https://example.com",
@@ -836,7 +836,7 @@ fn web_upsert_populates_confidence_column_the_blob_never_carried() {
         confidence: IssueConfidence::NeedsReview,
         confidence_reason: None,
     };
-    let input = crate::commands::scan::work_items::check_result_to_work_item_input(
+    let input = crate::core::work_item_projection::check_result_to_work_item_input(
         &cr,
         1,
         "https://example.com",

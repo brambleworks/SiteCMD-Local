@@ -1,12 +1,7 @@
 //! Core scanning infrastructure: scanner orchestrator, git integration, project detection,
 //! sitemap discovery, localhost detection, event ingestion, cross-source issue correlation.
 
-pub mod agent_tools;
-#[cfg(feature = "desktop")]
-pub(crate) mod agent_tools_bundle;
 pub mod analysis_types;
-#[cfg(feature = "desktop")]
-pub mod app_emit;
 pub mod code_provenance;
 pub mod code_scan;
 pub mod confidence_policy;
@@ -16,28 +11,19 @@ pub mod desktop_heartbeat;
 pub mod detector;
 pub mod engine_release;
 pub mod event_correlations;
-#[cfg(feature = "desktop")]
-pub mod events;
 pub mod fix_brief;
 pub mod git;
-#[cfg(feature = "desktop")]
-pub mod integration_scheduler;
 pub mod localhost;
 pub mod native_alerts;
 pub mod normalized_scan;
 pub mod page_signals;
 pub mod project;
-#[cfg(feature = "desktop")]
-pub mod project_snapshot;
 pub mod regression_blame;
 pub(crate) mod safe_fs;
-#[cfg(feature = "desktop")]
-pub mod scan_control;
 pub mod scan_execution;
 pub mod scanner;
 pub mod session_analysis;
 pub mod severity_policy;
 pub mod sitemap;
-#[cfg(feature = "desktop")]
-pub mod supervised_loop;
 pub mod types_work_items;
+pub mod work_item_projection;

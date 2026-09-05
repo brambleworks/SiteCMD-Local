@@ -14,18 +14,16 @@ mod finalize;
 mod phases;
 mod site_facts;
 mod types;
-pub(crate) mod verify;
-#[cfg(any(feature = "desktop", feature = "browser"))]
+pub mod verify;
 mod webview_results;
 
-pub(crate) use finalize::finalize_check_results;
+pub use finalize::finalize_check_results;
 use phases::{run_async_checks, run_sync_checks};
 pub use types::{
     MultiScanProgress, MultiScanResult, PageScanSummary, ProgressFn, ScanError, ScanProgress,
     ScanResult, ScanType, ScheduledScanType, VerifyChecksResult,
 };
 pub use verify::verify_checks;
-#[cfg(any(feature = "desktop", feature = "browser"))]
 pub use webview_results::append_webview_results;
 
 fn ensure_not_cancelled<C>(cancel_check: Option<&C>) -> Result<(), ScanError>

@@ -1274,7 +1274,7 @@ fn impact_score_json_is_in_sync_with_mcp_copy() {
 
     let expected = serde_json::to_string_pretty(&manifest).expect("serialize impact_score") + "\n";
 
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let manifest_dir = std::path::PathBuf::from(env!("SITECMD_SOURCE_ROOT"));
     let json_path = manifest_dir
         .parent()
         .and_then(|p| p.parent())

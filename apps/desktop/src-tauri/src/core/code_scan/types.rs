@@ -357,7 +357,7 @@ fn fallback_code_issue_domain(category: &str) -> CodeScanDomain {
     }
 }
 
-pub(crate) fn code_scan_domain_rank(domain: CodeScanDomain) -> usize {
+pub fn code_scan_domain_rank(domain: CodeScanDomain) -> usize {
     match domain {
         CodeScanDomain::Database => 0,
         CodeScanDomain::AiSafety => 1,
@@ -397,7 +397,7 @@ pub(crate) fn code_scan_domain_label(domain: CodeScanDomain) -> &'static str {
     }
 }
 
-pub(crate) fn severity_rank(severity: &Severity) -> u8 {
+pub fn severity_rank(severity: &Severity) -> u8 {
     severity.sort_rank()
 }
 

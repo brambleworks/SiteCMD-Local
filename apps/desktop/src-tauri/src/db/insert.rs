@@ -7,12 +7,12 @@ use crate::checks::{CheckResult, CheckStatus, Severity};
 /// Severity counts after grouping by `check_id` (keep the highest severity per id).
 /// Matches the frontend's grouped view used by Dashboard, Issues, and sidebar badges.
 #[derive(Debug, Default, Clone, Copy)]
-pub(crate) struct GroupedCounts {
-    pub(crate) total: u32,
-    pub(crate) critical: u32,
-    pub(crate) high: u32,
-    pub(crate) medium: u32,
-    pub(crate) low: u32,
+pub struct GroupedCounts {
+    pub total: u32,
+    pub critical: u32,
+    pub high: u32,
+    pub medium: u32,
+    pub low: u32,
 }
 
 fn grouped_counts<'a>(
@@ -45,7 +45,7 @@ fn grouped_counts<'a>(
     counts
 }
 
-pub(crate) fn grouped_issue_counts(issues: &[CheckResult]) -> GroupedCounts {
+pub fn grouped_issue_counts(issues: &[CheckResult]) -> GroupedCounts {
     grouped_counts(
         issues
             .iter()
@@ -53,7 +53,7 @@ pub(crate) fn grouped_issue_counts(issues: &[CheckResult]) -> GroupedCounts {
     )
 }
 
-pub(crate) fn grouped_normalized_finding_counts(
+pub fn grouped_normalized_finding_counts(
     findings: &[crate::core::normalized_scan::NormalizedFinding],
 ) -> GroupedCounts {
     grouped_counts(findings.iter().map(|finding| {

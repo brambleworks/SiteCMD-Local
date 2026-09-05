@@ -2,7 +2,7 @@
 
 Rust-backend guidance for SiteCMD. Read the root guide for product, repository,
 and IPC rules. This directory is a Cargo workspace containing the desktop app,
-portable engine, wasm wrapper, and standalone CLI.
+shared native runtime, portable engine, wasm wrapper, fuzz harness, and standalone CLI.
 
 ## Commands
 
@@ -61,8 +61,12 @@ To add a check:
 2. Add only transport or runtime adaptation to the desktop check tree.
 3. Register it through the category registry.
 4. Add the capability-manifest row or dynamic family.
-5. Add the local baseline fix guide and private catalog entry.
+5. Add the local baseline fix guide. Maintainers coordinate private catalog
+   content separately before an official release.
 6. Update the appropriate golden check, probe, or browser corpus.
+
+The public walkthrough is `../../../../docs/engineering/adding-a-detector.md`;
+building and testing a detector requires only this repository.
 
 Do not hardcode aggregate check counts in guidance. Generated product facts and
 manifest completeness tests own the inventory.

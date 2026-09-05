@@ -155,21 +155,20 @@ export function cliSurfaceFailures(read, exists, listFiles) {
   check(
     wrapper.includes('path.resolve(__dirname, "..", "..")') &&
       wrapper.includes('if (args[0] === "--") args.shift()') &&
-      wrapper.includes('"crates", "cli", "Cargo.toml"') &&
+      /"crates",\s*"cli",\s*"Cargo.toml"/.test(wrapper) &&
       !wrapper.includes('"--example"') &&
       !wrapper.includes("audit_guardrails"),
-    `${DEV_WRAPPER} must accept pnpm's separator, resolve the repository root, and dispatch audit through the shipped headless CLI package.`,
+    `${DEV_WRAPPER} must accept pnpm's separator, resolve the repository root, and dispatch through the shipped headless CLI package.`,
   );
 
   const cliManifest = read(CLI_MANIFEST);
   const appManifest = read(APP_MANIFEST);
   check(
-    /app_lib\s*=\s*\{[^}\n]*package\s*=\s*"sitecmd"[^}\n]*default-features\s*=\s*false[^}\n]*\}/.test(
-      cliManifest,
-    ) &&
-      !/^tauri\s*=/m.test(cliManifest) &&
-      appManifest.includes('"crates/cli"'),
-    `${CLI_MANIFEST} must remain a Tauri-free workspace package whose app_lib dependency disables desktop features.`,
+    /sitecmd-runtime\s*=\s*\{[^}\n]*path\s*=\s*"\.\.\/runtime"[^}\n]*\}/.test(cliManifest) &&
+      !/^(?:app_lib|tauri|sitecmd)\s*=/m.test(cliManifest) &&
+      appManifest.includes('"crates/cli"') &&
+      appManifest.includes('"crates/runtime"'),
+    `${CLI_MANIFEST} must remain a Tauri-free workspace package that depends on the shared sitecmd-runtime.`,
   );
 
   const auditWorkflow = read(AUDIT_WORKFLOW);

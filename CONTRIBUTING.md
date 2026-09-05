@@ -34,6 +34,24 @@ The marketing and documentation site, the public scanner, and the deployable Clo
 - `bash tools/scripts/dev.sh` - restarts the Tauri desktop app cleanly, freeing its dev ports first.
 - `pnpm tauri:dev` - desktop app only, without the restart handling.
 
+Start with [Adding a detector](docs/engineering/adding-a-detector.md) to follow
+one existing check from input through verdict, fixtures, registration, and local
+guidance. The complete exercise uses only this public repository.
+
+`pnpm sitecmd -- <arguments>` runs the shipped Rust CLI from this checkout, with
+the pinned toolchain and the caller's working directory. For example:
+
+```bash
+pnpm sitecmd -- --version
+pnpm sitecmd -- scan --url https://example.com
+pnpm sitecmd -- audit . --format json
+```
+
+Desktop navigation uses `pnpm sitecmd -- open <page>`. Previous checkout-only
+shortcuts such as `pnpm sitecmd -- dashboard` become
+`pnpm sitecmd -- open dashboard`; `scan` now runs the scanner. The installed
+headless CLI does not provide the checkout wrapper's `open` convenience command.
+
 ## Quality gates
 
 - `pnpm typecheck` - every workspace.

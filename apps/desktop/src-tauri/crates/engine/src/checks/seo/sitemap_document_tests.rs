@@ -1,5 +1,13 @@
 use super::*;
 
+#[test]
+fn robots_directives_ignore_unicode_at_the_prefix_boundary() {
+    assert_eq!(
+        sitemap_urls_from_robots("abcdefg😃\n🙂🙂🙂\nSitemap: https://example.com/site.xml"),
+        vec!["https://example.com/site.xml"]
+    );
+}
+
 fn locs(parse: &SitemapParse) -> Vec<&str> {
     parse.locs().iter().map(String::as_str).collect()
 }

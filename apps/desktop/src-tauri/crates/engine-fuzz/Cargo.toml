@@ -1,0 +1,43 @@
+[package]
+name = "sitecmd-engine-fuzz"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89.0"
+license = "Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[features]
+default = []
+fuzzing = ["dep:libfuzzer-sys"]
+
+[dependencies]
+sitecmd-engine = { path = "../engine" }
+serde_json = "1"
+libfuzzer-sys = { version = "0.4", optional = true }
+
+[[bin]]
+name = "page_input"
+path = "fuzz_targets/page_input.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzzing"]
+
+[[bin]]
+name = "sitemap_input"
+path = "fuzz_targets/sitemap_input.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzzing"]
+
+[[bin]]
+name = "evaluation_payload"
+path = "fuzz_targets/evaluation_payload.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzzing"]

@@ -682,7 +682,7 @@ fn phase_for_source_path(relative: &str) -> CodeScanPhase {
 
 // slug -> every code_scan-relative source path that emits it.
 fn emitted_slug_map() -> std::collections::HashMap<String, Vec<String>> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/code_scan");
+    let root = std::path::Path::new(env!("SITECMD_SOURCE_ROOT")).join("src/core/code_scan");
     let mut files = Vec::new();
     production_source_files(&root, &mut files);
     let mut emitted: std::collections::HashMap<String, Vec<String>> =
@@ -753,7 +753,7 @@ fn registry_phase_matches_emitting_module_for_every_slug() {
 #[test]
 fn confidence_policy_arms_reference_registered_slugs() {
     let content = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/confidence_policy.rs"),
+        std::path::Path::new(env!("SITECMD_SOURCE_ROOT")).join("src/core/confidence_policy.rs"),
     )
     .expect("read confidence_policy.rs");
     let start = content
@@ -783,7 +783,7 @@ fn confidence_policy_arms_reference_registered_slugs() {
 
 #[test]
 fn inline_code_issue_evidence_is_none_or_redacted() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/code_scan");
+    let root = std::path::Path::new(env!("SITECMD_SOURCE_ROOT")).join("src/core/code_scan");
     let mut files = Vec::new();
     production_source_files(&root, &mut files);
 
@@ -878,7 +878,7 @@ fn test_source_corpus() -> String {
             }
         }
     }
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/code_scan");
+    let root = std::path::Path::new(env!("SITECMD_SOURCE_ROOT")).join("src/core/code_scan");
     let mut corpus = String::new();
     walk(&root, false, &mut corpus);
     corpus

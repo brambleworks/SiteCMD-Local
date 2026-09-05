@@ -11,10 +11,10 @@ use super::scans::MAX_SCAN_RETENTION;
 use super::{Database, DbError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WebRunComparisonProfile {
-    pub(crate) axe_enabled: bool,
-    pub(crate) browser_ran: bool,
-    pub(crate) axe_ran: bool,
+pub struct WebRunComparisonProfile {
+    pub axe_enabled: bool,
+    pub browser_ran: bool,
+    pub axe_ran: bool,
 }
 
 impl WebRunComparisonProfile {
@@ -118,7 +118,7 @@ fn comparable_web_run_baseline(
     }
 }
 
-pub(crate) fn web_execution_matches_comparison_profile(
+pub fn web_execution_matches_comparison_profile(
     execution: &ScanExecutionSummary,
     run_kind: ScanRunKind,
     profile: WebRunComparisonProfile,
@@ -129,7 +129,7 @@ pub(crate) fn web_execution_matches_comparison_profile(
 
 impl Database {
     /// Score alerts compare only runs produced by the same scanner and runtime.
-    pub(crate) fn scan_runs_have_matching_score_provenance(
+    pub fn scan_runs_have_matching_score_provenance(
         &self,
         before_run_id: i64,
         after_run_id: i64,
@@ -140,7 +140,7 @@ impl Database {
     }
 
     /// Load the comparable score and critical count for scheduler notifications.
-    pub(crate) fn get_latest_web_run_baseline_for_project(
+    pub fn get_latest_web_run_baseline_for_project(
         &self,
         project_id: i64,
         url: &str,
@@ -193,7 +193,7 @@ impl Database {
     }
 
     /// Load the most recent comparable scheduler-owned Code Scan result.
-    pub(crate) fn get_latest_scheduled_code_run_baseline_for_project(
+    pub fn get_latest_scheduled_code_run_baseline_for_project(
         &self,
         project_id: i64,
         url: &str,

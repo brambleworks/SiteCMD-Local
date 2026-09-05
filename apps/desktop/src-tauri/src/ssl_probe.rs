@@ -87,7 +87,6 @@ pub(crate) fn days_between(now: DateTime<Utc>, not_after: DateTime<Utc>) -> Opti
 }
 
 /// Probe certificate expiry, returning failures through `SslProbeResult::error`.
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn check_ssl(url: String) -> Result<SslProbeResult, String> {
     Ok(check_ssl_with(&url, |addr| Box::pin(TcpStream::connect(addr))).await)
 }

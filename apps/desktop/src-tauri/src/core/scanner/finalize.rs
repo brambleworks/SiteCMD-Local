@@ -2,7 +2,7 @@
 
 use crate::checks::CheckResult;
 
-pub(crate) fn finalize_check_results(results: &mut [CheckResult]) {
+pub fn finalize_check_results(results: &mut [CheckResult]) {
     crate::core::severity_policy::normalize_check_results(results);
 }
 

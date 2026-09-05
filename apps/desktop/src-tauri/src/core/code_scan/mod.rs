@@ -31,14 +31,14 @@ pub use sitecmd_engine::identity::{
 };
 
 mod types;
-#[cfg(feature = "desktop")]
-pub(crate) use types::code_scan_domain_rank;
+pub(crate) use types::code_scan_domain_label;
+pub use types::code_scan_domain_rank;
+pub use types::severity_rank;
 pub use types::{
     code_issue_domain, score_report, summarize_code_scan_domain, CodeIssue, CodeIssueCountKey,
     CodeIssueView, CodeScanDomain, CodeScanReport, CodeScanReportFormat, CodeScanReportView,
     CodeScanSkippedScopes,
 };
-pub(crate) use types::{code_scan_domain_label, severity_rank};
 
 mod patterns;
 use patterns::*;

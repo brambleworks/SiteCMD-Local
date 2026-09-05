@@ -1,4 +1,4 @@
-use app_lib::cli::audit::{self, AuditArgs};
+use sitecmd_runtime::cli::audit::{self, AuditArgs};
 use std::process::ExitCode;
 
 pub(crate) fn dispatch_audit(args: impl Iterator<Item = String>) -> ExitCode {

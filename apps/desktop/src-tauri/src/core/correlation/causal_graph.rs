@@ -400,9 +400,9 @@ mod tests {
         let file = CausalGraphFile { links };
         let expected = serde_json::to_string_pretty(&file).expect("serialize graph") + "\n";
 
-        // Path relative to CARGO_MANIFEST_DIR (= apps/desktop/src-tauri). Go up to
+        // Path relative to the shared source root (apps/desktop/src-tauri). Go up to
         // apps/ and then into mcp-server/src/.
-        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let manifest_dir = std::path::PathBuf::from(env!("SITECMD_SOURCE_ROOT"));
         let json_path = manifest_dir
             .parent()
             .and_then(|path| path.parent())

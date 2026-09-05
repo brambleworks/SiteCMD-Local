@@ -881,7 +881,7 @@ describe.concurrent(
       );
     });
 
-    it("fails when the headless CLI enables app_lib desktop features", () => {
+    it("fails when the headless CLI regains a desktop package dependency", () => {
       expectGuardrailFailure(
         cliSurfaceFailures,
         (fixtureRoot) => {
@@ -890,10 +890,14 @@ describe.concurrent(
           writeFixtureFile(
             fixtureRoot,
             manifestPath,
-            mustMutate(manifest, "default-features = false", "default-features = true"),
+            mustMutate(
+              manifest,
+              'sitecmd-runtime = { path = "../runtime" }',
+              'app_lib = { package = "sitecmd", path = "../.." }',
+            ),
           );
         },
-        "must remain a Tauri-free workspace package whose app_lib dependency disables desktop features",
+        "must remain a Tauri-free workspace package that depends on the shared sitecmd-runtime",
       );
     });
 

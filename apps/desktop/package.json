@@ -23,9 +23,9 @@
     "e2e:debug": "playwright test --debug",
     "size": "node ../../tools/scripts/check-eager-bundle-parity.mjs && size-limit",
     "size:why": "size-limit --why",
-    "cov:rust": "cd src-tauri && cargo llvm-cov nextest --no-fail-fast --summary-only",
-    "cov:rust:html": "cd src-tauri && cargo llvm-cov nextest --no-fail-fast --html --open",
-    "cov:rust:lcov": "cd src-tauri && cargo llvm-cov nextest --no-fail-fast --lcov --output-path lcov.info"
+    "cov:rust": "cd src-tauri && cargo llvm-cov nextest --workspace --no-fail-fast --summary-only",
+    "cov:rust:html": "cd src-tauri && cargo llvm-cov nextest --workspace --no-fail-fast --html --open",
+    "cov:rust:lcov": "cd src-tauri && cargo llvm-cov nextest --workspace --no-fail-fast --lcov --output-path lcov.info"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.3",
