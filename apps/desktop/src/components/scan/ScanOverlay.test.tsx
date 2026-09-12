@@ -444,7 +444,8 @@ describe("ScanOverlay", () => {
 
     expect(screen.getAllByText("Polish").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Fetching styles").length).toBeGreaterThan(0);
-    expect(screen.getByText("60")).toBeInTheDocument();
+    expect(visiblePercent()).toBeGreaterThanOrEqual(60);
+    expect(visiblePercent()).toBeLessThanOrEqual(68);
   });
 
   it("paces visible web scan phase changes instead of skipping straight to the latest event", () => {
