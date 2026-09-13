@@ -128,8 +128,6 @@ test("a confirmatory repair prepares the exact desktop issue occurrence", async 
       calls.push({ name, args });
       if (name === "run_scan")
         return { content: [{ text: "Code scan complete: execution #1 (complete)" }] };
-      if (name === "get_issue")
-        return { content: [{ text: `Flagged location: ${target.relativePath}:41` }] };
       if (name === "get_fix_brief")
         return { content: [{ text: `Where to look\n${target.relativePath}:41` }] };
       throw new Error(`Unexpected tool ${name}`);
@@ -159,13 +157,9 @@ test("a confirmatory repair prepares the exact desktop issue occurrence", async 
   assert.match(prepared.brief, /src\/render\.tsx:41/);
   assert.deepEqual(
     calls.map(({ name }) => name),
-    ["run_scan", "get_issue", "get_fix_brief"],
+    ["run_scan", "get_fix_brief"],
   );
-  assert.deepEqual(calls[1].args, {
-    url: "http://localhost:4173",
-    check_id: target.checkId,
-  });
-  assert.deepEqual(calls[2].args, { attempt_id: 17 });
+  assert.deepEqual(calls[1].args, { attempt_id: 17 });
   assert.deepEqual(invokes[1], {
     command: "create_fix_attempt",
     args: {
@@ -198,4 +192,63 @@ test("a confirmatory repair prepares the exact desktop issue occurrence", async 
     },
   });
   assert.equal(closed, true);
+});
+
+test("a failed desktop scan retains bounded execution diagnostics", async () => {
+  const detail = {
+    summary: {
+      id: 44,
+      status: "failed",
+      codeStatus: "failed",
+      codeDetail: "The report could not be stored",
+    },
+    runs: [
+      {
+        id: 8,
+        source: "code_scan",
+        runKind: "code",
+        status: "failed",
+        statusDetail: "The report could not be stored",
+        diagnostics: { errors: ["storage"] },
+        findings: [{ large: "omitted" }],
+      },
+    ],
+  };
+  const desktop = {
+    database: "/isolated.db",
+    async invoke(command, args) {
+      if (command === "add_project") return 9;
+      assert.equal(command, "get_scan_execution_detail");
+      assert.deepEqual(args, { executionId: 44, runId: null });
+      return detail;
+    },
+  };
+  const mcp = {
+    request: async () => ({}),
+    notify() {},
+    close() {},
+    async call(name) {
+      assert.equal(name, "run_scan");
+      return { content: [{ text: "Scan request #1 complete: execution #44 (failed)." }] };
+    },
+  };
+  await assert.rejects(
+    prepareProject(
+      desktop,
+      { path: "/source" },
+      { id: "failed-scan", kind: "negative_control" },
+      { mcp: "/mcp.mjs" },
+      { agent: "codex" },
+      "normal",
+      () => {},
+      { connect: () => mcp },
+    ),
+    (error) => {
+      assert.equal(error.stage, "scan");
+      assert.equal(error.response.execution.summary.codeDetail, detail.summary.codeDetail);
+      assert.equal(error.response.execution.runs[0].statusDetail, detail.runs[0].statusDetail);
+      assert.equal(error.response.execution.runs[0].findings, undefined);
+      return true;
+    },
+  );
 });

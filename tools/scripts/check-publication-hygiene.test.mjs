@@ -113,6 +113,8 @@ describe("publicationHygieneFailures", () => {
     const { files, read } = fixture({
       "apps/desktop/src/lib/logger.test.ts": `expect(redact("${realHome}"));\n`,
       "apps/desktop/src/lib/paths.test.ts": 'expect(redact("/Users/dev/Projects/app/.env"));\n',
+      "tools/benchmark/guest/runtime.mjs":
+        'const desktopHome = "/home/sitecmd/projects/session";\n',
     });
     const failures = publicationHygieneFailures(files, read).join("\n");
     expect(failures).toContain(

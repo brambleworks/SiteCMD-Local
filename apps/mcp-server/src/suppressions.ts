@@ -4,7 +4,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 interface SuppressionMatch {
@@ -209,15 +209,37 @@ function validated(index: number, raw: unknown): Suppression {
   return { match, reason, expires };
 }
 
+// One descriptor carries the size check and the read, so the bytes parsed are
+// the bytes measured. Checking a path and then reopening it describes two
+// different moments, and the budget is only worth the guarantee that both saw
+// the same file. A missing config is an absent file, not an error.
+function readConfigWithinBudget(configPath: string): string | null {
+  let handle: number;
+  try {
+    handle = openSync(configPath, constants.O_RDONLY);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  try {
+    const opened = fstatSync(handle);
+    if (!opened.isFile()) return null;
+    if (opened.size > MAX_CONFIG_BYTES) {
+      throw new Error(`${configPath} is too large (maximum ${MAX_CONFIG_BYTES} bytes)`);
+    }
+    return readFileSync(handle, "utf8");
+  } finally {
+    closeSync(handle);
+  }
+}
+
 function loadRepoSuppressions(projectPath: string): Suppression[] {
   const configPath = join(projectPath, ".sitecmd", "config.json");
-  if (!existsSync(configPath)) return [];
-  if (statSync(configPath).size > MAX_CONFIG_BYTES) {
-    throw new Error(`${configPath} is too large (maximum ${MAX_CONFIG_BYTES} bytes)`);
-  }
+  const contents = readConfigWithinBudget(configPath);
+  if (contents === null) return [];
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(configPath, "utf8"));
+    parsed = JSON.parse(contents);
   } catch (error) {
     throw new Error(
       `failed to parse ${configPath}: ${error instanceof Error ? error.message : String(error)}`,

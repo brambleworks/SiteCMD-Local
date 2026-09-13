@@ -49,6 +49,9 @@ test("a calibration case must reproduce a defect and have a working reference", 
       study.tasks[0].sourceSha256 = "bad";
     },
     (study) => {
+      study.tasks[0].runtimeSha256 = "bad";
+    },
+    (study) => {
       study.configurations.push(study.configurations[0]);
     },
     (study) => {

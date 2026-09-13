@@ -7,7 +7,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createStudyRun, importTrial, writeNewJson } from "./workflow-store.mjs";
-import { describeContinuation, verifyContinuation } from "./workflow-continuation.mjs";
+import {
+  describeContinuation,
+  describeSupplementalContinuation,
+  verifyContinuation,
+} from "./workflow-continuation.mjs";
 import { analyzeStudy, renderWorkflowReport } from "./workflow-report.mjs";
 
 function continuedStudy() {
@@ -37,11 +41,11 @@ test("a continuation schedules only the unrun suffix and preserves the original 
   assert.equal(validatePlan(plan), plan);
 });
 
-function storedPrefix(t) {
+function storedPrefix(t, study = fixtureStudy()) {
   const root = mkdtempSync(path.join(os.tmpdir(), "sitecmd-continuation-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const sourceRun = path.join(root, "source");
-  const source = createStudyRun(fixtureStudy(), sourceRun);
+  const source = createStudyRun(study, sourceRun);
   for (const [index, assignment] of source.assignments.slice(0, 2).entries()) {
     const input = writeFixtureEvidence(path.join(root, `evidence-${index}`), source, assignment, {
       acceptance: { status: 0, log: "Synthetic check" },
@@ -77,6 +81,90 @@ test("continuation registration retains failures and verifies their original evi
     JSON.stringify({ allowance: "replenished" }),
   );
   assert.throws(() => verifyContinuation(run, plan), /allowance/);
+});
+
+test("supplemental completion retains the frozen prefix with a fresh allowance", (t) => {
+  const sourceStudy = fixtureStudy();
+  sourceStudy.phase = "confirmatory";
+  sourceStudy.registration = "synthetic registration";
+  sourceStudy.sampleSizeRationale = "Synthetic continuation test";
+  sourceStudy.sitecmd.dirty = false;
+  sourceStudy.tasks = sourceStudy.tasks.map((task) => ({ ...task, holdout: true }));
+  sourceStudy.billing = {
+    mode: "subscription",
+    paidFallback: false,
+    automaticResets: false,
+    weeklyBudgetPercentagePoints: 20,
+    minimumRemainingPercent: 30,
+    quotaMaxAgeSeconds: 300,
+  };
+  sourceStudy.limits = {
+    ...sourceStudy.limits,
+    trialTokens: null,
+    trialCostUsd: 0,
+    studyCostUsd: 0,
+  };
+  const { root, sourceRun, source } = storedPrefix(t, sourceStudy);
+  const study = structuredClone(source.study);
+  study.id = `${study.id}-supplemental`;
+  study.phase = "calibration";
+  study.billing = {
+    ...study.billing,
+    weeklyBudgetPercentagePoints: 100,
+    minimumRemainingPercent: 1,
+  };
+  const baseline = { synthetic: true, allowance: "operator-approved supplemental quota" };
+  const authorization = {
+    schemaVersion: 1,
+    kind: "supplemental-completion",
+    sourceStudySha256: source.studySha256,
+    approvedAt: "2026-09-10T06:30:00.000Z",
+    approvedBy: "operator",
+    reason: "Complete the frozen suffix after the original allowance closed",
+    billing: study.billing,
+  };
+
+  study.continuation = describeSupplementalContinuation(sourceRun, study, baseline, authorization);
+
+  assert.equal(study.continuation.kind, "supplemental-completion");
+  assert.equal(study.continuation.retained.length, 2);
+  assert.equal(study.continuation.baselineSha256, digest(baseline));
+  assert.equal(study.continuation.authorizationSha256, digest(authorization));
+  assert.equal(createPlan(study).plannedTrials, source.plannedTrials - 2);
+
+  const supplementalRun = path.join(root, "supplemental");
+  const supplementalPlan = createStudyRun(study, supplementalRun);
+  writeNewJson(path.join(supplementalRun, "quota-baseline.json"), baseline);
+  writeFileSync(path.join(supplementalRun, "quota-baseline.sha256"), digest(baseline));
+  writeNewJson(path.join(supplementalRun, "supplemental-authorization.json"), authorization);
+  writeFileSync(
+    path.join(supplementalRun, "supplemental-authorization.sha256"),
+    digest(authorization),
+  );
+  assert.equal(verifyContinuation(supplementalRun, supplementalPlan), 2);
+
+  const automaticResetStudy = structuredClone(study);
+  automaticResetStudy.billing.automaticResets = true;
+  const automaticResetAuthorization = {
+    ...authorization,
+    billing: automaticResetStudy.billing,
+  };
+  assert.throws(
+    () =>
+      describeSupplementalContinuation(
+        sourceRun,
+        automaticResetStudy,
+        baseline,
+        automaticResetAuthorization,
+      ),
+    /automatic quota resets/,
+  );
+
+  writeFileSync(path.join(sourceRun, "quota-baseline.sha256"), digest("changed"));
+  assert.throws(
+    () => describeSupplementalContinuation(sourceRun, study, baseline, authorization),
+    /source allowance baseline changed/,
+  );
 });
 
 test("continuation reports disclose the retained population and never pool runner versions", () => {

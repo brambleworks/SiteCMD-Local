@@ -1,0 +1,379 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "sitecmd-confirmatory-v3",
+  "corpusSha256": "41b00144a00a02bbdcbe8a8a5a66ae094d473cf76101c38b46e09c5d7c521303",
+  "eligibilitySha256": "e37b503bc2e2df4cd15ef38b5e8e4e1d8aef0c824a6e928d5c35df5e3aa119d4",
+  "referenceScreeningSha256": "2549a0c069a11cb77d8b4fd2308b95ccd8b9926ef274554e7e76f5a6a9ef43ed",
+  "qualificationVersion": 1,
+  "cases": [
+    {
+      "id": "alist-ldap-tls-verification",
+      "entry": "server/handles/ldap_login.go",
+      "baselineSha256": "68ceec3b13ec72ed0566144e7cd2ff8bde979e232201b03b6a1ae67b94e71752",
+      "upstreamSha256": "0f05488ce825e17f256eb8c72779c725356ba2d3838cfa0c7eda23ecc168c437",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "95f9a673fa33d7e8fc08cfc795ee4614518e4f8fd4661794dd1fd73afb27fa06"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "alps-message-reader-inert-parsing",
+      "entry": "frontend/src/components/message-reader.ts",
+      "baselineSha256": "256666f6917aae94c9e8958010a132f2bf2e9c2253f06812de8f994a9ca11fd0",
+      "upstreamSha256": "d73197e92d46acdbfc13c9cedad55b57e6fa87d5bd3ff6712125cdabd84a095d",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "a027880e986752891687a0d64f7102d27d32fc7b85fc3174bfed45019d9bbd69"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "bigflow-deploy-tls-verification",
+      "entry": "bigflow/deploy.py",
+      "baselineSha256": "0007678fe38a411fb3292c4691b7cfed7e0bf30c2738ca5aad8abfaf40606f42",
+      "upstreamSha256": "072afff1525a8fe6225de5d0c9335fb4a8ed245bd341913e31491afebdab0f6c",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "f2dbadd2a514519b77d334e1cf2319e2cc81a8d8bc2449b66948a41dee8bdda3"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "blackduck-client-tls-verification",
+      "entry": "blackduck/HubRestApi.py",
+      "baselineSha256": "7a9b4ca9d86b68e3b80997a6fa8346312a2d0bbf73d8e2aa95f7cac976e62dc1",
+      "upstreamSha256": "6ab81d572e57b047989b20471bb83976c41a3b0690259559ebfa12434bd7663a",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "f4c66f8a815bf15fad9bd27d01c22db8efa76de76e6065aabf253a104b38bc35"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "css-parser-http-tls-verification",
+      "entry": "lib/css_parser/parser.rb",
+      "baselineSha256": "0556ee9d1ed3313b1fc7b36fb05b5336b7b43511a88554316ed0290a353a1287",
+      "upstreamSha256": "3471c28af314dea76507225e91518312271104fefef2dd2ccbfc3a0e1d128863",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "00196be211832b38bf1c55aa60d0eacd19583825720b690ec2247990b2548c90"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "django-grappelli-switch-redirect",
+      "entry": "grappelli/views/switch.py",
+      "baselineSha256": "6599ede0557aad84fcc64545042f193053be87992d461a448058a4afa84bb573",
+      "upstreamSha256": "37dea0fb50b63d9d27b0ca93b38a24ee1a2cf525d157c7c7736c65b677f7c118",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "f261224212702c83e17ed20c187ecf2e2414504023ba7126a762a62ef5521e47"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "fmd-device-text",
+      "entry": "web/logic.js",
+      "baselineSha256": "593fda0baecb5abfe0997f9ffd98090492dccaf0cd407b49638ffbe3a0a0f16d",
+      "upstreamSha256": "245682e426e586af56b3203c29473e6677f1f1486107edd2a28dff92e7812075",
+      "reference": {
+        "kind": "implementation-regions",
+        "regions": [
+          {
+            "file": "web/logic.js",
+            "start": "time.toLocaleTimeString();\n    ",
+            "end": " = loc.provider;"
+          }
+        ],
+        "sha256": "c490ad33c83a9e050ec4a03a39de65e5f8c9fe4154918ef244df813c23bb2374"
+      },
+      "baselineAcceptancePass": false,
+      "runtimeManifestSha256": "a888985cf75f7bd9777d48825d53bc57b4d4189727da6b44fe2f7fa40ed213ea"
+    },
+    {
+      "id": "formwork-tag-label-text",
+      "entry": "panel/src/ts/components/inputs/tags-input.ts",
+      "baselineSha256": "627ac1f28f24d3c5607e03c60bcb81588fb67b69eac0a84125dc104c665564f4",
+      "upstreamSha256": "8a298e709f58c70faa9f39adc3b0fb4a090f6493677f2441e72c130e82e6fff4",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "06774a85d2c932b5ac2410a220d6d5ab4ca86986b3fffcf0294578f9d2257c6c"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "formwork-update-status-text",
+      "entry": "panel/src/ts/components/views/updates.ts",
+      "baselineSha256": "627ac1f28f24d3c5607e03c60bcb81588fb67b69eac0a84125dc104c665564f4",
+      "upstreamSha256": "8a298e709f58c70faa9f39adc3b0fb4a090f6493677f2441e72c130e82e6fff4",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "0ace6aa23d11450aab3cb6714c8f29f355f7c15e937a0c32cc81cb734d9d566a"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "gobot-mqtt-tls-verification",
+      "entry": "platforms/mqtt/mqtt_adaptor.go",
+      "baselineSha256": "b836ec7d2eeb75195870246d84808e498fc552c0c2b28d4daf4e19926c41a1b6",
+      "upstreamSha256": "515c1b81a23a196a1aaaaba3603d17ea33c4376c076f6f7dbce72c61a4917702",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "88f6adad3f8387efe15cba9e9b3ebc4d9d1a4abe7862d3e35886ba82fda5f263"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "graphql-tools-websocket-tls-verification",
+      "entry": "packages/executors/legacy-ws/src/index.ts",
+      "baselineSha256": "ec43d3f75fb2bd4bece05ce6a820ede1ad800be5cf78f4e88627020ed44ca7f3",
+      "upstreamSha256": "80c9f46596ac2effee2aee1eede9c03f5767169701064b331a7c8927b6549121",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "9b159c569fc8267b2c79715839fdf61793304b971d4548e286ae9e75d616be13"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "kaarya-postgres-tls-verification",
+      "entry": "server/src/db-pg.js",
+      "baselineSha256": "f7bba42775c26b8e1077df0b35d8bb8e2d524d178ebcc49d9c4c5371086aba2d",
+      "upstreamSha256": "d0047d47d57d42e58478485b6d10fca6300aee91867d7b068714fb11ed3dfb45",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "f879e9e14c65c53422ec37c880bd55c4b1c336e1f35b8059da231de20d875f94"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "kubex-postgres-tls-verification",
+      "entry": "services/mcp-server/src/clients/postgres.ts",
+      "baselineSha256": "c7115412d26f02e46085c01182ba5752bb58c57b50baa313daf1389437ee02c1",
+      "upstreamSha256": "4746870fa3c828108b21f1931289d90c1ba87be26425d5f225883e2ce4394750",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "cbaab343c7bc3aabee6fd0579acaa611a6e3f1b8183217762eb0400c6f9088bd"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "libmongocrypt-kms-tls-verification",
+      "entry": "bindings/node/lib/stateMachine.js",
+      "baselineSha256": "4e3a78660915b147fa8fba320a73075766f1579b7c0a8c4a9dc0fb788c0df091",
+      "upstreamSha256": "2c891d509e8d7089559cdbe4b490b566e87a2e293fd39c34e677a2fcf67e4ee4",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "59d1c42f1e080e89ddb70efa2444f95b2bc24550f4705e5ddbdd7afd6fc05cf5"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "liljs-element-text-rendering",
+      "entry": "src/liljs.js",
+      "baselineSha256": "1b169daf1642a0f55a1c47a3a70c69c76d53f35e82ee8609826cd2f15f22401f",
+      "upstreamSha256": "c03ef6f9518085d22cbebd93714b505b33608977b456cca393afe60ab69615d3",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "f721dfb1f9215916c856cb69f9dcd5711c73d3ec3ca4a8258bad215d52125df9"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "mnml-search-result-text-rendering",
+      "entry": "static/js/search.js",
+      "baselineSha256": "d96023e0790cc7fc7110f9b49fc1dc4f2cf37aaa2e0630c6a059e8a7a688dd67",
+      "upstreamSha256": "7ceda92ebf270254073cb77b5f94f960515c3d5f21b5a37d0e3cbdbda278d08a",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "e776d8cc19ccea3632861b8d17287797095b882b66e8177d0ac1978c83ff627e"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "nbdime-diff-response-text",
+      "entry": "packages/webapp/src/app/diff.ts",
+      "baselineSha256": "ee295c0842f06e1b1905f0183b338a6c864b95106f66f3ddeac3b985d55921f3",
+      "upstreamSha256": "4ffdb65364f5b05bdacb90d2d18f07ba658eb77966063abab118a55ac7299926",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "924ed78cfc00cc845a167736e6610ec16356dcaf23a972dd9227411072614d8f"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "nbdime-merge-response-text",
+      "entry": "packages/webapp/src/app/merge.ts",
+      "baselineSha256": "ee295c0842f06e1b1905f0183b338a6c864b95106f66f3ddeac3b985d55921f3",
+      "upstreamSha256": "4ffdb65364f5b05bdacb90d2d18f07ba658eb77966063abab118a55ac7299926",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "7c89ce5bfb0e2cc17ed474244423deca4f61b389b148b4f479246bf572f9cce0"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "node-sass-download-tls-verification",
+      "entry": "scripts/util/downloadoptions.js",
+      "baselineSha256": "84b77117a323d386b1f8db920bdb241d4ecdad830ffc99b3871ae4a161a68a1b",
+      "upstreamSha256": "87828f39e5816474ea22e72ea98159e706824ae883b19654e47ec514e3d74ba8",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "4d7eac1ad5d04a8eb3371e4787dedb5d11b99eaf9fbdf300c193e12d15189b48"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "onekey-http-client-tls-verification",
+      "entry": "src/network/client.py",
+      "baselineSha256": "2ef9da7a46e569b4770224219356585c2579cc9a5bd714dc95e0d2285e573f8d",
+      "upstreamSha256": "0036d02779edb6e9a65cf6232d67f71a5607586774634f3617467589b7fa6802",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "d5086b6b9b7985b55067974a5e9ef1a22b3144818654dcbc332c2103413ef8ce"
+      },
+      "baselineAcceptancePass": false,
+      "runtimeManifestSha256": "e3a895073d0c224479996a48d406d173d77d46afa15d9aec9573fcb69e1d562a"
+    },
+    {
+      "id": "oobee-updater-tls-verification",
+      "entry": "public/electron/main.js",
+      "baselineSha256": "a03d1d8791e4a868ccaf6758427feaeeca15cd427273e967068fcf3ca8565542",
+      "upstreamSha256": "ddd1858e082d76d40b70dac841cc0f8033b47981b0932078454410d1dc5a683d",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "ac805c4b8d21da50824251b8a088074b660dbc86a0c317a63236d9689c00b935"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "streetlives-rds-tls-verification",
+      "entry": "src/config.js",
+      "baselineSha256": "7d016a3b437f9c464db3b7cb6cf9a56501d82b92e82774895893e11c583ff7e6",
+      "upstreamSha256": "904c9f86c23ee2d97ba5b14a58dc78f1f4b1939ea470b7bb87b8bf0eda99c92b",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "3f5ba9adbff0ebd67f023d7e1862a6f564e7bc1ee89dafbcf01cc12f1fd1e07f"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "warewoolf-chapter-title-rendering",
+      "entry": "src/render.js",
+      "baselineSha256": "5f778d918fa1c11524ee1c5c800966d88192be7918f4bb934caf64e64464bc11",
+      "upstreamSha256": "0004fa77676a5252957f801dc2087552d4382ae3f6bbe18db8f3db73b087a60f",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "777b5b836554d405a18e76441b1ccfab28368d6e2389581a3de784426fbd1d44"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "xteve-log-entry-rendering",
+      "entry": "ts/logs_ts.ts",
+      "baselineSha256": "5278bb6530ffd4574293ea102576bb272069604d0b0bdf2c09abafb9073bdcbd",
+      "upstreamSha256": "3da9d8d9fcbbb8cc5ab6f3afb72e2c714337d35a6903a1fd78b30fbb5eab1326",
+      "reference": {
+        "kind": "implementation-only",
+        "sha256": "703778e5533791cdfa1bd3220204727a2b320ba091f5e7734598213ba198b94f"
+      },
+      "baselineAcceptancePass": false
+    },
+    {
+      "id": "control-dompurify-sanitizer-internal",
+      "entry": "site/assets/scripts/dompurify.js",
+      "baselineSha256": "0af7cb4fa864af5bbb26d62064df394da7a2c671518dc70935e98d384bde4335",
+      "upstreamSha256": "0af7cb4fa864af5bbb26d62064df394da7a2c671518dc70935e98d384bde4335",
+      "reference": {
+        "kind": "unchanged",
+        "sha256": "0af7cb4fa864af5bbb26d62064df394da7a2c671518dc70935e98d384bde4335"
+      },
+      "baselineAcceptancePass": true,
+      "controlSourceSha256": "0af7cb4fa864af5bbb26d62064df394da7a2c671518dc70935e98d384bde4335"
+    },
+    {
+      "id": "control-emoji-category-escaped-html",
+      "entry": "src/emojiArea.ts",
+      "baselineSha256": "9b905d79331f327654d0e8214d3bacf7f02ed3475cd6fe252adce99476e30ecf",
+      "upstreamSha256": "9b905d79331f327654d0e8214d3bacf7f02ed3475cd6fe252adce99476e30ecf",
+      "reference": {
+        "kind": "unchanged",
+        "sha256": "9b905d79331f327654d0e8214d3bacf7f02ed3475cd6fe252adce99476e30ecf"
+      },
+      "baselineAcceptancePass": true,
+      "controlSourceSha256": "9b905d79331f327654d0e8214d3bacf7f02ed3475cd6fe252adce99476e30ecf"
+    },
+    {
+      "id": "control-emoji-preview-name-escaped-html",
+      "entry": "src/preview.ts",
+      "baselineSha256": "9b905d79331f327654d0e8214d3bacf7f02ed3475cd6fe252adce99476e30ecf",
+      "upstreamSha256": "9b905d79331f327654d0e8214d3bacf7f02ed3475cd6fe252adce99476e30ecf",
+      "reference": {
+        "kind": "unchanged",
+        "sha256": "9b905d79331f327654d0e8214d3bacf7f02ed3475cd6fe252adce99476e30ecf"
+      },
+      "baselineAcceptancePass": true,
+      "controlSourceSha256": "9b905d79331f327654d0e8214d3bacf7f02ed3475cd6fe252adce99476e30ecf"
+    },
+    {
+      "id": "control-hippietv-static-shadow-shell",
+      "entry": "www/hippietv-remote-card.js",
+      "baselineSha256": "9721c60aec1ef74b27fe9c524ca0c5d5f10a92cfae3dcf6c685ffe9d148bbc32",
+      "upstreamSha256": "9721c60aec1ef74b27fe9c524ca0c5d5f10a92cfae3dcf6c685ffe9d148bbc32",
+      "reference": {
+        "kind": "unchanged",
+        "sha256": "9721c60aec1ef74b27fe9c524ca0c5d5f10a92cfae3dcf6c685ffe9d148bbc32"
+      },
+      "baselineAcceptancePass": true,
+      "controlSourceSha256": "9721c60aec1ef74b27fe9c524ca0c5d5f10a92cfae3dcf6c685ffe9d148bbc32"
+    },
+    {
+      "id": "control-memos-highlight-escaped-html",
+      "entry": "web/src/labs/highlighter/index.ts",
+      "baselineSha256": "9706bbb073e3d4310de6d9160acdacac6fc3b9f364361ae370d912ed00268902",
+      "upstreamSha256": "9706bbb073e3d4310de6d9160acdacac6fc3b9f364361ae370d912ed00268902",
+      "reference": {
+        "kind": "unchanged",
+        "sha256": "9706bbb073e3d4310de6d9160acdacac6fc3b9f364361ae370d912ed00268902"
+      },
+      "baselineAcceptancePass": true,
+      "controlSourceSha256": "9706bbb073e3d4310de6d9160acdacac6fc3b9f364361ae370d912ed00268902"
+    },
+    {
+      "id": "control-teler-category-escaped-html",
+      "entry": "internal/event/www/script.js",
+      "baselineSha256": "66b1b6b1310a4b8a8f105fc97ea6dafe1f352ae2bc6810cc3569aaa44554e125",
+      "upstreamSha256": "66b1b6b1310a4b8a8f105fc97ea6dafe1f352ae2bc6810cc3569aaa44554e125",
+      "reference": {
+        "kind": "unchanged",
+        "sha256": "66b1b6b1310a4b8a8f105fc97ea6dafe1f352ae2bc6810cc3569aaa44554e125"
+      },
+      "baselineAcceptancePass": true,
+      "controlSourceSha256": "66b1b6b1310a4b8a8f105fc97ea6dafe1f352ae2bc6810cc3569aaa44554e125"
+    },
+    {
+      "id": "control-token-optimizer-instructional-rule-text",
+      "entry": "src/tools/code-analysis/smart-security.ts",
+      "baselineSha256": "a16f89e4b16de1b195da40a05a2f9d9b6733c264ec7b3ac0d60e2d2d0b977109",
+      "upstreamSha256": "a16f89e4b16de1b195da40a05a2f9d9b6733c264ec7b3ac0d60e2d2d0b977109",
+      "reference": {
+        "kind": "unchanged",
+        "sha256": "a16f89e4b16de1b195da40a05a2f9d9b6733c264ec7b3ac0d60e2d2d0b977109"
+      },
+      "baselineAcceptancePass": true,
+      "controlSourceSha256": "a16f89e4b16de1b195da40a05a2f9d9b6733c264ec7b3ac0d60e2d2d0b977109"
+    },
+    {
+      "id": "control-xteve-empty-dom-clear",
+      "entry": "ts/logs_ts.ts",
+      "baselineSha256": "3da9d8d9fcbbb8cc5ab6f3afb72e2c714337d35a6903a1fd78b30fbb5eab1326",
+      "upstreamSha256": "3da9d8d9fcbbb8cc5ab6f3afb72e2c714337d35a6903a1fd78b30fbb5eab1326",
+      "reference": {
+        "kind": "unchanged",
+        "sha256": "3da9d8d9fcbbb8cc5ab6f3afb72e2c714337d35a6903a1fd78b30fbb5eab1326"
+      },
+      "baselineAcceptancePass": true,
+      "controlSourceSha256": "3da9d8d9fcbbb8cc5ab6f3afb72e2c714337d35a6903a1fd78b30fbb5eab1326"
+    }
+  ]
+}

@@ -68,20 +68,21 @@ export function prepareWriteStaging(workspace) {
   const parentIdentity = directoryInfo(parent, uid);
   const identity = directoryInfo(directory, uid);
   const expected = ["user::rwx", `user:${readerUid}:r-x`, "group::---", "mask::r-x", "other::---"];
+  aclCommand("/usr/bin/setfacl", [`--set=${expected.join(",")}`], parent, parentIdentity);
   aclCommand("/usr/bin/setfacl", [`--set=${expected.join(",")}`], directory, identity);
   const verify = () => {
     const currentParent = directoryInfo(parent, uid);
     if (currentParent.dev !== parentIdentity.dev || currentParent.ino !== parentIdentity.ino)
       throw new Error("Claude write-staging parent changed");
     directoryInfo(directory, uid);
-    const actual = aclCommand(
-      "/usr/bin/getfacl",
-      ["--omit-header", "--numeric"],
-      directory,
-      identity,
-    );
-    if (actual.split("\n").sort().join("\n") !== expected.toSorted().join("\n"))
-      throw new Error("Claude write-staging permissions changed; pause the benchmark");
+    for (const [target, info] of [
+      [parent, parentIdentity],
+      [directory, identity],
+    ]) {
+      const actual = aclCommand("/usr/bin/getfacl", ["--omit-header", "--numeric"], target, info);
+      if (actual.split("\n").sort().join("\n") !== expected.toSorted().join("\n"))
+        throw new Error("Claude write-staging permissions changed; pause the benchmark");
+    }
   };
   verify();
   return {

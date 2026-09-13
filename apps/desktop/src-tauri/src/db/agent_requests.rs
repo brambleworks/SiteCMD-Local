@@ -19,10 +19,12 @@ pub struct AgentRequestRow {
     pub failure_detail: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+    pub target_relative_path: Option<String>,
+    pub target_line: Option<u32>,
 }
 
 const COLUMNS: &str = "id, kind, project_id, env_url, check_id, scope, agent_tool, status,
-     result_json, failure_detail, created_at, updated_at";
+     result_json, failure_detail, created_at, updated_at, target_relative_path, target_line";
 
 fn row_to_request(row: &Row) -> rusqlite::Result<AgentRequestRow> {
     Ok(AgentRequestRow {
@@ -38,6 +40,8 @@ fn row_to_request(row: &Row) -> rusqlite::Result<AgentRequestRow> {
         failure_detail: row.get(9)?,
         created_at: row.get(10)?,
         updated_at: row.get(11)?,
+        target_relative_path: row.get(12)?,
+        target_line: row.get(13)?,
     })
 }
 

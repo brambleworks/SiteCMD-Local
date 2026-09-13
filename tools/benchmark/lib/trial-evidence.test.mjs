@@ -16,6 +16,44 @@ import { createPlan, digest } from "./workflow-plan.mjs";
 import { fixtureStudy } from "./workflow-fixture.mjs";
 import { materializeRepositorySnapshot } from "./repository-snapshot.mjs";
 import { readCandidate } from "../guest/trial-snapshot.mjs";
+import { totalTokens } from "./workflow-usage.mjs";
+
+test("a complete provider receipt survives a failing process exit", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "sitecmd-failed-exit-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const study = fixtureStudy();
+  for (const task of study.tasks) task.sourceSha256 = digest({});
+  Object.assign(study.configurations[0], { agent: "codex", model: "gpt-6-astra" });
+  const plan = createPlan(study);
+  const assignment = plan.assignments[0];
+  const evidence = createEvidence(root, plan, assignment, { id: assignment.task }, {}, root);
+  writeFileSync(
+    path.join(root, "transcript.jsonl"),
+    [
+      { type: "thread.started", thread_id: "thread-1" },
+      { type: "turn.started" },
+      {
+        type: "turn.completed",
+        usage: { input_tokens: 100, cached_input_tokens: 60, output_tokens: 20 },
+      },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n"),
+  );
+  const record = evidence.finish({
+    status: "agent_error",
+    failure: "Agent exit 1",
+    elapsedMs: 1,
+    configuration: study.configurations[0],
+    quotaAllowed: true,
+    evidenceComplete: true,
+    providerCompleted: false,
+  });
+  assert.equal(record.status, "agent_error");
+  assert.equal(record.failure, "Agent exit 1");
+  assert.equal(totalTokens(record.usage), 120);
+  assert.equal(record.modelSelection.verified, true);
+});
 
 test("Linkding evidence rejects runtime receipts that differ from the registration", (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), "sitecmd-runtime-evidence-"));

@@ -108,6 +108,60 @@ fn migration_028_removes_only_inferred_update_activity() {
 }
 
 #[test]
+fn migration_030_preserves_queued_requests_and_checks_location_shape() {
+    let conn = Connection::open_in_memory().unwrap();
+    super::ensure_version_table(&conn).unwrap();
+    super::apply_pending(&conn, &super::MIGRATIONS[..29], 0).unwrap();
+    conn.execute_batch(
+        "INSERT INTO projects (name, secret_namespace) VALUES ('p', 'migration-030');
+         INSERT INTO agent_requests
+             (kind, project_id, env_url, check_id, agent_tool, created_at, updated_at)
+         VALUES ('start_fix', 1, 'https://example.com', 'code_scan.unsafe-html', 'codex', 1, 2);",
+    )
+    .unwrap();
+    super::apply_pending(&conn, &super::MIGRATIONS[29..], 29).unwrap();
+    let row = conn
+        .query_row(
+            "SELECT status, created_at, updated_at, target_relative_path, target_line
+         FROM agent_requests WHERE id = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<u32>>(4)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(row, ("requested".into(), 1, 2, None, None));
+    assert!(conn
+        .execute("UPDATE agent_requests SET target_line = 346", [])
+        .is_err());
+    conn.execute(
+        "UPDATE agent_requests SET target_relative_path = 'web/logic.js', target_line = 346",
+        [],
+    )
+    .unwrap();
+    for invalid in [0_i64, -1, 4_294_967_296] {
+        assert!(conn
+            .execute("UPDATE agent_requests SET target_line = ?1", [invalid])
+            .is_err());
+    }
+    assert!(conn
+        .execute("UPDATE agent_requests SET target_line = 1.5", [])
+        .is_err());
+    assert!(conn
+        .execute("UPDATE agent_requests SET target_relative_path = ''", [])
+        .is_err());
+    assert!(conn
+        .execute("UPDATE agent_requests SET kind = 'run_scan'", [])
+        .is_err());
+}
+
+#[test]
 fn failed_migration_rolls_back_ddl_and_version_together() {
     let conn = migrated_conn();
     let current = super::latest_version();

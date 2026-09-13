@@ -26,8 +26,8 @@ export function validateConfirmatoryWorkflowCase(item, receipt) {
     requireText(result.prompt, `${result.arm} workflow prompt`);
     requireText(result.issueDetail, `${result.arm} issue detail`);
     requireCondition(
-      result.issueDetail.includes(item.targetFinding.relativePath),
-      `${result.arm} issue detail omitted the registered location`,
+      result.issueDetail.includes(item.targetFinding.checkId),
+      `${result.arm} issue detail omitted the registered check`,
     );
     requireCondition(result.report?.exitCode === 0, `${result.arm} CLI report failed`);
     let parsed;

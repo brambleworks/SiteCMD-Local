@@ -16,6 +16,7 @@ export function launchAgent({
   baseline,
   currentQuota,
   requestedModel,
+  provider,
   log,
   initialized = () => {},
 }) {
@@ -30,7 +31,7 @@ export function launchAgent({
     if (existsSync(`/run/sitecmd-benchmark-cancel-${id}`))
       throw new Error("Trial cancelled by the operator");
     const current = JSON.parse(readFileSync(currentQuota, "utf8"));
-    const outcome = evaluateQuota(baseline, current, plan.study.billing);
+    const outcome = evaluateQuota(baseline, current, plan.study.billing, Date.now(), provider);
     log("quota-events.jsonl", { checkedAt: new Date().toISOString(), current, outcome });
     if (!outcome.quotaAllowed) throw new Error(outcome.blockers.join("; "));
     return current;
@@ -139,7 +140,6 @@ export function launchAgent({
         failure,
         elapsedMs: Date.now() - startedAt,
         evidenceComplete,
-        providerCompleted: code === 0 && !failure,
       });
     });
   });

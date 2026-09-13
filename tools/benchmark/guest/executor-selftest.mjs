@@ -112,6 +112,7 @@ try {
     (async () => {
       const {bridgeRequest} = await import(client);
       const submit = summary => bridgeRequest(channel, '/submit', {summary}, {timeoutMs: submissionTimeoutMs});
+      console.log(JSON.stringify({type:'thread.started',thread_id:'fixture-thread',synthetic:true}));
       console.log(JSON.stringify({type:'turn.started',model:'fixture-model',synthetic:true}));
       await submit('Scripted baseline, deliberately still broken');
       for (const [name, contents] of Object.entries(reference))

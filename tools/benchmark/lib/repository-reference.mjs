@@ -1,5 +1,57 @@
-import { validateRepositorySnapshot } from "./repository-snapshot.mjs";
+import { validateRepositoryFiles, validateRepositorySnapshot } from "./repository-snapshot.mjs";
 import { digest } from "./workflow-plan.mjs";
+
+const HASH = /^[a-f0-9]{64}$/;
+
+function safeRelativePath(value) {
+  return (
+    typeof value === "string" &&
+    !value.startsWith("/") &&
+    !value.includes("\\") &&
+    value.split("/").every((part) => part && part !== "." && part !== "..")
+  );
+}
+
+export function validateRepositoryReference(reference) {
+  const { sha256, ...content } = reference ?? {};
+  if (
+    reference?.schemaVersion !== 1 ||
+    !["implementation-only", "implementation-regions"].includes(reference.kind) ||
+    !HASH.test(reference.baselineSha256 ?? "") ||
+    !HASH.test(reference.upstreamSha256 ?? "") ||
+    !Array.isArray(reference.editableFiles) ||
+    !reference.editableFiles.length ||
+    new Set(reference.editableFiles).size !== reference.editableFiles.length ||
+    !reference.editableFiles.every(safeRelativePath) ||
+    !HASH.test(sha256 ?? "") ||
+    sha256 !== digest(content)
+  ) {
+    throw new Error("Invalid repository reference identity");
+  }
+  validateRepositoryFiles(reference.files);
+  if (reference.kind === "implementation-only") {
+    if (reference.regions !== undefined)
+      throw new Error("Implementation-only references cannot contain regions");
+  } else if (
+    !Array.isArray(reference.regions) ||
+    !reference.regions.length ||
+    reference.regions.some(
+      (region) =>
+        !reference.editableFiles.includes(region?.file) ||
+        typeof region.start !== "string" ||
+        !region.start ||
+        typeof region.end !== "string" ||
+        !region.end ||
+        region.start === region.end,
+    ) ||
+    reference.editableFiles.some(
+      (name) => !reference.regions.some((region) => region.file === name),
+    )
+  ) {
+    throw new Error("Invalid repository reference regions");
+  }
+  return reference;
+}
 
 function markerPosition(text, marker, label) {
   const position = text.indexOf(marker);
@@ -81,5 +133,5 @@ export function deriveRepositoryReference(baseline, upstream, editableFiles, reg
       editableFiles.includes(file.name) ? selected.get(file.name) : file,
     ),
   };
-  return { ...content, sha256: digest(content) };
+  return validateRepositoryReference({ ...content, sha256: digest(content) });
 }

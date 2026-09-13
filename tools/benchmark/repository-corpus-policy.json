@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "minimumCases": 8,
-  "maximumCases": 12,
+  "maximumCases": 32,
   "minimumRepositories": 4,
   "maximumCasesPerRepository": 3,
   "minimumRepairs": 6,

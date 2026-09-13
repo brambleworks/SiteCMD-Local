@@ -6,8 +6,8 @@ tooling freezes assignments, runs subscription evaluations in an isolated
 desktop, imports evidence, records blinded reviews, and reports uncertainty.
 This guide is for the operator preparing and executing those evaluations. The
 subscription runner supports the completed five-case pilot and the explicit
-Whoogle real-application calibration. The first eight-case repository study is
-retained for diagnostic analysis but is invalidated and cannot be run again. A
+Whoogle real-application calibration. Both eight-case repository studies and the
+v2 supplement are invalidated, diagnostic-only, and cannot be run again. A
 separate scripted test exercises full-repository submissions without model calls.
 Arbitrary repositories and Web Scan are not supported trial targets.
 
@@ -103,8 +103,10 @@ patches. Nonempty changes, unknown hidden files and unsafe links remain failures
 Executable-mode changes are also retained and checked, including on empty guards.
 The controller also prepares `.claude/.cc-writes` with a per-directory ACL: Claude
 can write, SiteCMD can read and traverse, and other users have no access. Its
-identity and permissions are checked before submissions. Changed permissions or
-replaced directories stop the trial; home and credential permissions are unchanged.
+identity and both parent and staging permissions are checked before submissions.
+An existing private parent directory also receives the scanner's read-only ACL.
+Changed permissions or replaced directories stop the trial; home and credential
+permissions are unchanged.
 
 All trial environments set `PYTHONDONTWRITEBYTECODE=1` and redirect explicit
 bytecode compilation to the trial's temporary filesystem; Codex also receives
@@ -186,6 +188,15 @@ The VM executor enforces the time/submission limits, stops on reported rate limi
 and never requests a fallback model. Provider percentages are not precise
 in-flight cost caps.
 
+Future studies can freeze `billing.quotaScope: "active-provider"` to apply allowance
+and remaining-capacity thresholds only to the account running that assignment.
+An unrelated account reaching its limit then leaves the active trial running.
+Account identity, subscription authentication, disabled paid overage, fresh
+snapshots, and conservative weekly accounting still apply to both accounts.
+Omitting the scope retains the existing study-wide policy. A quota check without
+an active provider checks both accounts. This option does not amend frozen plans
+or allow assignments to be reordered around unavailable quota.
+
 ### Run one assignment
 
 With both logins verified, extra paid usage disabled, and actual baseline/current
@@ -237,6 +248,16 @@ is frozen before forwarding verification, and hidden grader feedback is withheld
 in every workflow. Editing after the final submission prevents final acceptance.
 The product's verification result is retained separately from independent grading.
 
+### Historical v2 supplemental completion
+
+The v2 repository run stopped after 75 of 96 assignments when its registered
+allowance closed. An explicitly authorized calibration run completed the exact
+21-assignment suffix under a separately recorded allowance. Its cases, product,
+source records, failures, and authorization receipts remain immutable.
+Both runs are now invalidated because of grader defects. Their preparer and runner
+reject further execution; readers can still load and audit the original evidence.
+The supplement never repaired the original run's incomplete confirmatory status.
+
 ### Model identity evidence
 
 New trials write `model-identity.json` with the transcript digest, assurance
@@ -244,6 +265,12 @@ source, response-field locations when available, and completeness checks. Import
 recomputes this receipt from the preserved transcript. Missing, conflicting, or
 incomplete evidence blocks claim review; older records remain readable without
 being rewritten or silently upgraded.
+
+A passing submission from a real trial with unverified model selection cannot
+count as first-attempt or final acceptance. A valid terminal usage receipt remains
+usable even if the client exits unsuccessfully; the failed status is preserved.
+Partial, truncated, malformed, or reopened invocations remain unmeasured. A
+controller-confirmed failure before client launch is the only inferred zero.
 
 Claude Code supplies response-model metadata and per-model usage, which must
 match the requested model. The pinned Codex `exec --json` stream does not expose

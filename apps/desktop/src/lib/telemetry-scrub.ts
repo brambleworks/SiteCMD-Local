@@ -61,11 +61,18 @@ export async function hashTelemetryText(value: string): Promise<string> {
   return sanitizeTelemetryText(value).slice(0, 32);
 }
 
+// deleteSecret is the only proof a client holds when it asks the ingest service
+// to erase its telemetry, so a guessable id hands that erasure to whoever
+// guesses it. Every branch draws from the platform CSPRNG and none falls back to
+// arithmetic randomness, because a fallback is the branch an attacker picks.
 export function randomId(prefix: string): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `${prefix}_${crypto.randomUUID()}`;
+  const source: Crypto | undefined = typeof crypto === "undefined" ? undefined : crypto;
+  if (!source) {
+    throw new Error("randomId requires a Web Crypto implementation");
   }
-  return `${prefix}_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  if (typeof source.randomUUID === "function") return `${prefix}_${source.randomUUID()}`;
+  const bytes = source.getRandomValues(new Uint8Array(16));
+  return `${prefix}_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
 export function detectOsFamily(): string {

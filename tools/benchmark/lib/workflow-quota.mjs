@@ -282,8 +282,12 @@ export function carryForwardQuotaUsage(baseline, previous, current) {
 }
 
 /** Evaluate supplied account readings; this does not fetch quotas or stop an agent process. */
-export function evaluateQuota(baseline, current, policy, now = Date.now()) {
+export function evaluateQuota(baseline, current, policy, now = Date.now(), provider) {
   validateSubscriptionBilling(policy);
+  requireCondition(
+    provider === undefined || ["codex", "claude"].includes(provider),
+    "invalid active quota provider",
+  );
   const baselineAt = validateSnapshot(baseline);
   const capturedAt = validateSnapshot(current);
   requireNumber(now, "current time");
@@ -309,6 +313,8 @@ export function evaluateQuota(baseline, current, policy, now = Date.now()) {
       blockers.push(`${label}: quota windows changed or are missing`);
       continue;
     }
+    if (policy.quotaScope === "active-provider" && provider && account.provider !== provider)
+      continue;
     for (const window of account.windows) {
       const previous = before.windows.find((item) => item.id === window.id);
       if (previous.resetsAt !== null && timestamp(previous.resetsAt, "resetsAt") <= baselineAt)

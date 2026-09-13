@@ -2,7 +2,13 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { validateConfirmatoryWorkflowCase } from "../lib/confirmatory-workflow.mjs";
 import { validateRepositoryConfirmatoryCorpus } from "../lib/repository-corpus.mjs";
+import {
+  confirmatoryCorpusFilename,
+  confirmatoryRegistrationFilename,
+  validateRepositoryConfirmatoryRegistration,
+} from "../lib/repository-confirmatory-registration.mjs";
 import { validateRepositorySnapshot } from "../lib/repository-snapshot.mjs";
+import { repositoryScannerTargetIssue } from "../lib/repository-scanner-eligibility.mjs";
 import { loadTrialSource } from "../lib/trial-source.mjs";
 import { digest } from "../lib/workflow-plan.mjs";
 import { trialPrompt } from "../lib/trial-prompt.mjs";
@@ -12,17 +18,18 @@ import { prepareProject, trialUrl } from "./trial-setup.mjs";
 import { candidateIdentity, readCandidate } from "./trial-snapshot.mjs";
 import { closeWorkspace, createWorkspace, mountDesktopWorkspace } from "./trial-workspace.mjs";
 import { verifyControlIsolation } from "./trial-isolation.mjs";
+import { removeConfirmatoryWorkflowState } from "./confirmatory-workflow-cleanup.mjs";
 
 if (process.platform !== "linux" || process.getuid() !== 0)
   throw new Error("Confirmatory workflow checks require the isolated guest controller");
 const request = JSON.parse(readFileSync(0, "utf8"));
+const corpus = validateRepositoryConfirmatoryCorpus(request.corpus);
 const pinnedCorpus = JSON.parse(
-  readFileSync(new URL("../cases/repository-confirmatory-v2.json", import.meta.url)),
+  readFileSync(new URL(`../cases/${confirmatoryCorpusFilename(corpus.id)}`, import.meta.url)),
 );
 const pinnedRegistration = JSON.parse(
-  readFileSync(new URL("../cases/repository-confirmatory-registration.json", import.meta.url)),
+  readFileSync(new URL(`../cases/${confirmatoryRegistrationFilename(corpus.id)}`, import.meta.url)),
 );
-const corpus = validateRepositoryConfirmatoryCorpus(request.corpus);
 if (
   digest(corpus) !== digest(pinnedCorpus) ||
   digest(request.registration) !== digest(pinnedRegistration) ||
@@ -35,19 +42,13 @@ if (
   request.qualification.registrationSha256 !== digest(request.registration)
 )
   throw new Error("Confirmatory workflow inputs differ from the frozen evidence");
+validateRepositoryConfirmatoryRegistration(request.registration, corpus, request.eligibility);
 const item = corpus.cases.find((candidate) => candidate.id === request.caseId);
 const eligible = request.eligibility.cases.find((candidate) => candidate.id === request.caseId);
 const qualified = request.qualification.cases.find((candidate) => candidate.id === request.caseId);
 if (!item || !eligible?.eligible || !qualified?.passed)
   throw new Error("Confirmatory workflow case is not qualified");
-const targetIssue = eligible.baseline.targetIssues?.[0];
-if (
-  eligible.baseline.targetFingerprintMatches !== 1 ||
-  targetIssue?.checkId !== item.targetFinding.checkId ||
-  targetIssue?.relativePath !== item.targetFinding.relativePath ||
-  targetIssue?.fingerprint !== item.targetFinding.fingerprint
-)
-  throw new Error("Confirmatory workflow target differs from scanner eligibility");
+const targetIssue = repositoryScannerTargetIssue(item, eligible.baseline);
 const baseline = validateRepositorySnapshot(request.baseline);
 const product = request.product;
 if (
@@ -153,15 +154,48 @@ for (const arm of ["normal", "report", "mcp"]) {
   } catch (error) {
     result.error = error.message;
   } finally {
-    reader?.close();
-    try {
-      desktop?.close();
-    } finally {
-      try {
+    const cleanupErrors = [];
+    let desktopClosed = false;
+    let mountedClosed = false;
+    let workspaceClosed = false;
+    for (const cleanup of [
+      async () => reader?.close(),
+      async () => {
+        desktop?.close();
+        desktopClosed = true;
+      },
+      async () => {
         mounted?.close();
-      } finally {
+        mountedClosed = true;
+      },
+      async () => {
         if (workspace) closeWorkspace(workspace);
+        workspaceClosed = true;
+      },
+    ]) {
+      try {
+        await cleanup();
+      } catch (error) {
+        cleanupErrors.push(error.message);
       }
+    }
+    const removable = {
+      ...(workspace && workspaceClosed ? { workspace } : {}),
+      ...(mounted && mountedClosed ? { mounted: mounted.path } : {}),
+      ...(desktop && desktopClosed ? { data: desktop.data } : {}),
+    };
+    if (Object.keys(removable).length) {
+      try {
+        removeConfirmatoryWorkflowState(sessionId, removable);
+      } catch (error) {
+        cleanupErrors.push(error.message);
+      }
+    }
+    if (cleanupErrors.length) {
+      result.status = "infrastructure_error";
+      result.error = [result.error, ...cleanupErrors.map((error) => `cleanup: ${error}`)]
+        .filter(Boolean)
+        .join("; ");
     }
   }
   results.push(result);

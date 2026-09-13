@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { deriveRepositoryReference } from "./repository-reference.mjs";
+import { deriveRepositoryReference, validateRepositoryReference } from "./repository-reference.mjs";
 import { digest } from "./workflow-plan.mjs";
 
 function source(commit, contents) {
@@ -74,4 +74,20 @@ test("Derived references copy only declared upstream regions", () => {
     "import one\nimport two\nimport three\n\nSTART\nsafe\nEND\nunrelated baseline\n",
   );
   assert.deepEqual(reference.files[1], baseline.files[1]);
+});
+
+test("Reference validation rejects changed identities and malformed scopes", () => {
+  const baseline = source("a", { "app.py": "unsafe", LICENSE: "license" });
+  const upstream = source("b", { "app.py": "safe", LICENSE: "license" });
+  const reference = deriveRepositoryReference(baseline, upstream, ["app.py"]);
+  assert.equal(validateRepositoryReference(reference), reference);
+
+  assert.throws(
+    () => validateRepositoryReference({ ...reference, sha256: digest("changed") }),
+    /identity/i,
+  );
+  const malformed = { ...reference, kind: "implementation-regions", regions: [] };
+  const { sha256: _sha256, ...content } = malformed;
+  malformed.sha256 = digest(content);
+  assert.throws(() => validateRepositoryReference(malformed), /regions/i);
 });

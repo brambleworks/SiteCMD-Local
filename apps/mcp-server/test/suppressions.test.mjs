@@ -462,3 +462,51 @@ test("a legacy snake_case detail_json still resolves an identity for suppression
   assert.equal(suppressed[0].issue.relative_path, "src/legacy.ts");
   assert.equal(suppressed[0].reason, "Legacy snake_case rows must still suppress.");
 });
+
+// The config is measured and read through one descriptor, so these pin the
+// three ways that read can end without a suppression list.
+test("a project with no .sitecmd config suppresses nothing", () => {
+  const root = mkdtempSync(join(tmpdir(), "sitecmd-mcp-no-config-"));
+  const rows = [
+    {
+      source: "code_scan",
+      relative_path: "src/config.ts",
+      detail_json: JSON.stringify({
+        id: "x",
+        checkId: "code_scan.hardcoded-secret",
+        relativePath: "src/config.ts",
+        sourceExcerpt: "const secret = 'fixture';",
+      }),
+    },
+  ];
+
+  const view = applyRepoSuppressions(root, rows, TODAY);
+  assert.equal(view.kept.length, 1);
+  assert.equal(view.ignored.length, 0);
+});
+
+test("a config over the byte budget is refused rather than read", () => {
+  const root = mkdtempSync(join(tmpdir(), "sitecmd-mcp-huge-config-"));
+  mkdirSync(join(root, ".sitecmd"));
+  writeFileSync(
+    join(root, ".sitecmd", "config.json"),
+    JSON.stringify({
+      version: 1,
+      url: "https://example.com",
+      name: "x".repeat(64 * 1024),
+      code_scan: { suppressions: [] },
+    }),
+  );
+
+  assert.throws(() => applyRepoSuppressions(root, [], TODAY), /is too large/);
+});
+
+test("a directory standing in for the config suppresses nothing", () => {
+  const root = mkdtempSync(join(tmpdir(), "sitecmd-mcp-config-directory-"));
+  mkdirSync(join(root, ".sitecmd"));
+  mkdirSync(join(root, ".sitecmd", "config.json"));
+
+  const view = applyRepoSuppressions(root, [], TODAY);
+  assert.equal(view.kept.length, 0);
+  assert.equal(view.ignored.length, 0);
+});

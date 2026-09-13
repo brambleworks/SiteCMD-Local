@@ -80,7 +80,6 @@ const CONSENT_VERSION = 1;
 const CONSENT_STORAGE_KEY = "sitecmd_telemetry_consent_v1";
 const CONSENT_STORE_KEY = "telemetry-consent-v1";
 const QUEUE_STORAGE_KEY = "sitecmd_telemetry_queue_v1";
-const INGEST_TOKEN_STORAGE_KEY = "sitecmd_telemetry_ingest_token_v1";
 const MAX_QUEUE_EVENTS = 50;
 // Must match the ingest request cap.
 const MAX_EVENTS_PER_REQUEST = 20;
@@ -140,7 +139,12 @@ let consent: TelemetryConsentState = {
 };
 let consentRevision = 0;
 let telemetryTransport: TelemetryTransport = tauriTelemetryTransport;
-let ingestToken = loadIngestToken();
+// The ingest token is a short-lived bearer credential the service re-mints on
+// demand, so it lives in memory for the life of the window and never lands in
+// webview storage. Persisting it would trade a request per launch for a
+// credential sitting in clear text on disk, which is the wrong side of that
+// trade for a token that costs one round trip to replace.
+let ingestToken: CachedIngestToken | null = null;
 let ingestTokenPromise: Promise<CachedIngestToken | null> | null = null;
 let flushInFlight: Promise<void> | null = null;
 // The tier provider updates this after license state resolves.
@@ -647,7 +651,6 @@ async function ensureIngestToken(endpoint: string): Promise<CachedIngestToken | 
     };
     if (!cached.subjectId || !Number.isFinite(Date.parse(cached.expiresAt))) return null;
     ingestToken = cached;
-    persistIngestToken(cached);
     return cached;
   })().finally(() => {
     ingestTokenPromise = null;
@@ -655,46 +658,9 @@ async function ensureIngestToken(endpoint: string): Promise<CachedIngestToken | 
   return ingestTokenPromise;
 }
 
-function loadIngestToken(): CachedIngestToken | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const value = JSON.parse(window.localStorage.getItem(INGEST_TOKEN_STORAGE_KEY) ?? "null");
-    if (
-      !isJsonRecord(value) ||
-      typeof value.token !== "string" ||
-      typeof value.expiresAt !== "string" ||
-      typeof value.subjectId !== "string"
-    ) {
-      return null;
-    }
-    return {
-      token: value.token,
-      expiresAt: value.expiresAt,
-      subjectId: value.subjectId,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function persistIngestToken(value: CachedIngestToken) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(INGEST_TOKEN_STORAGE_KEY, JSON.stringify(value));
-  } catch {
-    // best effort
-  }
-}
-
 function clearIngestToken() {
   ingestToken = null;
   ingestTokenPromise = null;
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(INGEST_TOKEN_STORAGE_KEY);
-  } catch {
-    // best effort
-  }
 }
 
 async function buildEnvelope(event: PendingUsageEvent): Promise<TelemetryEnvelope> {

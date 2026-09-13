@@ -60,10 +60,12 @@ function validateCase(item, { confirmatory }) {
       item.baselineCommit !== item.upstreamCommit,
       `case ${item.id} baseline and upstream pins must differ`,
     );
-    requireCondition(
-      isHttpsUrl(item.upstreamAdvisory),
-      `case ${item.id} upstream advisory URL is invalid`,
-    );
+    if (item.upstreamAdvisory !== undefined) {
+      requireCondition(
+        isHttpsUrl(item.upstreamAdvisory),
+        `case ${item.id} upstream advisory URL is invalid`,
+      );
+    }
     requireCondition(
       ["implementation-only", "implementation-regions"].includes(item.referenceStrategy),
       `case ${item.id} reference strategy is invalid`,

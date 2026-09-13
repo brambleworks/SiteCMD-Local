@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { pilotPolicy } from "./workflow-pilot.mjs";
 import { repositoryStudyPolicy } from "./workflow-repository-study.mjs";
-import { confirmatoryStudyPolicy } from "./workflow-confirmatory-study.mjs";
+import { confirmatoryStudyPolicies } from "./workflow-confirmatory-study.mjs";
 
 const models = [
   ...pilotPolicy.models,
   ...repositoryStudyPolicy.models,
-  ...confirmatoryStudyPolicy.models,
+  ...confirmatoryStudyPolicies.flatMap((policy) => policy.models),
 ].filter(
   (item, index, entries) =>
     entries.findIndex(

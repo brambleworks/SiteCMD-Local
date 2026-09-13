@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { invokeMock, safeListenMock, getCodeScanDetailMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -26,6 +26,7 @@ import { getScanProgressSnapshot } from "@/lib/scan-progress-store";
 import {
   __reloadScanRequestIdSeedForTests,
   __resetScanRequestIdsForTests,
+  randomScanRequestId,
   useScan,
 } from "@/hooks/useScan";
 
@@ -643,5 +644,34 @@ describe("useScan", () => {
     });
     expect(result.current.codeResult?.id).toBe(50);
     expect(result.current.codeResultFromBackground).toBe(false);
+  });
+});
+
+describe("randomScanRequestId", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // A modulo folds every draw above the ceiling back onto the bottom of the
+  // range. Hand it one out-of-range draw and the folded version answers with
+  // 294_967_295 instead of asking the generator again.
+  it("redraws past the ceiling rather than folding the draw", () => {
+    const draws = [4_294_967_295, 1_234];
+    const getRandomValues = vi.fn((array: Uint32Array) => {
+      array[0] = draws.shift() ?? 0;
+      return array;
+    });
+    vi.stubGlobal("crypto", { getRandomValues });
+
+    expect(randomScanRequestId()).toBe(1_234);
+    expect(getRandomValues).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays inside the range Rust leaves to the webview", () => {
+    for (let index = 0; index < 500; index += 1) {
+      const id = randomScanRequestId();
+      expect(id).toBeGreaterThanOrEqual(0);
+      expect(id).toBeLessThan(4_000_000_000);
+    }
   });
 });

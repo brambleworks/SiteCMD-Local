@@ -1,13 +1,13 @@
 import { pilotPolicy } from "./workflow-pilot.mjs";
 import { repositoryStudyPolicy } from "./workflow-repository-study.mjs";
-import { confirmatoryStudyPolicy } from "./workflow-confirmatory-study.mjs";
+import { confirmatoryStudyPolicies } from "./workflow-confirmatory-study.mjs";
 
 export const agentVersions = { codex: "0.153.0-alpha.5", claude: "2.1.260" };
 export const reasoning = "high";
 const allowedModels = [
   ...pilotPolicy.models,
   ...repositoryStudyPolicy.models,
-  ...confirmatoryStudyPolicy.models,
+  ...confirmatoryStudyPolicies.flatMap((policy) => policy.models),
 ];
 
 export function trialConfigurations(environment, models = pilotPolicy.models) {

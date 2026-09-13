@@ -26,3 +26,15 @@ test("Whoogle agent runtime copies mutable application storage outside the works
   assert.ok(existsSync(path.join(result.directory, "config")));
   assert.equal(existsSync(path.join(workspace, "app", "static", "config")), false);
 });
+
+test("OneKey's grader-only runtime is not exposed to the repair agent", () => {
+  assert.equal(
+    prepareRepositoryAgentRuntime({
+      item: {
+        id: "onekey-http-client-tls-verification",
+        repositoryRuntime: { directory: "/private/grader/runtime" },
+      },
+    }),
+    null,
+  );
+});

@@ -1,7 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { validateRepositorySnapshot } from "../lib/repository-snapshot.mjs";
+import {
+  validateRepositoryFiles,
+  validateRepositorySnapshot,
+} from "../lib/repository-snapshot.mjs";
 import { digest } from "../lib/workflow-plan.mjs";
 import { createWorkspace, mountDesktopWorkspace, closeWorkspace } from "./trial-workspace.mjs";
 
@@ -15,7 +18,19 @@ if (
 
 function variantSource(item, variant) {
   const snapshot = item[`${variant}Snapshot`];
-  if (!snapshot) return { files: item[`${variant}Files`], modes: {} };
+  if (!snapshot) {
+    const repositoryFiles = item[`${variant}RepositoryFiles`];
+    if (repositoryFiles) {
+      validateRepositoryFiles(repositoryFiles);
+      return {
+        files: Object.fromEntries(
+          repositoryFiles.map((file) => [file.name, Buffer.from(file.base64, "base64")]),
+        ),
+        modes: Object.fromEntries(repositoryFiles.map((file) => [file.name, file.mode])),
+      };
+    }
+    return { files: item[`${variant}Files`], modes: {} };
+  }
   validateRepositorySnapshot(snapshot);
   return {
     files: Object.fromEntries(

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "studyId": "sitecmd-repository-confirmatory-v2-supplemental",
+  "sourceStudyId": "sitecmd-repository-confirmatory-v2",
+  "phase": "calibration",
+  "continuationKind": "supplemental-completion",
+  "retainedAssignments": 75,
+  "supplementalAssignments": 21,
+  "billing": {
+    "mode": "subscription",
+    "paidFallback": false,
+    "automaticResets": false,
+    "weeklyBudgetPercentagePoints": 100,
+    "minimumRemainingPercent": 1,
+    "quotaMaxAgeSeconds": 300
+  }
+}

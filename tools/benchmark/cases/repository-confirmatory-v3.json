@@ -1,0 +1,925 @@
+{
+  "schemaVersion": 1,
+  "id": "sitecmd-confirmatory-v3",
+  "status": "frozen",
+  "selectedAt": "2026-09-12T10:15:32.333Z",
+  "scannerObservedAtSelection": true,
+  "repairTrialsObservedAtSelection": 0,
+  "selectionPopulation": "Pinned public repository findings emitted by SiteCMD Code Scan whose repaired and unchanged behavior can be graded locally without network access.",
+  "estimand": "Within-task differences among normal, report, and MCP workflows for the 24 registered repairs that SiteCMD detects, with eight registered negative controls measuring unnecessary changes.",
+  "selectionMethod": "Purposive scanner-enriched selection from public historical repairs and locally provable false-positive controls. Source, scanner, and behavior evidence was frozen before any repair-agent trial, and every accepted grader was qualified against baseline, reference, and adversarial variants.",
+  "limitations": [
+    "The estimand is conditional on SiteCMD detecting the issue and does not measure scanner recall.",
+    "Public fixes may have appeared in model training or retrieval corpora.",
+    "The corpus covers three security rule families and is not a random sample of repositories or software defects.",
+    "All negative controls are unsafe-HTML findings, so unnecessary-change results do not represent every scanner rule.",
+    "The FMD case excludes one tracked symlink and qualifies the browser behavior rather than the complete Go server build."
+  ],
+  "cases": [
+    {
+      "id": "alist-ldap-tls-verification",
+      "repository": {
+        "id": "alist",
+        "url": "https://github.com/AlistGo/alist",
+        "license": "AGPL-3.0-only",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "go",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "2b79a39e8364ee6f218aaa4ac1f90d63956eca00",
+      "upstreamCommit": "66a52b820dede9ccbc55eee4e1f300d9e11aec22",
+      "upstreamFix": "https://github.com/AlistGo/alist/commit/66a52b820dede9ccbc55eee4e1f300d9e11aec22",
+      "referenceStrategy": "implementation-only",
+      "task": "Restore secure-by-default certificate verification for LDAP TLS connections.",
+      "requirements": "Acceptance criteria: LDAP TLS is secure by default; Configured default is bound safely. Preserve: LDAPS dialing remains available; Plain LDAP dialing remains available.",
+      "selectionReason": "Published multi-file repair removes unconditional TLS verification bypasses from LDAP configuration; record source-envelope attrition without narrowing the repository.",
+      "editableFiles": ["internal/conf/config.go", "server/handles/ldap_login.go"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "server/handles/ldap_login.go",
+        "fingerprint": "sha256:a4a031f17771ac75481efa4873573022abae16b4152a4a4693bbc17b6e272df6",
+        "sourceAnchor": "return ldap.DialTLS(\"tcp\", ldapServer, &tls.Config{InsecureSkipVerify: true})"
+      }
+    },
+    {
+      "id": "alps-message-reader-inert-parsing",
+      "repository": {
+        "id": "alps",
+        "url": "https://github.com/migadu/alps",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "3ebc54982725e6502a33bafedfc69afd4d7c237a",
+      "upstreamCommit": "569a8c638553258482fe1a4260eb12690015d279",
+      "upstreamFix": "https://github.com/migadu/alps/commit/569a8c638553258482fe1a4260eb12690015d279",
+      "referenceStrategy": "implementation-only",
+      "task": "Convert message HTML to readable text without placing it in the live document.",
+      "requirements": "Acceptance criteria: All three message paths use the inert helper; Untrusted HTML never enters a live DOM sink; Returned text contains no markup. Preserve: Readable text is preserved; Block and line breaks are preserved; Excluded element content is removed; Empty input remains empty.",
+      "selectionReason": "Published repair parses message HTML in an inert DOM instead of assigning it to a live element's innerHTML.",
+      "editableFiles": [
+        "frontend/src/components/message-reader.ts",
+        "frontend/src/utils/reader-utils.ts"
+      ],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "frontend/src/components/message-reader.ts",
+        "fingerprint": "sha256:065c62318d48d91fd5a2936a3dc7994f5b340d7d417291781286334e00626a28",
+        "sourceAnchor": "temp.innerHTML = this.rawMessageHtml;"
+      }
+    },
+    {
+      "id": "bigflow-deploy-tls-verification",
+      "repository": {
+        "id": "bigflow",
+        "url": "https://github.com/allegro/bigflow",
+        "license": "Apache-2.0",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "python",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "2edc8e02dbf4e500f020342fb9bd956215dd6f01",
+      "upstreamCommit": "7e956661f76907594e8c82e8fb0af76dbea2a0fc",
+      "upstreamFix": "https://github.com/allegro/bigflow/commit/7e956661f76907594e8c82e8fb0af76dbea2a0fc",
+      "referenceStrategy": "implementation-only",
+      "task": "Restore certificate verification for Vault deployment requests.",
+      "requirements": "Acceptance criteria: Vault requests verify TLS. Preserve: Vault endpoint is preserved; Vault token header is preserved; Vault token response is preserved; Missing credentials remain rejected.",
+      "selectionReason": "Published repair removes a literal requests certificate-verification bypass from deployment artifact retrieval.",
+      "editableFiles": ["bigflow/deploy.py"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "bigflow/deploy.py",
+        "fingerprint": "sha256:17f40fb0eb7b4746758f3265ec6855db01f351db74d972eba4d5109b80098566",
+        "sourceAnchor": "response = requests.get(vault_endpoint, headers=headers, verify=False)"
+      }
+    },
+    {
+      "id": "blackduck-client-tls-verification",
+      "repository": {
+        "id": "hub-rest-api-python",
+        "url": "https://github.com/blackducksoftware/hub-rest-api-python",
+        "license": "Apache-2.0",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "python",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "42e2e81b6be1017ed4d5719b5aace264293b75d8",
+      "upstreamCommit": "273b27d0de1004389dd8cf43c40b1197c787e7cd",
+      "upstreamFix": "https://github.com/blackducksoftware/hub-rest-api-python/commit/273b27d0de1004389dd8cf43c40b1197c787e7cd",
+      "referenceStrategy": "implementation-only",
+      "task": "Honor the Black Duck client's TLS verification policy for scan transfers.",
+      "requirements": "Acceptance criteria: Scan uploads verify TLS; Scan downloads verify TLS. Preserve: Explicit insecure compatibility mode remains scoped; Upload media types remain correct; Downloaded bytes remain intact.",
+      "selectionReason": "Published repair replaces literal certificate-verification bypasses with the client's explicit verification policy.",
+      "editableFiles": ["blackduck/HubRestApi.py"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "blackduck/HubRestApi.py",
+        "fingerprint": "sha256:4c326b5b179aa10602962133bf809f8309ea2484c99eb8388babd4dce2cf473f",
+        "sourceAnchor": "response = requests.post(url, headers=headers, data=f, verify=False)"
+      }
+    },
+    {
+      "id": "css-parser-http-tls-verification",
+      "repository": {
+        "id": "css-parser",
+        "url": "https://github.com/premailer/css_parser",
+        "license": "MIT",
+        "licenseFile": "MIT-LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "ruby",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "3f91e8db7547fac50ab50cb7f9920f785f722740",
+      "upstreamCommit": "a9f2947a040ec9be1c65d07bbfc19f68a72a4fba",
+      "upstreamFix": "https://github.com/premailer/css_parser/commit/a9f2947a040ec9be1c65d07bbfc19f68a72a4fba",
+      "referenceStrategy": "implementation-only",
+      "task": "Restore certificate verification for remote HTTPS stylesheet retrieval.",
+      "requirements": "Acceptance criteria: HTTPS certificate verification is enabled. Preserve: HTTPS requests remain enabled; Remote GET remains available; Redirect and compression handling remain available.",
+      "selectionReason": "Published repair removes an unconditional OpenSSL certificate-verification bypass from stylesheet retrieval.",
+      "editableFiles": ["lib/css_parser/parser.rb"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "lib/css_parser/parser.rb",
+        "fingerprint": "sha256:c530ea177efced9162caae02d30d7852ff1cee395f5718b4a25c62727ae90fce",
+        "sourceAnchor": "http.verify_mode = OpenSSL::SSL::VERIFY_NONE"
+      }
+    },
+    {
+      "id": "django-grappelli-switch-redirect",
+      "repository": {
+        "id": "django-grappelli",
+        "url": "https://github.com/sehmaschine/django-grappelli",
+        "license": "BSD-3-Clause",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "open-redirect",
+      "runtime": "python",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "55f88d661c28598d059cf81dbfd38dacb945662f",
+      "upstreamCommit": "4ca94bcda0fa2720594506853d85e00c8212968f",
+      "upstreamFix": "https://github.com/sehmaschine/django-grappelli/commit/4ca94bcda0fa2720594506853d85e00c8212968f",
+      "referenceStrategy": "implementation-only",
+      "task": "Constrain the request-provided switch redirect to a safe local destination.",
+      "requirements": "Acceptance criteria: Host-confusion redirects are rejected; Protocol-relative redirects are rejected; Userinfo host-confusion redirects are rejected; Unexpected destination ports are rejected; Backslash host-confusion redirects are rejected; Control-character redirects are rejected; Dangerous URL schemes are rejected; HTTPS downgrade redirects are rejected; Missing redirect targets are rejected. Preserve: Relative redirects remain available; Login and session state remain intact; Permission failures still return safely.",
+      "selectionReason": "Published repair validates the request-provided redirect against the current host and scheme.",
+      "editableFiles": ["grappelli/views/switch.py"],
+      "targetFinding": {
+        "checkId": "code_scan.python-open-redirect",
+        "relativePath": "grappelli/views/switch.py",
+        "fingerprint": "sha256:2fc9756bb3c7d9cf258d028d1af8cf1f13ecd84b5d7a4e29f5a3cfafd8c7423e",
+        "sourceAnchor": "return redirect(request.GET.get(\"redirect\"))"
+      }
+    },
+    {
+      "id": "fmd-device-text",
+      "repository": {
+        "id": "fmd-server",
+        "url": "https://github.com/peterhel/fmd-server",
+        "license": "GPL-3.0-only",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "f3db4dfec2604b015619999e944960ffa139a26c",
+      "upstreamCommit": "f94ecf1160688a53248d7ced2a24a575a9e1ba9a",
+      "upstreamFix": "https://github.com/peterhel/fmd-server/commit/f94ecf1160688a53248d7ced2a24a575a9e1ba9a",
+      "referenceStrategy": "implementation-regions",
+      "task": "Render device provider names as inert text during live map updates.",
+      "requirements": "Provider names must remain literal text throughout asynchronous location updates. Preserve the initial, empty, and corrupt states; device fields; timestamps; map position; markers; connecting lines; help links; encrypted navigation requests; and transition behavior.",
+      "selectionReason": "Follow-up to the retained full-tree exclusion in 10-source-intake.json. Qualify only browser behavior, not the complete Go server build, with all regular source and vendored dependencies retained.",
+      "editableFiles": ["web/logic.js"],
+      "sourceExclusions": [
+        {
+          "path": "cmd/web",
+          "reason": "Tracked symlink points to ../web. Its target and every regular repository file remain included. The snapshot exporter disallows symlinks; this scope supports browser-layer qualification, not a claim that the complete server build is preserved."
+        }
+      ],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "web/logic.js",
+        "fingerprint": "sha256:e686f98e4507ef3aa011733ee1adfff14ce9f719818ca4baecae0c3ade4dac31",
+        "sourceAnchor": "document.getElementById(\"providerView\").innerHTML = loc.provider;"
+      }
+    },
+    {
+      "id": "formwork-tag-label-text",
+      "repository": {
+        "id": "formwork",
+        "url": "https://github.com/getformwork/formwork",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "4de03e5e7225318e0dbc7927d428aafe3f203eab",
+      "upstreamCommit": "45f20bec6f34f0ca50fad4961f96a06abee4612c",
+      "upstreamFix": "https://github.com/getformwork/formwork/commit/45f20bec6f34f0ca50fad4961f96a06abee4612c",
+      "referenceStrategy": "implementation-only",
+      "task": "Render Formwork tag labels and values as inert text.",
+      "requirements": "Acceptance criteria: Tag and option values cannot activate markup; Dropdown labels render literally; Initial tags render literally; Updated tags render literally. Preserve: Dropdown values are preserved; Option icons are preserved; Serialized tag values are preserved; Tag removal remains functional; Field structure remains functional.",
+      "selectionReason": "Published repair renders tag labels and values as text instead of HTML; this is the first of at most two distinct repairs from the repository.",
+      "editableFiles": ["panel/src/ts/components/inputs/tags-input.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "panel/src/ts/components/inputs/tags-input.ts",
+        "fingerprint": "sha256:240e84d7c30a7ad4ca9913df643eb02ab75127be178f5b01ff350f5b21ba79bd",
+        "sourceAnchor": "item.innerHTML = option.label;"
+      }
+    },
+    {
+      "id": "formwork-update-status-text",
+      "repository": {
+        "id": "formwork",
+        "url": "https://github.com/getformwork/formwork",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "4de03e5e7225318e0dbc7927d428aafe3f203eab",
+      "upstreamCommit": "45f20bec6f34f0ca50fad4961f96a06abee4612c",
+      "upstreamFix": "https://github.com/getformwork/formwork/commit/45f20bec6f34f0ca50fad4961f96a06abee4612c",
+      "referenceStrategy": "implementation-only",
+      "task": "Render Formwork update names and status responses as inert text.",
+      "requirements": "Acceptance criteria: Update responses cannot activate markup; Check status renders literally; Release name renders literally; Installing status renders literally; Installed status renders literally; Installed version renders literally. Preserve: Update requests retain their contract; Update state transitions remain functional; Status icons remain functional; Completion notifications remain functional.",
+      "selectionReason": "Published repair renders remote update names and status responses as text; this is the second and final repair admitted from the repository.",
+      "editableFiles": ["panel/src/ts/components/views/updates.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "panel/src/ts/components/views/updates.ts",
+        "fingerprint": "sha256:a15a8249c55223246b24f4e0203c133970dfa44d64abebcb3254d9ee352856c4",
+        "sourceAnchor": "newVersionName.innerHTML = name;"
+      }
+    },
+    {
+      "id": "gobot-mqtt-tls-verification",
+      "repository": {
+        "id": "gobot",
+        "url": "https://github.com/hybridgroup/gobot",
+        "license": "Apache-2.0",
+        "licenseFile": "LICENSE.txt"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "go",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "07d9e09b1ea5b4dd7e1df45124c22fe687181564",
+      "upstreamCommit": "c1aa4f867846da4669ecf3bc3318bd96b7ee6f3f",
+      "upstreamFix": "https://github.com/hybridgroup/gobot/commit/c1aa4f867846da4669ecf3bc3318bd96b7ee6f3f",
+      "referenceStrategy": "implementation-only",
+      "task": "Restore certificate verification for Gobot MQTT TLS connections.",
+      "requirements": "Acceptance criteria: MQTT certificate verification is enabled. Preserve: MQTT TLS path remains available; Server trust configuration remains available; Client certificates remain available.",
+      "selectionReason": "Published repair enables certificate verification in the MQTT transport configuration.",
+      "editableFiles": ["platforms/mqtt/mqtt_adaptor.go"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "platforms/mqtt/mqtt_adaptor.go",
+        "fingerprint": "sha256:f66a76947a5708d69c3edc4578e10737658a9e6cadbd106f33c34d3608340423",
+        "sourceAnchor": "InsecureSkipVerify: true,"
+      }
+    },
+    {
+      "id": "graphql-tools-websocket-tls-verification",
+      "repository": {
+        "id": "graphql-tools",
+        "url": "https://github.com/ardatan/graphql-tools",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "4efc4eff43a0f37faa8d6827a50749eceae8df05",
+      "upstreamCommit": "3831a0661514c91d99971052f983552556880402",
+      "upstreamFix": "https://github.com/ardatan/graphql-tools/commit/3831a0661514c91d99971052f983552556880402",
+      "referenceStrategy": "implementation-only",
+      "task": "Restore certificate verification for the legacy WebSocket executor.",
+      "requirements": "Acceptance criteria: WebSocket TLS is secure by default. Preserve: Endpoint and protocol remain intact; WebSocket behavior options remain intact; Custom headers remain intact.",
+      "selectionReason": "Published security repair removes disabled certificate verification from the legacy WebSocket executor.",
+      "editableFiles": ["packages/executors/legacy-ws/src/index.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "packages/executors/legacy-ws/src/index.ts",
+        "fingerprint": "sha256:03807a4f2a78d4028e913f09bea8bd5e9db8faab750d0b1a25bc8eeb46017435",
+        "sourceAnchor": "rejectUnauthorized: false,"
+      }
+    },
+    {
+      "id": "kaarya-postgres-tls-verification",
+      "repository": {
+        "id": "kaarya",
+        "url": "https://github.com/dinesharyal2055/Kaarya",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "d047e87b33ad2af93e52b17b5dbae4cf13eebc8f",
+      "upstreamCommit": "a14bd81610c183fe71ccf3d32d0c5f4177bb662a",
+      "upstreamFix": "https://github.com/dinesharyal2055/Kaarya/commit/a14bd81610c183fe71ccf3d32d0c5f4177bb662a",
+      "referenceStrategy": "implementation-only",
+      "task": "Restore certificate verification for production PostgreSQL connections.",
+      "requirements": "Acceptance criteria: Production PostgreSQL verifies TLS; Required SSL mode verifies TLS. Preserve: Local development mode remains available; Pool settings remain intact; Query behavior remains intact; Dedicated clients remain available.",
+      "selectionReason": "Published security repair enables Postgres certificate verification in production.",
+      "editableFiles": ["server/src/db-pg.js"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "server/src/db-pg.js",
+        "fingerprint": "sha256:0e048687bbd3e315855ccccbf992eee26b1365c598e9e54af73b67f415ebcb5b",
+        "sourceAnchor": "? { rejectUnauthorized: false }"
+      }
+    },
+    {
+      "id": "kubex-postgres-tls-verification",
+      "repository": {
+        "id": "kubex",
+        "url": "https://github.com/PulithThewmika/kubex",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "7b1f389bf47f9cc24aa8ed37e724fac39dfb2ed8",
+      "upstreamCommit": "ca6342828526933deff1a5e08e5c15692137ef82",
+      "upstreamFix": "https://github.com/PulithThewmika/kubex/commit/ca6342828526933deff1a5e08e5c15692137ef82",
+      "referenceStrategy": "implementation-only",
+      "task": "Use the provider CA to verify Supabase PostgreSQL connections.",
+      "requirements": "Acceptance criteria: Supabase PostgreSQL verifies its trusted certificate. Preserve: Local non-TLS mode remains available; Pool settings remain intact; Query helpers remain intact; Connection lifecycle remains intact.",
+      "selectionReason": "Published repair loads the provider CA and enables full Postgres certificate verification.",
+      "editableFiles": ["services/mcp-server/src/clients/postgres.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "services/mcp-server/src/clients/postgres.ts",
+        "fingerprint": "sha256:34cdcdf585af408ec630489db54228d25c4b50c5853969094d83ca8a2c5fedd6",
+        "sourceAnchor": "const ssl = databaseUrl.includes(\"supabase\") ? { rejectUnauthorized: false } : undefined;"
+      }
+    },
+    {
+      "id": "libmongocrypt-kms-tls-verification",
+      "repository": {
+        "id": "libmongocrypt",
+        "url": "https://github.com/mongodb/libmongocrypt",
+        "license": "Apache-2.0",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "30d8adc205bffcc9764e4e556a25146687183751",
+      "upstreamCommit": "76365515ff8754b9f705e56428dd0d7efa7f541b",
+      "upstreamFix": "https://github.com/mongodb/libmongocrypt/commit/76365515ff8754b9f705e56428dd0d7efa7f541b",
+      "referenceStrategy": "implementation-only",
+      "task": "Restore certificate and hostname verification for KMS TLS connections.",
+      "requirements": "Acceptance criteria: KMS TLS verification is enabled; KMS hostname verification is enabled. Preserve: KMS endpoint and port remain intact; KMS request bytes remain intact; KMS response lifecycle remains intact; KMS timeout handling remains intact.",
+      "selectionReason": "Published repair removes disabled certificate verification from the KMS TLS connection.",
+      "editableFiles": ["bindings/node/lib/stateMachine.js"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "bindings/node/lib/stateMachine.js",
+        "fingerprint": "sha256:47ed745c987c263350232b4901f0fe02d8340fc6a7735c9fc2f924b9b0c5c9b8",
+        "sourceAnchor": "const options = { host: parsedUrl[0], port, rejectUnauthorized: false };"
+      }
+    },
+    {
+      "id": "liljs-element-text-rendering",
+      "repository": {
+        "id": "liljs",
+        "url": "https://github.com/bersLucas/liljs",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "bc0919e0031e6e6aa99be9793a6a9afa8ad2e5b1",
+      "upstreamCommit": "779c0dcd8aba434a1c94db7d1d2d990a629f9a6c",
+      "upstreamFix": "https://github.com/bersLucas/liljs/commit/779c0dcd8aba434a1c94db7d1d2d990a629f9a6c",
+      "referenceStrategy": "implementation-only",
+      "task": "Render liljs bound values as inert text.",
+      "requirements": "Acceptance criteria: Bound values cannot activate markup; Initial values render literally; Updated values render literally. Preserve: Initial list content replaces stale content; Proxy text updates remain functional; Proxy list updates remain functional.",
+      "selectionReason": "Published repair renders control labels through textContent instead of innerHTML.",
+      "editableFiles": ["src/liljs.js"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "src/liljs.js",
+        "fingerprint": "sha256:eee5d99a0e4cc17b9e19a0df11515277ed1dc8a359d2b9e19e036b2a1a12280b",
+        "sourceAnchor": "const setText = (elem, property, value) => elem.innerHTML = value || state[property].value;"
+      }
+    },
+    {
+      "id": "mnml-search-result-text-rendering",
+      "repository": {
+        "id": "mnml",
+        "url": "https://github.com/jimmitchell/mnml",
+        "license": "GPL-2.0-only",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "506744aa2bb25a4b9168cc17b3761e7f5fca2d77",
+      "upstreamCommit": "c3463800dec083385e33ee383647a312d7f306ab",
+      "upstreamFix": "https://github.com/jimmitchell/mnml/commit/c3463800dec083385e33ee383647a312d7f306ab",
+      "referenceStrategy": "implementation-only",
+      "task": "Render search result titles and excerpts as inert text.",
+      "requirements": "Acceptance criteria: Search data cannot activate markup; Search titles render literally; Search excerpts render literally. Preserve: Bold title structure is preserved; Result links are preserved; Excerpt truncation is preserved; Result limits are preserved; Visibility behavior is preserved; Empty searches clear results.",
+      "selectionReason": "Published XSS repair builds search result markup with DOM nodes and textContent.",
+      "editableFiles": ["static/js/search.js"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "static/js/search.js",
+        "fingerprint": "sha256:6ded530f680acb529db2d9f414631e413fc7f563f554aa85e4813b34577883ae",
+        "sourceAnchor": "title_node.innerHTML = \": <b>\" + item.title + \"</b>\";"
+      }
+    },
+    {
+      "id": "nbdime-diff-response-text",
+      "repository": {
+        "id": "nbdime",
+        "url": "https://github.com/jupyter/nbdime",
+        "license": "BSD-3-Clause",
+        "licenseFile": "LICENSE.md"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "5f053299bc59d410130b3cb104f66f8fa5c6c29d",
+      "upstreamCommit": "8f931cbf36ce6d356b771a74fcd2fd2e48d599d7",
+      "upstreamFix": "https://github.com/jupyter/nbdime/commit/8f931cbf36ce6d356b771a74fcd2fd2e48d599d7",
+      "referenceStrategy": "implementation-only",
+      "task": "Render nbdime diff error responses as inert text.",
+      "requirements": "Acceptance criteria: Diff errors cannot activate markup; Diff errors render literally. Preserve: Previous diff output is replaced; Diff widget state is cleared; Diff spinner stops.",
+      "selectionReason": "Published repair builds a pre element and assigns the server response through innerText; this is the first of two repairs from the repository.",
+      "editableFiles": ["packages/webapp/src/app/diff.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "packages/webapp/src/app/diff.ts",
+        "fingerprint": "sha256:e045a61bbb97fcc7e932c0a7fffadfdcb5eb0f7ed1fcaf7485840553e8c33d83",
+        "sourceAnchor": "root.innerHTML = '<pre>' + response + '</pre>';"
+      }
+    },
+    {
+      "id": "nbdime-merge-response-text",
+      "repository": {
+        "id": "nbdime",
+        "url": "https://github.com/jupyter/nbdime",
+        "license": "BSD-3-Clause",
+        "licenseFile": "LICENSE.md"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "5f053299bc59d410130b3cb104f66f8fa5c6c29d",
+      "upstreamCommit": "8f931cbf36ce6d356b771a74fcd2fd2e48d599d7",
+      "upstreamFix": "https://github.com/jupyter/nbdime/commit/8f931cbf36ce6d356b771a74fcd2fd2e48d599d7",
+      "referenceStrategy": "implementation-only",
+      "task": "Render nbdime merge error responses as inert text.",
+      "requirements": "Acceptance criteria: Merge errors cannot activate markup; Merge errors render literally. Preserve: Previous merge output is replaced; Merge widget state is cleared; Merge spinner stops.",
+      "selectionReason": "Published repair builds a pre element and assigns the server response through innerText; this is the second and final repair admitted from the repository.",
+      "editableFiles": ["packages/webapp/src/app/merge.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "packages/webapp/src/app/merge.ts",
+        "fingerprint": "sha256:f46c233401755f1ab4043cb2e0acb95ee7da8b139c8540f50ad6cf52ec8579f0",
+        "sourceAnchor": "root.innerHTML = '<pre>' + response + '</pre>';"
+      }
+    },
+    {
+      "id": "node-sass-download-tls-verification",
+      "repository": {
+        "id": "node-sass",
+        "url": "https://github.com/sass/node-sass",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "e80d4afbce7ee10447535dbf5723cd405c80acd8",
+      "upstreamCommit": "0a21792803639851b480fbd8cbcb5540ef974387",
+      "upstreamFix": "https://github.com/sass/node-sass/commit/0a21792803639851b480fbd8cbcb5540ef974387",
+      "referenceStrategy": "implementation-only",
+      "task": "Make node-sass binary downloads verify TLS certificates by default.",
+      "requirements": "Acceptance criteria: Binary downloads verify TLS by default. Preserve: Download timeout remains intact; Request headers and binary encoding remain intact; Proxy support remains intact.",
+      "selectionReason": "Published repair replaces an insecure download default with a dedicated option whose default enables verification.",
+      "editableFiles": ["scripts/util/downloadoptions.js"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "scripts/util/downloadoptions.js",
+        "fingerprint": "sha256:f200347189fc3bda638b702c86c027d1b263653c1018ae1b191785c90c82dbbd",
+        "sourceAnchor": "rejectUnauthorized: false,"
+      }
+    },
+    {
+      "id": "onekey-http-client-tls-verification",
+      "repository": {
+        "id": "onekey",
+        "url": "https://github.com/ikunshare/Onekey",
+        "license": "GPL-2.0-only",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "python",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "2a6a9421ca0ccf1059be7d910df64b86b21106a5",
+      "upstreamCommit": "9e68621e7658f2c72d50439336226be391ee36d1",
+      "upstreamFix": "https://github.com/ikunshare/Onekey/commit/9e68621e7658f2c72d50439336226be391ee36d1",
+      "referenceStrategy": "implementation-only",
+      "task": "Restore certificate verification in OneKey's shared asynchronous HTTP client.",
+      "requirements": "Untrusted, wrong-host, and expired certificates must fail for repeated GET and POST requests. Preserve trusted TLS and plain HTTP binary responses, timeouts, concurrency, HTTP error responses, delayed responses, context-manager behavior, exception propagation, and idempotent close.",
+      "selectionReason": "Published TLS bypass removal in the application's shared asynchronous HTTP client; test the actual client against isolated trusted and untrusted servers.",
+      "editableFiles": ["src/network/client.py"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "src/network/client.py",
+        "fingerprint": "sha256:4426183ebd635295c88d6f4412565d11ed352c5560461e6cecfbd2101cfade31",
+        "sourceAnchor": "self._client = httpx.AsyncClient(timeout=60.0, verify=False)"
+      }
+    },
+    {
+      "id": "oobee-updater-tls-verification",
+      "repository": {
+        "id": "oobee-desktop",
+        "url": "https://github.com/GovTechSG/oobee-desktop",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "22361ef7e9f6b2408cade0907088345a814013fa",
+      "upstreamCommit": "246b33b7ef795a49e92261a63709c7a6714dfbbb",
+      "upstreamFix": "https://github.com/GovTechSG/oobee-desktop/commit/246b33b7ef795a49e92261a63709c7a6714dfbbb",
+      "referenceStrategy": "implementation-only",
+      "task": "Restore certificate verification for oobee updater traffic.",
+      "requirements": "Acceptance criteria: Process-wide TLS verification remains enabled; Updater TLS verification is enabled. Preserve: Updater timeout remains intact; Electron application lifecycle remains intact.",
+      "selectionReason": "Published security repair removes process-wide and request-level TLS verification bypasses from updater traffic.",
+      "editableFiles": ["public/electron/main.js"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "public/electron/main.js",
+        "fingerprint": "sha256:44ddaf2b16505ee80465e84b95b079610bcde5856bbcff6f1b413d7992291362",
+        "sourceAnchor": "rejectUnauthorized: false,"
+      }
+    },
+    {
+      "id": "streetlives-rds-tls-verification",
+      "repository": {
+        "id": "streetlives-api",
+        "url": "https://github.com/streetlives/streetlives-api",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "tls",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "e3a9e0bc1f3d216b28bc3cd59d77ef0549a3c4cc",
+      "upstreamCommit": "34d817182c19b3e53cdc9a05d418d15c43b5b37f",
+      "upstreamFix": "https://github.com/streetlives/streetlives-api/commit/34d817182c19b3e53cdc9a05d418d15c43b5b37f",
+      "referenceStrategy": "implementation-only",
+      "task": "Verify production RDS certificates with the configured trust material.",
+      "requirements": "Acceptance criteria: Production RDS verifies TLS; Configured RDS trust is preserved. Preserve: Test database mode remains available; Database defaults remain intact.",
+      "selectionReason": "Published repair replaces disabled RDS certificate verification with an explicit trust store.",
+      "editableFiles": ["src/config.js"],
+      "targetFinding": {
+        "checkId": "code_scan.tls-verification-disabled",
+        "relativePath": "src/config.js",
+        "fingerprint": "sha256:3ce9263078fb4c9ae58b02311ead5bbbba6ee828b49961d2915274b2e0ed9507",
+        "sourceAnchor": "rejectUnauthorized: false, // For RDS, set to false to accept AWS certificates"
+      }
+    },
+    {
+      "id": "warewoolf-chapter-title-rendering",
+      "repository": {
+        "id": "warewoolf",
+        "url": "https://github.com/brsloan/warewoolf",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "12ae8dfb625083f247bf1cf8ddfec4222cfafbd1",
+      "upstreamCommit": "2b620cb0aeee6403fe48d62a0a70c4b8cac51313",
+      "upstreamFix": "https://github.com/brsloan/warewoolf/commit/2b620cb0aeee6403fe48d62a0a70c4b8cac51313",
+      "referenceStrategy": "implementation-only",
+      "task": "Render WareWoolf chapter titles as inert text.",
+      "requirements": "Acceptance criteria: Chapter titles cannot activate markup; Chapter titles render literally; Reference titles render literally; Trash titles render literally. Preserve: All lists replace stale content; Chapter indexes are preserved; Open and rename callbacks are preserved; Unsaved chapter markers are preserved; Active chapter state is preserved; Reference and trash headers are preserved.",
+      "selectionReason": "Published XSS repair renders chapter titles through textContent instead of innerHTML.",
+      "editableFiles": ["src/render.js"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "src/render.js",
+        "fingerprint": "sha256:d97b5ed71bc99d1d0e3786eede53cb9024759e062e4ba4af2f3665633104b80f",
+        "sourceAnchor": "listChap.innerHTML = chap.title != '' ? chap.title : '(untitled)';"
+      }
+    },
+    {
+      "id": "xteve-log-entry-rendering",
+      "repository": {
+        "id": "xteve-reborn",
+        "url": "https://github.com/theantipopau/xteve-reborn",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "repair",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "bae1577cc5be6c6e71fede0b47c8b88b2a63d8c2",
+      "upstreamCommit": "214963695e97437fdefbecf4f3cdec1a7b22e7cb",
+      "upstreamFix": "https://github.com/theantipopau/xteve-reborn/commit/214963695e97437fdefbecf4f3cdec1a7b22e7cb",
+      "referenceStrategy": "implementation-only",
+      "task": "Render xTeVe log entries as inert text.",
+      "requirements": "Acceptance criteria: Log entries cannot activate markup; Log entries render literally. Preserve: Logs remain preformatted; Severity classes are preserved; Log order is preserved; Bottom scrolling is preserved; Refreshes replace old entries.",
+      "selectionReason": "Published stored-XSS repair renders provider-controlled log entries as text.",
+      "editableFiles": ["ts/logs_ts.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "ts/logs_ts.ts",
+        "fingerprint": "sha256:dec9d5e56c37c383f415236129710fcca7636ce41de2b460fd176ac622457321",
+        "sourceAnchor": "element.innerHTML = entry"
+      }
+    },
+    {
+      "id": "control-dompurify-sanitizer-internal",
+      "repository": {
+        "id": "simditor",
+        "url": "https://github.com/mycolorway/simditor",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "negative_control",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "ef01a643cbb7f8163535d6bfb71135f80ec6a6fd",
+      "upstreamCommit": "ef01a643cbb7f8163535d6bfb71135f80ec6a6fd",
+      "upstreamFix": "https://github.com/mycolorway/simditor/commit/ef01a643cbb7f8163535d6bfb71135f80ec6a6fd",
+      "task": "Review the reported DOMPurify assignment and change it only if sanitizer internals can activate untrusted markup.",
+      "requirements": "DOMPurify must keep escaping nested markup without weakening its sanitizer behavior. A no-op is required when the reported assignment is part of that escaping implementation.",
+      "selectionReason": "SiteCMD reports the registered pattern in a context whose behavior is already safe; the frozen control measures unnecessary changes.",
+      "safetyRationale": "The assignment is inside DOMPurify's own sanitizer implementation and replaces less-than characters with entities. It is not an application rendering boundary.",
+      "editableFiles": ["site/assets/scripts/dompurify.js"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "site/assets/scripts/dompurify.js",
+        "fingerprint": "sha256:f1ffcb495550bc842f380e64187e7b93a1ad17d67a7962025aa5b3e32b838a33",
+        "sourceAnchor": "currentNode.innerHTML = currentNode.innerHTML.replace(/</g, '&lt;');"
+      }
+    },
+    {
+      "id": "control-emoji-category-escaped-html",
+      "repository": {
+        "id": "emoji-button",
+        "url": "https://github.com/joeattardi/emoji-button",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "negative_control",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "fe54bef107eb3f74873a4018f2ff49fa124c6a2e",
+      "upstreamCommit": "fe54bef107eb3f74873a4018f2ff49fa124c6a2e",
+      "upstreamFix": "https://github.com/joeattardi/emoji-button/commit/fe54bef107eb3f74873a4018f2ff49fa124c6a2e",
+      "task": "Review the category-label HTML assignment and change it only if category text can create active markup.",
+      "requirements": "Translated category labels must remain inert while ordinary labels keep rendering. A no-op is required when the value is escaped immediately before the assignment.",
+      "selectionReason": "SiteCMD reports the registered pattern in a context whose behavior is already safe; the frozen control measures unnecessary changes.",
+      "safetyRationale": "The assigned category label passes through the local HTML-escaping helper in the same expression, so metacharacters reach the sink as text.",
+      "editableFiles": ["src/emojiArea.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "src/emojiArea.ts",
+        "fingerprint": "sha256:c7c7b4ba3185ed31cc3280dbc78c6d23e0aa528b28fdd801efef0b4dd96d1182",
+        "sourceAnchor": "name.innerHTML = escape("
+      }
+    },
+    {
+      "id": "control-emoji-preview-name-escaped-html",
+      "repository": {
+        "id": "emoji-button",
+        "url": "https://github.com/joeattardi/emoji-button",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "negative_control",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "fe54bef107eb3f74873a4018f2ff49fa124c6a2e",
+      "upstreamCommit": "fe54bef107eb3f74873a4018f2ff49fa124c6a2e",
+      "upstreamFix": "https://github.com/joeattardi/emoji-button/commit/fe54bef107eb3f74873a4018f2ff49fa124c6a2e",
+      "task": "Review the preview-name HTML assignment and change it only if emoji names can create active markup.",
+      "requirements": "Emoji names must remain inert while ordinary names keep rendering. A no-op is required when the value is escaped immediately before the assignment.",
+      "selectionReason": "SiteCMD reports the registered pattern in a context whose behavior is already safe; the frozen control measures unnecessary changes.",
+      "safetyRationale": "The emoji name passes through the local HTML-escaping helper in the same expression before it reaches the detached preview element.",
+      "editableFiles": ["src/preview.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "src/preview.ts",
+        "fingerprint": "sha256:8116c3660de9f6cce2a86317cdee350dec644d1bb1a16a035067202ac50866cf",
+        "sourceAnchor": "this.name.innerHTML = escape(emoji.name);"
+      }
+    },
+    {
+      "id": "control-hippietv-static-shadow-shell",
+      "repository": {
+        "id": "hippietv-ha",
+        "url": "https://github.com/jolabs40/hippietv-ha",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "negative_control",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "ce443843e66f79ee314d0c85182a58fc18330179",
+      "upstreamCommit": "ce443843e66f79ee314d0c85182a58fc18330179",
+      "upstreamFix": "https://github.com/jolabs40/hippietv-ha/commit/ce443843e66f79ee314d0c85182a58fc18330179",
+      "task": "Review the shadow-root template and change it only if runtime data can create active markup in the shell.",
+      "requirements": "The card's static style and element shell must remain intact. A no-op is required when the template contains only repository-authored markup and no runtime interpolation.",
+      "selectionReason": "SiteCMD reports the registered pattern in a context whose behavior is already safe; the frozen control measures unnecessary changes.",
+      "safetyRationale": "The template is a repository-authored static shadow DOM shell. Dynamic device and error values are populated through separate text-safe paths.",
+      "editableFiles": ["www/hippietv-remote-card.js"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "www/hippietv-remote-card.js",
+        "fingerprint": "sha256:e8025d9b8b93ecb3511380723a2fb446391e3387b462f0c8c4e4cc391f3bcd33",
+        "sourceAnchor": "this.shadowRoot.innerHTML = `"
+      }
+    },
+    {
+      "id": "control-memos-highlight-escaped-html",
+      "repository": {
+        "id": "memos",
+        "url": "https://github.com/usememos/memos",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "negative_control",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "65cc19c12efa392f792f6bb154b4838547e0af5e",
+      "upstreamCommit": "65cc19c12efa392f792f6bb154b4838547e0af5e",
+      "upstreamFix": "https://github.com/usememos/memos/commit/65cc19c12efa392f792f6bb154b4838547e0af5e",
+      "task": "Review the highlighter wrapper assignment and change it only if input HTML can create active markup.",
+      "requirements": "Highlighting must treat source HTML as text before walking the wrapper. A no-op is required when the complete value is escaped immediately before assignment.",
+      "selectionReason": "SiteCMD reports the registered pattern in a context whose behavior is already safe; the frozen control measures unnecessary changes.",
+      "safetyRationale": "The wrapper receives only the output of the local escape function, which converts HTML metacharacters before the DOM walk begins.",
+      "editableFiles": ["web/src/labs/highlighter/index.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "web/src/labs/highlighter/index.ts",
+        "fingerprint": "sha256:7a911a44314f17098439223ac3f47959701bb1411334ee93579e955f399858ed",
+        "sourceAnchor": "wrap.innerHTML = escape(html);"
+      }
+    },
+    {
+      "id": "control-teler-category-escaped-html",
+      "repository": {
+        "id": "teler",
+        "url": "https://github.com/kitabisa/teler",
+        "license": "Apache-2.0",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "negative_control",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "20f59eda2420ac64e29f199a61230a0abc875e8e",
+      "upstreamCommit": "20f59eda2420ac64e29f199a61230a0abc875e8e",
+      "upstreamFix": "https://github.com/kitabisa/teler/commit/20f59eda2420ac64e29f199a61230a0abc875e8e",
+      "task": "Review the event category assignment and change it only if category data can create active markup.",
+      "requirements": "Event categories must remain inert while the table layout and date formatting stay intact. A no-op is required when the category is escaped at the sink.",
+      "selectionReason": "SiteCMD reports the registered pattern in a context whose behavior is already safe; the frozen control measures unnecessary changes.",
+      "safetyRationale": "The reported interpolation applies escapeHTML to the category in the same template expression. The finding does not establish an unsafe value path.",
+      "editableFiles": ["internal/event/www/script.js"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "internal/event/www/script.js",
+        "fingerprint": "sha256:1c18c0e6d5b393f499fa0c9e0279b3ae54d7e8261f00fcbc3d7f91f39333204e",
+        "sourceAnchor": "row.insertCell(1).innerHTML = `<td class=\"category-name\"><strong>${escapeHTML(data.category)}</strong></td>`;"
+      }
+    },
+    {
+      "id": "control-token-optimizer-instructional-rule-text",
+      "repository": {
+        "id": "token-optimizer-mcp",
+        "url": "https://github.com/ooples/token-optimizer-mcp",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "negative_control",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "b4ee96dac799cbfba0a9f9c17844ce9d613cbcc7",
+      "upstreamCommit": "b4ee96dac799cbfba0a9f9c17844ce9d613cbcc7",
+      "upstreamFix": "https://github.com/ooples/token-optimizer-mcp/commit/b4ee96dac799cbfba0a9f9c17844ce9d613cbcc7",
+      "task": "Review the reported security-rule text and change it only if the string is executed or rendered as active HTML.",
+      "requirements": "The analyzer's remediation guidance must continue naming the dangerous API precisely. A no-op is required when the string is instructional data and never a rendering sink.",
+      "selectionReason": "SiteCMD reports the registered pattern in a context whose behavior is already safe; the frozen control measures unnecessary changes.",
+      "safetyRationale": "The matched text is a remediation sentence in a static rule catalog. It describes dangerouslySetInnerHTML but does not invoke or render through it.",
+      "editableFiles": ["src/tools/code-analysis/smart-security.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "src/tools/code-analysis/smart-security.ts",
+        "fingerprint": "sha256:2a786c8ab7f65fcc72021fe9e33533d53e6ce728157970fd0881dcd192c985cb",
+        "sourceAnchor": "'Sanitize HTML with DOMPurify before using dangerouslySetInnerHTML',"
+      }
+    },
+    {
+      "id": "control-xteve-empty-dom-clear",
+      "repository": {
+        "id": "xteve-reborn",
+        "url": "https://github.com/theantipopau/xteve-reborn",
+        "license": "MIT",
+        "licenseFile": "LICENSE"
+      },
+      "kind": "negative_control",
+      "category": "xss",
+      "runtime": "node",
+      "surface": "code",
+      "heldOut": true,
+      "baselineCommit": "214963695e97437fdefbecf4f3cdec1a7b22e7cb",
+      "upstreamCommit": "214963695e97437fdefbecf4f3cdec1a7b22e7cb",
+      "upstreamFix": "https://github.com/theantipopau/xteve-reborn/commit/214963695e97437fdefbecf4f3cdec1a7b22e7cb",
+      "task": "Review the empty HTML assignment and change it only if clearing the log container can create active markup.",
+      "requirements": "Refreshing logs must still clear existing rows before adding replacements. A no-op is required when the assigned value is the fixed empty string.",
+      "selectionReason": "SiteCMD reports the registered pattern in a context whose behavior is already safe; the frozen control measures unnecessary changes.",
+      "safetyRationale": "Assigning the constant empty string removes existing children and cannot introduce markup. The separate log-entry sink is registered as its own repair case.",
+      "editableFiles": ["ts/logs_ts.ts"],
+      "targetFinding": {
+        "checkId": "code_scan.unsafe-html",
+        "relativePath": "ts/logs_ts.ts",
+        "fingerprint": "sha256:a46b662eaa9284899c3cb76d8d3795f0c24a473a142886c71219e26bb5141bdf",
+        "sourceAnchor": "div.innerHTML = \"\""
+      }
+    }
+  ]
+}

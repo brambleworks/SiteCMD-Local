@@ -11,10 +11,15 @@ function targetMatches(report, target) {
   const fingerprintMatches = pathMatches.filter(
     (issue) => issue.fingerprint === target.fingerprint,
   );
+  const anchorMatches = pathMatches.filter(
+    (issue) =>
+      typeof issue.sourceExcerpt === "string" && issue.sourceExcerpt.includes(target.sourceAnchor),
+  );
   return {
     issueCount: issues.length,
     targetPathMatches: pathMatches.length,
     targetFingerprintMatches: fingerprintMatches.length,
+    targetAnchorMatches: anchorMatches.length,
     targetSemanticMatches: fingerprintMatches.filter(
       (issue) =>
         typeof issue.sourceExcerpt === "string" &&
@@ -34,15 +39,30 @@ export function evaluateRepositoryScannerCase(item, baselineReport, upstreamRepo
     reasons.push(
       "The registered baseline finding does not overlap the task's semantic source anchor.",
     );
-  if (baseline.targetPathMatches !== 1)
-    reasons.push("The registered baseline check and path were not uniquely observable.");
   if (item.kind === "repair") {
-    if (upstream.targetPathMatches !== 0)
-      reasons.push("The registered check remains at the target path after the upstream repair.");
-  } else if (upstream.targetPathMatches !== 1 || upstream.targetFingerprintMatches !== 1) {
+    if (upstream.targetFingerprintMatches !== 0 || upstream.targetAnchorMatches !== 0)
+      reasons.push("The registered finding remains after the upstream repair.");
+  } else if (upstream.targetFingerprintMatches !== 1 || upstream.targetSemanticMatches !== 1) {
     reasons.push("The registered negative-control finding was not preserved unchanged.");
   }
   return { eligible: reasons.length === 0, reasons, baseline, upstream };
+}
+
+export function repositoryScannerTargetIssue(item, observation) {
+  const target = item.targetFinding;
+  const matches = (observation?.targetIssues ?? []).filter(
+    (issue) =>
+      issue.checkId === target.checkId &&
+      issue.relativePath === target.relativePath &&
+      issue.fingerprint === target.fingerprint,
+  );
+  requireCondition(
+    observation?.targetFingerprintMatches === 1 &&
+      observation.targetSemanticMatches === 1 &&
+      matches.length === 1,
+    `Scanner eligibility does not contain one exact target for ${item.id}`,
+  );
+  return matches[0];
 }
 
 function captureTime(value) {

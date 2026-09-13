@@ -574,9 +574,8 @@ pub fn normalize_code_scan(
 
 pub(crate) fn code_scan_occurrence_id(issue: &crate::core::code_scan::CodeIssue) -> String {
     format!(
-        "code_scan:{}:{}:{}",
-        code_producer_rule_id(&issue.id),
-        issue.relative_path,
+        "code_scan:{}:{}",
+        issue.id,
         issue.line.map(|line| line.to_string()).unwrap_or_default()
     )
 }
@@ -739,5 +738,38 @@ mod tests {
             batch.findings[1].occurrence_id
         );
         assert_eq!(batch.findings[0].relative_path.as_deref(), Some("src/a.ts"));
+    }
+
+    #[test]
+    fn code_occurrence_identity_preserves_producer_disambiguators() {
+        let issue = |id: &str| CodeIssue {
+            id: id.into(),
+            check_id: String::new(),
+            category: "supply-chain".into(),
+            severity: Severity::Low,
+            title: "Unused dependency".into(),
+            description: "detail".into(),
+            relative_path: "package.json".into(),
+            absolute_path: "/tmp/package.json".into(),
+            line: Some(90),
+            source_excerpt: None,
+            evidence: None,
+            why_now: None,
+            likely_fix: None,
+            confidence: IssueConfidence::NeedsReview,
+            confidence_reason: None,
+            verify_hint: None,
+        };
+
+        let first = issue("unused-dependency:package.json:first-package");
+        let second = issue("unused-dependency:package.json:second-package");
+        assert_ne!(
+            code_scan_occurrence_id(&first),
+            code_scan_occurrence_id(&second)
+        );
+        assert_eq!(
+            code_scan_occurrence_id(&first),
+            "code_scan:unused-dependency:package.json:first-package:90"
+        );
     }
 }

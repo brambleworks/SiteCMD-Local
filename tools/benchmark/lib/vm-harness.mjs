@@ -12,6 +12,10 @@ export function harnessFiles() {
     files[`guest/${name}`] = readFileSync(path.join(directory, name), "utf8");
   const require = createRequire(import.meta.url);
   files["vendor/typescript.cjs"] = readFileSync(require.resolve("typescript"), "utf8");
+  files["guest/replacement-fmd-actions.js"] = readFileSync(
+    new URL("../guest/replacement-fmd-actions.js", import.meta.url),
+    "utf8",
+  );
   for (const name of [
     "workflow-contract",
     "workflow-plan",
@@ -21,9 +25,13 @@ export function harnessFiles() {
     "workflow-claude-quota",
     "workflow-continuation",
     "workflow-usage",
+    "workflow-trial-usage",
+    "workflow-provider-transcript",
     "workflow-model-identity",
     "repository-snapshot",
     "repository-reference",
+    "repository-confirmatory-registration",
+    "repository-qualification-runtime",
     "repository-runtime",
     "repository-grader-identity",
     "repository-report-continuity",
@@ -38,6 +46,7 @@ export function harnessFiles() {
     "workflow-pilot",
     "workflow-repository-study",
     "workflow-confirmatory-study",
+    "workflow-supplemental-study",
     "workflow-study-validity",
     "workflow-runnable-study",
     "workflow-preflight",
@@ -57,6 +66,14 @@ export function harnessFiles() {
   );
   files["confirmatory-study-policy.json"] = readFileSync(
     new URL("../confirmatory-study-policy.json", import.meta.url),
+    "utf8",
+  );
+  files["confirmatory-v3-study-policy.json"] = readFileSync(
+    new URL("../confirmatory-v3-study-policy.json", import.meta.url),
+    "utf8",
+  );
+  files["supplemental-study-policy.json"] = readFileSync(
+    new URL("../supplemental-study-policy.json", import.meta.url),
     "utf8",
   );
   files["invalidated-studies.json"] = readFileSync(
@@ -91,6 +108,14 @@ export function harnessFiles() {
     new URL("../cases/flask-reuploaded-runtime.json", import.meta.url),
     "utf8",
   );
+  files["cases/onekey-runtime.json"] = readFileSync(
+    new URL("../cases/onekey-runtime.json", import.meta.url),
+    "utf8",
+  );
+  files["cases/fmd-runtime.json"] = readFileSync(
+    new URL("../cases/fmd-runtime.json", import.meta.url),
+    "utf8",
+  );
   files["cases/repository-held-out-v1.json"] = readFileSync(
     new URL("../cases/repository-held-out-v1.json", import.meta.url),
     "utf8",
@@ -101,6 +126,14 @@ export function harnessFiles() {
   );
   files["cases/repository-confirmatory-registration.json"] = readFileSync(
     new URL("../cases/repository-confirmatory-registration.json", import.meta.url),
+    "utf8",
+  );
+  files["cases/repository-confirmatory-v3.json"] = readFileSync(
+    new URL("../cases/repository-confirmatory-v3.json", import.meta.url),
+    "utf8",
+  );
+  files["cases/repository-confirmatory-v3-registration.json"] = readFileSync(
+    new URL("../cases/repository-confirmatory-v3-registration.json", import.meta.url),
     "utf8",
   );
   files["repository-corpus-policy.json"] = readFileSync(
@@ -115,6 +148,7 @@ export function harnessFiles() {
     "prepare-repository-runtime.mjs",
     "prepare-repository-study.mjs",
     "prepare-confirmatory-study.mjs",
+    "prepare-supplemental-study.mjs",
     "prepare-corpus-runtime.mjs",
     "qualify-corpus-repository.mjs",
   ])

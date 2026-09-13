@@ -79,7 +79,7 @@ package metadata, and SiteCMD release are bumped together.
 | `compare_scans`        | Compare two web scans by id (default: the two most recent)                                                        |
 | `how_to_rescan`        | Explain the CLI and desktop steps that produce a fresh scan; does not queue one                                   |
 | `get_fix_brief`        | Get the fix brief for a fix attempt, with acceptance criteria                                                     |
-| `start_fix`            | Ask SiteCMD to open a fix attempt for one check; requires the app to be running                                   |
+| `start_fix`            | Open a fix attempt for one check or an exact Code Scan location; requires the app to be running                   |
 | `get_fix_status`       | Read a fix attempt's status, verify timing, and failure detail                                                    |
 | `run_scan`             | Queue a SiteCMD scan for a project; requires the app to be running                                                |
 | `get_scan_status`      | Read a queued scan request's status and, once fulfilled, its execution id                                         |
@@ -94,6 +94,18 @@ package metadata, and SiteCMD release are bumped together.
 and integration findings appear beside web and code scan findings. Each issue
 names its source, and the counts add up to the open-issue total in
 `get_scan_score`.
+
+### Choosing a Code Scan occurrence
+
+Read `get_issue` for the check's current locations, then pass the chosen
+`relative_path` and one-based `line` to `start_fix` with the same project, URL,
+and `check_id`. Use `line: null` for a finding without a line number.
+
+A path without a line is accepted only when it has one open occurrence. If
+the location is missing, ambiguous, resolved, or suppressed, SiteCMD returns an
+error instead of choosing a different occurrence. The desktop rechecks the
+target when it processes the request. Omitting both fields keeps the default
+behavior: SiteCMD chooses an occurrence for the check.
 
 ### Correlation tools
 

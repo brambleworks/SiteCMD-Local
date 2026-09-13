@@ -52,17 +52,6 @@ function confirmatoryTarget(item) {
 
 async function prepareConfirmatoryHandoff(desktop, mcp, item, configuration, projectId) {
   const { target, issue } = confirmatoryTarget(item);
-  const detail = await mcp.call("get_issue", {
-    url: trialUrl,
-    check_id: target.checkId,
-  });
-  const detailText = responseText(detail);
-  if (
-    detail.isError ||
-    !detailText.includes(target.relativePath) ||
-    !detailText.includes(`:${issue.line}`)
-  )
-    throw new ProjectSetupError("handoff", projectId, detail);
   const agentTool =
     configuration.agent === "claude"
       ? "claude-code"
@@ -120,6 +109,32 @@ async function prepareConfirmatoryHandoff(desktop, mcp, item, configuration, pro
   };
 }
 
+function scanExecutionDiagnostic(detail) {
+  const summary = detail?.summary;
+  return {
+    summary: summary
+      ? {
+          id: summary.id,
+          status: summary.status,
+          webStatus: summary.webStatus,
+          webDetail: summary.webDetail,
+          codeStatus: summary.codeStatus,
+          codeDetail: summary.codeDetail,
+        }
+      : null,
+    runs: Array.isArray(detail?.runs)
+      ? detail.runs.map((run) => ({
+          id: run.id,
+          source: run.source,
+          runKind: run.runKind,
+          status: run.status,
+          statusDetail: run.statusDetail,
+          diagnostics: run.diagnostics,
+        }))
+      : [],
+  };
+}
+
 export async function prepareProject(
   desktop,
   mounted,
@@ -147,11 +162,29 @@ export async function prepareProject(
       scope: "code",
       wait: true,
     });
-    if (
-      scan.isError ||
-      !/complete: execution #\d+ \(complete\)/.test(scan.content?.[0]?.text ?? "")
-    )
-      throw new ProjectSetupError("scan", projectId, scan);
+    const scanText = responseText(scan);
+    if (scan.isError || !/complete: execution #\d+ \(complete\)/.test(scanText)) {
+      const executionId = Number(scanText.match(/execution #(\d+)/)?.[1]);
+      let execution = null;
+      let diagnosticError = null;
+      if (Number.isSafeInteger(executionId) && executionId > 0) {
+        try {
+          execution = scanExecutionDiagnostic(
+            await desktop.invoke("get_scan_execution_detail", {
+              executionId,
+              runId: null,
+            }),
+          );
+        } catch (error) {
+          diagnosticError = error.message;
+        }
+      }
+      throw new ProjectSetupError("scan", projectId, {
+        scan,
+        execution,
+        ...(diagnosticError ? { diagnosticError } : {}),
+      });
+    }
     let handoff = "";
     let attemptId = null;
     let brief = "";

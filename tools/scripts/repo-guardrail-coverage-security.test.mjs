@@ -492,8 +492,8 @@ describe.concurrent(
             fixtureRoot,
             requestsPath,
             source.replace(
-              "VALUES (?, ?, ?, ?, ?, ?, 'requested', ?, ?)`",
-              "VALUES (?, ?, ?, ?, ?, ?, 'requested', ?, ?);\n       UPDATE agent_requests SET status = 'fulfilled'`",
+              "VALUES (?, ?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?)`",
+              "VALUES (?, ?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?);\n       UPDATE agent_requests SET status = 'fulfilled'`",
             ),
           );
         },

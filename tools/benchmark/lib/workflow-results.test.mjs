@@ -12,6 +12,32 @@ const setup = () => {
 const analyze = (plan, records) => analyzeStudy(plan, records, { bootstrapSamples: 100 });
 const repairs = (analysis) => analysis.groups.find((group) => group.kind === "repair");
 
+test("unverified real trials cannot count a passing first submission", () => {
+  const { plan, records } = setup();
+  const record = records.find((item) => trialOutcome(item, plan.study.limits).first);
+  assert.ok(record);
+  record.fixture = false;
+  record.status = "agent_error";
+  const selection = {
+    requested: record.model,
+    observed: [record.model],
+    source: "explicit-cli-request",
+    receipt: "model-identity.json",
+    verified: true,
+  };
+  for (const value of [
+    undefined,
+    { ...selection, verified: false },
+    { ...selection, receipt: "" },
+  ]) {
+    record.modelSelection = value;
+    assert.equal(trialOutcome(record, plan.study.limits).first, false);
+  }
+  record.modelSelection = selection;
+  assert.equal(trialOutcome(record, plan.study.limits).first, true);
+  assert.equal(trialOutcome(record, plan.study.limits).eventual, false);
+});
+
 test("fixture runs never become confirmatory evidence and negative controls are separate", () => {
   const { plan, records } = setup();
   const analysis = analyze(plan, records);
@@ -86,37 +112,42 @@ test("a completed strict Codex selection can be claim-ready without provider res
   assert.equal(analyze(plan, records).claimReviewReady, true);
 });
 
-test("an invalidated study can never become claim-ready", () => {
-  const study = fixtureStudy();
-  Object.assign(study, {
-    id: "sitecmd-repository-confirmatory-v1",
-    phase: "confirmatory",
-    registration: "Retired registration",
-    sampleSizeRationale: "Historical design only",
-  });
-  study.sitecmd.dirty = false;
-  study.configurations[0].agent = "codex";
-  study.tasks.forEach((task) => {
-    task.holdout = true;
-  });
-  const plan = createPlan(study);
-  const records = plan.assignments.map((assignment) => {
-    const record = { ...fixtureRecord(plan, assignment), fixture: false, model: null };
-    record.modelSelection = {
-      requested: "no-model",
-      observed: [],
-      source: "explicit-cli-request",
-      receipt: "model-identity.json",
-      assurance: "explicit-cli-selection",
-      verified: true,
-    };
-    return record;
-  });
+for (const id of [
+  "sitecmd-repository-confirmatory-v1",
+  "sitecmd-repository-confirmatory-v2",
+  "sitecmd-repository-confirmatory-v2-supplemental",
+])
+  test(`invalidated study ${id} can never become claim-ready`, () => {
+    const study = fixtureStudy();
+    Object.assign(study, {
+      id,
+      phase: "confirmatory",
+      registration: "Retired registration",
+      sampleSizeRationale: "Historical design only",
+    });
+    study.sitecmd.dirty = false;
+    study.configurations[0].agent = "codex";
+    study.tasks.forEach((task) => {
+      task.holdout = true;
+    });
+    const plan = createPlan(study);
+    const records = plan.assignments.map((assignment) => {
+      const record = { ...fixtureRecord(plan, assignment), fixture: false, model: null };
+      record.modelSelection = {
+        requested: "no-model",
+        observed: [],
+        source: "explicit-cli-request",
+        receipt: "model-identity.json",
+        assurance: "explicit-cli-selection",
+        verified: true,
+      };
+      return record;
+    });
 
-  const analysis = analyze(plan, records);
-  assert.equal(analysis.claimReviewReady, false);
-  assert.match(analysis.blockers.join("\n"), /invalidated|diagnostic/i);
-});
+    const analysis = analyze(plan, records);
+    assert.equal(analysis.claimReviewReady, false);
+    assert.match(analysis.blockers.join("\n"), /invalidated|diagnostic/i);
+  });
 
 test("missing assignments withhold rates and spending estimates", () => {
   const { plan, records } = setup();

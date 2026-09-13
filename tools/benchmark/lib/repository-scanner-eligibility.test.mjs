@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   createRepositoryScannerEligibility,
   evaluateRepositoryScannerCase,
+  repositoryScannerTargetIssue,
 } from "./repository-scanner-eligibility.mjs";
 import { digest } from "./workflow-plan.mjs";
 
@@ -56,6 +57,41 @@ test("accepts a repair only when the registered baseline finding clears", () => 
   assert.match(replacedFingerprint.reasons.join(" "), /remains/i);
 });
 
+test("allows unrelated findings from the same rule and path", () => {
+  const unrelated = issue({
+    fingerprint: fingerprint("unrelated"),
+    sourceExcerpt: "40 | renderUnrelatedPanel(otherHtml)",
+  });
+  const result = evaluateRepositoryScannerCase(
+    item(),
+    { issues: [issue(), unrelated] },
+    { issues: [unrelated] },
+  );
+
+  assert.equal(result.eligible, true);
+  assert.equal(result.baseline.targetPathMatches, 2);
+  assert.equal(result.baseline.targetFingerprintMatches, 1);
+  assert.equal(result.upstream.targetPathMatches, 1);
+  assert.equal(result.upstream.targetAnchorMatches, 0);
+  assert.deepEqual(repositoryScannerTargetIssue(item(), result.baseline), issue());
+});
+
+test("exact target selection fails closed on incomplete eligibility evidence", () => {
+  const result = evaluateRepositoryScannerCase(item(), { issues: [issue()] }, { issues: [] });
+  assert.throws(() =>
+    repositoryScannerTargetIssue(item(), {
+      ...result.baseline,
+      targetFingerprintMatches: 0,
+    }),
+  );
+  assert.throws(() =>
+    repositoryScannerTargetIssue(item(), {
+      ...result.baseline,
+      targetIssues: [],
+    }),
+  );
+});
+
 test("rejects a repair when the exact registered finding is absent at baseline", () => {
   const result = evaluateRepositoryScannerCase(
     item(),
@@ -79,8 +115,16 @@ test("rejects a registered scanner finding outside the task's semantic source an
 
 test("accepts a negative control only when the same finding remains observable", () => {
   const control = item("negative_control");
+  const unrelated = issue({
+    fingerprint: fingerprint("unrelated"),
+    sourceExcerpt: "40 | renderUnrelatedPanel(otherHtml)",
+  });
   assert.equal(
-    evaluateRepositoryScannerCase(control, { issues: [issue()] }, { issues: [issue()] }).eligible,
+    evaluateRepositoryScannerCase(
+      control,
+      { issues: [issue(), unrelated] },
+      { issues: [issue(), unrelated] },
+    ).eligible,
     true,
   );
   const cleared = evaluateRepositoryScannerCase(control, { issues: [issue()] }, { issues: [] });

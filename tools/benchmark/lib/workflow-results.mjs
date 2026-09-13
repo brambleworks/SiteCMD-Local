@@ -51,11 +51,18 @@ export function trialOutcome(record, limits) {
   const unexpectedModel = record.modelSelection?.observed.some(
     (model) => model !== record.modelSelection.requested,
   );
+  const modelVerified =
+    record.fixture === true ||
+    (record.modelSelection?.verified === true && Boolean(record.modelSelection.receipt));
   const overBudget =
     (limits.trialTokens !== null && tokens !== null && tokens > limits.trialTokens) ||
     (spend !== null && spend > limits.trialCostUsd);
   const accepted = (entry) =>
-    entry?.outcome === "accepted" && entry.withinTime && !overBudget && !unexpectedModel;
+    entry?.outcome === "accepted" &&
+    entry.withinTime &&
+    !overBudget &&
+    !unexpectedModel &&
+    modelVerified;
   return {
     recorded: true,
     first: accepted(outcomes[0]) || false,

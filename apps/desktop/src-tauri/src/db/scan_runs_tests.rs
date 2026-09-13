@@ -1,6 +1,7 @@
 use super::*;
 use crate::checks::{CheckResult, IssueConfidence, ScanCategory, Severity};
-use crate::core::normalized_scan::{normalize_web_scan, ScanRunKind};
+use crate::core::code_scan::{CodeIssue, CodeScanReport};
+use crate::core::normalized_scan::{normalize_code_scan, normalize_web_scan, ScanRunKind};
 use crate::core::scan_execution::{
     NewScanExecution, ScanAdmissionClass, ScanComponentStatus, ScanExecutionMode, ScanTrigger,
 };
@@ -24,6 +25,32 @@ fn execution(db: &Database, project_id: i64, url: &str, key: &str) -> i64 {
             web_status: Some(ScanComponentStatus::Planned),
             web_detail: None,
             code_status: None,
+            code_detail: None,
+        },
+        900,
+    )
+    .expect("execution")
+    .execution
+    .id
+}
+
+fn code_execution(db: &Database, project_id: i64, key: &str) -> i64 {
+    db.admit_scan_execution(
+        NewScanExecution {
+            project_id: Some(project_id),
+            environment_id: None,
+            environment_url: None,
+            environment_scope_key: format!("project:{project_id}"),
+            requested_mode: ScanExecutionMode::Code,
+            web_focus: None,
+            trigger: ScanTrigger::Manual,
+            admission_class: ScanAdmissionClass::GeneralScan,
+            idempotency_key: key.into(),
+            request_fingerprint: format!("v1:{key}"),
+            now_ms: 100,
+            web_status: None,
+            web_detail: None,
+            code_status: Some(ScanComponentStatus::Planned),
             code_detail: None,
         },
         900,
@@ -150,6 +177,76 @@ fn persistence_commits_immutable_findings_and_projection_together() {
         assert_eq!(run_count, 1);
         assert_eq!(finding_count, 1);
         assert_eq!(projection, (run_id, run_id, "security.headers.csp".into()));
+    })
+    .expect("query");
+}
+
+#[test]
+fn code_persistence_keeps_distinct_findings_at_the_same_location() {
+    let db = temp_db();
+    let project_id = db
+        .upsert_project("p", "/tmp/code-occurrence-identity", None)
+        .expect("project");
+    let issue = |dependency: &str| CodeIssue {
+        id: format!("unused-dependency:package.json:{dependency}"),
+        check_id: String::new(),
+        category: "supply-chain".into(),
+        severity: Severity::Low,
+        title: "Unused dependency".into(),
+        description: "detail".into(),
+        relative_path: "package.json".into(),
+        absolute_path: "/tmp/code-occurrence-identity/package.json".into(),
+        line: Some(90),
+        source_excerpt: None,
+        evidence: None,
+        why_now: None,
+        likely_fix: None,
+        confidence: IssueConfidence::NeedsReview,
+        confidence_reason: None,
+        verify_hint: None,
+    };
+    let report = CodeScanReport {
+        checked_at: "2026-09-12T00:00:00Z".into(),
+        framework: Some("typescript".into()),
+        issue_count: 2,
+        critical_count: 0,
+        high_count: 0,
+        medium_count: 0,
+        low_count: 2,
+        issues: vec![issue("first-package"), issue("second-package")],
+        skipped_scopes: Default::default(),
+    };
+    let execution_id = code_execution(&db, project_id, "same-location-code-findings");
+    let batch = normalize_code_scan(
+        &report,
+        execution_id,
+        project_id,
+        None,
+        format!("project:{project_id}"),
+        "/tmp/code-occurrence-identity".into(),
+        90,
+        10,
+        100,
+    )
+    .expect("normalize");
+    let run_id = db.persist_normalized_scan_run(batch).expect("persist");
+
+    db.execute(move |conn| {
+        let findings: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM scan_findings WHERE run_id = ?1",
+                [run_id],
+                |row| row.get(0),
+            )
+            .expect("finding count");
+        let work_items: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM work_items WHERE project_id = ?1 AND resolved_at IS NULL",
+                [project_id],
+                |row| row.get(0),
+            )
+            .expect("work item count");
+        assert_eq!((findings, work_items), (2, 2));
     })
     .expect("query");
 }

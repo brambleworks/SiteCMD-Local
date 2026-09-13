@@ -48,6 +48,7 @@ import { formatRescanGuidance } from "./rescan_guidance.js";
 import { formatFixPromptBatch } from "./fix_prompt_format.js";
 import { readDesktopHeartbeat, desktopStatusLine } from "./heartbeat.js";
 import { deriveFixStatus, DEPLOY_WAIT_NOTE } from "./fix_status.js";
+import { FIX_TARGET_SCHEMA, resolveFixTarget } from "./fix_target.js";
 import {
   getWorkspaceIssues,
   getWorkspaceProject,
@@ -955,6 +956,7 @@ function registerCoreTools(server: McpServer): void {
         project_id: z.number().int().positive().optional(),
         url: z.string().optional().describe("Site URL when project_id is unknown"),
         check_id: z.string().min(1).describe("Check id from get_issues"),
+        ...FIX_TARGET_SCHEMA,
         agent_tool: z
           .enum(["claude-code", "codex", "cursor", "windsurf"])
           .optional()
@@ -963,7 +965,7 @@ function registerCoreTools(server: McpServer): void {
       },
       annotations: WRITES_LOCAL_DB,
     },
-    async ({ project_id, url, check_id, agent_tool, wait }) =>
+    async ({ project_id, url, check_id, relative_path, line, agent_tool, wait }) =>
       runToolAsync(
         () => {
           const { projectId, projectName } = resolveProjectIdForCheck(
@@ -972,16 +974,19 @@ function registerCoreTools(server: McpServer): void {
           );
           const envUrl = url ?? getProjects().find((p) => p.id === projectId)?.url;
           if (!envUrl) throw new Error(`Project #${projectId} has no production URL; pass url.`);
-          if (getIssueOccurrences(projectId, envUrl, check_id).length === 0) {
+          const occurrences = getIssueOccurrences(projectId, envUrl, check_id);
+          if (occurrences.length === 0) {
             throw new Error(
               `No open issue ${check_id} on ${envUrl}; call get_issues for the current list.`,
             );
           }
+          const target = resolveFixTarget(occurrences, relative_path, line);
           const requestId = createAgentRequest({
             kind: "start_fix",
             projectId,
             envUrl,
             checkId: check_id,
+            target,
             agentTool: agent_tool ?? agentToolFromClient(server),
           });
           return { requestId, now: Date.now(), projectName };

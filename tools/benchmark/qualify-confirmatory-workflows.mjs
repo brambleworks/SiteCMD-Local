@@ -3,6 +3,10 @@ import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { validateConfirmatoryWorkflowCase } from "./lib/confirmatory-workflow.mjs";
 import { validateRepositoryConfirmatoryCorpus } from "./lib/repository-corpus.mjs";
+import {
+  confirmatoryRegistrationFilename,
+  validateRepositoryConfirmatoryRegistration,
+} from "./lib/repository-confirmatory-registration.mjs";
 import { validateRepositorySnapshot } from "./lib/repository-snapshot.mjs";
 import { artifactPath, readArtifact } from "./lib/workflow-artifacts.mjs";
 import { requireCondition } from "./lib/workflow-contract.mjs";
@@ -57,7 +61,7 @@ const qualification = JSON.parse(
 const registration = JSON.parse(
   readArtifact(
     path.dirname(new URL(import.meta.url).pathname),
-    "cases/repository-confirmatory-registration.json",
+    `cases/${confirmatoryRegistrationFilename(corpus.id)}`,
   ).toString("utf8"),
 );
 const productPath = path.resolve(productFile);
@@ -86,6 +90,7 @@ requireCondition(
     product.cliSha256 === eligibility.product.cliSha256,
   "Confirmatory workflow evidence identities differ",
 );
+validateRepositoryConfirmatoryRegistration(registration, corpus, eligibility);
 for (const item of qualification.cases) {
   const evidence = JSON.parse(readArtifact(qualificationRoot, item.artifact).toString("utf8"));
   requireCondition(

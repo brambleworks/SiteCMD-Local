@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "caseId": "fmd-device-text",
+  "baselineSha256": "593fda0baecb5abfe0997f9ffd98090492dccaf0cd407b49638ffbe3a0a0f16d",
+  "referenceSha256": "c490ad33c83a9e050ec4a03a39de65e5f8c9fe4154918ef244df813c23bb2374",
+  "entry": "web/logic.js",
+  "unsafeAssignment": "document.getElementById(\"providerView\").innerHTML = loc.provider;",
+  "safeAssignment": "document.getElementById(\"providerView\").textContent = loc.provider;",
+  "markerAsset": "web/node_modules/leaflet/dist/images/marker-icon.png",
+  "markerAssetSha256": "574c3a5cca85f4114085b6841596d62f00d7c892c7b03f28cbfa301deb1dc437",
+  "csp": "default-src 'self' ; img-src 'self' data: https://*.tile.openstreetmap.org ; script-src 'self' 'wasm-unsafe-eval' ; upgrade-insecure-requests"
+}

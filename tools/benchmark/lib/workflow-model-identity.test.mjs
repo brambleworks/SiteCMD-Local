@@ -118,3 +118,18 @@ test("aggregate model usage alone cannot prove a complete response trace", () =>
   assert.deepEqual(result.observed, [requested]);
   assert.equal(result.verified, false);
 });
+
+test("out-of-order or reopened invocations cannot verify a complete model selection", () => {
+  const start = { type: "thread.started" };
+  const turn = { type: "turn.started" };
+  const end = { type: "turn.completed" };
+  for (const events of [
+    [turn, start, end],
+    [start, turn, { type: "turn.failed" }, end],
+    [start, turn, end, { type: "item.completed" }],
+  ])
+    assert.equal(
+      summarizeModelIdentity("codex", "gpt-6-astra", jsonl(...events), true).verified,
+      false,
+    );
+});

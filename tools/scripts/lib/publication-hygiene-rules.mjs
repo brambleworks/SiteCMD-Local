@@ -166,15 +166,14 @@ const SOURCE_TEXT_EXTENSIONS = new Set([
 const HOME_DIRECTORY_RE =
   /(?:^|[\s"'`(=:,[])(?:\/Users\/|\/home\/|%2FUsers%2F|[A-Za-z]:\\Users\\)([A-Za-z0-9._-]+)/g;
 const PLACEHOLDER_HOME_NAMES = new Set([
-  // The unprivileged account the benchmark harness creates inside its own
-  // Lima guest. It is a fixed service account defined by this repo, not a
-  // person's login, so its home path is not a leak.
+  // Fixed guest service accounts are not personal login names.
   "benchadmin",
   "ci",
   "dev",
   "example",
   "me",
   "runner",
+  "sitecmd",
   "test",
   "tester",
   "user",

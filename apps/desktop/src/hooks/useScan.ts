@@ -39,6 +39,20 @@ import {
 
 // Prevent request ID reuse across webview reloads.
 const SCAN_REQUEST_ID_STORAGE_KEY = "sitecmd_scan_request_id_v1";
+// Stay below Rust's disjoint server-allocated id range.
+const SCAN_REQUEST_ID_CEILING = 4_000_000_000;
+
+// Draw and redraw rather than fold with a modulo. A modulo maps the 294,967,296
+// draws above the ceiling back onto the bottom of the range, which would make
+// those ids twice as likely as the rest and cluster collisions where two
+// webviews are most likely to start at once.
+export function randomScanRequestId(): number {
+  const buffer = new Uint32Array(1);
+  for (;;) {
+    crypto.getRandomValues(buffer);
+    if (buffer[0] < SCAN_REQUEST_ID_CEILING) return buffer[0];
+  }
+}
 
 function readPersistedScanRequestId(): number {
   try {
@@ -46,8 +60,7 @@ function readPersistedScanRequestId(): number {
     const parsed = raw === null ? 0 : Number(raw);
     return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
   } catch {
-    // Stay below Rust's disjoint server-allocated id range.
-    return crypto.getRandomValues(new Uint32Array(1))[0] % 4_000_000_000;
+    return randomScanRequestId();
   }
 }
 

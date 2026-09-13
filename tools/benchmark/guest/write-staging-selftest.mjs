@@ -62,6 +62,22 @@ fixture((workspace) => {
 
 fixture((workspace) => {
   const guard = prepareWriteStaging(workspace);
+  chmodSync(path.join(workspace, ".claude"), 0o700);
+  assert.throws(() => guard.verify(), /permissions changed/);
+});
+
+fixture((workspace) => {
+  const parent = path.join(workspace, ".claude");
+  mkdirSync(parent, { mode: 0o700 });
+  chownSync(parent, uid, gid);
+  const guard = prepareWriteStaging(workspace);
+  systemCommand("sudo", ["-u", "sitecmd", "ls", path.join(parent, ".cc-writes")]);
+  assert.throws(() => systemCommand("sudo", ["-u", "grader", "ls", parent]), /Permission denied/);
+  guard.verify();
+});
+
+fixture((workspace) => {
+  const guard = prepareWriteStaging(workspace);
   const parent = path.join(workspace, ".claude");
   renameSync(parent, path.join(workspace, "old-runtime"));
   mkdirSync(parent);
@@ -84,6 +100,8 @@ console.log(
     otherUserDenied: true,
     hiddenChangesRejected: true,
     changedPermissionsRejected: true,
+    changedParentPermissionsRejected: true,
+    privateExistingParentReadableForScanner: true,
     symlinkRejected: true,
     replacementRejected: true,
     modelCalls: 0,

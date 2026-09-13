@@ -27,6 +27,8 @@ import { candidateRecord, readCandidate } from "./trial-snapshot.mjs";
 import { closingQuota } from "./closing-quota.mjs";
 import { verifyWhoogleRuntime } from "./whoogle-runtime.mjs";
 import { prepareRepositoryAgentRuntime } from "./repository-agent-runtime.mjs";
+import { verifyOnekeyRuntime } from "./replacement-onekey-runtime.mjs";
+import { verifyFmdBrowserRuntime } from "./replacement-fmd-runtime.mjs";
 
 if (process.platform !== "linux" || process.getuid() !== 0)
   throw new Error("Guest controller required");
@@ -52,6 +54,8 @@ const { files, modes } = loadTrialSource(source, task);
 if (item.entry !== task.entry || item.rule !== task.rule)
   throw new Error("Case entry or rule differs from the frozen study");
 if (item.id === "whoogle-named-config-path") verifyWhoogleRuntime(item.repositoryRuntime);
+if (item.id === "onekey-http-client-tls-verification") verifyOnekeyRuntime(item.repositoryRuntime);
+if (item.id === "fmd-device-text") verifyFmdBrowserRuntime(item.browserRuntime);
 if (digest(product) !== plan.study.productSha256)
   throw new Error("Product receipt differs from the frozen study");
 const configuration = plan.study.configurations.find(
@@ -72,7 +76,7 @@ if (
   throw new Error(
     "Guest subscription logins and pinned client versions must be verified before execution",
   );
-const quota = evaluateQuota(baseline, current, plan.study.billing);
+const quota = evaluateQuota(baseline, current, plan.study.billing, Date.now(), configuration.agent);
 if (!quota.quotaAllowed) throw new Error(quota.blockers.join("; "));
 const budgets = "/srv/sitecmd-benchmark/budgets";
 mkdirSync(budgets, { recursive: true, mode: 0o700 });
@@ -202,7 +206,7 @@ try {
       };
     },
   });
-  prepareRepositoryAgentRuntime({ item, workspace, channel, owner });
+  const agentRuntime = prepareRepositoryAgentRuntime({ item, workspace, channel, owner });
   const invocation = trialInvocation({
     agent: configuration.agent,
     model: configuration.model,
@@ -210,7 +214,7 @@ try {
     workspace,
     channel,
     proxy: `${publicTools}/mcp-proxy.mjs`,
-    repositoryRuntime: item.repositoryRuntime,
+    repositoryRuntime: agentRuntime ? item.repositoryRuntime : undefined,
   });
   writeNewJson(`${directory}/configuration.json`, { configuration, invocation, accounts });
   const prompt = trialPrompt({
@@ -223,7 +227,7 @@ try {
     url: trialUrl,
     handoff: prepared.handoff,
     report: input.report,
-    repositoryRuntime: Boolean(item.repositoryRuntime),
+    repositoryRuntime: Boolean(agentRuntime),
   });
   writeFileSync(`${directory}/prompt.txt`, prompt, { flag: "wx", mode: 0o600 });
   assertNotCancelled();
@@ -237,6 +241,7 @@ try {
     baseline,
     currentQuota: `${directory}/quota-current.json`,
     requestedModel: configuration.model,
+    provider: configuration.agent,
     log: evidence.log,
     initialized: evidence.initialized,
   });
@@ -325,6 +330,7 @@ try {
       baseline,
       currentPath: `${directory}/quota-current.json`,
       billing: plan.study.billing,
+      provider: configuration.agent,
       endedAt,
       log: evidence.log,
     });
@@ -335,6 +341,8 @@ try {
       baseline,
       JSON.parse(readFileSync(`${directory}/quota-current.json`)),
       plan.study.billing,
+      Date.now(),
+      configuration.agent,
     ).quotaAllowed;
 } catch {
   quotaAllowed = false;

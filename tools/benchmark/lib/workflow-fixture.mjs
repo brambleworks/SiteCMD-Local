@@ -78,11 +78,12 @@ export function fixtureRecord(plan, assignment) {
   const task = plan.study.tasks.find((item) => item.id === assignment.task);
   const patch = task.kind === "negative_control" ? "" : PATCH;
   const patchSha256 = digest(patch);
+  const subscription = plan.study.billing?.mode === "subscription";
   return {
     schemaVersion: 1,
     trialId: assignment.id,
     studySha256: plan.studySha256,
-    fixture: true,
+    fixture: plan.study.phase === "fixture",
     status: "completed",
     elapsedMs: 1000,
     humanActiveMs: null,
@@ -96,8 +97,9 @@ export function fixtureRecord(plan, assignment) {
       cacheReadTokens: 30,
       cacheWriteTokens: 0,
       includesAllAgents: true,
-      costUsd: 0.001,
-      costBasis: "estimated",
+      costUsd: subscription ? null : 0.001,
+      costBasis: subscription ? "subscription" : "estimated",
+      ...(subscription ? { incrementalCostUsd: 0, apiEquivalentCostUsd: null } : {}),
       receipt: "usage.json",
     },
     submissions: [

@@ -50,6 +50,10 @@ export function validateSubscriptionBilling(billing) {
   requireCondition(billing?.mode === "subscription", "invalid billing mode");
   requireCondition(billing.paidFallback === false, "paid fallback must be disabled");
   requireCondition(billing.automaticResets === false, "automatic resets must be disabled");
+  requireCondition(
+    billing.quotaScope === undefined || ["study", "active-provider"].includes(billing.quotaScope),
+    "invalid quota scope",
+  );
   for (const key of ["weeklyBudgetPercentagePoints", "minimumRemainingPercent"]) {
     requireNumber(billing[key], key, { positive: true });
     requireCondition(billing[key] <= 100, `${key} must not exceed 100`);
@@ -144,6 +148,8 @@ function validateTask(task) {
   for (const key of ["sourceSha256", "referenceSha256", "graderSha256", "reportSha256"]) {
     requireHash(task[key], `task ${key}`);
   }
+  for (const key of ["runtimeSha256", "browserRuntimeSha256"])
+    if (task[key] !== undefined) requireHash(task[key], `task ${key}`);
   if (task.sourceFormat !== undefined || task.editableFiles !== undefined) {
     requireCondition(
       task.sourceFormat === "git-tree-v1" && task.surface === "code",

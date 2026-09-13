@@ -6,6 +6,18 @@
       "invalidatedAt": "2026-09-09T13:44:37.000Z",
       "evidenceUse": "diagnostic-only",
       "reason": "Post-run validity review found a semantic target mismatch, occurrence-wide unsafe-HTML handling, and an incomplete whitespace regression check. The 96 assignments cannot support product or marketing claims."
+    },
+    {
+      "id": "sitecmd-repository-confirmatory-v2",
+      "invalidatedAt": "2026-09-10T15:29:50.000Z",
+      "evidenceUse": "diagnostic-only",
+      "reason": "The extension grader rejected standard DOM APIs, and the shell grader rewarded Windows command-shim calls that cannot execute as specified. Recorded grades and efficiency denominators are not reliable product outcomes. Preserve all trials for diagnosis; do not reuse this study for execution or marketing claims."
+    },
+    {
+      "id": "sitecmd-repository-confirmatory-v2-supplemental",
+      "invalidatedAt": "2026-09-10T15:29:50.000Z",
+      "evidenceUse": "diagnostic-only",
+      "reason": "This completion uses the same invalid extension and Windows shell graders as the v2 source study. Combining the records or changing the allowance does not repair those validity defects."
     }
   ]
 }

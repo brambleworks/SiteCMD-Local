@@ -57,11 +57,12 @@ test("fresh inactive-session evidence preserves the post-trial weekly allowance 
     resetsAt: null,
     inactive: true,
   });
-  const check = () =>
+  const check = (billing = pilotPolicy.billing, provider) =>
     closingQuota({
       baseline,
       currentPath: "fixture",
-      billing: pilotPolicy.billing,
+      billing,
+      provider,
       endedAt: now - 500,
       log: () => {},
       now: () => now,
@@ -72,4 +73,7 @@ test("fresh inactive-session evidence preserves the post-trial weekly allowance 
   const result = await check();
   assert.equal(result.quotaAllowed, false);
   assert.match(result.blockers.join(" "), /20 percentage points/);
+  const scoped = { ...pilotPolicy.billing, quotaScope: "active-provider" };
+  assert.equal((await check(scoped, "codex")).quotaAllowed, true);
+  assert.equal((await check(scoped, "claude")).quotaAllowed, false);
 });

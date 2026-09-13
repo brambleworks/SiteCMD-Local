@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import { extensionHolder } from "./confirmatory-dom.mjs";
 
 const input = JSON.parse(readFileSync(0, "utf8"));
 const workRoot = process.env.SITECMD_BENCHMARK_WORK_ROOT ?? "/work";
@@ -490,29 +491,6 @@ function probeMaterial() {
   };
 }
 
-function fakeHolder(state) {
-  const children = [];
-  return {
-    children,
-    get firstChild() {
-      return children[0] ?? null;
-    },
-    childNodes: { item: (index) => children[index] ?? null },
-    set innerHTML(value) {
-      state.innerHtmlWrites.push(String(value));
-      children.length = 0;
-      if (!value) return;
-      state.active ||= /<img\b|<script\b|\son[a-z]+\s*=/i.test(value);
-      const name = /^<([a-z][a-z0-9_-]*)/i.exec(value)?.[1];
-      if (name) children.push({ tagName: name });
-    },
-    appendChild(element) {
-      children.push(element);
-      return element;
-    },
-  };
-}
-
 function loadYamcs(state) {
   const extensionService = {
     isDisablingReloadOnNavigation() {
@@ -545,13 +523,13 @@ function loadYamcs(state) {
     },
     { document },
   );
-  return { ExtensionComponent: exports.ExtensionComponent, extensionService };
+  return { ExtensionComponent: exports.ExtensionComponent, extensionService, document };
 }
 
 function yamcsInstance() {
   const state = { active: false, created: [], innerHtmlWrites: [] };
-  const holder = fakeHolder(state);
   const loaded = loadYamcs(state);
+  const holder = extensionHolder(state, loaded.document);
   const component = new loaded.ExtensionComponent();
   component.customElementHolder = { nativeElement: holder };
   component.subroute = "details";

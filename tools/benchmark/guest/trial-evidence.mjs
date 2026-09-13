@@ -2,7 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import path from "node:path";
 import { digest } from "../lib/workflow-plan.mjs";
 import { writeNewJson } from "../lib/workflow-store.mjs";
-import { claudeUsage, codexUsage } from "../lib/workflow-usage.mjs";
+import { trialUsage } from "../lib/workflow-trial-usage.mjs";
 import { summarizeModelIdentity } from "../lib/workflow-model-identity.mjs";
 import { loadTrialSource } from "../lib/trial-source.mjs";
 import { gradeCase } from "./calibration-grader.mjs";
@@ -144,76 +144,17 @@ export function createEvidence(directory, plan, assignment, item, source, worksp
     quotaAllowed,
     agentInvoked = true,
     evidenceComplete = true,
-    providerCompleted = status === "completed",
   }) => {
     const raw = readFileSync(path.join(directory, "transcript.jsonl"), "utf8");
     const identity = summarizeModelIdentity(
       configuration.agent,
       configuration.model,
       raw,
-      evidenceComplete && providerCompleted,
+      evidenceComplete,
     );
     const observedModels = agentInvoked ? identity.observed : [];
     if (agentInvoked) writeNewJson(path.join(directory, "model-identity.json"), identity);
-    const events = raw
-      .split("\n")
-      .filter(Boolean)
-      .flatMap((line) => {
-        try {
-          const event = JSON.parse(line);
-          return event && typeof event === "object" && !Array.isArray(event) ? [event] : [];
-        } catch {
-          return [];
-        }
-      });
-    const unknown = {
-      inputTokens: null,
-      outputTokens: null,
-      cacheReadTokens: null,
-      cacheWriteTokens: null,
-      includesAllAgents: false,
-      costUsd: null,
-      costBasis: "subscription",
-      incrementalCostUsd: null,
-      apiEquivalentCostUsd: null,
-      receipt: "usage.json",
-    };
-    let usage = unknown;
-    if (!agentInvoked) {
-      usage = {
-        ...unknown,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        includesAllAgents: true,
-        incrementalCostUsd: 0,
-      };
-    } else if (configuration.agent === "claude" && providerCompleted && evidenceComplete) {
-      const results = events.filter((event) => event.type === "result");
-      if (results.length === 1)
-        usage = claudeUsage(results[0], {
-          noSubagents: true,
-          billingMode: "subscription",
-          incrementalCostUsd: 0,
-        });
-    } else {
-      const turns = events.filter((event) => event.type === "turn.completed");
-      if (turns.length && providerCompleted && evidenceComplete) {
-        const rows = turns.map((event) =>
-          codexUsage(event, {
-            noSubagents: true,
-            billingMode: "subscription",
-            incrementalCostUsd: 0,
-          }),
-        );
-        usage = { ...rows[0] };
-        for (const key of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"])
-          usage[key] = rows.some((row) => row[key] === null)
-            ? null
-            : rows.reduce((sum, row) => sum + row[key], 0);
-      }
-    }
+    const usage = trialUsage(configuration.agent, raw, { agentInvoked, evidenceComplete });
     const { receipt, ...counts } = usage;
     writeNewJson(path.join(directory, receipt), {
       usage: counts,
@@ -222,7 +163,7 @@ export function createEvidence(directory, plan, assignment, item, source, worksp
         plan.study.phase === "fixture"
           ? "Synthetic provider-shaped events from an owned test process; not inference or spending evidence."
           : agentInvoked
-            ? "Raw provider events; delegated tools disabled. Interrupted or truncated usage remains unknown. Additional charges require billing review."
+            ? "Terminal provider receipts; delegated tools disabled. Process errors retain valid receipts; incomplete or truncated usage remains unknown. Additional charges require billing review."
             : "Setup failed before launching a model client; no inference calls or additional charges occurred.",
       raw: [
         "transcript.jsonl",

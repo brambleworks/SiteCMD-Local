@@ -668,6 +668,25 @@
           "minLength": 1,
           "description": "Check id from get_issues"
         },
+        "relative_path": {
+          "description": "Exact Code Scan path from get_issue. Omit to let SiteCMD choose an occurrence; supply line if the path has multiple occurrences.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "line": {
+          "description": "Exact one-based Code Scan line from get_issue; null selects a finding without a line. Requires relative_path.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "agent_tool": {
           "description": "Which agent is working; defaults to the MCP client name",
           "type": "string",

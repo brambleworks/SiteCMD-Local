@@ -6,6 +6,7 @@ export async function closingQuota({
   baseline,
   currentPath,
   billing,
+  provider,
   endedAt,
   log,
   now = Date.now,
@@ -17,7 +18,7 @@ export async function closingQuota({
     try {
       const current = read(currentPath);
       if (Date.parse(current.capturedAt) >= endedAt) {
-        const result = evaluateQuota(baseline, current, billing, now());
+        const result = evaluateQuota(baseline, current, billing, now(), provider);
         log("quota-events.jsonl", { closing: true, current, result });
         return result;
       }

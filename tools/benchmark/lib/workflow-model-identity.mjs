@@ -1,4 +1,5 @@
 import { digest } from "./workflow-plan.mjs";
+import { parseProviderTranscript, terminalProviderEvent } from "./workflow-provider-transcript.mjs";
 
 const modelName = (value) => typeof value === "string" && /^[a-zA-Z0-9][\w.-]{0,199}$/.test(value);
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -35,37 +36,18 @@ export function summarizeModelIdentity(agent, requested, transcript, evidenceCom
   const configured = new Set();
   const observations = [];
   const unidentifiedResponseLines = [];
-  const invalidLines = [];
-  const completions = [];
-  let codexThreads = 0;
-  let codexTurnsStarted = 0;
-  let codexTurnsCompleted = 0;
-  for (const [index, line] of transcript.split("\n").entries()) {
-    if (!line.trim()) continue;
-    let event;
-    try {
-      event = JSON.parse(line);
-      if (!object(event)) throw new Error("Not a provider event");
-    } catch {
-      invalidLines.push(index + 1);
-      continue;
-    }
+  const { events, invalidLines } = parseProviderTranscript(transcript);
+  for (const { event, line } of events) {
     const claims = modelClaims(agent, event);
-    if (agent === "codex") {
-      if (event.type === "thread.started") codexThreads += 1;
-      if (event.type === "turn.started") codexTurnsStarted += 1;
-      if (event.type === "turn.completed") codexTurnsCompleted += 1;
-    }
-    if (agent === "claude" && event.type === "result")
-      completions.push(event.subtype === "success" && event.is_error === false);
     claims.configured.forEach((model) => configured.add(model));
-    observations.push(...claims.observations.map((claim) => ({ line: index + 1, ...claim })));
-    if (claims.unidentifiedResponse) unidentifiedResponseLines.push(index + 1);
+    observations.push(...claims.observations.map((claim) => ({ line, ...claim })));
+    if (claims.unidentifiedResponse) unidentifiedResponseLines.push(line);
   }
   const observed = [...new Set(observations.map(({ model }) => model))].sort();
-  const codexCompleted = codexThreads === 1 && codexTurnsStarted === 1 && codexTurnsCompleted === 1;
+  const terminal = terminalProviderEvent(agent, events);
   const providerCompleted =
-    agent === "codex" ? codexCompleted : completions.length === 1 && completions[0];
+    terminal !== null &&
+    (agent === "codex" || (terminal.subtype === "success" && terminal.is_error === false));
   const assurance = agent === "codex" ? "explicit-cli-selection" : "provider-response-metadata";
   const configuredMatches = [...configured].every((model) => model === requested);
   const verified =

@@ -7,6 +7,7 @@ export interface AgentRequestInput {
   projectId: number;
   envUrl: string;
   checkId?: string;
+  target?: { relativePath: string; line: number | null };
   scope?: "web" | "code" | "full";
   agentTool: string;
 }
@@ -45,8 +46,9 @@ export function createAgentRequest(input: AgentRequestInput): number {
   const now = Date.now();
   const info = getDbWrite()
     .prepare(
-      `INSERT INTO agent_requests (kind, project_id, env_url, check_id, scope, agent_tool, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'requested', ?, ?)`,
+      `INSERT INTO agent_requests (kind, project_id, env_url, check_id, scope, agent_tool, status, created_at, updated_at,
+                                  target_relative_path, target_line)
+       VALUES (?, ?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?)`,
     )
     .run(
       input.kind,
@@ -57,6 +59,8 @@ export function createAgentRequest(input: AgentRequestInput): number {
       input.agentTool,
       now,
       now,
+      input.target?.relativePath ?? null,
+      input.target?.line ?? null,
     );
   return Number(info.lastInsertRowid);
 }

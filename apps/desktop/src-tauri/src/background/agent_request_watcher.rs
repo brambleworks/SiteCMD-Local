@@ -149,14 +149,51 @@ pub(crate) fn fulfil_start_fix(
         .clone()
         .ok_or_else(|| "start_fix needs a check_id".to_string())?;
     let agent_tool = agent_tool_from_token(&request.agent_tool)?;
+    if let Some((status, snooze_until, _, _)) = db
+        .get_issue_state(request.project_id, Some(&env_url), &check_id)
+        .map_err(|error| error.to_string())?
+    {
+        if status
+            .effective(snooze_until, now)
+            .is_inactive_for_scoring()
+        {
+            return Err(
+                "This issue is no longer open; call get_issues for the current list.".into(),
+            );
+        }
+    }
     let items = db
         .get_active_work_items(request.project_id, Some(&env_url))
         .map_err(|error| error.to_string())?;
-    let item = items
-        .iter()
-        .filter(|item| item.check_id == check_id)
-        .min_by_key(|item| item.severity.sort_rank())
-        .ok_or_else(|| format!("no open issue {check_id} for {env_url}"))?;
+    let matching = items.iter().filter(|item| item.check_id == check_id);
+    let item = match request.target_relative_path.as_deref() {
+        Some(path) => {
+            let mut exact = matching.filter(|item| {
+                item.source == "code_scan"
+                    && item.metadata.relative_path.as_deref() == Some(path)
+                    && item.metadata.line == request.target_line
+            });
+            let item = exact.next().ok_or_else(|| {
+                "No open Code Scan occurrence at that location; call get_issue for current locations."
+                    .to_string()
+            })?;
+            if exact.next().is_some() {
+                return Err(
+                    "More than one open occurrence matches; refresh Code Scan and call get_issue."
+                        .into(),
+                );
+            }
+            item
+        }
+        None => {
+            if request.target_line.is_some() {
+                return Err("line requires relative_path from get_issue.".into());
+            }
+            matching
+                .min_by_key(|item| item.severity.sort_rank())
+                .ok_or_else(|| format!("no open issue {check_id} for {env_url}"))?
+        }
+    };
     let code_locations = item.metadata.relative_path.as_ref().map(|path| {
         vec![BriefLocation {
             label: match item.metadata.line {
@@ -265,3 +302,7 @@ async fn fulfil_run_scan(
 #[cfg(test)]
 #[path = "agent_request_watcher_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "agent_request_target_tests.rs"]
+mod target_tests;

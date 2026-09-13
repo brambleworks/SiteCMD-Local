@@ -28,7 +28,7 @@ function arm(name) {
       raw: JSON.stringify({ issues: [targetIssue] }),
       report: { issues: [targetIssue] },
     },
-    issueDetail: `Flagged location: ${repair.targetFinding.relativePath}:41`,
+    issueDetail: `Grouped detail for ${repair.targetFinding.checkId}`,
     ...(name === "mcp"
       ? {
           attemptId: 17,

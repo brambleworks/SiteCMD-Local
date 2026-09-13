@@ -10,10 +10,10 @@ Protocol version: `agent-workflow-v1`.
 The [benchmark operator guide](../../tools/benchmark/README.md) documents the
 planner, isolated Linux desktop executor, evidence importer, review receipts, and
 report commands. The subscription runner supports the completed five-case owned
-pilot and an explicit historical Whoogle runner calibration. The first
-scanner-enriched repository study is retained as invalidated diagnostic evidence
-and cannot be run again. The separate synthetic fixture exercises the evidence
-pipeline, not the product's benefit. Calibration and invalidated results do not
+pilot and an explicit historical Whoogle runner calibration. The
+scanner-enriched repository studies and the v2 supplement are retained as invalidated
+diagnostic evidence and cannot be run again. The separate synthetic fixture exercises
+the evidence pipeline, not the product's benefit. Calibration and invalidated results do not
 establish a marketing claim.
 
 ## Comparisons
@@ -59,6 +59,13 @@ none of its rates or token measurements may support a product or marketing claim
 The invalidation registry makes the runner reject that study ID and makes reports
 label its evidence diagnostic-only.
 
+The v2 follow-up is also invalidated. Its extension grader lacked standard DOM
+operations used by valid repairs. Its shell grader required direct Windows `.cmd`
+execution without a command shell, contradicting the platform's execution model.
+These defects invalidate both success counts and accepted-repair token denominators.
+Preserve the original records; any corrected regrading is a separate diagnostic
+analysis, not a replacement preregistered result.
+
 Start with Code Scan. Evaluate Web Scan separately with controlled, resettable
 deployments; it must have its own sufficient sample. Neither code-only results
 nor a small combined sample justify a broad claim about all website repairs.
@@ -92,6 +99,11 @@ Each case needs:
   unrelated regression checks. Demonstrate both before measuring agents.
 - A reviewed reference patch that passes acceptance and regression checks.
   Run baseline and reference checks repeatedly to reject flaky cases.
+- Test multiple independent valid repairs and deliberate near-miss repairs before
+  freezing the grader. A test double must not reject a supported API merely because
+  it differs from the reference implementation. Use real browser or operating-system
+  execution for platform-dependent claims; mocked process arguments do not prove
+  a Windows command actually runs.
 - A validator, provenance, category, surface, and held-out status.
 - Hidden acceptance checks for the behavior, plus existing and independent
   regression tests. Agents may run ordinary project tests but cannot edit or

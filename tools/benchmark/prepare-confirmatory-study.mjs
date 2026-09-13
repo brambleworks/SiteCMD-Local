@@ -3,10 +3,19 @@ import path from "node:path";
 import { validateConfirmatoryWorkflowCase } from "./lib/confirmatory-workflow.mjs";
 import { validateRepositoryConfirmatoryCorpus } from "./lib/repository-corpus.mjs";
 import { repositoryGraderIdentity } from "./lib/repository-grader-identity.mjs";
+import {
+  confirmatoryRegistrationFilename,
+  validateRepositoryConfirmatoryRegistration,
+} from "./lib/repository-confirmatory-registration.mjs";
+import {
+  repositoryQualificationRuntimeBinding,
+  validateRepositoryQualificationRuntime,
+} from "./lib/repository-qualification-runtime.mjs";
 import { deriveRepositoryReference } from "./lib/repository-reference.mjs";
 import { validateRepositorySnapshot } from "./lib/repository-snapshot.mjs";
+import { repositoryScannerTargetIssue } from "./lib/repository-scanner-eligibility.mjs";
 import { artifactPath, readArtifact } from "./lib/workflow-artifacts.mjs";
-import { confirmatoryStudyPolicy } from "./lib/workflow-confirmatory-study.mjs";
+import { confirmatoryStudyPolicyForCorpus } from "./lib/workflow-confirmatory-study.mjs";
 import { validateRunnableStudy } from "./lib/workflow-runnable-study.mjs";
 import { requireCondition } from "./lib/workflow-contract.mjs";
 import { digest } from "./lib/workflow-plan.mjs";
@@ -47,12 +56,15 @@ const readJson = (root, name) => JSON.parse(readArtifact(root, name).toString("u
 const corpusDefinition = validateRepositoryConfirmatoryCorpus(
   readJson(screeningRoot, "intake.json"),
 );
+const studyPolicy = confirmatoryStudyPolicyForCorpus(corpusDefinition.id);
 const screening = readJson(screeningRoot, "screening.json");
 const eligibility = readJson(eligibilityRoot, "eligibility.json");
 const qualification = readJson(qualificationRoot, "qualification.json");
 const workflow = readJson(workflowRoot, "workflow.json");
 const registration = JSON.parse(
-  readFileSync(new URL("./cases/repository-confirmatory-registration.json", import.meta.url)),
+  readFileSync(
+    new URL(`./cases/${confirmatoryRegistrationFilename(corpusDefinition.id)}`, import.meta.url),
+  ),
 );
 const product = JSON.parse(readFileSync(path.resolve(productFile), "utf8"));
 const same = (left, right, label) =>
@@ -85,6 +97,7 @@ requireCondition(
     product.cliSha256 === eligibility.product.cliSha256,
   "Confirmatory screening, eligibility, qualification, workflow, registration, or product differs",
 );
+validateRepositoryConfirmatoryRegistration(registration, corpusDefinition, eligibility);
 
 const harness = deployHarness();
 const qualificationHarness = readJson(qualificationRoot, "harness.json");
@@ -148,7 +161,8 @@ for (const item of corpusDefinition.cases) {
       ) &&
       qualified.variants.reference.grades.every(
         (grade) => grade.acceptancePass && grade.regressionsPass,
-      ),
+      ) &&
+      validateRepositoryQualificationRuntime(item.id, qualified),
     `Case ${item.id} behavioral qualification is incomplete`,
   );
   const workflowCase = readJson(workflowRoot, workflowIndex.artifact);
@@ -167,15 +181,9 @@ for (const item of corpusDefinition.cases) {
       qualified.scanner.baseline.targetFingerprintMatches === 1,
     `Case ${item.id} scanner qualification is incomplete`,
   );
-  const targetIssue = scanner.baseline.targetIssues[0];
-  requireCondition(
-    scanner.baseline.targetFingerprintMatches === 1 &&
-      targetIssue.checkId === item.targetFinding.checkId &&
-      targetIssue.relativePath === item.targetFinding.relativePath &&
-      targetIssue.fingerprint === item.targetFinding.fingerprint,
-    `Case ${item.id} exact scanner target differs`,
-  );
+  const targetIssue = repositoryScannerTargetIssue(item, scanner.baseline);
   const rule = item.targetFinding.checkId.replace(/^code_scan\./, "");
+  const runtimeBinding = repositoryQualificationRuntimeBinding(item.id, qualified);
   frozenCorpus.push({
     id: item.id,
     repository: item.repository.id,
@@ -186,6 +194,7 @@ for (const item of corpusDefinition.cases) {
     confirmatory: true,
     targetFinding: item.targetFinding,
     targetIssue,
+    ...(runtimeBinding ? { [runtimeBinding.runtimeField]: runtimeBinding.runtime } : {}),
     ...(registered.controlSourceSha256
       ? { controlSourceSha256: registered.controlSourceSha256 }
       : {}),
@@ -215,6 +224,7 @@ for (const item of corpusDefinition.cases) {
     referenceSha256: reference.sha256,
     graderSha256: currentGrader,
     reportSha256: digest(rawReport),
+    ...(runtimeBinding ? { [runtimeBinding.digestField]: runtimeBinding.sha256 } : {}),
     baseline: {
       acceptancePass: registered.baselineAcceptancePass,
       regressionsPass: true,
@@ -224,24 +234,20 @@ for (const item of corpusDefinition.cases) {
       "Independent offline behavioral assertions repeated three times, exact scanner identity, source integrity checks, and real desktop, CLI, and MCP workflow qualification",
   });
 }
-requireCondition(
-  new Set(tasks.map((task) => task.repository)).size === 7,
-  "Confirmatory corpus must retain seven repository clusters",
-);
 const study = {
   schemaVersion: 1,
-  id: confirmatoryStudyPolicy.studyId,
-  phase: confirmatoryStudyPolicy.phase,
-  seed: 20260909,
-  repeats: confirmatoryStudyPolicy.repeats,
-  arms: confirmatoryStudyPolicy.arms,
-  limits: confirmatoryStudyPolicy.limits,
-  billing: confirmatoryStudyPolicy.billing,
+  id: studyPolicy.studyId,
+  phase: studyPolicy.phase,
+  seed: corpusDefinition.id === "sitecmd-confirmatory-v3" ? 20260912 : 20260909,
+  repeats: studyPolicy.repeats,
+  arms: studyPolicy.arms,
+  limits: studyPolicy.limits,
+  billing: studyPolicy.billing,
   protocol: "agent-workflow-v1-repository-confirmatory",
   protocolSha256: digest(protocol),
-  registration: confirmatoryStudyPolicy.registration,
-  sampleSizeRationale: confirmatoryStudyPolicy.sampleSizeRationale,
-  analysis: confirmatoryStudyPolicy.analysis,
+  registration: studyPolicy.registration,
+  sampleSizeRationale: studyPolicy.sampleSizeRationale,
+  analysis: studyPolicy.analysis,
   runnerSha256: harness.id,
   corpusSha256: digest(frozenCorpus),
   productSha256: digest(product),
@@ -253,7 +259,7 @@ const study = {
   },
   configurations: trialConfigurations(
     `${product.environment}; warm; controller ${harness.id}`,
-    confirmatoryStudyPolicy.models,
+    studyPolicy.models,
   ),
   tasks,
 };

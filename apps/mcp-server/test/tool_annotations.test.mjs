@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { connectInMemory } from "./tools_list_snapshot.test.mjs";
+import { openSchemaFixtureDb } from "./helpers/schema-fixture.mjs";
+
+openSchemaFixtureDb("sitecmd-mcp-annotations-");
 
 const WRITERS = new Set(["request_verification", "start_fix", "run_scan"]);
 

@@ -117,6 +117,17 @@ test("accepts the maintained v2 scanner-enriched corpus", () => {
   assert.equal(validateRepositoryConfirmatoryCorpus(maintained), maintained);
 });
 
+test("accepts the frozen 32-case v3 scanner-enriched corpus", () => {
+  const maintained = JSON.parse(
+    readFileSync(new URL("../cases/repository-confirmatory-v3.json", import.meta.url), "utf8"),
+  );
+  assert.equal(validateRepositoryConfirmatoryCorpus(maintained), maintained);
+  assert.equal(maintained.cases.length, 32);
+  assert.equal(maintained.cases.filter(({ kind }) => kind === "repair").length, 24);
+  assert.equal(maintained.cases.filter(({ kind }) => kind === "negative_control").length, 8);
+  assert.equal(new Set(maintained.cases.map(({ repository }) => repository.id)).size, 28);
+});
+
 test("rejects confirmatory corpora without an explicit estimand or target finding", () => {
   for (const change of [
     (value) => {
@@ -170,7 +181,7 @@ test("rejects an undersized or concentrated corpus", () => {
   for (const change of [
     (value) => value.cases.pop(),
     (value) => {
-      value.cases = Array.from({ length: 13 }, (_, index) => caseDefinition(index));
+      value.cases = Array.from({ length: 33 }, (_, index) => caseDefinition(index));
     },
     (value) => {
       value.cases.forEach(
@@ -240,7 +251,7 @@ test("rejects cases without unique identities, pins, or observable contracts", (
       value.cases[6].upstreamCommit = commit("changed-control");
     },
     (value) => {
-      delete value.cases[0].upstreamAdvisory;
+      value.cases[0].upstreamAdvisory = "not-a-url";
     },
     (value) => {
       delete value.cases[0].referenceStrategy;

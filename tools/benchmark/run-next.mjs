@@ -27,7 +27,10 @@ if (!assignment) {
 const baseline = JSON.parse(readFileSync(path.join(run, "quota-baseline.json")));
 const currentPath = path.join(run, "quota-current.json");
 const current = JSON.parse(readFileSync(currentPath));
-const quota = evaluateQuota(baseline, current, plan.study.billing);
+const provider = plan.study.configurations.find(
+  (entry) => entry.id === assignment.configuration,
+).agent;
+const quota = evaluateQuota(baseline, current, plan.study.billing, Date.now(), provider);
 if (!quota.quotaAllowed) throw new Error(quota.blockers.join("; "));
 const baselineHashFile = path.join(run, "quota-baseline.sha256");
 // "wx" refuses an existing receipt, so the compare below is the real check.
@@ -95,13 +98,14 @@ const timer = setInterval(() => {
   try {
     const snapshot = JSON.parse(readFileSync(currentPath));
     if (digest(snapshot) !== previous) {
-      evaluateQuota(baseline, snapshot, plan.study.billing);
+      evaluateQuota(baseline, snapshot, plan.study.billing, Date.now(), provider);
       verifyQuotaUsageContinuity(baseline, previousSnapshot, snapshot);
       guestCommand(["sudo", "node", `${harness.directory}/update-quota.mjs`], {
         input: JSON.stringify({
           directory: `/srv/sitecmd-benchmark/trials/${assignment.id}`,
           snapshot,
           billing: plan.study.billing,
+          provider,
         }),
         capture: true,
       });

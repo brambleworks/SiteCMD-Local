@@ -5,6 +5,12 @@ import { getIssueOccurrences, getIssuesForProject, getLiveScore } from "../dist/
 import { connectInMemory } from "./tools_list_snapshot.test.mjs";
 import { ensureProject, makeSeeders, openSchemaFixtureDb } from "./helpers/schema-fixture.mjs";
 
+// Escape every character a regex gives meaning to, not just the dot. A partial
+// escape leaves the rest of the identifier free to change what the pattern
+// matches, which is the difference between asserting a string and asserting
+// whatever that string happens to compile to.
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // db.js resolves SITECMD_DB_PATH lazily at first query, so seeding the fixture
 // (which sets the env var) after the static imports is safe.
 const fixtureDb = openSchemaFixtureDb("sitecmd-mcp-issue-sources-");
@@ -228,7 +234,7 @@ test("get_issues labels the source each finding came from", async () => {
     assert.match(
       output,
       new RegExp(
-        `\\*\\*Check:\\*\\* ${finding.checkId.replace(/\./g, "\\.")} \\| \\*\\*Source:\\*\\* ${finding.source}\\b`,
+        `\\*\\*Check:\\*\\* ${escapeRegExp(finding.checkId)} \\| \\*\\*Source:\\*\\* ${escapeRegExp(finding.source)}\\b`,
       ),
       `${finding.checkId} should name its source so a dependency finding reads differently from a scan finding`,
     );

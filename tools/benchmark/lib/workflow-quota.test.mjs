@@ -56,6 +56,51 @@ test("quota checks both subscriptions and pauses when either weekly allocation i
   assert.match(check().blockers.join("\n"), /codex.*30%/);
 });
 
+test("active-provider budgets do not interrupt a trial for an unrelated account limit", () => {
+  const baseline = snapshot("2026-09-03T15:00:00Z");
+  const current = snapshot();
+  const billing = { ...pilotPolicy.billing, quotaScope: "active-provider" };
+  current.accounts[1].windows[1].usedPercent = 95;
+  current.accounts[1].windows[0].usedPercent = 50;
+  assert.equal(evaluateQuota(baseline, current, billing, NOW, "codex").quotaAllowed, true);
+  assert.equal(evaluateQuota(baseline, current, billing, NOW, "claude").quotaAllowed, false);
+  assert.equal(evaluateQuota(baseline, current, billing, NOW).quotaAllowed, false);
+  assert.equal(
+    evaluateQuota(baseline, current, pilotPolicy.billing, NOW, "codex").quotaAllowed,
+    false,
+  );
+  current.accounts[0].windows[0].usedPercent = 30;
+  assert.equal(evaluateQuota(baseline, current, billing, NOW, "codex").quotaAllowed, false);
+});
+
+test("provider-scoped budgets retain identity, freshness, and no-paid-usage checks", () => {
+  const baseline = snapshot("2026-09-03T15:00:00Z");
+  const billing = { ...pilotPolicy.billing, quotaScope: "active-provider" };
+  for (const change of [
+    (value) => {
+      value.accounts[1].extraUsageEnabled = true;
+    },
+    (value) => {
+      value.accounts[1].authMode = "api";
+    },
+    (value) => {
+      value.accounts[1].account = "another-account";
+    },
+    (value) => {
+      value.capturedAt = "2026-09-03T15:30:00Z";
+    },
+  ]) {
+    const current = snapshot();
+    change(current);
+    assert.equal(evaluateQuota(baseline, current, billing, NOW, "codex").quotaAllowed, false);
+  }
+  assert.throws(() => evaluateQuota(baseline, snapshot(), billing, NOW, "unknown"), /provider/i);
+  assert.throws(
+    () => evaluateQuota(baseline, snapshot(), { ...billing, quotaScope: "none" }, NOW),
+    /scope/i,
+  );
+});
+
 test("unknown, stale, reset, and differently authenticated quotas cannot authorize a trial", () => {
   for (const [change, message] of [
     [

@@ -10,6 +10,7 @@ function setOwner(target, owner) {
 
 export function prepareRepositoryAgentRuntime({ item, workspace, channel, owner }) {
   if (!item.repositoryRuntime) return null;
+  if (item.id === "onekey-http-client-tls-verification") return null;
   if (item.id !== "whoogle-named-config-path")
     throw new Error(`Unsupported repository agent runtime: ${item.id}`);
   const id = path.basename(workspace);
