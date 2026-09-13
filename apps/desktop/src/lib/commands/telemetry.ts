@@ -24,8 +24,10 @@ export type TelemetryRequest =
       authorization: string;
     }
   | {
+      // The deletion secret is read from the OS keychain on the Rust side and
+      // added to the wire body there. The renderer only ever names the subject.
       kind: "usageDelete";
-      body: { subjectId: string; deleteSecret: string };
+      body: { subjectId: string };
     }
   | {
       kind: "crashReport";
@@ -53,4 +55,17 @@ export function sendTelemetryRequest(args: {
   args: TelemetryRequest;
 }): Promise<TelemetryHttpResponse> {
   return command<TelemetryHttpResponse>("send_telemetry_request", args);
+}
+
+/**
+ * SHA-256 of the keychain-held deletion secret, minting the secret on first
+ * use. The hash travels with every event, so it is not itself sensitive.
+ */
+export function getTelemetryDeleteProofHash(): Promise<string> {
+  return command<string>("get_telemetry_delete_proof_hash");
+}
+
+/** Drop the deletion secret when the telemetry subject is reset. */
+export function clearTelemetryDeleteSecret(): Promise<void> {
+  return command<void>("clear_telemetry_delete_secret");
 }

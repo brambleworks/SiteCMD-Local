@@ -501,6 +501,8 @@ pub fn run() {
             commands::get_telemetry_consent,
             commands::set_telemetry_consent,
             commands::send_telemetry_request,
+            commands::get_telemetry_delete_proof_hash,
+            commands::clear_telemetry_delete_secret,
             commands::get_db_size,
             commands::scan::tools::run_webview_analysis,
             commands::scan::tools::verify_scan_checks,

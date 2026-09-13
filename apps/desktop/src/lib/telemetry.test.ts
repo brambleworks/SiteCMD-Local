@@ -5,10 +5,13 @@ import {
   __setDiagnosticSenderForTests,
   __setTelemetryConsentAuthorityForTests,
   __setTelemetryConfigForTests,
+  __setTelemetryDeleteProofForTests,
   __setTelemetryTransportForTests,
   buildTelemetryPreview,
   flushTelemetryQueue,
   parseDsnHost,
+  requestUploadedTelemetryDeletion,
+  resetTelemetrySubject,
   SENTRY_INGEST_HOST,
   sanitizeTelemetryProperties,
   sanitizeTelemetryText,
@@ -19,6 +22,11 @@ import {
 } from "./telemetry";
 
 const diagnosticSenderMock = vi.fn();
+const PROOF = "a".repeat(64);
+const deleteProofMock = {
+  get: vi.fn<() => Promise<string>>(),
+  clear: vi.fn<() => Promise<void>>(),
+};
 let backendConsent = {
   usageAnalytics: false,
   crashReports: false,
@@ -50,6 +58,11 @@ describe("telemetry", () => {
       },
     });
     __setDiagnosticSenderForTests(diagnosticSenderMock);
+    deleteProofMock.get.mockReset();
+    deleteProofMock.get.mockResolvedValue(PROOF);
+    deleteProofMock.clear.mockReset();
+    deleteProofMock.clear.mockResolvedValue(undefined);
+    __setTelemetryDeleteProofForTests(deleteProofMock);
   });
 
   it("does not send usage events before usage consent is enabled", async () => {
@@ -303,7 +316,6 @@ describe("telemetry", () => {
       crashReports: true,
       promptStatus: "saved",
       subjectId: "scmd_stale_subject",
-      deleteSecret: "delete_stale_secret",
       consentVersion: 1,
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
@@ -322,7 +334,6 @@ describe("telemetry", () => {
       crashReports: true,
       promptStatus: "saved",
       subjectId: "scmd_stale_subject",
-      deleteSecret: "delete_stale_secret",
       consentVersion: 1,
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
@@ -415,6 +426,87 @@ describe("telemetry", () => {
 
     const stored = JSON.parse(localStorage.getItem("sitecmd_telemetry_queue_v1") ?? "[]");
     expect(stored).toHaveLength(60);
+  });
+
+  describe("deletion secret", () => {
+    function registeringTransport() {
+      return vi.fn((endpoint: string) =>
+        Promise.resolve(
+          endpoint.endsWith("/v1/register")
+            ? Response.json({ ok: true, token: "t", expiresAt: "2099-01-01T00:00:00.000Z" })
+            : new Response(null, { status: 200 }),
+        ),
+      );
+    }
+
+    it("registers and stamps events with the keychain-derived proof", async () => {
+      const transport = registeringTransport();
+      __setTelemetryConfigForTests({
+        telemetryEndpoint: "https://telemetry.sitecmd.com/v1/events",
+      });
+      __setTelemetryTransportForTests(transport);
+
+      await setTelemetryConsent({ usageAnalytics: true, crashReports: false });
+      trackUsageEvent("workflow_event", { workflowName: "run_scan", workflowStatus: "started" });
+      await flushTelemetryQueue();
+
+      const calls = transport.mock.calls as unknown as Array<[string, string]>;
+      const registration = JSON.parse(calls[0]?.[1] ?? "{}") as Record<string, unknown>;
+      expect(registration.deleteProofHash).toBe(PROOF);
+      const batch = JSON.parse(calls.at(-1)?.[1] ?? "{}") as {
+        events: Array<Record<string, unknown>>;
+      };
+      expect(batch.events[0]?.deleteProofHash).toBe(PROOF);
+      // One keychain read serves both the registration and the batch.
+      expect(deleteProofMock.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the secret out of every renderer store", async () => {
+      await setTelemetryConsent({ usageAnalytics: true, crashReports: false });
+
+      const persisted = localStorage.getItem("sitecmd_telemetry_consent_v1") ?? "";
+      expect(persisted).toContain("subjectId");
+      expect(persisted).not.toContain("deleteSecret");
+      expect(persisted).not.toContain("delete_");
+    });
+
+    it("asks for erasure by subject only and leaves the secret to the keychain", async () => {
+      const transport = vi.fn(() => Promise.resolve(new Response(null, { status: 200 })));
+      __setTelemetryConfigForTests({
+        telemetryEndpoint: "https://telemetry.sitecmd.com/v1/events",
+      });
+      __setTelemetryTransportForTests(transport);
+      await setTelemetryConsent({ usageAnalytics: true, crashReports: false });
+
+      await expect(requestUploadedTelemetryDeletion()).resolves.toBe("sent");
+
+      const calls = transport.mock.calls as unknown as Array<[string, string]>;
+      expect(calls.at(-1)?.[0]).toBe("https://telemetry.sitecmd.com/v1/delete");
+      expect(Object.keys(JSON.parse(calls.at(-1)?.[1] ?? "{}"))).toEqual(["subjectId"]);
+    });
+
+    it("rotates the keychain secret with the subject and re-reads the proof", async () => {
+      const transport = registeringTransport();
+      __setTelemetryConfigForTests({
+        telemetryEndpoint: "https://telemetry.sitecmd.com/v1/events",
+      });
+      __setTelemetryTransportForTests(transport);
+      await setTelemetryConsent({ usageAnalytics: true, crashReports: false });
+      trackUsageEvent("workflow_event", { workflowName: "run_scan", workflowStatus: "started" });
+      await flushTelemetryQueue();
+      deleteProofMock.get.mockResolvedValue("b".repeat(64));
+
+      await resetTelemetrySubject();
+      trackUsageEvent("workflow_event", { workflowName: "run_scan", workflowStatus: "started" });
+      await flushTelemetryQueue();
+
+      expect(deleteProofMock.clear).toHaveBeenCalledTimes(1);
+      const calls = transport.mock.calls as unknown as Array<[string, string]>;
+      const registrations = calls
+        .filter(([endpoint]) => endpoint.endsWith("/v1/register"))
+        .map(([, body]) => (JSON.parse(body) as Record<string, unknown>).deleteProofHash);
+      expect(registrations).toEqual([PROOF, "b".repeat(64)]);
+    });
   });
 
   describe("Sentry ingest host", () => {

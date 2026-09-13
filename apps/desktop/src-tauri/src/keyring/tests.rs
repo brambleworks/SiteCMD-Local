@@ -146,6 +146,38 @@ fn license_key_round_trips_through_the_app_keyring() {
 }
 
 #[test]
+fn telemetry_delete_secret_round_trips_through_the_app_keyring() {
+    let _guard = SECRET_TEST_GUARD.lock().expect("secret test guard");
+    #[cfg(debug_assertions)]
+    clear_debug_secret_store();
+
+    let app = mock_app();
+    let handle = app.handle();
+    let secret = "delete_0123456789abcdef0123456789abcdef";
+
+    assert!(
+        super::get_telemetry_delete_secret(handle)
+            .expect("read")
+            .is_none(),
+        "no deletion secret before store"
+    );
+    super::store_telemetry_delete_secret(handle, secret).expect("store");
+    assert_eq!(
+        super::get_telemetry_delete_secret(handle)
+            .expect("read")
+            .as_deref(),
+        Some(secret)
+    );
+    super::delete_telemetry_delete_secret(handle).expect("delete");
+    assert!(
+        super::get_telemetry_delete_secret(handle)
+            .expect("read")
+            .is_none(),
+        "deletion secret cleared after delete"
+    );
+}
+
+#[test]
 fn connected_installation_token_is_global_and_fingerprint_keys_are_project_scoped() {
     let _guard = SECRET_TEST_GUARD.lock().expect("secret test guard");
     #[cfg(debug_assertions)]

@@ -68,6 +68,8 @@ const APP_COMMANDS: &[&str] = &[
     "get_telemetry_consent",
     "set_telemetry_consent",
     "send_telemetry_request",
+    "get_telemetry_delete_proof_hash",
+    "clear_telemetry_delete_secret",
     "get_db_size",
     "run_webview_analysis",
     "verify_scan_checks",

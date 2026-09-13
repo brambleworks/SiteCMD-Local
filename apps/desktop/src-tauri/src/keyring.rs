@@ -16,11 +16,12 @@ mod webhooks;
 
 pub use app_secrets::{
     delete_catalog_token, delete_license_key, delete_pagespeed_api_key, delete_pending_activation,
-    delete_pending_connect_activation, get_catalog_token, get_license_key, get_pagespeed_api_key,
-    get_pending_activation, get_pending_connect_activation, get_pending_releases,
-    replace_pending_releases, settle_pending_release, store_catalog_token, store_license_key,
-    store_pagespeed_api_key, store_pending_activation, store_pending_connect_activation,
-    store_pending_release, PendingRelease,
+    delete_pending_connect_activation, delete_telemetry_delete_secret, get_catalog_token,
+    get_license_key, get_pagespeed_api_key, get_pending_activation, get_pending_connect_activation,
+    get_pending_releases, get_telemetry_delete_secret, replace_pending_releases,
+    settle_pending_release, store_catalog_token, store_license_key, store_pagespeed_api_key,
+    store_pending_activation, store_pending_connect_activation, store_pending_release,
+    store_telemetry_delete_secret, PendingRelease,
 };
 pub(crate) use connected::get_project_fingerprint_key_bytes;
 pub use connected::{

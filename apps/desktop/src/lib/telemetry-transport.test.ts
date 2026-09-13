@@ -46,7 +46,7 @@ describe("telemetry transport", () => {
     );
     await tauriTelemetryTransport(
       "https://telemetry.sitecmd.com/v1/delete",
-      '{"subjectId":"scmd_12345678","deleteSecret":"delete_secret"}',
+      '{"subjectId":"scmd_12345678"}',
     );
 
     expect(sendTelemetryRequestMock.mock.calls.map(([request]) => request.args.kind)).toEqual([

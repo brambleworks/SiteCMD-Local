@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-telemetry-delete-proof-hash"
+description = "Enables the get_telemetry_delete_proof_hash command without any pre-configured scope."
+commands.allow = ["get_telemetry_delete_proof_hash"]
+
+[[permission]]
+identifier = "deny-get-telemetry-delete-proof-hash"
+description = "Denies the get_telemetry_delete_proof_hash command without any pre-configured scope."
+commands.deny = ["get_telemetry_delete_proof_hash"]
