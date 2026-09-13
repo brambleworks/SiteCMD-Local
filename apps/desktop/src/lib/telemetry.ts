@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import {
+  clearTelemetryDeleteSecret,
   getTelemetryConsent,
+  getTelemetryDeleteProofHash,
   sendTelemetryRequest,
   setBackendTelemetryConsent,
   type BackendTelemetryConsent,
@@ -13,7 +15,6 @@ import { tauriTelemetryTransport, type TelemetryTransport } from "./telemetry-tr
 import {
   detectArchitecture,
   detectOsFamily,
-  hashTelemetryText,
   randomId,
   sanitizeTelemetryProperties,
   sanitizeTelemetryText,
@@ -40,7 +41,6 @@ export interface TelemetryConsentState {
   crashReports: boolean;
   promptStatus: TelemetryPromptStatus;
   subjectId: string | null;
-  deleteSecret: string | null;
   consentVersion: number;
   updatedAt: string | null;
 }
@@ -122,7 +122,6 @@ const DEFAULT_CONSENT: TelemetryConsentState = {
   crashReports: false,
   promptStatus: "unseen",
   subjectId: null,
-  deleteSecret: null,
   consentVersion: CONSENT_VERSION,
   updatedAt: null,
 };
@@ -165,6 +164,21 @@ let telemetryConsentAuthority: TelemetryConsentAuthority = {
 let diagnosticSender = sendTelemetryRequest;
 let consentHydrationPromise: Promise<void> | null = null;
 
+interface TelemetryDeleteProofAuthority {
+  get: () => Promise<string>;
+  clear: () => Promise<void>;
+}
+
+let telemetryDeleteProof: TelemetryDeleteProofAuthority = {
+  get: getTelemetryDeleteProofHash,
+  clear: clearTelemetryDeleteSecret,
+};
+// The deletion secret lives in the OS keychain and never enters the webview.
+// This is its SHA-256, which the ingest service stores at registration and
+// which travels with every event, so holding it here exposes nothing.
+let cachedDeleteProofHash: string | null = null;
+let deleteProofHashPromise: Promise<string | null> | null = null;
+
 export async function initializeTelemetryFromStoredConsent() {
   if (!consentHydrationPromise) {
     consentHydrationPromise = hydrateTelemetryConsent(storeGet<unknown>(CONSENT_STORE_KEY, null));
@@ -195,9 +209,6 @@ export async function setTelemetryConsent(next: {
     crashReports: authoritative.crashReports,
     promptStatus: next.promptStatus ?? "saved",
     subjectId: needsSubject ? (consent.subjectId ?? randomId("scmd")) : consent.subjectId,
-    deleteSecret: needsSubject
-      ? (consent.deleteSecret ?? randomId("delete"))
-      : consent.deleteSecret,
     consentVersion: CONSENT_VERSION,
     updatedAt: new Date().toISOString(),
   };
@@ -345,25 +356,27 @@ export async function resetTelemetrySubject() {
   consent = {
     ...consent,
     subjectId: consent.usageAnalytics || consent.crashReports ? randomId("scmd") : null,
-    deleteSecret: consent.usageAnalytics || consent.crashReports ? randomId("delete") : null,
     updatedAt: new Date().toISOString(),
   };
   deleteQueuedTelemetry();
   clearIngestToken();
+  // A new anonymous identity gets a new deletion secret. The old one goes with
+  // the old subject, whose uploads are no longer reachable from this install.
+  clearDeleteProofHash();
+  await telemetryDeleteProof.clear().catch(() => undefined);
   persistConsent();
   publishConsent();
 }
 
 export async function requestUploadedTelemetryDeletion(): Promise<"sent" | "not_configured"> {
-  if (!runtimeConfig.telemetryEndpoint || !consent.subjectId || !consent.deleteSecret) {
+  if (!runtimeConfig.telemetryEndpoint || !consent.subjectId) {
     return "not_configured";
   }
+  // The secret that authorizes this is added on the Rust side from the
+  // keychain; the renderer only names the subject.
   const response = await telemetryTransport(
     runtimeConfig.telemetryEndpoint.replace(/\/v1\/events\/?$/, "/v1/delete"),
-    JSON.stringify({
-      subjectId: consent.subjectId,
-      deleteSecret: consent.deleteSecret,
-    }),
+    JSON.stringify({ subjectId: consent.subjectId }),
   );
   if (!response.ok) {
     throw new Error(`Telemetry deletion failed with HTTP ${response.status}`);
@@ -437,6 +450,11 @@ export function __resetTelemetryForTests() {
     set: setBackendTelemetryConsent,
   };
   diagnosticSender = sendTelemetryRequest;
+  telemetryDeleteProof = {
+    get: getTelemetryDeleteProofHash,
+    clear: clearTelemetryDeleteSecret,
+  };
+  clearDeleteProofHash();
   consentHydrationPromise = null;
   ingestToken = null;
   ingestTokenPromise = null;
@@ -472,6 +490,11 @@ export function __setTelemetryConsentAuthorityForTests(authority: TelemetryConse
 
 export function __setDiagnosticSenderForTests(sender: typeof sendTelemetryRequest) {
   diagnosticSender = sender;
+}
+
+export function __setTelemetryDeleteProofForTests(authority: TelemetryDeleteProofAuthority) {
+  telemetryDeleteProof = authority;
+  clearDeleteProofHash();
 }
 
 function subscribeConsent(callback: () => void) {
@@ -527,7 +550,6 @@ async function hydrateTelemetryConsent(storedPromise: Promise<unknown>): Promise
     usageAnalytics,
     crashReports,
     subjectId: needsSubject ? (stored.subjectId ?? randomId("scmd")) : stored.subjectId,
-    deleteSecret: needsSubject ? (stored.deleteSecret ?? randomId("delete")) : stored.deleteSecret,
     consentVersion: authoritative?.consentVersion ?? CONSENT_VERSION,
     updatedAt: authoritative?.updatedAt ?? stored.updatedAt,
   };
@@ -550,8 +572,6 @@ function parseConsent(value: unknown): TelemetryConsentState | null {
     crashReports: typeof value.crashReports === "boolean" ? value.crashReports : false,
     promptStatus: value.promptStatus === "saved" ? "saved" : "unseen",
     subjectId: typeof value.subjectId === "string" && value.subjectId ? value.subjectId : null,
-    deleteSecret:
-      typeof value.deleteSecret === "string" && value.deleteSecret ? value.deleteSecret : null,
     consentVersion:
       typeof value.consentVersion === "number" ? value.consentVersion : CONSENT_VERSION,
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : null,
@@ -623,11 +643,12 @@ async function ensureIngestToken(endpoint: string): Promise<CachedIngestToken | 
   ) {
     return ingestToken;
   }
-  if (!consent.subjectId || !consent.deleteSecret) return null;
+  if (!consent.subjectId) return null;
   if (ingestTokenPromise) return ingestTokenPromise;
 
   ingestTokenPromise = (async () => {
-    const deleteProofHash = await hashTelemetryText(consent.deleteSecret ?? "");
+    const deleteProofHash = await ensureDeleteProofHash();
+    if (!deleteProofHash) return null;
     const response = await telemetryTransport(
       endpoint.replace(/\/v1\/events\/?$/, "/v1/register"),
       JSON.stringify({
@@ -663,8 +684,31 @@ function clearIngestToken() {
   ingestTokenPromise = null;
 }
 
+async function ensureDeleteProofHash(): Promise<string | null> {
+  if (cachedDeleteProofHash) return cachedDeleteProofHash;
+  if (deleteProofHashPromise) return deleteProofHashPromise;
+  deleteProofHashPromise = Promise.resolve()
+    .then(() => telemetryDeleteProof.get())
+    .then((hash) => {
+      cachedDeleteProofHash = hash;
+      return hash;
+    })
+    .catch(() => null)
+    .finally(() => {
+      deleteProofHashPromise = null;
+    });
+  return deleteProofHashPromise;
+}
+
+function clearDeleteProofHash() {
+  cachedDeleteProofHash = null;
+  deleteProofHashPromise = null;
+}
+
 async function buildEnvelope(event: PendingUsageEvent): Promise<TelemetryEnvelope> {
-  const deleteProofHash = await hashTelemetryText(consent.deleteSecret ?? "");
+  // sendUsageEventBatch reaches this only after ensureIngestToken produced
+  // the proof, so the cache is warm; the fallback keeps the shape total.
+  const deleteProofHash = (await ensureDeleteProofHash()) ?? "";
   return {
     schemaVersion: 1,
     id: event.id,

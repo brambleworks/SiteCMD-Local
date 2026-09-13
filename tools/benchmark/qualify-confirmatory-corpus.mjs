@@ -8,10 +8,7 @@ import {
 } from "./lib/repository-confirmatory-registration.mjs";
 import { evaluateRepositoryScannerCase } from "./lib/repository-scanner-eligibility.mjs";
 import { repositoryQualificationRuntime } from "./lib/repository-qualification-runtime.mjs";
-import {
-  deriveRepositoryReference,
-  validateRepositoryReference,
-} from "./lib/repository-reference.mjs";
+import { resolveRepositoryReference } from "./lib/repository-reference-screening.mjs";
 import { validateRepositorySnapshot } from "./lib/repository-snapshot.mjs";
 import { artifactPath, readArtifact } from "./lib/workflow-artifacts.mjs";
 import { requireCondition } from "./lib/workflow-contract.mjs";
@@ -134,26 +131,17 @@ for (const item of corpus.cases) {
   );
   const registered = registration.cases.find((candidate) => candidate.id === item.id);
   const referenceRecord = references?.cases.find((candidate) => candidate.id === item.id);
-  const reference = referenceRecord
-    ? item.kind === "negative_control"
-      ? validateRepositorySnapshot(
-          JSON.parse(readArtifact(referenceRoot, referenceRecord.artifact).toString("utf8")),
-        )
-      : validateRepositoryReference(
-          JSON.parse(readArtifact(referenceRoot, referenceRecord.artifact).toString("utf8")),
-        )
-    : item.kind === "negative_control"
-      ? baseline
-      : deriveRepositoryReference(
-          baseline,
-          upstream,
-          item.editableFiles,
-          registered.reference.regions,
-        );
-  requireCondition(
-    reference.sha256 === registered.reference.sha256,
-    `Reference source for ${item.id} differs from its registration`,
-  );
+  const referenceArtifact = referenceRecord
+    ? JSON.parse(readArtifact(referenceRoot, referenceRecord.artifact).toString("utf8"))
+    : undefined;
+  const reference = resolveRepositoryReference({
+    item,
+    registered,
+    baseline,
+    upstream,
+    referenceRecord,
+    referenceArtifact,
+  });
   let browserRuntime;
   if (item.id === "fmd-device-text") {
     const manifest = JSON.parse(

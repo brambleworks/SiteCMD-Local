@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { deriveRepositoryReference } from "./repository-reference.mjs";
-import { createRepositoryReferenceScreening } from "./repository-reference-screening.mjs";
+import {
+  createRepositoryReferenceScreening,
+  resolveRepositoryReference,
+} from "./repository-reference-screening.mjs";
 import { digest } from "./workflow-plan.mjs";
 
 function source(commit, value) {
@@ -54,6 +57,62 @@ test("packages scoped repair references against screened source identities", () 
   assert.equal(result.receipt.passed, true);
   assert.deepEqual(result.receipt.cases[0].changedFiles, ["app.js"]);
   assert.equal(result.artifacts.get(result.receipt.cases[0].artifact), reference);
+});
+
+test("uses a screened repair instead of unrelated upstream changes", () => {
+  const baseline = source("a", "unsafe\nkeep baseline");
+  const upstream = source("b", "safe\nunrelated upstream");
+  const item = {
+    id: "repair",
+    kind: "repair",
+    baselineCommit: baseline.commit,
+    upstreamCommit: upstream.commit,
+    editableFiles: ["app.js"],
+    referenceStrategy: "implementation-only",
+  };
+  const content = {
+    schemaVersion: 1,
+    kind: "implementation-only",
+    baselineSha256: baseline.sha256,
+    upstreamSha256: upstream.sha256,
+    editableFiles: item.editableFiles,
+    files: baseline.files.map((file) =>
+      file.name === "app.js"
+        ? { ...file, base64: Buffer.from("safe\nkeep baseline").toString("base64") }
+        : file,
+    ),
+  };
+  const reference = { ...content, sha256: digest(content) };
+  const registered = {
+    baselineSha256: baseline.sha256,
+    upstreamSha256: upstream.sha256,
+    reference: { kind: reference.kind, sha256: reference.sha256 },
+  };
+  const referenceRecord = {
+    id: item.id,
+    kind: reference.kind,
+    baselineSha256: baseline.sha256,
+    upstreamSha256: upstream.sha256,
+    referenceSha256: reference.sha256,
+    changedFiles: item.editableFiles,
+    passed: true,
+  };
+
+  assert.notEqual(
+    reference.sha256,
+    deriveRepositoryReference(baseline, upstream, item.editableFiles).sha256,
+  );
+  assert.equal(
+    resolveRepositoryReference({
+      item,
+      registered,
+      baseline,
+      upstream,
+      referenceRecord,
+      referenceArtifact: reference,
+    }),
+    reference,
+  );
 });
 
 test("rejects out-of-scope changes and mismatched source receipts", () => {

@@ -50,17 +50,6 @@ function sanitizeTelemetryValue(value: unknown): PrimitiveTelemetryValue | undef
   return undefined;
 }
 
-export async function hashTelemetryText(value: string): Promise<string> {
-  if (typeof crypto !== "undefined" && crypto.subtle) {
-    const bytes = new TextEncoder().encode(value);
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest))
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-  }
-  return sanitizeTelemetryText(value).slice(0, 32);
-}
-
 // deleteSecret is the only proof a client holds when it asks the ingest service
 // to erase its telemetry, so a guessable id hands that erasure to whoever
 // guesses it. Every branch draws from the platform CSPRNG and none falls back to

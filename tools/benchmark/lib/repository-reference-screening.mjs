@@ -1,4 +1,4 @@
-import { validateRepositoryReference } from "./repository-reference.mjs";
+import { deriveRepositoryReference, validateRepositoryReference } from "./repository-reference.mjs";
 import { validateRepositorySnapshot } from "./repository-snapshot.mjs";
 import { requireCondition } from "./workflow-contract.mjs";
 import { canonicalJson, digest } from "./workflow-plan.mjs";
@@ -24,6 +24,63 @@ function changedFiles(baseline, reference) {
     .filter(([name, file]) => canonicalJson(file) !== canonicalJson(after.get(name)))
     .map(([name]) => name)
     .sort();
+}
+
+export function resolveRepositoryReference({
+  item,
+  registered,
+  baseline: baselineValue,
+  upstream: upstreamValue,
+  referenceRecord,
+  referenceArtifact,
+}) {
+  const baseline = validateRepositorySnapshot(baselineValue);
+  const upstream = validateRepositorySnapshot(upstreamValue);
+  const hasScreenedReference = referenceRecord !== undefined || referenceArtifact !== undefined;
+  requireCondition(
+    (referenceRecord === undefined) === (referenceArtifact === undefined),
+    "Screened reference record and artifact must be provided together",
+  );
+  const reference = hasScreenedReference
+    ? item.kind === "negative_control"
+      ? validateRepositorySnapshot(referenceArtifact)
+      : validateRepositoryReference(referenceArtifact)
+    : item.kind === "negative_control"
+      ? baseline
+      : deriveRepositoryReference(
+          baseline,
+          upstream,
+          item.editableFiles,
+          registered?.reference?.regions,
+        );
+  const expectedKind = item.kind === "negative_control" ? "unchanged" : item.referenceStrategy;
+  const expectedChanges = item.kind === "negative_control" ? [] : [...item.editableFiles].sort();
+  const changes = changedFiles(baseline, reference);
+  requireCondition(
+    baseline.commit === item.baselineCommit &&
+      upstream.commit === item.upstreamCommit &&
+      baseline.sha256 === registered?.baselineSha256 &&
+      upstream.sha256 === registered?.upstreamSha256 &&
+      registered?.reference?.kind === expectedKind &&
+      reference.sha256 === registered.reference.sha256 &&
+      canonicalJson(changes) === canonicalJson(expectedChanges) &&
+      (item.kind === "negative_control"
+        ? reference.sha256 === baseline.sha256 && upstream.sha256 === baseline.sha256
+        : reference.baselineSha256 === baseline.sha256 &&
+          reference.upstreamSha256 === upstream.sha256 &&
+          reference.kind === item.referenceStrategy &&
+          canonicalJson(reference.editableFiles) === canonicalJson(item.editableFiles)) &&
+      (!hasScreenedReference ||
+        (referenceRecord.id === item.id &&
+          referenceRecord.kind === expectedKind &&
+          referenceRecord.baselineSha256 === baseline.sha256 &&
+          referenceRecord.upstreamSha256 === upstream.sha256 &&
+          referenceRecord.referenceSha256 === reference.sha256 &&
+          canonicalJson(referenceRecord.changedFiles) === canonicalJson(expectedChanges) &&
+          referenceRecord.passed === true)),
+    `Reference source for ${item.id} differs from its registration`,
+  );
+  return reference;
 }
 
 export function createRepositoryReferenceScreening(corpus, screening, screened, capturedAt) {

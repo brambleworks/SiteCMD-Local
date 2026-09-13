@@ -31,6 +31,8 @@ permissions = [
     "allow-get-telemetry-consent",
     "allow-set-telemetry-consent",
     "allow-send-telemetry-request",
+    "allow-get-telemetry-delete-proof-hash",
+    "allow-clear-telemetry-delete-secret",
     "allow-get-db-size",
     "allow-run-webview-analysis",
     "allow-verify-scan-checks",

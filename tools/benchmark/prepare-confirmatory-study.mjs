@@ -11,7 +11,7 @@ import {
   repositoryQualificationRuntimeBinding,
   validateRepositoryQualificationRuntime,
 } from "./lib/repository-qualification-runtime.mjs";
-import { deriveRepositoryReference } from "./lib/repository-reference.mjs";
+import { resolveRepositoryReference } from "./lib/repository-reference-screening.mjs";
 import { validateRepositorySnapshot } from "./lib/repository-snapshot.mjs";
 import { repositoryScannerTargetIssue } from "./lib/repository-scanner-eligibility.mjs";
 import { artifactPath, readArtifact } from "./lib/workflow-artifacts.mjs";
@@ -30,6 +30,7 @@ const [
   workflowDirectory,
   output,
   productFile,
+  referenceDirectory,
   ...extra
 ] = process.argv.slice(2);
 if (
@@ -42,7 +43,7 @@ if (
   extra.length
 )
   throw new Error(
-    "Usage: prepare-confirmatory-study.mjs SCREENING_DIRECTORY ELIGIBILITY_DIRECTORY QUALIFICATION_DIRECTORY WORKFLOW_DIRECTORY NEW_RUN_DIRECTORY PRODUCT_RECEIPT",
+    "Usage: prepare-confirmatory-study.mjs SCREENING_DIRECTORY ELIGIBILITY_DIRECTORY QUALIFICATION_DIRECTORY WORKFLOW_DIRECTORY NEW_RUN_DIRECTORY PRODUCT_RECEIPT [REFERENCE_DIRECTORY]",
   );
 const run = path.resolve(output);
 requireCondition(!existsSync(run), "Confirmatory run directory must be new");
@@ -52,6 +53,9 @@ const screeningRoot = rootFor(screeningDirectory, "screening.json");
 const eligibilityRoot = rootFor(eligibilityDirectory, "eligibility.json");
 const qualificationRoot = rootFor(qualificationDirectory, "qualification.json");
 const workflowRoot = rootFor(workflowDirectory, "workflow.json");
+const referenceRoot = referenceDirectory
+  ? rootFor(referenceDirectory, "reference-screening.json")
+  : null;
 const readJson = (root, name) => JSON.parse(readArtifact(root, name).toString("utf8"));
 const corpusDefinition = validateRepositoryConfirmatoryCorpus(
   readJson(screeningRoot, "intake.json"),
@@ -61,6 +65,7 @@ const screening = readJson(screeningRoot, "screening.json");
 const eligibility = readJson(eligibilityRoot, "eligibility.json");
 const qualification = readJson(qualificationRoot, "qualification.json");
 const workflow = readJson(workflowRoot, "workflow.json");
+const references = referenceRoot ? readJson(referenceRoot, "reference-screening.json") : undefined;
 const registration = JSON.parse(
   readFileSync(
     new URL(`./cases/${confirmatoryRegistrationFilename(corpusDefinition.id)}`, import.meta.url),
@@ -83,6 +88,9 @@ requireCondition(
     qualification.corpusSha256 === digest(corpusDefinition) &&
     qualification.eligibilitySha256 === digest(eligibility) &&
     qualification.registrationSha256 === digest(registration) &&
+    (registration.referenceScreeningSha256 === undefined ||
+      (references !== undefined &&
+        qualification.referenceScreeningSha256 === digest(references))) &&
     qualification.passed === true &&
     qualification.modelCalls === 0 &&
     workflow.corpusId === corpusDefinition.id &&
@@ -97,7 +105,7 @@ requireCondition(
     product.cliSha256 === eligibility.product.cliSha256,
   "Confirmatory screening, eligibility, qualification, workflow, registration, or product differs",
 );
-validateRepositoryConfirmatoryRegistration(registration, corpusDefinition, eligibility);
+validateRepositoryConfirmatoryRegistration(registration, corpusDefinition, eligibility, references);
 
 const harness = deployHarness();
 const qualificationHarness = readJson(qualificationRoot, "harness.json");
@@ -130,23 +138,18 @@ for (const item of corpusDefinition.cases) {
   );
   const baseline = validateRepositorySnapshot(readJson(screeningRoot, source.baselineSource));
   const upstream = validateRepositorySnapshot(readJson(screeningRoot, source.upstreamSource));
-  const reference =
-    item.kind === "negative_control"
-      ? baseline
-      : deriveRepositoryReference(
-          baseline,
-          upstream,
-          item.editableFiles,
-          registered.reference.regions,
-        );
-  requireCondition(
-    baseline.commit === item.baselineCommit &&
-      upstream.commit === item.upstreamCommit &&
-      baseline.sha256 === registered.baselineSha256 &&
-      upstream.sha256 === registered.upstreamSha256 &&
-      reference.sha256 === registered.reference.sha256,
-    `Case ${item.id} source or reference identity differs`,
-  );
+  const referenceRecord = references?.cases.find((candidate) => candidate.id === item.id);
+  const referenceArtifact = referenceRecord
+    ? readJson(referenceRoot, referenceRecord.artifact)
+    : undefined;
+  const reference = resolveRepositoryReference({
+    item,
+    registered,
+    baseline,
+    upstream,
+    referenceRecord,
+    referenceArtifact,
+  });
   const qualified = readJson(qualificationRoot, qualificationIndex.artifact);
   requireCondition(
     qualificationIndex.sha256 === digest(qualified) &&
@@ -273,6 +276,7 @@ for (const [name, value] of [
   ["eligibility.json", eligibility],
   ["qualification.json", qualification],
   ["workflow.json", workflow],
+  ...(references ? [["reference-screening.json", references]] : []),
   ["registration.json", registration],
   ["product.json", product],
   ["runner.json", harness.files],

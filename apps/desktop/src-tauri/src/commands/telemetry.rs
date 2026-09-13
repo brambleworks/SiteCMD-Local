@@ -10,11 +10,13 @@ use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
+use zeroize::Zeroizing;
 
 use super::telemetry_schema::{
     sanitized_diagnostic, validate_deletion, validate_ingest, validate_registration,
     DiagnosticReport, TelemetryDeletionBody, TelemetryIngestBody, TelemetryRegistrationBody,
 };
+use super::CommandResult;
 
 const USAGE_TELEMETRY_HOST: &str = "telemetry.sitecmd.com";
 const SENTRY_INGEST_HOST: &str = "o4511662343127040.ingest.us.sentry.io";
@@ -145,11 +147,19 @@ pub enum TelemetryRequestArgs {
         authorization: String,
     },
     UsageDelete {
-        body: TelemetryDeletionBody,
+        body: TelemetryDeletionRequest,
     },
     CrashReport {
         report: DiagnosticReport,
     },
+}
+
+/// What the renderer sends for a deletion. The secret that authorizes it is
+/// read from the keychain here and never crosses IPC in either direction.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TelemetryDeletionRequest {
+    subject_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -235,14 +245,51 @@ pub async fn set_telemetry_consent(
     Ok(TelemetryConsentView::from(&next))
 }
 
+/// The deletion secret, minted on first use. `delete_` plus 32 random bytes
+/// as hex satisfies both this client's validator and the ingest service's,
+/// which require the prefix and at least 32 body characters.
+fn telemetry_delete_secret<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<Zeroizing<String>, String> {
+    if let Some(existing) = crate::keyring::get_telemetry_delete_secret(app)? {
+        return Ok(Zeroizing::new(existing));
+    }
+    let mut bytes = Zeroizing::new([0_u8; 32]);
+    getrandom::fill(&mut *bytes)
+        .map_err(|error| super::sanitize_error(format!("OS randomness unavailable: {error}")))?;
+    let minted = Zeroizing::new(format!("delete_{}", hex::encode(bytes.as_slice())));
+    crate::keyring::store_telemetry_delete_secret(app, &minted)?;
+    Ok(minted)
+}
+
+/// SHA-256 of the secret, as the ingest service stores it at registration.
+fn delete_proof_hash(secret: &str) -> String {
+    hex::encode(Sha256::digest(secret.as_bytes()))
+}
+
+/// Hand the renderer the proof it sends with every event. The secret itself
+/// stays in the keychain; only its hash crosses IPC.
+#[tauri::command]
+pub fn get_telemetry_delete_proof_hash(app: tauri::AppHandle) -> CommandResult<String> {
+    Ok(delete_proof_hash(&telemetry_delete_secret(&app)?))
+}
+
+/// Forget the secret when the subject is reset. The next proof request mints
+/// a fresh one, which is what a new anonymous identity means.
+#[tauri::command]
+pub fn clear_telemetry_delete_secret(app: tauri::AppHandle) -> CommandResult<()> {
+    Ok(crate::keyring::delete_telemetry_delete_secret(&app)?)
+}
+
 /// Send one typed request after validating current backend consent.
 #[tauri::command]
-#[tracing::instrument(skip(state, args))]
+#[tracing::instrument(skip(app, state, args))]
 pub async fn send_telemetry_request(
+    app: tauri::AppHandle,
     state: tauri::State<'_, TelemetryConsentState>,
     args: TelemetryRequestArgs,
 ) -> Result<TelemetryHttpResponse, String> {
-    let request = prepare_request(args)?;
+    let request = prepare_request(&app, args)?;
     require_consent(&state.snapshot()?, request.required_consent)?;
     if request.body.len() > crate::constants::TELEMETRY_REQUEST_MAX_BYTES {
         return Err("Telemetry payload exceeds the allowed size".to_string());
@@ -277,7 +324,10 @@ pub async fn send_telemetry_request(
     })
 }
 
-fn prepare_request(args: TelemetryRequestArgs) -> Result<PreparedTelemetryRequest, String> {
+fn prepare_request<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    args: TelemetryRequestArgs,
+) -> Result<PreparedTelemetryRequest, String> {
     match args {
         TelemetryRequestArgs::UsageRegister { body } => {
             validate_registration(&body)?;
@@ -297,6 +347,10 @@ fn prepare_request(args: TelemetryRequestArgs) -> Result<PreparedTelemetryReques
             )
         }
         TelemetryRequestArgs::UsageDelete { body } => {
+            let body = TelemetryDeletionBody {
+                subject_id: body.subject_id,
+                delete_secret: telemetry_delete_secret(app)?.to_string(),
+            };
             validate_deletion(&body)?;
             prepared_usage_request(USAGE_DELETE_PATH, &body, None, RequiredConsent::None)
         }
@@ -597,6 +651,52 @@ mod tests {
             let url = Url::parse(&invalid).expect("test URL should parse");
             assert!(validate_telemetry_target(&url).is_err(), "{invalid}");
         }
+    }
+
+    #[test]
+    fn the_deletion_secret_is_minted_once_and_its_proof_is_stable() {
+        let _guard = crate::keyring::SECRET_TEST_GUARD
+            .lock()
+            .expect("secret test guard");
+        let app = tauri::test::mock_app();
+        let handle = app.handle();
+        crate::keyring::delete_telemetry_delete_secret(handle).expect("clean slate");
+
+        let first = telemetry_delete_secret(handle).expect("mint");
+        let second = telemetry_delete_secret(handle).expect("reread");
+        assert_eq!(*first, *second, "a second read must not mint again");
+        assert!(first.starts_with("delete_"));
+        assert_eq!(first.len(), "delete_".len() + 64);
+        assert_eq!(delete_proof_hash(&first), delete_proof_hash(&second));
+
+        crate::keyring::delete_telemetry_delete_secret(handle).expect("reset");
+        let rotated = telemetry_delete_secret(handle).expect("mint again");
+        assert_ne!(*first, *rotated, "a reset must mint a fresh secret");
+    }
+
+    #[test]
+    fn a_deletion_request_carries_the_keychain_secret_not_a_renderer_value() {
+        let _guard = crate::keyring::SECRET_TEST_GUARD
+            .lock()
+            .expect("secret test guard");
+        let app = tauri::test::mock_app();
+        let handle = app.handle();
+        crate::keyring::delete_telemetry_delete_secret(handle).expect("clean slate");
+        let secret = telemetry_delete_secret(handle).expect("mint");
+
+        let request = prepare_request(
+            handle,
+            TelemetryRequestArgs::UsageDelete {
+                body: TelemetryDeletionRequest {
+                    subject_id: "scmd_12345678".into(),
+                },
+            },
+        )
+        .expect("prepared");
+        let body: serde_json::Value = serde_json::from_slice(&request.body).expect("json body");
+        assert_eq!(body["subjectId"], "scmd_12345678");
+        assert_eq!(body["deleteSecret"], secret.as_str());
+        assert_eq!(request.required_consent, RequiredConsent::None);
     }
 
     #[test]

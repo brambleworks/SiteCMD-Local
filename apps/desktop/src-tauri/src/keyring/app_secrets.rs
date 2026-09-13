@@ -45,6 +45,33 @@ pub fn delete_license_key<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<(), S
     delete_secret(app, LICENSE_KEY_USER)
 }
 
+/// Keychain entry name for the usage-telemetry deletion secret.
+const TELEMETRY_DELETE_SECRET_USER: &str = "app:telemetry_delete_secret";
+
+/// Store the telemetry deletion secret in the OS keychain. It is the only
+/// proof a person holds when asking the ingest service to erase what they
+/// uploaded, so it never lives in the webview or in SQLite.
+pub fn store_telemetry_delete_secret<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    secret: &str,
+) -> Result<(), String> {
+    set_secret(app, TELEMETRY_DELETE_SECRET_USER, secret)
+}
+
+/// Read the deletion secret strictly. A keychain failure must not read as
+/// absence: absence mints a replacement, and a replacement orphans every
+/// event already uploaded under the old proof.
+pub fn get_telemetry_delete_secret<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Option<String>, String> {
+    get_secret_strict(app, TELEMETRY_DELETE_SECRET_USER)
+}
+
+/// Remove the deletion secret when the telemetry subject is reset.
+pub fn delete_telemetry_delete_secret<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    delete_secret(app, TELEMETRY_DELETE_SECRET_USER)
+}
+
 /// Keychain entry name for the catalog entitlement token.
 const CATALOG_TOKEN_USER: &str = "app:catalog_token";
 
