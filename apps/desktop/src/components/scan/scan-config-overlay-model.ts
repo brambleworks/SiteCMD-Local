@@ -83,14 +83,9 @@ export function getScanStartLabel({
 }): string {
   if (scanType === "code") return `Run ${SCAN_LABELS.code}`;
   if (scanType === "full") return "Run Scan";
-  if (scanType === "web") {
-    return hasPages && selectedCount > 1
-      ? `Scan ${selectedCount} page${selectedCount !== 1 ? "s" : ""}`
-      : `Run ${SCAN_LABELS.web}`;
-  }
-  return hasPages && selectedCount > 1
-    ? `Scan ${selectedCount} page${selectedCount !== 1 ? "s" : ""}`
-    : "Run Scan";
+  // Only a web scan remains. A count earns a place in the label once more than
+  // one page is selected, so the plural is the only form it can take.
+  return hasPages && selectedCount > 1 ? `Scan ${selectedCount} pages` : `Run ${SCAN_LABELS.web}`;
 }
 
 /** Return the page's route relative to its site. */
