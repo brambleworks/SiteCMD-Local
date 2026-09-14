@@ -3855,6 +3855,7 @@
       "repository": "https://github.com/rust-random/getrandom",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -7648,6 +7649,7 @@
       "repository": "https://github.com/r-efi/r-efi",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": []
@@ -8291,7 +8293,7 @@
     {
       "ecosystem": "cargo",
       "name": "rustls",
-      "version": "0.23.43",
+      "version": "0.23.45",
       "license": "Apache-2.0 OR ISC OR MIT",
       "repository": "https://github.com/rustls/rustls",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
