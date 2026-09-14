@@ -16,11 +16,11 @@ fn every_check_file_has_test_coverage() {
 
     // Both check trees: the desktop's and the engine crate's, which check
     // modules move into as the connected-service extraction proceeds.
-    let checks_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/checks");
+    let checks_dir = std::path::Path::new(env!("SITECMD_SOURCE_ROOT")).join("src/checks");
     let mut files = Vec::new();
     walk(&checks_dir, &mut files);
     walk(
-        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/engine/src/checks"),
+        &std::path::Path::new(env!("SITECMD_SOURCE_ROOT")).join("crates/engine/src/checks"),
         &mut files,
     );
 

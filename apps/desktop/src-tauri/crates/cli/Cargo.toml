@@ -10,13 +10,13 @@ rust-version = "1.89.0"
 
 [features]
 default = []
-browser = ["app_lib/browser"]
+browser = ["sitecmd-runtime/browser"]
 
 [[bin]]
 name = "sitecmd_cli"
 path = "src/main.rs"
 
 [dependencies]
-app_lib = { package = "sitecmd", path = "../..", default-features = false }
+sitecmd-runtime = { path = "../runtime" }
 env_logger = "0.11"
 tokio = { version = "1", features = ["rt-multi-thread"] }

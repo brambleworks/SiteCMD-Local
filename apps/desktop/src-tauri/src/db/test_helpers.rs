@@ -1,5 +1,5 @@
 //! Temporary-file database fixtures for unit tests.
-#![cfg(test)]
+#![cfg(any(test, feature = "test-support"))]
 
 use crate::db::Database;
 use std::sync::Arc;
@@ -7,8 +7,8 @@ use std::sync::Arc;
 // Owns a `Database` plus the `TempDir` that backs it, so the directory is
 // cleaned up when the wrapper drops. Deref to `Database` so callers can use
 // it like a plain handle.
-pub(crate) struct TestDb {
-    pub(crate) db: Database,
+pub struct TestDb {
+    pub db: Database,
     _dir: tempfile::TempDir, // dropped when TestDb drops, cleaning the dir
 }
 
@@ -20,7 +20,7 @@ impl std::ops::Deref for TestDb {
 }
 
 // Open a fresh database in a new temporary directory.
-pub(crate) fn temp_db() -> TestDb {
+pub fn temp_db() -> TestDb {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("test.db");
     let db = Database::open(path).expect("open");
@@ -28,7 +28,7 @@ pub(crate) fn temp_db() -> TestDb {
 }
 
 // `temp_db` with project id 1 for foreign-key-constrained fixtures.
-pub(crate) fn temp_db_with_project() -> TestDb {
+pub fn temp_db_with_project() -> TestDb {
     let db = temp_db();
     db.upsert_project("fk-seed", "", None)
         .expect("seed project"); // allow-expect: test fixture, panic at call site
@@ -38,8 +38,8 @@ pub(crate) fn temp_db_with_project() -> TestDb {
 // Owns an `Arc<Database>` plus the backing `TempDir`. Used by adapters that
 // take `Arc<Database>` by value (e.g. `UpdatesAdapter::new`); callers clone
 // the inner Arc via `db.db.clone`.
-pub(crate) struct TestDbArc {
-    pub(crate) db: Arc<Database>,
+pub struct TestDbArc {
+    pub db: Arc<Database>,
     _dir: tempfile::TempDir, // dropped when TestDbArc drops, cleaning the dir
 }
 
@@ -51,7 +51,7 @@ impl std::ops::Deref for TestDbArc {
 }
 
 // Open a fresh database wrapped in `Arc` in a new temporary directory.
-pub(crate) fn temp_db_arc() -> TestDbArc {
+pub fn temp_db_arc() -> TestDbArc {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("test.db");
     let db = Arc::new(Database::open(path).expect("open"));
@@ -60,7 +60,7 @@ pub(crate) fn temp_db_arc() -> TestDbArc {
 
 // Insert one unresolved work item without running diff resolution.
 // Pass a normalized `env_url`.
-pub(crate) fn insert_test_work_item(
+pub fn insert_test_work_item(
     db: &Database,
     project_id: i64,
     env_url: &str,
@@ -69,7 +69,7 @@ pub(crate) fn insert_test_work_item(
     insert_test_work_item_at(db, project_id, env_url, check_id, None, None)
 }
 
-pub(crate) fn insert_test_work_item_at(
+pub fn insert_test_work_item_at(
     db: &Database,
     project_id: i64,
     env_url: &str,

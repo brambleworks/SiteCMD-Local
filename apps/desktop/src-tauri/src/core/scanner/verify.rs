@@ -325,7 +325,7 @@ fn synthesize_unobserved_required_results(
 
 /// Expand canonical check IDs into live producer IDs required for verification.
 /// Falls back to the canonical ID when no live mapping exists.
-pub(crate) fn required_web_verification_ids(check_ids: &[String]) -> BTreeSet<String> {
+pub fn required_web_verification_ids(check_ids: &[String]) -> BTreeSet<String> {
     let mut required = BTreeSet::new();
     for check_id in check_ids {
         let producers =

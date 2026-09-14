@@ -65,7 +65,7 @@ fn every_effort_the_packer_accepts_is_one_this_client_understands() {
 #[test]
 fn the_generated_pack_is_accepted_when_one_has_been_built() {
     let artifact =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/catalog/catalog.json");
+        std::path::Path::new(env!("SITECMD_SOURCE_ROOT")).join("target/catalog/catalog.json");
     let Ok(bytes) = std::fs::read(&artifact) else {
         // No pack built on this machine; the shape fixture above still holds
         // the contract.

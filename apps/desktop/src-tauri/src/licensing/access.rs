@@ -195,7 +195,7 @@ mod tests {
         let reloaded = store::load(&conn).unwrap().expect("license state present");
         // license_key is stored in the keyring, not SQLite, so the DB round-trip
         // carries the placeholder rather than the original key.
-        assert_eq!(reloaded.license_key, crate::keyring::KEYRING_PLACEHOLDER);
+        assert_eq!(reloaded.license_key, crate::constants::KEYRING_PLACEHOLDER);
         assert_eq!(reloaded.instance_id, original.instance_id);
         assert_eq!(reloaded.variant_id, original.variant_id);
         assert_eq!(reloaded.tier, original.tier);

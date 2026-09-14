@@ -25,8 +25,7 @@ pub(crate) const ALL_FIX_ATTEMPT_STATUSES: &[&str] = &[
 ];
 
 /// Active attempts untouched for this long are expired by the watcher.
-#[cfg(feature = "desktop")]
-pub(crate) const FIX_ATTEMPT_EXPIRY_MS: i64 = 24 * 60 * 60 * 1000;
+pub const FIX_ATTEMPT_EXPIRY_MS: i64 = 24 * 60 * 60 * 1000;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FixAttemptRow {

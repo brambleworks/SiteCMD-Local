@@ -5,7 +5,7 @@ use rusqlite::named_params;
 use super::{Database, DbError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ScanRetentionWindow {
+pub enum ScanRetentionWindow {
     All,
     BoundedVerification,
 }
@@ -16,7 +16,7 @@ impl Database {
         skip(self, environment_scope_key),
         fields(project_id, environment_scope_key, requested_keep_count = keep_count)
     )]
-    pub(crate) fn prune_scan_executions_for_scope(
+    pub fn prune_scan_executions_for_scope(
         &self,
         project_id: Option<i64>,
         environment_scope_key: &str,

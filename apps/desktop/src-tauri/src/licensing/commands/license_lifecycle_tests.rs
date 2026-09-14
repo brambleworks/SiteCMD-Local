@@ -11,6 +11,7 @@ fn real_code() -> &'static str {
             include_str!("license_lifecycle_activation.rs"),
             include_str!("license_lifecycle_validation.rs"),
             include_str!("license_lifecycle_deactivation.rs"),
+            include_str!("../generation.rs"),
         ]
         .join("\n")
     });
@@ -158,6 +159,13 @@ fn every_license_row_write_site_records_its_write() {
     );
 }
 
+#[test]
+fn desktop_row_replacement_invalidates_the_shared_generation() {
+    let before = crate::licensing::generation::license_write_generation();
+    note_license_rows_replaced();
+    assert!(crate::licensing::generation::license_write_generation() > before);
+}
+
 // Database restore must invalidate in-flight license validation.
 #[test]
 fn a_database_restore_bumps_the_write_generation() {
@@ -189,7 +197,7 @@ fn a_database_restore_bumps_the_write_generation() {
     let body = &db_module[restore_fn..];
     let copy = body.find("conn.restore(").expect("the copy call exists");
     let closure_bump = body
-        .find("crate::licensing::commands::note_license_rows_replaced();")
+        .find("crate::licensing::generation::note_license_rows_replaced();")
         .expect("the restore closure must bump the write generation itself, or a timed-out restore that lands later resurrects the pre-import license");
     let propagate = body
         .find("restore_result")

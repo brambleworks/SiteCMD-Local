@@ -3,64 +3,53 @@
 //! Tauri commands connect the React frontend to local scanning, persistence,
 //! integrations, reporting, and background workflows.
 
-pub mod ai;
-pub mod api_cache;
-pub mod app_identity;
-pub mod audit_log;
+pub use sitecmd_runtime::{
+    ai, api_cache, app_identity, audit_log, catalog, checks, cli, connected_alerts,
+    connected_baseline, connected_ci, connected_credentials, connected_delivery, connected_export,
+    connected_notifications, connected_providers, connected_recovery, connected_rotation,
+    connected_service, connected_workflow, constants, db, dns_cache, http_client, log_sanitizer,
+    network_policy, project_paths, scan_runtime, scoring, updates,
+};
+#[cfg(feature = "desktop")]
+#[path = "desktop_core.rs"]
+pub mod core;
+#[cfg(not(feature = "desktop"))]
+pub use sitecmd_runtime::core;
+#[cfg(feature = "desktop")]
+#[path = "desktop_integrations.rs"]
+pub mod integrations;
+#[cfg(not(feature = "desktop"))]
+pub use sitecmd_runtime::integrations;
+#[cfg(feature = "desktop")]
+#[path = "desktop_licensing.rs"]
+pub mod licensing;
+#[cfg(not(feature = "desktop"))]
+pub use sitecmd_runtime::licensing;
+#[cfg(feature = "desktop")]
+#[path = "desktop_ssl_probe.rs"]
+pub mod ssl_probe;
+#[cfg(not(feature = "desktop"))]
+pub use sitecmd_runtime::ssl_probe;
 #[cfg(feature = "desktop")]
 pub mod background;
-#[cfg(feature = "browser")]
-pub mod browser;
-pub mod catalog;
-pub mod checks;
-pub mod cli;
 #[cfg(feature = "desktop")]
 pub mod commands;
-pub mod connected_alerts;
-pub mod connected_baseline;
-pub mod connected_ci;
-pub mod connected_credentials;
-pub mod connected_delivery;
-pub mod connected_export;
-pub mod connected_notifications;
-pub mod connected_providers;
-pub mod connected_recovery;
-pub mod connected_rotation;
-pub mod connected_service;
-pub mod connected_workflow;
-pub mod constants;
-pub mod core;
-pub mod db;
 #[cfg(feature = "desktop")]
 pub mod desktop_deep_links;
 #[cfg(feature = "desktop")]
 pub mod desktop_tray;
-pub mod dns_cache;
-pub mod http_client;
-pub mod integrations;
+#[cfg(feature = "desktop")]
 pub mod ipc_bindings;
 #[cfg(feature = "desktop")]
 pub mod keyring;
-// Headless builds expose only the shared SQLite keyring placeholder, not the
-// desktop OS-keychain implementation.
-#[cfg(not(feature = "desktop"))]
-pub mod keyring {
-    pub use crate::constants::KEYRING_PLACEHOLDER;
-}
-pub mod licensing;
-pub use sitecmd_engine::log_sanitizer;
-pub mod network_policy;
-pub mod project_paths;
 #[cfg(feature = "desktop")]
 pub mod report;
-pub mod scan_runtime;
-pub mod scoring;
-pub mod ssl_probe;
-pub mod updates;
 #[cfg(feature = "desktop")]
 pub mod webhooks;
 #[cfg(feature = "desktop")]
 pub mod webview;
+#[cfg(feature = "browser")]
+pub use sitecmd_runtime::browser;
 
 #[cfg(feature = "desktop")]
 use std::sync::Arc;

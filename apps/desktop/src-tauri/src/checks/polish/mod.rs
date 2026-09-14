@@ -123,7 +123,7 @@ mod tests {
         let expected =
             serde_json::to_string_pretty(&manifest).expect("serialize signal manifest") + "\n";
 
-        let json_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        let json_path = std::path::PathBuf::from(env!("SITECMD_SOURCE_ROOT"))
             .parent()
             .expect("desktop app root")
             .join("src")

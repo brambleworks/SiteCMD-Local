@@ -248,6 +248,13 @@ pnpm quality:mcp
 pnpm sitecmd -- audit .
 ```
 
+The checkout wrapper forwards CLI commands, including `scan`, `--help`, and
+`--version`, to the Rust binary. To navigate an installed desktop app, use the
+explicit checkout shortcut `pnpm sitecmd -- open dashboard`.
+
+For a focused introduction to the scanner, follow
+[Adding a detector](docs/engineering/adding-a-detector.md).
+
 `pnpm build` builds the desktop web frontend and validates and bundles the MCP
 server. It does not create a native desktop package. Contributors can build the
 native app without an updater signing key with:

@@ -774,7 +774,7 @@ fn get_scan_detail_preserves_status_confidence_and_confidence_reason() {
     let mut scan = make_scan_result(92, "2025-01-01T00:00:00Z");
     scan.issues = vec![finding.clone()];
     let scan_id = db.save_scan(site_id, &scan).unwrap();
-    let input = crate::commands::scan::work_items::check_result_to_work_item_input(
+    let input = crate::core::work_item_projection::check_result_to_work_item_input(
         &finding,
         project_id,
         "https://example.com",
@@ -825,7 +825,7 @@ fn get_scan_detail_preserves_producer_identity_and_fix_prompt() {
     let mut scan = make_scan_result(75, "2025-01-01T00:00:00Z");
     scan.issues = vec![finding.clone()];
     let scan_id = db.save_scan(site_id, &scan).unwrap();
-    let input = crate::commands::scan::work_items::check_result_to_work_item_input(
+    let input = crate::core::work_item_projection::check_result_to_work_item_input(
         &finding,
         project_id,
         "https://example.com",
@@ -876,7 +876,7 @@ fn get_scan_detail_preserves_producer_category() {
     let mut scan = make_scan_result(95, "2025-01-01T00:00:00Z");
     scan.issues = vec![finding.clone()];
     let scan_id = db.save_scan(site_id, &scan).unwrap();
-    let input = crate::commands::scan::work_items::check_result_to_work_item_input(
+    let input = crate::core::work_item_projection::check_result_to_work_item_input(
         &finding,
         project_id,
         "https://example.com",
@@ -943,7 +943,7 @@ fn scan_issue_snapshots_are_immutable_across_rescans_and_include_passes() {
     let mut first = make_scan_result(70, "2025-01-01T00:00:00Z");
     first.issues = vec![original_fail.clone(), original_pass.clone()];
     let first_id = db.save_scan(site_id, &first).unwrap();
-    let first_work_item = crate::commands::scan::work_items::check_result_to_work_item_input(
+    let first_work_item = crate::core::work_item_projection::check_result_to_work_item_input(
         &original_fail,
         project_id,
         "https://example.com",
@@ -964,7 +964,7 @@ fn scan_issue_snapshots_are_immutable_across_rescans_and_include_passes() {
     let mut second = make_scan_result(80, "2025-01-02T00:00:00Z");
     second.issues = vec![changed_fail.clone()];
     let second_id = db.save_scan(site_id, &second).unwrap();
-    let second_work_item = crate::commands::scan::work_items::check_result_to_work_item_input(
+    let second_work_item = crate::core::work_item_projection::check_result_to_work_item_input(
         &changed_fail,
         project_id,
         "https://example.com",
@@ -1237,7 +1237,7 @@ fn get_prior_code_scan_severities_uses_same_project_environment_snapshot() {
             100,
         )
         .unwrap();
-    let input = crate::commands::scan::work_items::code_issue_to_work_item_input(
+    let input = crate::core::work_item_projection::code_issue_to_work_item_input(
         &current,
         project_id,
         "https://example.com",

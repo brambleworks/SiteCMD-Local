@@ -33,9 +33,12 @@ pub struct McpManualConfig {
     pub cli_command: Option<String>,
 }
 
+#[path = "agent_tools/config.rs"]
 mod config;
+#[path = "agent_tools/discovery.rs"]
 mod discovery;
 #[cfg(feature = "desktop")]
+#[path = "agent_tools/health.rs"]
 mod health;
 pub use config::{
     codex_config_has_sitecmd, codex_config_matches_sitecmd_spec, cursor_config_has_sitecmd,

@@ -414,3 +414,6 @@ pub use sitemap::*;
 pub use telemetry::*;
 pub use updates::*;
 pub use webhooks::*;
+
+#[cfg(test)]
+mod async_work_tests;

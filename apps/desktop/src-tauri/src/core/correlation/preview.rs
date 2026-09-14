@@ -411,7 +411,7 @@ mod tests {
 
     /// Perf gate: preview_deploy_risk p95 must stay under 200ms for 100 changed files.
     ///
-    /// Run with: `cargo test --lib -- --ignored preview_deploy_risk_p95_under_200ms`
+    /// Run with: `cargo test -p sitecmd-runtime --lib -- --ignored preview_deploy_risk_p95_under_200ms`
     #[test]
     #[ignore = "perf gate; run with --ignored"]
     fn preview_deploy_risk_p95_under_200ms() {

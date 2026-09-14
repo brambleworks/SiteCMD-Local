@@ -106,5 +106,5 @@ fn scan_accepts_a_findings_gate_beside_the_score_gate() {
     )
     .expect("both gates");
     assert_eq!(args.fail_under, Some(90));
-    assert_eq!(args.fail_on, Some(app_lib::checks::Severity::High));
+    assert_eq!(args.fail_on, Some(sitecmd_runtime::checks::Severity::High));
 }

@@ -375,7 +375,7 @@ mod scan_type_tests {
         });
         let expected = serde_json::to_string_pretty(&manifest).expect("serialize manifest") + "\n";
 
-        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let manifest_dir = std::path::PathBuf::from(env!("SITECMD_SOURCE_ROOT"));
         let target = manifest_dir
             .parent()
             .expect("desktop app root")

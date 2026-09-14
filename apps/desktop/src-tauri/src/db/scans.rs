@@ -17,14 +17,10 @@ use super::helpers::{normalize_url, parse_required_enum};
 use super::types::ScanSummary;
 use super::Database;
 
-#[cfg(any(test, feature = "desktop"))]
 pub const DEFAULT_SCAN_RETENTION: u32 = 50;
-#[cfg(any(test, feature = "desktop"))]
 pub const MIN_SCAN_RETENTION: u32 = 1;
-#[cfg(any(test, feature = "desktop"))]
 pub const MAX_SCAN_RETENTION: u32 = 100;
 
-#[cfg(any(test, feature = "desktop"))]
 pub fn normalize_scan_retention(keep_count: Option<u32>) -> u32 {
     keep_count
         .unwrap_or(DEFAULT_SCAN_RETENTION)

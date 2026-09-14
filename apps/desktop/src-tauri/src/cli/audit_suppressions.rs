@@ -42,7 +42,7 @@ pub struct CodeScanSuppressionMatch {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum SuppressionState {
+pub enum SuppressionState {
     Active,
     Stale,
     Expired,
@@ -50,7 +50,7 @@ pub(crate) enum SuppressionState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SuppressionStatus {
+pub struct SuppressionStatus {
     #[serde(rename = "match")]
     pub matcher: CodeScanSuppressionMatch,
     pub reason: String,
@@ -60,7 +60,7 @@ pub(crate) struct SuppressionStatus {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct IgnoredFinding {
+pub struct IgnoredFinding {
     pub issue: CodeIssue,
     pub fingerprint: String,
     pub reason: String,
@@ -69,15 +69,14 @@ pub(crate) struct IgnoredFinding {
 }
 
 #[derive(Debug)]
-pub(crate) struct SuppressedAudit {
+pub struct SuppressedAudit {
     pub report: CodeScanReport,
     pub ignored_findings: Vec<IgnoredFinding>,
     pub suppressions: Vec<SuppressionStatus>,
 }
 
 #[derive(Debug, Clone)]
-#[cfg(feature = "desktop")]
-pub(crate) struct ActiveSuppression {
+pub struct ActiveSuppression {
     pub reason: String,
     pub expires: Option<String>,
 }
@@ -98,7 +97,7 @@ struct PreparedSuppression {
     matched_findings: usize,
 }
 
-pub(crate) fn apply_project_suppressions(
+pub fn apply_project_suppressions(
     project_root: &Path,
     mut report: CodeScanReport,
     today: NaiveDate,
@@ -159,8 +158,7 @@ pub(crate) fn apply_project_suppressions(
     })
 }
 
-#[cfg(feature = "desktop")]
-pub(crate) fn active_project_suppression(
+pub fn active_project_suppression(
     project_root: &Path,
     check_id: &str,
     relative_path: &str,
@@ -202,7 +200,7 @@ fn prepare_project_suppressions(
         .collect()
 }
 
-pub(crate) fn issue_fingerprint(issue: &CodeIssue) -> String {
+pub fn issue_fingerprint(issue: &CodeIssue) -> String {
     let relative_path = issue.relative_path.replace('\\', "/");
     let occurrence = issue
         .source_excerpt

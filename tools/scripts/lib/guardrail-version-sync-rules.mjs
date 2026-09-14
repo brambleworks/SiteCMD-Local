@@ -4,6 +4,8 @@ const RUST_MSRV = "1.89.0";
 const RUST_MANIFESTS = [
   "apps/desktop/src-tauri/Cargo.toml",
   "apps/desktop/src-tauri/crates/cli/Cargo.toml",
+  "apps/desktop/src-tauri/crates/runtime/Cargo.toml",
+  "apps/desktop/src-tauri/crates/engine-fuzz/Cargo.toml",
   "apps/desktop/src-tauri/crates/engine/Cargo.toml",
   "apps/desktop/src-tauri/crates/engine-wasm/Cargo.toml",
 ];

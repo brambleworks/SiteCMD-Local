@@ -572,7 +572,7 @@ pub fn normalize_code_scan(
     })
 }
 
-pub(crate) fn code_scan_occurrence_id(issue: &crate::core::code_scan::CodeIssue) -> String {
+pub fn code_scan_occurrence_id(issue: &crate::core::code_scan::CodeIssue) -> String {
     format!(
         "code_scan:{}:{}",
         issue.id,

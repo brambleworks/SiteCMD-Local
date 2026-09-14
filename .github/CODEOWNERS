@@ -30,6 +30,10 @@
 /apps/desktop/src-tauri/Cargo.toml         @brambleworks
 /apps/desktop/src-tauri/Cargo.lock         @brambleworks
 /apps/desktop/src-tauri/build.rs           @brambleworks
+/apps/desktop/src-tauri/build_config.rs    @brambleworks
+/apps/desktop/src-tauri/crates/runtime/    @brambleworks
+/apps/desktop/src-tauri/src/runtime.rs     @brambleworks
+/apps/desktop/src-tauri/src/desktop_*.rs   @brambleworks
 /apps/desktop/src-tauri/tauri.conf.json    @brambleworks
 /apps/desktop/src-tauri/branding/          @brambleworks
 /apps/desktop/src-tauri/capabilities/      @brambleworks

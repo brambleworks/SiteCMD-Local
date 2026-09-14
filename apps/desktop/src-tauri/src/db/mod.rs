@@ -28,7 +28,6 @@ mod events;
 mod fix_attempts;
 pub mod from_row;
 mod helpers;
-#[cfg(any(test, feature = "desktop"))]
 pub mod insert;
 mod integrations;
 mod issue_links;
@@ -43,19 +42,15 @@ pub mod resolved_issues;
 pub mod retention;
 mod scan_execution_detail;
 mod scan_executions;
-#[cfg(any(test, feature = "desktop"))]
 mod scan_retention;
-#[cfg(any(test, feature = "desktop"))]
-pub(crate) use scan_retention::ScanRetentionWindow;
+pub use scan_retention::ScanRetentionWindow;
 mod scan_run_projection;
 mod scan_runs;
 mod scan_scope;
 pub use scan_scope::{scan_scope_urls, scan_scope_urls_for_project, ConnectedScanScopeTarget};
 mod scans;
-#[cfg(any(test, feature = "desktop"))]
 mod scheduled_scan_baseline;
-#[cfg(any(test, feature = "desktop"))]
-pub(crate) use scheduled_scan_baseline::{
+pub use scheduled_scan_baseline::{
     web_execution_matches_comparison_profile, WebRunComparisonProfile,
 };
 mod schedules;
@@ -63,8 +58,8 @@ mod score_snapshots;
 mod sessions;
 mod sites;
 mod snapshot;
-#[cfg(test)]
-pub(crate) mod test_helpers;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_helpers;
 mod verified_good;
 pub use verified_good::{BaselineDecision, BaselineDecisionOutcome};
 #[cfg(test)]
@@ -80,17 +75,13 @@ pub use correlation::CausalLinkObservationInput;
 pub use error::DbError;
 pub use fix_attempts::FixAttemptRow;
 // Consumed by the desktop watcher and by tests; unused in a plain CLI build.
-#[cfg(any(test, feature = "desktop"))]
-pub(crate) use fix_attempts::FixAttemptTarget;
-#[cfg(feature = "desktop")]
-pub(crate) use fix_attempts::FIX_ATTEMPT_EXPIRY_MS;
-#[cfg(feature = "desktop")]
-pub(crate) use helpers::normalize_env_url;
+pub use fix_attempts::FixAttemptTarget;
+pub use fix_attempts::FIX_ATTEMPT_EXPIRY_MS;
+pub use helpers::normalize_env_url;
 pub use issue_links::IssueLink;
 pub use issue_states::{IssueLifecycle, IssueStateRow};
 pub use regressions::{RegressionInput, RegressionRow};
-#[cfg(feature = "desktop")]
-pub(crate) use scans::{normalize_scan_retention, MAX_SCAN_RETENTION};
+pub use scans::{normalize_scan_retention, MAX_SCAN_RETENTION};
 pub use work_items::IssueCheckMemory;
 
 pub use types::*;
@@ -105,13 +96,13 @@ use std::time::Duration;
 pub struct Database {
     sender: std::sync::mpsc::Sender<DbOp>,
     db_path: String,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     operation_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl Database {
     /// Run a shared-connection operation within [`DB_OP_TIMEOUT`].
-    pub(crate) fn execute<T: Send + 'static>(
+    pub fn execute<T: Send + 'static>(
         &self,
         f: impl FnOnce(&Connection) -> T + Send + 'static,
     ) -> Result<T, DbError> {
@@ -120,12 +111,12 @@ impl Database {
 
     /// [`execute`](Self::execute) with an explicit timeout. Used by long,
     /// user-initiated ops (backup restore) and by tests exercising the timeout.
-    pub(crate) fn execute_with_timeout<T: Send + 'static>(
+    pub fn execute_with_timeout<T: Send + 'static>(
         &self,
         f: impl FnOnce(&Connection) -> T + Send + 'static,
         timeout: Duration,
     ) -> Result<T, DbError> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.operation_count
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let (tx, rx) = std::sync::mpsc::sync_channel::<T>(1);
@@ -137,7 +128,7 @@ impl Database {
 
     /// Send a mutable operation (e.g. a transaction) to the DB thread and block
     /// until it returns, up to [`DB_OP_TIMEOUT`].
-    pub(crate) fn execute_mut<T: Send + 'static>(
+    pub fn execute_mut<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut Connection) -> T + Send + 'static,
     ) -> Result<T, DbError> {
@@ -145,7 +136,7 @@ impl Database {
     }
 
     /// [`execute_mut`](Self::execute_mut) with an explicit timeout.
-    pub(crate) fn execute_mut_with_timeout<T: Send + 'static>(
+    pub fn execute_mut_with_timeout<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut Connection) -> T + Send + 'static,
         timeout: Duration,
@@ -183,7 +174,7 @@ impl Database {
     /// The closure is sent to the worker before this future first awaits,
     /// so it runs exactly once even if the caller's future is dropped; only
     /// the reply is lost on cancellation.
-    pub(crate) async fn run<T: Send + 'static>(
+    pub async fn run<T: Send + 'static>(
         &self,
         f: impl FnOnce(&Connection) -> T + Send + 'static,
     ) -> Result<T, DbError> {
@@ -200,7 +191,7 @@ impl Database {
     /// The closure is sent to the worker before this future first awaits,
     /// so it runs exactly once even if the caller's future is dropped; only
     /// the reply is lost on cancellation.
-    pub(crate) async fn run_mut<T: Send + 'static>(
+    pub async fn run_mut<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut Connection) -> T + Send + 'static,
     ) -> Result<T, DbError> {
@@ -216,7 +207,7 @@ impl Database {
         op: DbOp,
         rx: tokio::sync::oneshot::Receiver<T>,
     ) -> Result<T, DbError> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.operation_count
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.sender
@@ -285,19 +276,19 @@ impl Database {
         Ok(Database {
             sender,
             db_path,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             operation_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn reset_operation_count(&self) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn reset_operation_count(&self) {
         self.operation_count
             .store(0, std::sync::atomic::Ordering::Relaxed);
     }
 
-    #[cfg(test)]
-    pub(crate) fn operation_count(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn operation_count(&self) -> usize {
         self.operation_count
             .load(std::sync::atomic::Ordering::Relaxed)
     }
@@ -368,9 +359,7 @@ impl Database {
                     })?;
                     Ok(())
                 })();
-                // License generation exists only in desktop builds.
-                #[cfg(feature = "desktop")]
-                crate::licensing::commands::note_license_rows_replaced();
+                crate::licensing::generation::note_license_rows_replaced();
                 restore_result
             },
             DB_RESTORE_TIMEOUT,

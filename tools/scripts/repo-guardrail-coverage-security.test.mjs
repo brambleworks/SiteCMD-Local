@@ -117,10 +117,13 @@ describe.concurrent(
       expectGuardrailFailure(
         desktopOAuthSafetyFailures,
         (fixtureRoot) => {
-          const buildScript = readFixtureFile(fixtureRoot, "apps/desktop/src-tauri/build.rs");
+          const buildScript = readFixtureFile(
+            fixtureRoot,
+            "apps/desktop/src-tauri/build_config.rs",
+          );
           writeFixtureFile(
             fixtureRoot,
-            "apps/desktop/src-tauri/build.rs",
+            "apps/desktop/src-tauri/build_config.rs",
             mustMutate(buildScript, '    "GOOGLE_CLIENT_SECRET",\n', ""),
           );
         },

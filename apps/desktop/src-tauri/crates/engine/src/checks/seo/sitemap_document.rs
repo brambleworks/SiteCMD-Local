@@ -30,7 +30,10 @@ pub fn sitemap_urls_from_robots(body: &str) -> Vec<String> {
     body.lines()
         .filter_map(|line| {
             let line = line.split('#').next().unwrap_or("").trim();
-            if line.len() >= 8 && line[..8].eq_ignore_ascii_case("sitemap:") {
+            if line
+                .get(..8)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("sitemap:"))
+            {
                 let url = line[8..].trim();
                 if !url.is_empty() {
                     return Some(url.to_string());

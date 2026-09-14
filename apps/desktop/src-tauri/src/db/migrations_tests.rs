@@ -3,7 +3,7 @@
 use rusqlite::Connection;
 
 const SCHEMA_SNAPSHOT_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/src/db/schema_snapshot.sql");
+    concat!(env!("SITECMD_SOURCE_ROOT"), "/src/db/schema_snapshot.sql");
 
 fn migrated_conn() -> Connection {
     let conn = Connection::open_in_memory().expect("open in-memory db");
@@ -386,7 +386,7 @@ fn migration_021_gives_existing_scans_the_genesis_basis_and_keeps_one_producer_r
 
 #[test]
 fn every_migration_sql_file_is_registered() {
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/db/migrations");
+    let dir = concat!(env!("SITECMD_SOURCE_ROOT"), "/src/db/migrations");
     let registered: std::collections::HashSet<u32> = super::MIGRATIONS
         .iter()
         .map(|&(version, _)| version)

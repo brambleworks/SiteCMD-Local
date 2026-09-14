@@ -4,7 +4,7 @@ use std::path::Path;
 
 #[test]
 fn check_inventory_snapshot_matches_the_registries() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("check-inventory.json");
+    let path = Path::new(env!("SITECMD_SOURCE_ROOT")).join("check-inventory.json");
     let rendered = format!(
         "{}\n",
         serde_json::to_string_pretty(&serde_json::json!({ "web": web_check_ids() })).unwrap()
