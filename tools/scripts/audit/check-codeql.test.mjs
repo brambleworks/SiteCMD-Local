@@ -13,6 +13,7 @@ const INTEGRATION_TEST_TIMEOUT_MS = 15_000;
 let scratch;
 let fakeBin;
 let argsLog;
+let filtersLog;
 let fixture;
 
 /**
@@ -33,7 +34,11 @@ function installFakeCodeql() {
       'if (args[0] === "version") { console.log("0.0.0-fake"); process.exit(0); }',
       "// FAKE_CODEQL_FAIL names the subcommand that should report failure.",
       "if (process.env.FAKE_CODEQL_FAIL === args[1]) process.exit(9);",
-      'if (args[1] === "create") { fs.mkdirSync(args[2], { recursive: true }); process.exit(0); }',
+      'if (args[1] === "create") {',
+      `  fs.appendFileSync(${JSON.stringify(filtersLog)}, String(process.env.LGTM_INDEX_FILTERS ?? "") + "\\n");`,
+      "  fs.mkdirSync(args[2], { recursive: true });",
+      "  process.exit(0);",
+      "}",
       'if (args[1] === "analyze") {',
       '  const out = args.find((a) => a.startsWith("--output=")).slice("--output=".length);',
       "  // FAKE_CODEQL_SARIF names a prepared result set; otherwise the analysis is clean.",
@@ -132,6 +137,7 @@ beforeEach(() => {
   fakeBin = path.join(scratch, "bin");
   fs.mkdirSync(fakeBin);
   argsLog = path.join(scratch, "codeql-args.log");
+  filtersLog = path.join(scratch, "codeql-filters.log");
   installFakeCodeql();
   fixture = createFixtureRepository();
 });
@@ -190,6 +196,19 @@ describe("check-codeql analysis root", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("1 changed file(s)");
     expect(fs.readFileSync(argsLog, "utf8")).toContain(`--source-root=${fixture}`);
+  });
+});
+
+describe("check-codeql extraction filters", () => {
+  it("keeps the extractor out of the Rust build directory", () => {
+    // cli-build writes that tree in the same gate tier, and a cargo artifact
+    // removed mid-walk aborts database creation instead of failing a check.
+    const result = runGate({ SITECMD_CODEQL_BASE: "HEAD~1" });
+
+    expect(result.status).toBe(0);
+    expect(fs.readFileSync(filtersLog, "utf8").trim().split("\n")).toContain(
+      "exclude:apps/desktop/src-tauri/target",
+    );
   });
 });
 
