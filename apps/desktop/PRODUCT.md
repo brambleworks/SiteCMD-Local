@@ -46,10 +46,11 @@ exists. "Run your site on facts, not vibes" is the public expression of this.
 
 Two supporting pillars reinforce the lead, but do not replace it:
 
-- Local-first and publicly auditable. Source code never leaves the machine, and
-  scan history does not either until the owner connects that site to the
-  connected service. The Apache-2.0 client source makes both halves of that
-  claim inspectable rather than merely asserted.
+- Local-first and publicly auditable. SiteCMD does not upload source content
+  to its services. Connected finding submissions require explicit setup.
+  Configured AI editors and user-published reports handle the evidence shared
+  with them under their own data controls. The Apache-2.0 client makes the
+  SiteCMD boundary inspectable.
 - One unified score and issue list spanning live-site checks, source-code audit,
   and connected services, so issues get fixed wherever they live instead of
   scattered across single-purpose tools.
@@ -69,19 +70,20 @@ SiteCMD-Web repository.
   the window hides to tray rather than quitting.
 - The unit of work is a Project, which has environments (local, development,
   staging, production), each with a URL. Scans produce scored findings stored in
-  a local SQLite database. An Events timeline unifies scans, deploys, uptime
+  a local SQLite database. The Activity timeline unifies scans, deploys, uptime
   incidents, and analytics anomalies.
 - Two evidence engines feed one model: Web Scan (categorized checks against a
   live URL) and Code Scan (audit of a linked local source folder). The user
   points Code Scan at a real source directory on their machine.
 - It fits into a developer's existing workflow rather than replacing it: an MCP
   server lets AI coding tools (Cursor, Claude Code, Windsurf) read scan results
-  and help fix issues; a CLI (`sitecmd`) runs the static checks in CI/CD;
+  and help fix issues; a standalone CLI (`sitecmd`) runs Web Scan and the full
+  Code Scan audit in CI/CD without Tauri or a GUI;
   connectors pull in analytics, search, uptime, and deploy data; findings can be
   mirrored to GitHub or Jira.
 - Primary in-app surfaces (workflows): Dashboard (primary triage), Issues (the
-  unified findings list), Analytics, Alerts, Deploys, Events, Search Console,
-  Updates (dependency updates), Reports, Integrations, Sites, Settings.
+  unified findings list), Traffic, Alerts, Deploys, Activity, Search & SEO,
+  Updates (dependency updates), Reports, Integrations, Overview, Settings.
 
 ## Capabilities and Constraints
 
@@ -91,10 +93,10 @@ Capabilities:
   compliance, SEO, performance, config, predeploy, plus polish signals) against
   a live URL, including axe-core WCAG A/AA auditing and Core Web Vitals measured
   in a hidden webview.
-- Code Scan: a source-code auditor for vibe-code anti-patterns, AI-generated-code
-  issues, dependency problems, and launch risks, backed by an 8-ecosystem
-  dependency/update engine (npm, pip/Python, Composer, Cargo, Go, Ruby, Drupal,
-  WordPress).
+- Code Scan: a static source-code auditor for security, database analysis, AI
+  safety, architecture, operations, dependencies, and AI setup. The separate
+  Updates workflow queries registries and advisories for eight ecosystems:
+  npm, pip/Python, Composer, Cargo, Go, Ruby, Drupal, and WordPress.
 - One SiteCMD Score, computed once in Rust over deduplicated, status-filtered
   issue groups. One unified, ranked Issues list merging web and code findings;
   scan source never changes an issue's priority.
@@ -120,8 +122,10 @@ Constraints and durable product facts:
 - `product-facts.json` carries the derived check counts for this repository
   (currently 420 total). The public "390+" floor is maintained and
   guardrail-enforced in the separate SiteCMD-Web product package.
-- Honest scoring: a single critical finding must not tank the score (gentle
-  points off 100, no hard caps), and coverage state is reported plainly.
+- Honest scoring: diminishing deductions from 100, reduced effective counts
+  for needs-review findings, and explicit coverage state. Severity alone does
+  not cap the score. A narrow audited class of critical findings with explicit
+  High or Confirmed confidence caps it at 49 while active.
 - Licensing: subscriptions use LemonSqueezy and retain the internal
   free/core/pro tier vocabulary. The local workbench is complete and free on
   every tier: every scan, full issue detail, fix guides, AI prompts, reports,
@@ -174,15 +178,16 @@ a descriptor in running prose);
 1. Deterministic facts over vibes. Findings come from reproducible checks, never
    an AI guess; AI is confined to helping fix what the checks already found. This
    is the trust contract and the reason to believe the score.
-2. Local-first and auditable by design. Source content stays on the user's
-   machine; connected-site envelopes leave only after explicit setup and remain
-   inspectable in the open client. Privacy is a boundary, not a slogan.
+2. Local-first and auditable by design. SiteCMD does not send source content to
+   its services; connected-site envelopes leave only after explicit setup and
+   remain inspectable in the open client. Editors and exported reports have
+   their own sharing boundaries.
 3. One score, one list, wherever issues live. Web, code, and integration
    findings unify into a single SiteCMD Score and a single ranked issue list;
    scan source never changes priority, and the product never fragments by origin.
-4. Honest by construction. No fabricated claims, gentle scoring that never tanks
-   on a single critical, and coverage stated plainly. The product would rather
-   under-claim than mislead.
+4. Honest by construction. No fabricated claims, diminishing severity
+   deductions with a narrow evidence-gated security cap, and coverage stated
+   plainly. Uncertain static matches do not establish exploitability.
 5. Meet developers where they already work. MCP for AI editors, a CLI for CI, and
    connectors for the existing stack. SiteCMD is an ongoing command center that
    plugs into the workflow, not another silo to babysit.

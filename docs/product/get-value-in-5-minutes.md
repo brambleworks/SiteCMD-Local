@@ -25,7 +25,7 @@ That gives SiteCMD the baseline it needs for:
 - activity tracking
 - verification after a fix
 
-If you linked a project folder, the Full Scan runs the live-site Web Scan first and then runs Code Scan against the local project. If no folder is linked yet, SiteCMD still creates a live-site baseline and should make the missing project-folder step obvious.
+If you linked a project folder, the Full Scan runs the Health Web Scan first and then runs Code Scan against the local project. Without a linked folder, it creates a live-site baseline; link the folder in **Settings → Site Setup** to add source coverage.
 
 ## 3. Start from Dashboard
 
@@ -56,7 +56,9 @@ Do not try to clear the whole list on day one. Fix one meaningful issue end to e
 
 ## 5. Verify the fix
 
-Run the suggested verification flow or rerun the scan.
+Use **Verify** on the issue after applying the fix. For a live-site finding, deploy it to the scanned environment first. For a source finding, save the change in the linked folder.
+
+With an AI editor, start **Fix with your agent** in the issue detail or ask the agent to call `start_fix`. The agent reads `get_fix_brief`, makes the change, requests verification with `request_verification`, and polls `get_fix_status` for SiteCMD's verdict. See the [MCP guide](../../apps/mcp-server/README.md) for setup and access scope.
 
 You should be able to tell, without guessing:
 
@@ -64,7 +66,7 @@ You should be able to tell, without guessing:
 - whether the score moved
 - whether anything regressed
 
-If verification is vague, treat that as product feedback. SiteCMD should make that answer obvious.
+Use the verification result to confirm success. Rounding, diminishing deductions, or an active security cap can leave the displayed score unchanged even after a finding clears.
 
 ## 6. Then add depth
 

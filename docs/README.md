@@ -24,15 +24,14 @@ Use `docs/` only for information that should be treated as current project truth
 - [Releasing the desktop app](operations/releasing.md)
 - [Tauri command and capability guide](engineering/tauri.md)
 - [Unified scan architecture](engineering/unified-scan-architecture.md)
+- [Native runtime boundary](engineering/native-runtime-boundary.md) (shared Rust ownership and standalone CLI builds)
 - [Issue and alert architecture](engineering/issue-and-alert-architecture.md)
+- [Get value in five minutes](product/get-value-in-5-minutes.md)
+- [Fix your first issue](product/fix-your-first-issue.md)
 - [Manual testing runbook](qa/manual-testing-runbook.md)
+- [Native desktop and scanner fuzz tests](qa/native-and-fuzz-tests.md)
 - [Acceptance review template](qa/acceptance-review-template.md)
-- [Agent workflow benchmark](qa/agent-workflow-benchmark.md)
 
 ## Historical procedures
 
 - [Public repository cutover](operations/publication-checklist.md) (historical: executed 2026-08-21 when the repository became public; kept as the record of the in-place rewrite and the settings it restored)
-
-Native desktop and scanner fuzz verification: [native and fuzz tests](qa/native-and-fuzz-tests.md).
-
-Shared native code ownership: [native runtime boundary](engineering/native-runtime-boundary.md).

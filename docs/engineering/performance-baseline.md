@@ -47,12 +47,12 @@ hardware variance.
 
 Validate each release candidate with a release build on every supported platform:
 
-1. Build the release artifact with `pnpm tauri:build:release`.
+1. Install the signed release candidate from the release workflow. For a local optimized build, use `pnpm tauri:build:contributor`; `pnpm tauri:build:release` is reserved for release operators with the updater signing key.
 2. Cold launch the installed artifact.
 3. Open a project that already has data.
 4. Run one scan and confirm Dashboard is usable afterward.
 5. Open Issues and Activity.
-6. Copy `Settings -> Data -> Diagnostic logs -> Copy Logs`.
+6. Copy `Settings -> Privacy & Diagnostics -> Diagnostic logs -> Copy Logs`.
 
 The copied diagnostics include a `SiteCMD Performance Snapshot` with local samples and budget status.
 Attach that snapshot to the private release QA record. Investigate any repeatable budget breach before

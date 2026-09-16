@@ -1,4 +1,0 @@
-# Cloned target repos and per-arm working copies (large, reproducible from config)
-.work/
-# Benchmark run outputs (raw JSON + generated reports)
-results/

@@ -59,8 +59,3 @@ apps/desktop/src-tauri/crates/engine/browser/axe.min.js
 **/.sitecmd/
 # Generated design-system bundle (already gitignored).
 ds-bundle/
-# Benchmark run artifacts only. The harness under tools/benchmark/lib and its
-# two entry scripts are tracked source and stay formatted; ignoring the whole
-# directory silently exempted 8 committed files.
-tools/benchmark/.work/
-tools/benchmark/results/

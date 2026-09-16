@@ -45,10 +45,10 @@ describe("deriving runner coverage from package.json", () => {
   it("reads the explicit paths off a root vitest sweep", () => {
     expect(
       coveredTestPaths(
-        { "guardrails:repo:test": "vitest run tools/scripts tools/benchmark/lib" },
+        { "guardrails:repo:test": "vitest run tools/scripts tools/reporting/lib" },
         new Map(),
       ).sort(),
-    ).toEqual(["tools/benchmark/lib", "tools/scripts"]);
+    ).toEqual(["tools/reporting/lib", "tools/scripts"]);
   });
 
   it("reads both runners out of one chained script", () => {
@@ -56,11 +56,11 @@ describe("deriving runner coverage from package.json", () => {
       coveredTestPaths(
         {
           "guardrails:repo:test":
-            "vitest run tools/scripts && node --test tools/benchmark/lib/*.test.mjs",
+            "vitest run tools/scripts && node --test tools/reporting/lib/*.test.mjs",
         },
         new Map(),
       ).sort(),
-    ).toEqual(["tools/benchmark/lib", "tools/scripts"]);
+    ).toEqual(["tools/reporting/lib", "tools/scripts"]);
   });
 
   it("stops reading paths at the first flag", () => {
@@ -93,17 +93,17 @@ describe("uncollected tracked test files", () => {
   });
 
   it("flags a tracked test file that no runner collects", () => {
-    const failures = failuresFor(SCRIPTS, ["tools/benchmark/lib/report.test.mjs"]);
+    const failures = failuresFor(SCRIPTS, ["tools/reporting/lib/report.test.mjs"]);
     expect(failures).toHaveLength(1);
-    expect(failures[0]).toContain("tools/benchmark/lib/report.test.mjs");
+    expect(failures[0]).toContain("tools/reporting/lib/report.test.mjs");
     expect(failures[0]).toContain("no package.json test script collects");
   });
 
   it("clears once the sweep is widened to include it", () => {
     expect(
       failuresFor(
-        { ...SCRIPTS, "guardrails:repo:test": "vitest run tools/scripts tools/benchmark/lib" },
-        ["tools/benchmark/lib/report.test.mjs"],
+        { ...SCRIPTS, "guardrails:repo:test": "vitest run tools/scripts tools/reporting/lib" },
+        ["tools/reporting/lib/report.test.mjs"],
       ),
     ).toEqual([]);
   });
@@ -120,7 +120,7 @@ describe("uncollected tracked test files", () => {
   });
 
   it("does not treat a non-test source file as a test", () => {
-    expect(failuresFor(SCRIPTS, ["tools/benchmark/lib/report.mjs"])).toEqual([]);
+    expect(failuresFor(SCRIPTS, ["tools/reporting/lib/report.mjs"])).toEqual([]);
   });
 
   it("skips quietly outside a git checkout", () => {

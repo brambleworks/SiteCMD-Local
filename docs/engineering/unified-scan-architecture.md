@@ -40,12 +40,12 @@ A scan execution records one user or system intent. It owns:
 - trigger
 - validated capability plan
 - idempotency key
-- quota decision
+- admission and concurrency decision
 - start, completion, cancellation, and failure state
 
 Full, Web, Code, scheduled, tray, and verification requests all enter through the same admission boundary.
 
-A Full scan is one execution with Web and Code child runs. It appears once in history and consumes one quota unit when quota applies.
+A Full scan is one execution with Web and Code child runs when a source folder is linked. It appears once in history. Local scans have no plan-based quota.
 
 ### Scan run
 
@@ -106,11 +106,11 @@ The backend validates the complete execution plan before starting a collector. A
 - requested collectors and capabilities
 - project and environment scope
 - bounded verification status
-- quota eligibility
+- concurrent execution ownership
 - idempotency ownership
 - cancellation identity
 
-No frontend label or trigger name is trusted as proof that work is quota-exempt or safely bounded.
+No frontend label or trigger name is trusted as proof that work is safely bounded.
 
 ### Idempotency
 
@@ -118,23 +118,17 @@ One idempotency key belongs to one validated plan. Reusing it returns existing w
 
 A deliberate new action receives a new key.
 
-### Quota
+### Local access and hosted entitlement
 
-Quota follows the admitted work plan:
+The complete local workbench is free. Admission does not reserve or consume daily scan units, and local Full, Web, Code, scheduled, tray, and verification runs are not tier-gated.
 
-- Full is one execution and one unit.
-- Web-only and Code-only scans are one unit each when quota applies.
-- A bounded verification of explicit checks or occurrences may be exempt.
-- A site-wide or project-wide run still counts even when launched from a Verify action.
-- Scheduled and tray scans use the same policy as interactive scans.
-
-Reservation and consumption are backend responsibilities so concurrent requests cannot bypass or double-charge quota.
+Concurrency, idempotency, path validation, and network policy still apply. Connected-service entitlement is enforced by that service and is separate from admission of a local scan. A verification request must accurately describe its scope even though neither bounded nor full local scans consume a quota.
 
 ### Cancellation and progress
 
 Cancellation belongs to the execution request and is checked between collector phases. Child progress rolls up to the execution without losing source-specific detail.
 
-Cancellation must leave a coherent terminal execution record. It must not strand an active quota reservation or make partial evidence appear complete.
+Cancellation must leave a coherent terminal execution record and release active execution ownership. Partial evidence must not appear complete.
 
 ## Persistence and history
 
@@ -176,11 +170,11 @@ MCP reads the same execution, finding, correlation, lifecycle, and score model. 
 
 ### CLI
 
-The standalone CLI may run a subset of collectors because it has no Tauri renderer or hidden browser window. Its output still uses canonical check identities and the same finding semantics.
+The standalone `sitecmd-cli` package and desktop both depend on `sitecmd-runtime`. The CLI runs Web Scan and the full Code Scan audit without Tauri or a GUI. Default binaries omit browser analysis; source builds can enable the optional `browser` feature. Its output uses canonical check identities and the same finding semantics. See [the native runtime boundary](native-runtime-boundary.md) for ownership.
 
 ### Background scheduler
 
-Scheduled work enters the same admission and persistence boundaries as manual work. It cannot bypass quota, cancellation, network, or lifecycle rules by calling collectors directly.
+Scheduled work enters the same admission and persistence boundaries as manual work. It cannot bypass concurrency, cancellation, network, or lifecycle rules by calling collectors directly.
 
 ## Adding a collector
 
@@ -194,7 +188,7 @@ A new collector is complete only when it:
 6. participates in cancellation, progress, and terminal-state handling
 7. feeds the existing score and lifecycle model
 8. appears through existing history, report, export, and MCP contracts
-9. has migration, identity, quota, redaction, and failure tests
+9. has migration, identity, admission, redaction, and failure tests
 
 Adding a collector must not add a new top-level history table, issue-state store, score, or frontend merge path.
 
@@ -211,7 +205,7 @@ The event and query layers invalidate downstream views after durable state chang
 Repository tests protect the architecture by checking:
 
 - one admission path for manual, scheduled, and verification work
-- one canonical execution and quota decision for Full
+- one canonical execution and admission decision for Full
 - path-free canonical check IDs
 - no legacy source-specific scan tables or command families
 - one issue lifecycle store
