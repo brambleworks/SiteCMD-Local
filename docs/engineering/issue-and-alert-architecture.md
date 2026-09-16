@@ -35,7 +35,7 @@ be treated as issues or action items.
 
 ### Raw issue storage
 
-Module: `desktop/src-tauri` work item storage.
+Module: `apps/desktop/src-tauri/src` work item storage.
 
 Owns:
 
@@ -50,7 +50,7 @@ Does not own:
 
 ### Grouped issue projection
 
-Module: `desktop/src-tauri` grouped issue projection.
+Module: `apps/desktop/src-tauri/src` grouped issue projection.
 
 Owns:
 
@@ -64,11 +64,11 @@ Owns:
 Reads:
 
 - raw `work_items`
-- env-scoped `issue_states`
+- env-scoped `project_issue_states`
 
 ### Issue state overlay
 
-Module: `desktop/src-tauri` issue state storage.
+Module: `apps/desktop/src-tauri/src` issue state storage.
 
 Owns:
 
@@ -82,20 +82,20 @@ Important rule:
 
 ### Action-item assembly
 
-Module: `desktop/src-tauri` project action item commands.
+Module: `apps/desktop/src-tauri/src` project action item commands.
 
 Owns:
 
 - action-item queue building
 - action-item summary building
 - workflow cue generation
-- access-tier sanitization for code action items
+- complete local action detail without subscription-tier filtering
 
 These functions operate on `project_work_items`, not raw issues.
 
 ### Maintenance item assembly
 
-Module: `desktop/src-tauri` project maintenance item commands.
+Module: `apps/desktop/src-tauri/src` project maintenance item commands.
 
 Owns:
 
@@ -109,7 +109,7 @@ project IPC orchestration module.
 
 ### Project signal snapshot orchestration
 
-Module: `desktop/src-tauri` project signal snapshot commands.
+Module: `apps/desktop/src-tauri/src` project signal snapshot commands.
 
 Owns:
 
@@ -125,7 +125,7 @@ orchestration layer.
 
 ### Issue verification capability routing
 
-Module: `desktop/src-tauri` issue source capability routing.
+Module: `apps/desktop/src-tauri/src` issue source capability routing.
 
 Owns:
 
@@ -137,7 +137,7 @@ switch.
 
 ## Frontend Model
 
-Module: `desktop/src` issue API boundary.
+Module: `apps/desktop/src` issue API boundary.
 
 This is the frontend API boundary for grouped issues and issue-state actions.
 

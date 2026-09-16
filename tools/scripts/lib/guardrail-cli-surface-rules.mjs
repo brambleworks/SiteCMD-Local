@@ -7,7 +7,6 @@ const SETUP_ACTION = ".github/actions/setup-sitecmd";
 const DEV_WRAPPER = "tools/scripts/sitecmd.mjs";
 const AUDIT_WORKFLOW = ".github/workflows/app-guardrails.yml";
 const POSTGRES_WORKFLOW = ".github/workflows/code-scan-postgres-integration.yml";
-const BENCHMARK_SCANNER = "tools/benchmark/lib/scanner.mjs";
 const WORKFLOW_GENERATOR = "apps/desktop/src/components/settings/cicd-workflow.ts";
 const TAURI_CONFIG = "apps/desktop/src-tauri/tauri.conf.json";
 const PUBLIC_INSTALLER = "install.sh";
@@ -82,7 +81,6 @@ export function cliSurfaceFailures(read, exists, listFiles) {
     DEV_WRAPPER,
     AUDIT_WORKFLOW,
     POSTGRES_WORKFLOW,
-    BENCHMARK_SCANNER,
     WORKFLOW_GENERATOR,
     TAURI_CONFIG,
     PUBLIC_INSTALLER,
@@ -121,7 +119,6 @@ export function cliSurfaceFailures(read, exists, listFiles) {
     ),
     DEV_WRAPPER,
     AUDIT_WORKFLOW,
-    BENCHMARK_SCANNER,
     WORKFLOW_GENERATOR,
   ];
   check(
@@ -196,16 +193,6 @@ export function cliSurfaceFailures(read, exists, listFiles) {
       postgresWorkflow.includes("SITECMD_POSTGRES_TEST_URL") &&
       postgresWorkflow.includes("postgres_live -- --ignored"),
     `${POSTGRES_WORKFLOW} must automatically exercise supported localhost Postgres inspection on relevant changes and a weekly schedule.`,
-  );
-
-  const benchmarkScanner = read(BENCHMARK_SCANNER);
-  check(
-    benchmarkScanner.includes("apps/desktop/src-tauri/crates/cli/Cargo.toml") &&
-      !benchmarkScanner.includes('"--example"') &&
-      benchmarkScanner.includes('["audit", projectPath, "--format", "json"]') &&
-      benchmarkScanner.includes('["audit", projectPath, "--format", "review"]') &&
-      !benchmarkScanner.includes("audit_code_scan"),
-    `${BENCHMARK_SCANNER} must benchmark the shipped sitecmd audit command, not a private or retired Code Scan binary.`,
   );
 
   const setupAction = read(`${SETUP_ACTION}/action.yml`);

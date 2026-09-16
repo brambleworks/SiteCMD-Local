@@ -42,17 +42,9 @@ export default defineConfig([
     "ds-bundle/**",
     // Local scratch and captured-run output.
     "output/**",
-    // Ignore benchmark artifacts, not the tracked harness source.
-    "tools/benchmark/.work/**",
-    "tools/benchmark/results/**",
   ]),
   {
-    files: [
-      "eslint.config.js",
-      "tools/scripts/**/*.mjs",
-      "tools/benchmark/**/*.mjs",
-      "apps/mcp-server/test/**/*.mjs",
-    ],
+    files: ["eslint.config.js", "tools/scripts/**/*.mjs", "apps/mcp-server/test/**/*.mjs"],
     extends: [
       js.configs.recommended,
       prettierConfig, // must come last: disables ESLint rules prettier formats

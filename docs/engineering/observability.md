@@ -31,8 +31,9 @@ The local snapshot strips common sensitive patterns before storing them:
 It is designed to tell us which workflow broke, not what site content or prompt text the user had open.
 
 Hosted telemetry is off until the user opts in. Usage analytics and crash/error reports are separate
-choices. The desktop app must send hosted usage events only through
-`apps/desktop/src/lib/telemetry.ts`; Sentry must also be initialized only through that module.
+choices. Renderer telemetry enters through `apps/desktop/src/lib/telemetry.ts`.
+Its typed requests cross the Tauri bridge to the native backend, which owns
+consent enforcement, validation, and transport to the fixed telemetry and Sentry hosts.
 
 Hosted telemetry must never include:
 
@@ -47,8 +48,8 @@ Hosted telemetry must never include:
 From the desktop app:
 
 1. Open `Settings`
-2. Go to `Data`
-3. Click `Copy Logs`
+2. Go to `Privacy & Diagnostics`
+3. In `Diagnostic logs`, click `Copy Logs`
 
 The copied diagnostics still include:
 
@@ -105,6 +106,12 @@ cannot supply a destination URL, arbitrary body, or arbitrary diagnostic event. 
 consent again, validates an allowlisted schema, constructs the final envelope, and chooses the fixed
 SiteCMD telemetry or baked Sentry host. Disabling consent therefore closes the transport boundary,
 not just the visible switch.
+
+The telemetry deletion-proof secret is stored in the OS keychain. The renderer
+receives its hash for registration and queues deletion through the native
+backend; it never receives the secret itself. Deleting uploaded telemetry and
+resetting the anonymous identity are explicit operations, separate from turning
+off future collection.
 
 Desktop builds opt into hosted endpoints with explicit public env values:
 

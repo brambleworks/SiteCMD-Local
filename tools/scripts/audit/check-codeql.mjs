@@ -50,6 +50,18 @@ function positiveInteger(value) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+/**
+ * Directories the extractor must not walk, relative to the source root. The
+ * Rust build directory holds no tracked JavaScript, runs to tens of thousands
+ * of files, and the gate's cli-build step writes it in the same tier: cargo
+ * removing an incremental artifact mid-walk aborts database creation with a
+ * NoSuchFileException. Excluding it also spares the walk 22G of build output.
+ */
+const EXTRACTION_EXCLUDES = ["apps/desktop/src-tauri/target"];
+
+/** The JavaScript extractor reads its path filters from this variable. */
+const INDEX_FILTERS = EXTRACTION_EXCLUDES.map((directory) => `exclude:${directory}`).join("\n");
+
 /** An hour is far longer than a run takes, so this only sees abandoned work. */
 const STALE_MS = 60 * 60 * 1000;
 
@@ -95,12 +107,13 @@ function sweepStaleDatabases() {
   }
 }
 
-function run(command, args, { capture = false } = {}) {
+function run(command, args, { capture = false, env } = {}) {
   return spawnSync(command, args, {
     cwd: ROOT,
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
     maxBuffer: 64 * 1024 * 1024,
+    env: env ? { ...process.env, ...env } : process.env,
   });
 }
 
@@ -234,19 +247,24 @@ function main() {
   const work = mkdtempSync(join(tmpdir(), `${WORK_PREFIX}${process.pid}-`));
   workDirectory = work;
   try {
-    // No paths-ignore config: the extractor already skips node_modules, and
-    // analysis covers every tracked JavaScript and TypeScript file.
+    // The extractor already skips node_modules; EXTRACTION_EXCLUDES covers the
+    // generated trees it would otherwise walk. Analysis still reaches every
+    // tracked JavaScript and TypeScript file.
     const database = join(work, "db");
-    const created = run("codeql", [
-      "database",
-      "create",
-      database,
-      `--language=${LANGUAGE}`,
-      "--build-mode=none",
-      `--source-root=${ROOT}`,
-      `--ram=${RAM_MB}`,
-      "--overwrite",
-    ]);
+    const created = run(
+      "codeql",
+      [
+        "database",
+        "create",
+        database,
+        `--language=${LANGUAGE}`,
+        "--build-mode=none",
+        `--source-root=${ROOT}`,
+        `--ram=${RAM_MB}`,
+        "--overwrite",
+      ],
+      { env: { LGTM_INDEX_FILTERS: INDEX_FILTERS } },
+    );
     if (created.status !== 0) die("check-codeql: database creation failed.");
 
     const sarif = join(work, "results.sarif");

@@ -27,9 +27,10 @@ is not withheld to create the paid tier.
 
 ## What it checks
 
-One scan runs the engines below and merges everything they find into a single
-ranked list, whether a finding came from the live site or the checkout behind
-it.
+A Full scan combines the applicable Web Scan checks with Code Scan when a
+source folder is linked, then merges findings into one ranked list. The
+inventory below spans scan categories and optional browser capabilities;
+available coverage depends on the selected mode, target, and platform.
 
 | Engine        | Checks | Covers                                                                                                        |
 | ------------- | -----: | ------------------------------------------------------------------------------------------------------------- |
@@ -145,7 +146,9 @@ Source-processing code in this repository runs on the execution host: your
 machine for the desktop app and CLI, or the CI runner executing an action.
 SiteCMD does not upload source code or raw file paths from that host to its
 connected service. Report output that you configure a CI workflow to publish is
-handled by that CI provider. Desktop integration credentials are stored locally
+handled by that CI provider. A configured AI editor can read all projects in
+the local SiteCMD database, and evidence or source excerpts returned through
+MCP may reach its model provider under that editor's settings. Desktop integration credentials are stored locally
 by the desktop app and sent only to the provider they authenticate, never to
 SiteCMD. SiteCMD does not transmit scan findings to its connected service unless
 you explicitly connect a site, which is off until you set it up.
@@ -191,7 +194,7 @@ apps/
                       connected baseline
 docs/                 Current engineering, product, QA, and operations docs
 packaging/npm/        The @sitecmd/cli npm package and its per-platform binaries
-tools/                Repository tooling and maintained benchmarks
+tools/                Repository tooling and guardrail scripts
 install.sh            The installer sitecmd.com/install.sh serves
 ```
 

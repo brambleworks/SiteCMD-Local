@@ -3,13 +3,9 @@ import type { KnipConfig } from "knip";
 // Single Knip configuration for workspace code inside each project glob.
 // Assets outside those globs do not need redundant ignore entries.
 const config: KnipConfig = {
-  // Exclude local benchmark clones missed by nested gitignore handling.
-  ignore: ["tools/benchmark/.work/**"],
   ignoreBinaries: [
     // Separately installed native desktop WebDriver.
     "tauri-driver",
-    // POSIX utility used to construct benchmark filesystem fixtures.
-    "mkfifo",
     // OS process lookup used by the development restart preflight.
     "pgrep",
     // Rustup-provided toolchain binary.

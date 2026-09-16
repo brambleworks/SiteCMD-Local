@@ -24,15 +24,17 @@ The source-publication decision record, maintained privately alongside the conne
 - `apps/desktop/` - Tauri v2 desktop app (Rust backend + React frontend). The main product.
 - `apps/mcp-server/` - TypeScript MCP server for AI editor integration.
 - `docs/` - maintained engineering, product, QA, and operations documentation.
-- `tools/` - repository tooling, guardrails, and maintained benchmarks.
+- `tools/` - repository tooling, guardrails, and release scripts.
 
 The marketing and documentation site, the public scanner, and the deployable Cloudflare Workers (release delivery, telemetry, catalog, activation, connected service) live in the separate SiteCMD-Web repository. `product-facts.json` is the one channel across that boundary; regenerate it with `pnpm facts:generate` after changing any of its sources.
 
 ## Local setup
 
-- `pnpm install`
-- `bash tools/scripts/dev.sh` - restarts the Tauri desktop app cleanly, freeing its dev ports first.
-- `pnpm tauri:dev` - desktop app only, without the restart handling.
+Install the prerequisites in [README.md](README.md#prerequisites), then run:
+
+- `pnpm install` - install workspace dependencies and hooks.
+- `pnpm tauri:dev` - start the desktop app. The launcher cleans up stale development processes that it can verify belong to this checkout and leaves unrelated processes alone.
+- `pnpm dev` - start only the frontend development server when a native window is not needed.
 
 Start with [Adding a detector](docs/engineering/adding-a-detector.md) to follow
 one existing check from input through verdict, fixtures, registration, and local
@@ -57,10 +59,19 @@ headless CLI does not provide the checkout wrapper's `open` convenience command.
 - `pnpm typecheck` - every workspace.
 - `pnpm test` - desktop, MCP, and repository guardrail tests.
 - `pnpm lint` - ESLint across the workspace.
-- `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check` - Rust formatting.
-- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --workspace --all-targets -- -D warnings` - Rust lint across every crate and target.
-- `pnpm verify:push` - the full push gate, and the one that decides whether a change is ready.
+- `pnpm format:check` - repository formatting.
+- `pnpm guardrails:repo` - architecture, publication, and repository policy checks.
+- `pnpm verify:push` - the full push gate. Run after committing, as it also validates the commit and declared Rust toolchain policy.
 - Lefthook runs the relevant subset on `pre-commit` and `pre-push`.
+
+Run direct Rust checks from the native workspace so rustup selects its pinned toolchain:
+
+```bash
+cd apps/desktop/src-tauri
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
 
 ## Branch + commit conventions
 

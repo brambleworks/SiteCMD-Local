@@ -15,6 +15,20 @@ and migrations, scoring, connected-service clients, CLI operations, and the
 scan worker runtime. It has no Tauri dependency. Its optional `browser` feature
 adds headless Chrome acquisition for the CLI.
 
+The default CLI build runs Web Scan and the full Code Scan audit without a
+browser. From the Rust workspace, build either variant with:
+
+```bash
+cd apps/desktop/src-tauri
+cargo build --locked --release -p sitecmd-cli
+# Optional browser analysis on a host capable of running Chromium:
+cargo build --locked --release -p sitecmd-cli --features browser
+```
+
+Cargo names the executable `target/release/sitecmd_cli` (`.exe` on Windows).
+Release packaging installs it as `sitecmd`. Neither variant depends on Tauri;
+the browser feature belongs to the runtime.
+
 The desktop package owns app startup, IPC, capabilities, webviews, the OS
 keychain, and background adapters. The `desktop_core`, `desktop_integrations`,
 `desktop_licensing`, and `desktop_ssl_probe` modules adapt shared runtime

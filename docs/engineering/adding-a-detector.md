@@ -112,7 +112,7 @@ pnpm format:check
 
 Before a merge, run the repository's complete required checks, including the
 Rust workspace suite. After committing, `pnpm verify:push` is the authoritative
-local push gate. Keep generated benchmark runs and review transcripts out of Git.
+local push gate. Keep generated run output and review transcripts out of Git.
 
 ## Code Scan differences
 

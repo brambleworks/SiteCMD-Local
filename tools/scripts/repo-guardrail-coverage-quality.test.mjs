@@ -865,22 +865,6 @@ describe.concurrent(
       );
     });
 
-    it("fails when the benchmark bypasses the shipped Code Scan CLI", () => {
-      expectGuardrailFailure(
-        cliSurfaceFailures,
-        (fixtureRoot) => {
-          const scannerPath = "tools/benchmark/lib/scanner.mjs";
-          const scanner = readFixtureFile(fixtureRoot, scannerPath);
-          writeFixtureFile(
-            fixtureRoot,
-            scannerPath,
-            mustMutate(scanner, '"sitecmd_cli"', '"audit_code_scan"'),
-          );
-        },
-        "must benchmark the shipped sitecmd audit command",
-      );
-    });
-
     it("fails when the headless CLI regains a desktop package dependency", () => {
       expectGuardrailFailure(
         cliSurfaceFailures,

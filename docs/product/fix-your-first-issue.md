@@ -46,7 +46,7 @@ Depending on the issue, that may mean:
 - fixing a package version
 - repairing a broken external or internal link
 
-If you use an AI coding tool, give it the issue summary plus the exact verify goal. That usually produces much better output than asking it to "improve the site" in the abstract.
+For an AI coding tool, connect it from **Integrations** or follow the [MCP setup guide](../../apps/mcp-server/README.md). Choose **Fix with your agent** on the issue, or ask the agent to open an attempt with `start_fix`. It reads `get_fix_brief` for the target and acceptance criteria before editing.
 
 ## Verify immediately
 
@@ -54,9 +54,10 @@ Do not assume the fix worked just because the code looks right.
 
 Use the SiteCMD follow-up flow:
 
-- rerun the relevant scan
-- open the updated issue state
-- confirm the issue cleared or moved in the expected direction
+- For a live-site finding, deploy the change to the URL you scanned; source changes alone do not change that website.
+- Use **Verify**, or have the agent call `request_verification` and poll `get_fix_status` while SiteCMD is running.
+- Review the verdict and evidence. SiteCMD determines whether the issue cleared; the agent does not declare itself successful.
+- Run a broader scan if needed. `compare_scans` compares Web Scans; use current findings and the verification verdict for Code Scan changes.
 
 You want a clear before/after outcome, not a guess.
 
@@ -66,7 +67,7 @@ After the first fix, one of these should be true:
 
 - the issue is resolved
 - the issue improved but still needs work
-- the issue was misdiagnosed and should be rewritten or suppressed
+- the finding does not apply and you use **Block** with a reason, or suppress a reviewed Code Scan occurrence in project configuration
 
 That decision matters. A trustworthy tool does not just point at problems. It helps you close the loop cleanly.
 
