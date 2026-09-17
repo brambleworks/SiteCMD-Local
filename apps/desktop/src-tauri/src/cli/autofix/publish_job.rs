@@ -421,19 +421,9 @@ pub(crate) async fn run_with_witness(
         Ok(()) if !patch.trim().is_empty() => {
             publish_patch(args, &root, &claimed, &manifest, &job_client).await?
         }
-        // Publishing an agent's brief as an issue arrives with the agent path.
-        Ok(()) if manifest.brief.is_some() => (
-            1,
-            report(
-                claimed.attempt,
-                "brief_rejected",
-                "agent publication arrives in the next task".into(),
-                finding_reports(&manifest, "unsupported"),
-                None,
-                None,
-                true,
-            ),
-        ),
+        Ok(()) if manifest.brief.is_some() => {
+            super::brief_publish::publish_brief(&root, &claimed, &manifest, &job_client).await?
+        }
         Ok(()) => (
             1,
             report(

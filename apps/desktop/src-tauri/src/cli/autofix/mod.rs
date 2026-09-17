@@ -4,6 +4,7 @@
 pub mod apply;
 pub mod artifact;
 pub mod brief;
+pub mod brief_publish;
 pub mod github_api;
 pub mod locate;
 pub mod publish_job;
