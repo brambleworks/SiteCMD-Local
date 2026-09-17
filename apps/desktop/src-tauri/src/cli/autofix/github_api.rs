@@ -81,7 +81,7 @@ impl GitHubApi {
             .map_err(|_| "installation token is not a valid header value".to_string())?;
         authorization.set_sensitive(true);
         #[cfg(test)]
-        let client = if crate::core::localhost::is_strict_localhost(&url) {
+        let client = if crate::network_policy::LocalOrigin::classify(&url).is_strict_loopback() {
             crate::http_client::localhost_client()
         } else {
             crate::http_client::credentialed_service_client()
