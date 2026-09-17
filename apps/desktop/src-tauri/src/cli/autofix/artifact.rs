@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub const ARTIFACT_SCHEMA_VERSION: u16 = 1;
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
-const MAX_PATCH_BYTES: u64 = 8 * 1024 * 1024;
+pub(crate) const MAX_PATCH_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

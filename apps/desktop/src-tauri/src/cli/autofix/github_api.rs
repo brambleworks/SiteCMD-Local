@@ -5,6 +5,22 @@
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 
 const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
+/// How much of GitHub's own explanation a refusal carries back.
+const MAX_REFUSAL_MESSAGE_CHARS: usize = 200;
+
+/// GitHub's own reason for a refusal, bounded, so a maintainer can act on it.
+/// Anything else the body carries is dropped, and the summary that quotes this
+/// is redacted before it leaves the runner.
+fn refusal_message(bytes: &[u8]) -> String {
+    serde_json::from_slice::<serde_json::Value>(bytes)
+        .ok()
+        .and_then(|parsed| {
+            parsed["message"]
+                .as_str()
+                .map(|message| message.chars().take(MAX_REFUSAL_MESSAGE_CHARS).collect())
+        })
+        .map_or_else(String::new, |message: String| format!(": {message}"))
+}
 
 pub struct GitHubApi {
     base: url::Url,
@@ -64,11 +80,14 @@ impl GitHubApi {
         let mut authorization = HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| "installation token is not a valid header value".to_string())?;
         authorization.set_sensitive(true);
+        #[cfg(test)]
         let client = if crate::core::localhost::is_strict_localhost(&url) {
             crate::http_client::localhost_client()
         } else {
             crate::http_client::credentialed_service_client()
         };
+        #[cfg(not(test))]
+        let client = crate::http_client::credentialed_service_client();
         let mut request = client
             .request(method, url)
             .header(AUTHORIZATION, authorization)
@@ -114,7 +133,10 @@ impl GitHubApi {
             )
             .await?;
         if status != reqwest::StatusCode::CREATED {
-            return Err(format!("GitHub refused the pull request ({status})"));
+            return Err(format!(
+                "GitHub refused the pull request ({status}){}",
+                refusal_message(&bytes)
+            ));
         }
         let parsed: serde_json::Value = serde_json::from_slice(&bytes)
             .map_err(|_| "GitHub pull request response is not JSON".to_string())?;
@@ -146,7 +168,10 @@ impl GitHubApi {
             )
             .await?;
         if status != reqwest::StatusCode::CREATED {
-            return Err(format!("GitHub refused the issue ({status})"));
+            return Err(format!(
+                "GitHub refused the issue ({status}){}",
+                refusal_message(&bytes)
+            ));
         }
         let parsed: serde_json::Value = serde_json::from_slice(&bytes)
             .map_err(|_| "GitHub issue response is not JSON".to_string())?;

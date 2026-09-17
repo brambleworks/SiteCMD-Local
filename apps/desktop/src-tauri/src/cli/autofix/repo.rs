@@ -3,7 +3,12 @@
 
 use std::path::Path;
 
+use super::artifact::MAX_PATCH_BYTES;
 use crate::core::git::{run_git_command, GitRun, HttpsTransport};
+
+/// The diff headers that move a file instead of editing it in place. A
+/// template fixer never emits one.
+const MOVE_HEADERS: &[&str] = &["rename from ", "rename to ", "copy from ", "copy to "];
 
 fn expect_ok(run: GitRun, what: &str) -> Result<GitRun, String> {
     if run.ok() {
@@ -108,9 +113,32 @@ pub fn apply_patch(root: &Path, patch_path: &Path) -> Result<(), String> {
     .map(|_| ())
 }
 
+/// A patch that moves a file is refused before git ever reads it.
+/// `git apply --numstat` prints a rename's destination and nothing else, so a
+/// rename out of `.github/workflows/` would show the publish job only the
+/// harmless-looking destination while the source left the tree. A template
+/// fixer edits files in place, so a move header is always someone else's.
+fn refuse_a_move(patch_path: &Path) -> Result<(), String> {
+    let metadata = std::fs::metadata(patch_path)
+        .map_err(|error| format!("patch could not be read: {error}"))?;
+    if !metadata.is_file() || metadata.len() > MAX_PATCH_BYTES {
+        return Err("patch is not a bounded regular file".into());
+    }
+    let patch = std::fs::read_to_string(patch_path)
+        .map_err(|error| format!("patch could not be read: {error}"))?;
+    if patch
+        .lines()
+        .any(|line| MOVE_HEADERS.iter().any(|header| line.starts_with(header)))
+    {
+        return Err("patch renames or copies a file, which a template fix never does".into());
+    }
+    Ok(())
+}
+
 /// The paths a patch touches, from `git apply --numstat`, which reads the
 /// diff and runs nothing.
 pub fn patch_paths(root: &Path, patch_path: &Path) -> Result<Vec<String>, String> {
+    refuse_a_move(patch_path)?;
     let patch = patch_path.to_string_lossy().to_string();
     let run = expect_ok(
         run_git_command(
@@ -126,6 +154,32 @@ pub fn patch_paths(root: &Path, patch_path: &Path) -> Result<Vec<String>, String
         .lines()
         .filter_map(|line| line.split('\t').nth(2).map(str::to_string))
         .collect())
+}
+
+/// Every path the working tree shows as changed, tracked or not, so the
+/// publish job can prove an applied patch touched nothing it did not declare.
+/// A rename line names both sides.
+pub fn changed_paths(root: &Path) -> Result<Vec<String>, String> {
+    let run = expect_ok(
+        run_git_command(
+            root,
+            &["status", "--porcelain", "--untracked-files=all"],
+            crate::constants::AUTOFIX_GIT_TIMEOUT,
+            None,
+        )?,
+        "git status --porcelain",
+    )?;
+    let mut paths = Vec::new();
+    for line in run.stdout.lines() {
+        // Two status characters and a space, then the path, or `old -> new`.
+        let Some(rest) = line.get(3..) else { continue };
+        for path in rest.split(" -> ") {
+            if !path.is_empty() {
+                paths.push(path.to_string());
+            }
+        }
+    }
+    Ok(paths)
 }
 
 pub fn commit(
@@ -160,6 +214,10 @@ pub fn commit(
     head_sha(root)
 }
 
+/// Push the job's branch, replacing whatever is at its tip. The `sitecmd/`
+/// namespace belongs to the App and a branch name carries no attempt number,
+/// so a retry of the same job replaces the stale tip an earlier attempt left
+/// behind instead of failing on a non-fast-forward for good.
 pub fn push_branch(
     root: &Path,
     remote_url: &str,
@@ -170,7 +228,7 @@ pub fn push_branch(
     expect_ok(
         run_git_command(
             root,
-            &["push", "--", remote_url, &refspec],
+            &["push", "--force", "--", remote_url, &refspec],
             crate::constants::AUTOFIX_GIT_NETWORK_TIMEOUT,
             Some(transport),
         )?,

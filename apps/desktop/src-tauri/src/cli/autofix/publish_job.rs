@@ -75,6 +75,23 @@ pub fn manifest_matches_claim(manifest: &Manifest, claimed: &ClaimedJob) -> Resu
     if manifest.attempt != claimed.attempt {
         return Err("manifest names another attempt".into());
     }
+    // The pull request body and the finding outcomes are read out of the
+    // manifest, so the manifest may not name a finding the claim never did.
+    let mut claimed_findings: Vec<(&str, &str)> = claimed
+        .findings
+        .iter()
+        .map(|f| (f.check_id.as_str(), f.identity.as_str()))
+        .collect();
+    let mut manifest_findings: Vec<(&str, &str)> = manifest
+        .findings
+        .iter()
+        .map(|f| (f.check_id.as_str(), f.identity.as_str()))
+        .collect();
+    claimed_findings.sort_unstable();
+    manifest_findings.sort_unstable();
+    if manifest_findings != claimed_findings {
+        return Err("manifest names other findings than the claim".into());
+    }
     Ok(())
 }
 
@@ -174,6 +191,10 @@ pub fn finding_reports(manifest: &Manifest, published: &str) -> Vec<FindingOutco
         .collect()
 }
 
+/// One result for the connected service. `token_revoked` is true on a path
+/// that minted no token at all as well as on one that handed its token back:
+/// either way none is outstanding, and Connect acts only when a publish
+/// result reports false.
 fn report(
     attempt: u32,
     code: &str,
@@ -206,8 +227,6 @@ async fn publish_patch(
     job_client: &ConnectedServiceClient,
 ) -> Result<(u8, ResultReport), String> {
     let patch_path = args.artifact_dir.join("patch.diff");
-    let changed = repo::patch_paths(root, &patch_path)?;
-    let violations = write_set_violations(&changed, &allowed_write_set(claimed, root));
     let declined = |code: &str, summary: String| {
         (
             1_u8,
@@ -222,6 +241,13 @@ async fn publish_patch(
             ),
         )
     };
+    // A patch the fix job left malformed is a rejection this job reports, not
+    // an operational failure that would leave the job waiting.
+    let changed = match repo::patch_paths(root, &patch_path) {
+        Ok(changed) => changed,
+        Err(error) => return Ok(declined("patch_rejected", error)),
+    };
+    let violations = write_set_violations(&changed, &allowed_write_set(claimed, root));
     if !violations.is_empty() {
         return Ok(declined(
             "patch_rejected",
@@ -233,6 +259,21 @@ async fn publish_patch(
     }
     if let Err(error) = repo::apply_patch(root, &patch_path) {
         return Ok(declined("patch_rejected", error));
+    }
+    // Belt and braces over the write set: whatever the diff declared, the
+    // tree itself must show no path outside it.
+    let undeclared: Vec<String> = repo::changed_paths(root)?
+        .into_iter()
+        .filter(|path| !changed.contains(path))
+        .collect();
+    if !undeclared.is_empty() {
+        return Ok(declined(
+            "patch_rejected",
+            format!(
+                "patch changed paths it did not declare: {}",
+                undeclared.join(", ")
+            ),
+        ));
     }
     let committer = claimed
         .committer
@@ -275,40 +316,48 @@ async fn publish_patch(
         },
     };
     let revoked = api.revoke_installation_token(&minted.token).await;
-    match outcome {
-        Ok(created) => Ok((
-            0,
-            report(
-                claimed.attempt,
-                "applied",
-                redact::summary(root, &format!("opened pull request #{}", created.number)),
-                finding_reports(manifest, "applied"),
-                Some(PullRequestReport {
-                    branch,
-                    head_sha: if created.head_sha.is_empty() {
-                        head_sha
-                    } else {
-                        created.head_sha
-                    },
-                    number: created.number,
-                }),
-                None,
-                revoked,
-            ),
-        )),
-        Err((code, error)) => Ok((
-            1,
+    let failed = |code: &str, summary: String| {
+        (
+            1_u8,
             report(
                 claimed.attempt,
                 code,
-                redact::summary(root, &error),
+                summary,
                 finding_reports(manifest, "unsupported"),
                 None,
                 None,
                 revoked,
             ),
-        )),
+        )
+    };
+    let created = match outcome {
+        Ok(created) => created,
+        Err((code, error)) => return Ok(failed(code, redact::summary(root, &error))),
+    };
+    // The pull request has to be the commit this job pushed, or something
+    // else moved the branch between the push and the answer.
+    if created.head_sha != head_sha {
+        return Ok(failed(
+            "push_failed",
+            "pull request head is not the pushed commit".to_string(),
+        ));
     }
+    Ok((
+        0,
+        report(
+            claimed.attempt,
+            "applied",
+            redact::summary(root, &format!("opened pull request #{}", created.number)),
+            finding_reports(manifest, "applied"),
+            Some(PullRequestReport {
+                branch,
+                head_sha,
+                number: created.number,
+            }),
+            None,
+            revoked,
+        ),
+    ))
 }
 
 /// Claim this job with the runner's own witness, publish what the fix job

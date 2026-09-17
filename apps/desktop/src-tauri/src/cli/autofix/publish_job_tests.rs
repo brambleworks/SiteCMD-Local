@@ -94,6 +94,26 @@ fn args(origin: String, artifact_dir: &std::path::Path, root: &std::path::Path) 
     }
 }
 
+/// Drive the command against a loopback double with a claim the checkout is
+/// already at and a manifest that matches it, so the patch is the only thing
+/// under test. Answers the outcome and the requests the double captured.
+async fn publish_this_patch(
+    repo_dir: &std::path::Path,
+    artifact_dir: &std::path::Path,
+    head: &str,
+    patch: &str,
+) -> (Result<(u8, String), String>, Vec<String>) {
+    write_artifact(artifact_dir, &manifest(head), patch).unwrap();
+    let (origin, captured) = respond_in_sequence(vec![
+        (claim_body(head), "200 OK"),
+        (RESULT_RECEIPT.to_string(), "200 OK"),
+    ])
+    .await;
+    let outcome =
+        run_with_witness(&args(origin, artifact_dir, repo_dir), "witness-token", true).await;
+    (outcome, captured.await.expect("capture"))
+}
+
 #[test]
 fn the_manifest_must_name_the_claimed_job_attempt_and_base() {
     let base = "0".repeat(40);
@@ -113,6 +133,29 @@ fn the_manifest_must_name_the_claimed_job_attempt_and_base() {
     assert!(manifest_matches_claim(&attempt, &claimed(&base))
         .unwrap_err()
         .contains("attempt"));
+    let mut extra = manifest(&base);
+    extra.findings.push(ManifestFinding {
+        check_id: "security.headers.content_security_policy".into(),
+        identity: "/".into(),
+        outcome: Some("applied".into()),
+    });
+    assert!(manifest_matches_claim(&extra, &claimed(&base))
+        .unwrap_err()
+        .contains("findings"));
+}
+
+#[test]
+fn changed_paths_names_every_edited_and_added_file() {
+    let (repo_dir, _head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
+    std::fs::write(repo_dir.path().join("vercel.json"), "{\"a\":1}\n").unwrap();
+    std::fs::write(repo_dir.path().join("_headers"), "/*\n").unwrap();
+    let mut paths = repo::changed_paths(repo_dir.path()).unwrap();
+    paths.sort();
+    assert_eq!(
+        paths,
+        vec!["_headers".to_string(), "vercel.json".to_string()]
+    );
 }
 
 #[test]
@@ -294,4 +337,81 @@ async fn reports_patch_rejected_when_the_manifest_names_another_job() {
         "{}",
         requests[1]
     );
+    assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
+    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn refuses_a_patch_that_renames_a_file_into_the_write_set() {
+    let (repo_dir, head) = init_test_repo(&[
+        ("vercel.json", "{}\n"),
+        (".github/workflows/deploy.yml", "name: deploy\n"),
+    ])
+    .unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    // `git apply --numstat` reports a rename's destination and nothing else,
+    // so the write-set gate would see only `vercel.json`, which it allows,
+    // while the workflow left the tree unseen.
+    assert!(write_set_violations(
+        &["vercel.json".into()],
+        &allowed_write_set(&claimed(&head), repo_dir.path())
+    )
+    .is_empty());
+    let renaming = "diff --git a/.github/workflows/deploy.yml b/vercel.json\nsimilarity index 100%\nrename from .github/workflows/deploy.yml\nrename to vercel.json\n";
+
+    let (outcome, requests) =
+        publish_this_patch(repo_dir.path(), &artifact_dir, &head, renaming).await;
+
+    let (code, summary) = outcome.expect("the command to report rather than fail");
+    assert_eq!(code, 1);
+    assert!(summary.contains("renames or copies a file"), "{summary}");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(
+        requests[1].contains(r#""outcome_code":"patch_rejected""#),
+        "{}",
+        requests[1]
+    );
+    // The patch reader is what refuses it, before git ever reads the diff.
+    assert!(
+        repo::patch_paths(repo_dir.path(), &artifact_dir.join("patch.diff"))
+            .unwrap_err()
+            .contains("renames or copies a file")
+    );
+    assert!(
+        repo_dir
+            .path()
+            .join(".github/workflows/deploy.yml")
+            .is_file(),
+        "the workflow must still be there"
+    );
+    assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
+    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn reports_patch_rejected_for_a_patch_with_no_hunks() {
+    let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+
+    let (outcome, requests) = publish_this_patch(
+        repo_dir.path(),
+        &artifact_dir,
+        &head,
+        "diff --git a/vercel.json b/vercel.json\n",
+    )
+    .await;
+
+    let (code, summary) = outcome.expect("a malformed patch is reported, never an exit 2");
+    assert_eq!(code, 1);
+    assert!(summary.contains("git apply --numstat failed"), "{summary}");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(
+        requests[1].contains(r#""outcome_code":"patch_rejected""#),
+        "{}",
+        requests[1]
+    );
+    assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
+    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
 }

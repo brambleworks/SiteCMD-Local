@@ -221,6 +221,63 @@ mod tests {
     }
 
     #[test]
+    fn parses_publish_job() {
+        let parsed = parse_args(
+            [
+                "publish-job",
+                "job_0123456789abcdef",
+                "--connect-origin",
+                "https://connect.sitecmd.com",
+                "--artifact-dir",
+                "/tmp/a",
+            ]
+            .map(String::from)
+            .to_vec(),
+        )
+        .unwrap();
+        match parsed {
+            AutofixCommand::PublishJob(args) => {
+                assert_eq!(args.job_id, "job_0123456789abcdef");
+                assert_eq!(args.connect_origin, "https://connect.sitecmd.com");
+                assert_eq!(args.artifact_dir, std::path::PathBuf::from("/tmp/a"));
+                assert_eq!(args.path, std::path::PathBuf::from("."));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(parse_args(
+            [
+                "publish-job",
+                "job_0123456789abcdef",
+                "--connect-origin",
+                "https://connect.sitecmd.com",
+            ]
+            .map(String::from)
+            .to_vec()
+        )
+        .unwrap_err()
+        .contains("--artifact-dir"));
+        assert!(parse_args(
+            [
+                "publish-job",
+                "job_0123456789abcdef",
+                "--artifact-dir",
+                "/tmp/a",
+            ]
+            .map(String::from)
+            .to_vec()
+        )
+        .unwrap_err()
+        .contains("--connect-origin"));
+        assert!(parse_args(
+            ["publish-job", "job_0123456789abcdef", "--force"]
+                .map(String::from)
+                .to_vec()
+        )
+        .unwrap_err()
+        .contains("Unknown option"));
+    }
+
+    #[test]
     fn rejects_an_unknown_subcommand_and_a_missing_value() {
         assert!(parse_args(vec!["rewrite".into()])
             .unwrap_err()
