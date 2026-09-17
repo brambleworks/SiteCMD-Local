@@ -6,8 +6,15 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use sitecmd_engine::sync::{ClientGroupState, DesktopSubmission, DismissalPolicy};
 
+pub(crate) mod autofix_jobs;
 pub(crate) mod deployment_ordering;
+#[cfg(test)]
+pub(crate) mod test_double;
 
+pub use autofix_jobs::{
+    ClaimedFinding, ClaimedJob, Committer, FindingOutcomeReport, OperationToken, PullRequestReport,
+    ResultReceipt, ResultReport,
+};
 pub use deployment_ordering::{
     CiDeploymentHead, ConnectedCurrentDeployment, ConnectedOrderingAuthority,
 };
@@ -350,7 +357,7 @@ impl GateVerdict {
 /// Authenticated connected-service client. `Debug` never exposes its bearer.
 pub struct ConnectedServiceClient {
     base_url: url::Url,
-    authorization: HeaderValue,
+    authorization: Option<HeaderValue>,
     #[cfg(test)]
     allow_http_loopback: bool,
 }
@@ -370,21 +377,33 @@ impl ConnectedServiceClient {
         let endpoint = CONNECTED_ENDPOINT.ok_or_else(|| {
             "no connected-service endpoint is configured in this build".to_string()
         })?;
-        Self::for_endpoint(endpoint, token, false)
+        Self::for_endpoint(endpoint, Some(token), false)
+    }
+
+    /// A client for the origin the Action's `connect-origin` input names,
+    /// which is also the OIDC audience the CLI requests. `None` for the claim,
+    /// which carries the OIDC witness and no bearer.
+    pub fn for_origin(origin: &str, token: Option<&str>) -> Result<Self, String> {
+        Self::for_endpoint(origin, token, false)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_origin(origin: &str, token: Option<&str>) -> Result<Self, String> {
+        Self::for_endpoint(origin, token, true)
     }
 
     /// Test client for an explicit endpoint.
     #[cfg(test)]
     pub(crate) fn for_test_endpoint(endpoint: &str, token: &str) -> Result<Self, String> {
-        Self::for_endpoint(endpoint, token, true)
+        Self::for_endpoint(endpoint, Some(token), true)
     }
 
     fn for_endpoint(
         endpoint: &str,
-        token: &str,
+        token: Option<&str>,
         allow_http_loopback: bool,
     ) -> Result<Self, String> {
-        if token.trim().is_empty() {
+        if token.is_some_and(|token| token.trim().is_empty()) {
             return Err("a connected-service token cannot be empty".into());
         }
         let mut base_url = url::Url::parse(endpoint.trim())
@@ -404,9 +423,17 @@ impl ConnectedServiceClient {
             return Err("connected-service endpoint must be an HTTPS origin".into());
         }
         base_url.set_path("/");
-        let mut authorization = HeaderValue::from_str(&format!("Bearer {token}"))
-            .map_err(|_| "connected-service token is not a valid header value".to_string())?;
-        authorization.set_sensitive(true);
+        let authorization = match token {
+            Some(token) => {
+                let mut authorization =
+                    HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| {
+                        "connected-service token is not a valid header value".to_string()
+                    })?;
+                authorization.set_sensitive(true);
+                Some(authorization)
+            }
+            None => None,
+        };
         Ok(Self {
             base_url,
             authorization,
@@ -488,8 +515,10 @@ impl ConnectedServiceClient {
             crate::http_client::credentialed_service_client()
         }
         .request(method, url)
-        .header(AUTHORIZATION, self.authorization.clone())
         .header(CACHE_CONTROL, "no-store");
+        if let Some(authorization) = &self.authorization {
+            request = request.header(AUTHORIZATION, authorization.clone());
+        }
         if let Some(idempotency_key) = idempotency_key {
             request = request.header("Idempotency-Key", idempotency_key);
         }
