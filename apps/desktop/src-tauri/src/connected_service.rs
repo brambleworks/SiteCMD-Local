@@ -409,9 +409,7 @@ impl ConnectedServiceClient {
         let mut base_url = url::Url::parse(endpoint.trim())
             .map_err(|error| format!("connected-service endpoint is invalid: {error}"))?;
         let allowed_scheme = base_url.scheme() == "https"
-            || (allow_http_loopback
-                && base_url.scheme() == "http"
-                && crate::core::localhost::is_strict_localhost(&base_url));
+            || crate::core::localhost::loopback_endpoint_allowed(allow_http_loopback, &base_url);
         if !allowed_scheme
             || base_url.cannot_be_a_base()
             || !base_url.username().is_empty()

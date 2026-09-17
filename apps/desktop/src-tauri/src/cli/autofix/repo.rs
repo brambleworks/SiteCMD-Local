@@ -91,11 +91,19 @@ pub fn is_shallow(root: &Path) -> bool {
     .is_ok_and(|run| run.ok() && run.stdout.trim() == "true")
 }
 
-pub fn unshallow(root: &Path, transport: &HttpsTransport) -> Result<(), String> {
+/// What an unshallow fetch runs. The remote is named by URL rather than left
+/// to `origin`, so the deepening goes to the very repository this job pushes
+/// to and carries the transport's own credential, whatever the checkout's
+/// remotes happen to say.
+pub fn unshallow_args(remote_url: &str) -> [&str; 5] {
+    ["fetch", "--unshallow", "--no-tags", "--", remote_url]
+}
+
+pub fn unshallow(root: &Path, remote_url: &str, transport: &HttpsTransport) -> Result<(), String> {
     expect_ok(
         run_git_command(
             root,
-            &["fetch", "--unshallow", "--no-tags"],
+            &unshallow_args(remote_url),
             crate::constants::AUTOFIX_GIT_NETWORK_TIMEOUT,
             Some(transport),
         )?,

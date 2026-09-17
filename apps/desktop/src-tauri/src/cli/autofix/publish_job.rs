@@ -329,7 +329,7 @@ async fn publish_patch(
     let api = GitHubApi::new();
     let remote = format!("https://github.com/{}.git", claimed.repository);
     let pushed = if repo::is_shallow(root) {
-        repo::unshallow(root, &transport)
+        repo::unshallow(root, &remote, &transport)
     } else {
         Ok(())
     }

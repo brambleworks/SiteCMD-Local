@@ -717,3 +717,19 @@ async fn refuses_a_patch_that_edits_a_workflow_in_place() {
     assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
     assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
 }
+
+#[test]
+fn the_unshallow_fetch_names_the_remote_it_pushes_to() {
+    // `origin` may be absent or point elsewhere in the publish job's own
+    // checkout, so the deepening names the repository by URL.
+    assert_eq!(
+        repo::unshallow_args("https://github.com/example-org/example-site.git"),
+        [
+            "fetch",
+            "--unshallow",
+            "--no-tags",
+            "--",
+            "https://github.com/example-org/example-site.git",
+        ]
+    );
+}
