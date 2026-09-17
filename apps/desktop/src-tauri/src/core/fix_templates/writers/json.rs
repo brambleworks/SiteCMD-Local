@@ -108,20 +108,34 @@ fn rule_text(key: &str, value: &str, unit: &str, base: usize) -> String {
     )
 }
 
+/// Whether a header rule covers every route. Vercel spells a catch-all three
+/// ways, and only one of them answers a finding about the site root: a rule
+/// with a narrower source says nothing about the root either way.
+pub fn is_catch_all_source(rule: &serde_json::Value) -> bool {
+    rule["source"]
+        .as_str()
+        .is_some_and(|source| matches!(source.trim(), "/" | "/(.*)" | "/:path*"))
+}
+
+/// Whether a catch-all rule already carries this header with this value, which
+/// is the only thing that leaves the root finding nothing to do.
 fn already_set(document: &serde_json::Value, key: &str, value: &str) -> bool {
     document["headers"].as_array().is_some_and(|rules| {
-        rules.iter().any(|rule| {
-            rule["headers"].as_array().is_some_and(|headers| {
-                headers.iter().any(|header| {
-                    header["key"]
-                        .as_str()
-                        .is_some_and(|k| k.eq_ignore_ascii_case(key))
-                        && header["value"]
+        rules
+            .iter()
+            .filter(|rule| is_catch_all_source(rule))
+            .any(|rule| {
+                rule["headers"].as_array().is_some_and(|headers| {
+                    headers.iter().any(|header| {
+                        header["key"]
                             .as_str()
-                            .is_some_and(|v| v.eq_ignore_ascii_case(value))
+                            .is_some_and(|k| k.eq_ignore_ascii_case(key))
+                            && header["value"]
+                                .as_str()
+                                .is_some_and(|v| v.eq_ignore_ascii_case(value))
+                    })
                 })
             })
-        })
     })
 }
 
@@ -221,6 +235,22 @@ mod tests {
     fn does_nothing_when_the_header_is_already_set() {
         let source = "{ \"headers\": [ { \"source\": \"/(.*)\", \"headers\": [ { \"key\": \"x-content-type-options\", \"value\": \"NOSNIFF\" } ] } ] }";
         assert_eq!(add_vercel_header(source, KEY, "nosniff").unwrap(), None);
+    }
+
+    #[test]
+    fn a_narrower_source_does_not_count_as_already_set() {
+        let source = "{ \"headers\": [ { \"source\": \"/api/(.*)\", \"headers\": [ { \"key\": \"X-Content-Type-Options\", \"value\": \"nosniff\" } ] } ] }";
+        let after = add_vercel_header(source, KEY, "nosniff").unwrap().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&after).unwrap();
+        assert_eq!(parsed["headers"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["headers"][1]["source"], "/(.*)");
+        // Every spelling of a catch-all does satisfy it.
+        for catch_all in ["/", "/(.*)", "/:path*"] {
+            let covered = format!(
+                "{{ \"headers\": [ {{ \"source\": \"{catch_all}\", \"headers\": [ {{ \"key\": \"X-Content-Type-Options\", \"value\": \"nosniff\" }} ] }} ] }}"
+            );
+            assert_eq!(add_vercel_header(&covered, KEY, "nosniff").unwrap(), None);
+        }
     }
 
     #[test]

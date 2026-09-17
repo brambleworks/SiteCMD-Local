@@ -20,7 +20,14 @@ pub(super) fn parse(mut args: impl Iterator<Item = String>) -> Result<ApplyArgs,
     };
     while let Some(token) = args.next() {
         match token.as_str() {
-            "--only" => parsed.only.push(super::next_value(&mut args, "--only")?),
+            // The flag repeats to name more than one check, so naming the
+            // same one twice is a typo and never a request to run it twice.
+            "--only" => {
+                let check_id = super::next_value(&mut args, "--only")?;
+                if !parsed.only.contains(&check_id) {
+                    parsed.only.push(check_id);
+                }
+            }
             "--dry-run" => parsed.dry_run = true,
             "--path" => parsed.path = PathBuf::from(super::next_value(&mut args, "--path")?),
             other => return Err(format!("Unknown option: {other}")),
@@ -99,6 +106,25 @@ pub fn run(args: &ApplyArgs) -> Result<(u8, String), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_repeated_only_names_the_check_once() {
+        let parsed = parse(
+            [
+                "--only",
+                "security.headers.x_content_type_options",
+                "--only",
+                "security.headers.x_content_type_options",
+            ]
+            .map(String::from)
+            .into_iter(),
+        )
+        .unwrap();
+        assert_eq!(
+            parsed.only,
+            vec!["security.headers.x_content_type_options".to_string()]
+        );
+    }
 
     #[test]
     fn dry_run_reports_the_planned_file_without_writing() {

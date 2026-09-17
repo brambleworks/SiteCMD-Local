@@ -31,12 +31,15 @@ pub fn package_json(root: &Path) -> Option<serde_json::Value> {
     read_manifest(root).ok().flatten()
 }
 
-/// A missing manifest and an unparsable one are different answers: the first
-/// means there is nothing to build, the second means the checkout is broken
-/// and must not pass the gate. Serde names the line and column, not the path.
+/// A manifest that is absent and one that cannot be read or parsed are
+/// different answers: only absence means there is nothing to build, and
+/// anything else means the checkout is broken and must not pass the gate.
+/// Serde names the line and column, not the path.
 fn read_manifest(root: &Path) -> Result<Option<serde_json::Value>, String> {
-    let Ok(text) = std::fs::read_to_string(root.join("package.json")) else {
-        return Ok(None);
+    let text = match std::fs::read_to_string(root.join("package.json")) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("package.json could not be read: {error}")),
     };
     serde_json::from_str(&text)
         .map(Some)
@@ -295,6 +298,23 @@ mod tests {
         assert!(!outcome.success);
         assert_eq!((outcome.failed_step, outcome.exit_status), (None, None));
         assert!(outcome.log.contains("JSON"), "{}", outcome.log);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_manifest_that_cannot_be_read_fails_the_build_check() {
+        let temp = tempfile::tempdir().unwrap();
+        // A directory where the manifest should be is not an absent manifest,
+        // so the check must not report that there is nothing to build.
+        std::fs::create_dir(temp.path().join("package.json")).unwrap();
+        let mut sink = Vec::new();
+        let outcome = run_build_check_with_output(temp.path(), &mut sink).unwrap();
+        assert_eq!((outcome.ran, outcome.success), (false, false));
+        assert!(
+            outcome.log.starts_with("package.json could not be read"),
+            "{}",
+            outcome.log
+        );
     }
 
     #[cfg(unix)]

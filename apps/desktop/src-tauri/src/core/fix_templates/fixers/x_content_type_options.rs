@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::core::fix_templates::writers::json::add_vercel_header;
+use crate::core::fix_templates::writers::json::{add_vercel_header, is_catch_all_source};
 use crate::core::fix_templates::{Finding, Fixer, HostKind, HostTarget, Patch, Unsupported};
 
 pub struct XContentTypeOptions;
@@ -11,22 +11,27 @@ pub struct XContentTypeOptions;
 const HEADER: &str = "X-Content-Type-Options";
 const VALUE: &str = "nosniff";
 
-/// True when a rule already sets the header to something else: the fixer
-/// refuses rather than append a second rule over a deliberate choice.
+/// True when a catch-all rule already sets the header to something else: the
+/// fixer refuses rather than append a second rule over a deliberate choice.
+/// A rule with a narrower source answers for its own routes and not the site
+/// root, so it is neither the deliberate choice nor a conflict.
 fn sets_another_value(document: &serde_json::Value) -> bool {
     document["headers"].as_array().is_some_and(|rules| {
-        rules.iter().any(|rule| {
-            rule["headers"].as_array().is_some_and(|headers| {
-                headers.iter().any(|header| {
-                    header["key"]
-                        .as_str()
-                        .is_some_and(|key| key.eq_ignore_ascii_case(HEADER))
-                        && !header["value"]
+        rules
+            .iter()
+            .filter(|rule| is_catch_all_source(rule))
+            .any(|rule| {
+                rule["headers"].as_array().is_some_and(|headers| {
+                    headers.iter().any(|header| {
+                        header["key"]
                             .as_str()
-                            .is_some_and(|value| value.eq_ignore_ascii_case(VALUE))
+                            .is_some_and(|key| key.eq_ignore_ascii_case(HEADER))
+                            && !header["value"]
+                                .as_str()
+                                .is_some_and(|value| value.eq_ignore_ascii_case(VALUE))
+                    })
                 })
             })
-        })
     })
 }
 
@@ -191,6 +196,28 @@ mod tests {
         assert!(XContentTypeOptions
             .plan(&finding(), &target, temp.path())
             .is_err());
+    }
+
+    #[test]
+    fn a_narrower_source_neither_satisfies_nor_blocks_the_root_rule() {
+        let temp = checkout("narrower-source");
+        let target = hosts::detect(temp.path()).remove(0);
+        // The narrow rule sets another value, but only for its own routes, so
+        // it is not the deliberate choice the refusal protects.
+        XContentTypeOptions
+            .prerequisites(&finding(), &target, temp.path())
+            .unwrap();
+        let patch = XContentTypeOptions
+            .plan(&finding(), &target, temp.path())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            patch.after,
+            std::fs::read_to_string(fixture_root().join("narrower-source/expected.json")).unwrap()
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&patch.after).unwrap();
+        assert_eq!(parsed["headers"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["headers"][1]["source"], "/(.*)");
     }
 
     #[test]
