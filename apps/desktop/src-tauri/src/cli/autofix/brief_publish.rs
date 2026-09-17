@@ -7,7 +7,7 @@ use std::path::{Component, Path};
 
 use sitecmd_engine::identity::code_producer_rule_id;
 
-use super::artifact::{BriefArtifact, BriefArtifactLocation, Manifest};
+use super::artifact::{BriefArtifact, Manifest};
 use super::brief::code_slug;
 use super::github_api::GitHubApi;
 use super::redact;
@@ -44,13 +44,14 @@ pub struct BriefRejected {
 }
 
 /// One location the publish job's own audit confirmed, carrying the issue the
-/// audit reported there.
+/// audit reported there. The brief's own location is deliberately absent: the
+/// range only chose which reported issue this is, and every path, line and
+/// excerpt printed from here on is the audit's.
 #[derive(Debug, Clone)]
 pub struct VerifiedFinding {
     pub check_id: String,
     pub identity: String,
     pub issue: CodeIssue,
-    pub location: BriefArtifactLocation,
 }
 
 fn rejected(reason: String) -> BriefRejected {
@@ -134,7 +135,6 @@ pub fn check_brief(
                 check_id: finding.check_id.clone(),
                 identity: finding.identity.clone(),
                 issue: issue.clone(),
-                location: location.clone(),
             });
         }
     }
@@ -444,11 +444,13 @@ mod tests {
         assert_eq!(brief.findings[0].locations.len(), 2, "{brief:?}");
         let verified = check_brief(repo.path(), &brief).unwrap();
         assert_eq!(verified.len(), 2, "{verified:?}");
-        for entry in &verified {
+        // Each verified finding is the one the brief's location at that
+        // position selected, so its reported line is inside that range.
+        for (entry, location) in verified.iter().zip(&brief.findings[0].locations) {
             let line = entry.issue.line.expect("the audit reported a line");
             assert!(
-                line >= entry.location.start_line && line <= entry.location.end_line,
-                "{entry:?}"
+                line >= location.start_line && line <= location.end_line,
+                "{entry:?} {location:?}"
             );
         }
         let mut lines: Vec<u32> = verified.iter().filter_map(|v| v.issue.line).collect();

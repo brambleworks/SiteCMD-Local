@@ -552,7 +552,7 @@ fn parse_gate_args(mut args: impl Iterator<Item = String>) -> Result<GateArgs, S
     })
 }
 
-fn build_runtime() -> tokio::runtime::Runtime {
+pub(crate) fn build_runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().expect("failed to build tokio runtime")
 }
 
