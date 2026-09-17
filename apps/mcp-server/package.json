@@ -1,6 +1,6 @@
 {
   "name": "sitecmd-mcp",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "MCP server for SiteCMD - lets AI coding tools read scan results and fix issues",
   "type": "module",

@@ -11,6 +11,89 @@ public repository history.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-16
+
+### Added
+
+- Coding agents can aim `start_fix` at one Code Scan finding. The MCP tool
+  accepts the `relative_path` and `line` that `get_issue` reports, and when
+  that location is missing, ambiguous, resolved, or suppressed it returns an
+  error instead of choosing a different occurrence. Leaving both out keeps
+  the old behavior, where SiteCMD picks the occurrence.
+- Code Scan recognizes FastAPI's `CORSMiddleware` allowing every origin while
+  also allowing credentials, including when the wildcard or the credential
+  flag comes from a configuration default or a helper that returns `["*"]`.
+  A setting guarded so the two can never combine stays quiet.
+- Code Scan reports Python code that turns off certificate verification for
+  the whole process by replacing `ssl._create_default_https_context` with the
+  unverified context.
+
+### Changed
+
+- A fix handed to a coding agent from one Code Scan finding is now about that
+  finding alone. The brief names its file and line and says only that
+  occurrence has to clear, and verifying it no longer marks every other open
+  occurrence of the same check as verified. Each location keeps its own
+  attempt, so two findings from one check in the same file can be in progress
+  at once, and a finding's "Fix with" button shows the attempt for that
+  finding rather than the latest one anywhere under its check.
+- Raw-HTML findings are reported per sink, each at its own line. A sanitizer
+  now clears only the sink whose value it cleans, where one sanitizer anywhere
+  in a file used to excuse every sink in it, and an `innerHTML` assignment of
+  any computed value is reported while a complete string literal is not.
+  Files with several sinks will show more findings, each pointing at one line.
+- An open redirect in a JavaScript or TypeScript route counts as guarded only
+  when the guard applies to that redirect's destination: a literal path, an
+  allowlist helper, a URL built against a trusted base, or an origin check
+  before the redirect. Any `.origin`, `.host`, or `startsWith("/")` elsewhere
+  in the file used to silence the finding, so some redirects that were
+  excused before are now reported.
+- `spawn` and `execFile` calls are reported as shell injection only when they
+  pass `shell: true`. Without a shell, arguments reach the program as separate
+  values and are never read as shell syntax.
+
+### Fixed
+
+- Code Scan findings that shared a check, a file, and a line, such as two
+  unused dependencies reported on the same `package.json` line, were saved as
+  a single issue. Each now has its own.
+- A database export could leave out recent changes. The export copied the
+  database file after asking SQLite to fold in its write-ahead log, which
+  cannot finish while another part of the app is reading, so changes still in
+  the log were missing from the backup. Exports now use SQLite's backup
+  interface, which includes every committed change.
+- A `robots.txt` line whose first eight bytes split a multi-byte character
+  crashed the sitemap check.
+- A coding agent could start a fix through MCP for an issue you had dismissed
+  or snoozed. The desktop app now refuses the request and tells the agent to
+  read the current issue list.
+- `get_fix_prompts` could return an unbounded response: asking for one check
+  ignored `limit`, and long prompts had no overall size cap. Responses now stop
+  at a fixed size and say when they were shortened.
+- Long sessions did more background work than they needed to. The events feed
+  kept every event it polled for as long as the page stayed open and now keeps
+  one page, and the check that watches project folders for changes could start
+  a new pass while the previous one was still reading a large project.
+
+### Security
+
+- Updated rustls, the TLS library behind every HTTPS request the app and the
+  CLI make, past RUSTSEC-2026-0285, under which it accepted TLS 1.3 handshake
+  messages sent at the wrong encryption level.
+- A scan of `localhost` skipped certificate verification for every host it
+  contacted, including public sites a local page redirected to or loaded
+  assets from. The exception for self-signed certificates now covers loopback
+  addresses only.
+- The secret that authorizes deleting your uploaded telemetry now lives in the
+  OS keychain beside the license key and never enters the app's webview, and
+  the short-lived upload token stays in memory. Both used to sit in the
+  webview's local storage.
+- The MCP server marks project URLs, framework names, and fix prompt metadata
+  as untrusted scan data, as it already did for project names and paths, so
+  text a scanned site controls cannot pass for instructions to a coding agent.
+  A `.sitecmd/config.json` whose site URL is not plain `http` or `https` is
+  ignored.
+
 ## [1.3.0] - 2026-09-04
 
 ### Added
