@@ -28,9 +28,19 @@ pub fn detect_package_manager(root: &Path) -> Option<PackageManager> {
 }
 
 pub fn package_json(root: &Path) -> Option<serde_json::Value> {
-    std::fs::read_to_string(root.join("package.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
+    read_manifest(root).ok().flatten()
+}
+
+/// A missing manifest and an unparsable one are different answers: the first
+/// means there is nothing to build, the second means the checkout is broken
+/// and must not pass the gate. Serde names the line and column, not the path.
+fn read_manifest(root: &Path) -> Result<Option<serde_json::Value>, String> {
+    let Ok(text) = std::fs::read_to_string(root.join("package.json")) else {
+        return Ok(None);
+    };
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(|error| format!("package.json is not valid JSON: {error}"))
 }
 
 pub fn needs_install(manifest: &serde_json::Value) -> bool {
@@ -90,12 +100,22 @@ pub fn run_build_check_with_output(
     root: &Path,
     out: &mut dyn Write,
 ) -> Result<BuildOutcome, String> {
-    let Some(manifest) = package_json(root) else {
-        return Ok(BuildOutcome {
-            log: "no package.json; no build to run".into(),
-            ran: false,
-            success: true,
-        });
+    let manifest = match read_manifest(root) {
+        Ok(Some(manifest)) => manifest,
+        Ok(None) => {
+            return Ok(BuildOutcome {
+                log: "no package.json; no build to run".into(),
+                ran: false,
+                success: true,
+            })
+        }
+        Err(reason) => {
+            return Ok(BuildOutcome {
+                log: reason,
+                ran: false,
+                success: false,
+            })
+        }
     };
     let Some(script) = build_script(&manifest) else {
         return Ok(BuildOutcome {
@@ -204,6 +224,21 @@ mod tests {
         let outcome = run_build_check_with_output(temp.path(), &mut sink).unwrap();
         assert_eq!((outcome.ran, outcome.success), (false, true));
         assert!(sink.is_empty());
+    }
+
+    #[test]
+    fn an_unparsable_manifest_fails_the_build_check() {
+        let temp = tempfile::tempdir().unwrap();
+        write(
+            temp.path(),
+            "package.json",
+            "{ \"scripts\": { \"build\": \"x\", }",
+        );
+        let mut sink = Vec::new();
+        let outcome = run_build_check_with_output(temp.path(), &mut sink).unwrap();
+        assert!(!outcome.ran);
+        assert!(!outcome.success);
+        assert!(outcome.log.contains("JSON"), "{}", outcome.log);
     }
 
     #[cfg(unix)]
