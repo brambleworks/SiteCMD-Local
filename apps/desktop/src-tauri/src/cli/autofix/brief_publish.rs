@@ -10,7 +10,6 @@ use sitecmd_engine::identity::code_producer_rule_id;
 use super::artifact::{BriefArtifact, BriefArtifactLocation, Manifest};
 use super::brief::code_slug;
 use super::github_api::GitHubApi;
-use super::publish_job::finding_reports;
 use super::redact;
 use crate::connected_service::{
     ClaimedJob, ConnectedServiceClient, FindingOutcomeReport, ResultReport,
@@ -242,9 +241,11 @@ pub async fn publish_brief(
     job_client: &ConnectedServiceClient,
 ) -> Result<(u8, ResultReport), String> {
     let brief = manifest.brief.as_ref().ok_or("manifest carries no brief")?;
+    // A failure code carries no finding outcomes: Connect reads each
+    // finding's fate only from a decline or a published result.
     let declined = |code: &str, summary: String, revoked: bool| ResultReport {
         attempt: claimed.attempt,
-        findings: finding_reports(manifest, "unsupported"),
+        findings: Vec::new(),
         issue_number: None,
         outcome_code: code.into(),
         pull_request: None,

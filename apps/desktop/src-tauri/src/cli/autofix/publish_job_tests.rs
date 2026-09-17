@@ -330,13 +330,8 @@ async fn reports_patch_rejected_when_the_manifest_names_another_job() {
         "{}",
         requests[1]
     );
-    assert!(
-        requests[1].contains(
-            r#""findings":[{"check_id":"security.headers.x_content_type_options","identity":"/","outcome":"unsupported"}]"#
-        ),
-        "{}",
-        requests[1]
-    );
+    // A failure code reports no per-finding outcomes at all.
+    assert!(requests[1].contains(r#""findings":[]"#), "{}", requests[1]);
     assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
     assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
 }

@@ -175,6 +175,12 @@ pub fn pull_request_text(claimed: &ClaimedJob, manifest: &Manifest) -> (String, 
 /// What each finding reached. `published` is the outcome the ones this run
 /// actually published carry, so a run that published nothing reports them all
 /// as unsupported rather than claiming a pull request it never opened.
+///
+/// Which results carry this at all is fixed: a failure code (`patch_rejected`,
+/// `push_failed`, `brief_rejected`, `issue_failed`) carries no finding
+/// outcomes, a decline (`unsupported`, `no_template`) carries each finding's
+/// non-published outcome, and a published result (`applied`, `issue_opened`)
+/// carries the published one.
 pub fn finding_reports(manifest: &Manifest, published: &str) -> Vec<FindingOutcomeReport> {
     manifest
         .findings
@@ -234,7 +240,7 @@ async fn publish_patch(
                 claimed.attempt,
                 code,
                 redact::summary(root, &summary),
-                finding_reports(manifest, "unsupported"),
+                Vec::new(),
                 None,
                 None,
                 true,
@@ -323,7 +329,7 @@ async fn publish_patch(
                 claimed.attempt,
                 code,
                 summary,
-                finding_reports(manifest, "unsupported"),
+                Vec::new(),
                 None,
                 None,
                 revoked,
@@ -412,7 +418,7 @@ pub(crate) async fn run_with_witness(
                 claimed.attempt,
                 "patch_rejected",
                 reason,
-                finding_reports(&manifest, "unsupported"),
+                Vec::new(),
                 None,
                 None,
                 true,
