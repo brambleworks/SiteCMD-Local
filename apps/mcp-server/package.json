@@ -20,7 +20,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/brambleworks/SiteCMD",
+    "url": "https://github.com/brambleworks/SiteCMD-Local",
     "directory": "apps/mcp-server"
   },
   "dependencies": {

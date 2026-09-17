@@ -1,5 +1,5 @@
 {
-  "repository": "brambleworks/SiteCMD",
+  "repository": "brambleworks/SiteCMD-Local",
   "privateVulnerabilityReporting": true,
   "securityAndAnalysis": {
     "secret_scanning": "enabled",

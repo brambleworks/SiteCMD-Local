@@ -10,7 +10,7 @@ Report security vulnerabilities privately according to [SECURITY.md](SECURITY.md
 
 ## What lives here, and what does not
 
-This repository is everything that runs on a user's machine: the desktop app, the CLI, the MCP server, and the scan engine with every current detector. That is the part the privacy claims are about, so it is the part that is open. Detectors, checks, and engine behavior are the code most worth discussing, and a bug report against a check is the most useful issue you can file; use the [False positive](https://github.com/brambleworks/SiteCMD/issues/new?template=false_positive.yml) form so it carries the check id, scan type, and sanitized evidence.
+This repository is everything that runs on a user's machine: the desktop app, the CLI, the MCP server, and the scan engine with every current detector. That is the part the privacy claims are about, so it is the part that is open. Detectors, checks, and engine behavior are the code most worth discussing, and a bug report against a check is the most useful issue you can file; use the [False positive](https://github.com/brambleworks/SiteCMD-Local/issues/new?template=false_positive.yml) form so it carries the check id, scan type, and sanitized evidence.
 
 Two things are deliberately elsewhere and are not accepted here:
 

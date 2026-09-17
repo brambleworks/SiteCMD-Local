@@ -269,7 +269,9 @@ export function publicationRecordFailures(read, exists, listFiles) {
     // host's URL (CodeQL js/incomplete-url-substring-sanitization), and a
     // mention that is not a link does not give a reporter anything to click.
     if (
-      !/\(https:\/\/github\.com\/brambleworks\/SiteCMD\/security\/advisories\/new\)/.test(security)
+      !/\(https:\/\/github\.com\/brambleworks\/SiteCMD-Local\/security\/advisories\/new\)/.test(
+        security,
+      )
     ) {
       failures.push(
         `${SECURITY} must link GitHub private vulnerability reporting as the first channel; protection:check:live proves it is enabled.`,

@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/brambleworks/SiteCMD.git"
+    "url": "git+https://github.com/brambleworks/SiteCMD-Local.git"
   },
   "homepage": "https://sitecmd.com/docs/cli",
   "bin": {
@@ -21,6 +21,7 @@
   "optionalDependencies": {
     "@sitecmd/cli-darwin-universal": "0.0.0-dev",
     "@sitecmd/cli-linux-x64": "0.0.0-dev",
+    "@sitecmd/cli-linux-arm64": "0.0.0-dev",
     "@sitecmd/cli-win32-x64": "0.0.0-dev"
   }
 }

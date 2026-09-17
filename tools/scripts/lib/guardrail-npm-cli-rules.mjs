@@ -11,6 +11,7 @@ const MAIN = `${NPM_DIR}/cli`;
 const PLATFORMS = {
   "cli-darwin-universal": { os: ["darwin"], cpu: ["x64", "arm64"], bin: "sitecmd" },
   "cli-linux-x64": { os: ["linux"], cpu: ["x64"], bin: "sitecmd" },
+  "cli-linux-arm64": { os: ["linux"], cpu: ["arm64"], bin: "sitecmd" },
   "cli-win32-x64": { os: ["win32"], cpu: ["x64"], bin: "sitecmd.exe" },
 };
 

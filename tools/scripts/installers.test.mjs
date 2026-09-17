@@ -50,6 +50,9 @@ while [ "$#" -gt 0 ]; do
   url=$1
   shift
 done
+if [ -n "$FAKE_CURL_LOG" ]; then
+  printf '%s\\n' "$url" >> "$FAKE_CURL_LOG"
+fi
 if [ -z "$output" ]; then
   printf '%s\\n' "$FAKE_LATEST_RESPONSE"
   exit 0
@@ -150,6 +153,7 @@ exit 92
     binary,
     environment,
     installDir,
+    root,
     runPublic(overrides = {}) {
       return spawnSync("sh", [PUBLIC_INSTALLER], {
         cwd: ROOT,
@@ -268,8 +272,9 @@ describe("CLI installers", { timeout: 15_000 }, () => {
 
   it.each([
     ["public", { FAKE_UNAME_SYSTEM: "FreeBSD" }, "unsupported platform: FreeBSD"],
-    ["public", { FAKE_UNAME_ARCH: "aarch64" }, "no prebuilt CLI for Linux/aarch64"],
-    ["setup", { FAKE_UNAME_SYSTEM: "Darwin" }, "supports Linux x86_64 runners only"],
+    ["public", { FAKE_UNAME_ARCH: "riscv64" }, "no prebuilt CLI for Linux/riscv64"],
+    ["setup", { FAKE_UNAME_SYSTEM: "Darwin" }, "supports Linux x86_64 and arm64 runners only"],
+    ["setup", { FAKE_UNAME_ARCH: "riscv64" }, "supports Linux x86_64 and arm64 runners only"],
   ])("rejects an unsupported platform in the %s installer", (kind, overrides, message) => {
     const fixture = createInstallerFixture();
     const installed = seedInstalledCli(fixture);
@@ -278,6 +283,24 @@ describe("CLI installers", { timeout: 15_000 }, () => {
 
     expect(result.stderr).toContain(message);
     expectPreserved(result, installed);
+  });
+
+  it.each([
+    ["public", "aarch64"],
+    ["public", "arm64"],
+    ["setup", "aarch64"],
+    ["setup", "arm64"],
+  ])("downloads the Linux arm64 archive from the %s installer on %s", (kind, arch) => {
+    const fixture = createInstallerFixture();
+    const log = path.join(fixture.root, "curl.log");
+
+    const result = runInstaller(fixture, kind, { FAKE_UNAME_ARCH: arch, FAKE_CURL_LOG: log });
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(fs.readFileSync(log, "utf8")).toContain(
+      `/v${VERSION}/sitecmd-cli_${VERSION}_linux-aarch64.tar.gz`,
+    );
   });
 
   it.each(["public", "setup"])(

@@ -56,7 +56,7 @@ One-time setup, and again after any key rotation:
 
 ```bash
 gh variable set RELEASE_ALLOWED_SIGNERS \
-  --env release-tag-trust -R brambleworks/SiteCMD \
+  --env release-tag-trust -R brambleworks/SiteCMD-Local \
   --body "$(cat .github/allowed-signers)"
 ```
 
@@ -284,8 +284,9 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`:
    candidate manifest artifact and job summary, then approve the exact manifest
    hash and protected source commit.
 6. **Platform builds** run after approval on macOS universal, Linux x86_64, and
-   Windows x86_64. Apple and Azure platform signing remain inline. Tauri receives
-   a job-generated throwaway updater key, never the permanent updater key.
+   Windows x86_64, plus a CLI-only leg on Linux arm64 that builds no desktop
+   app. Apple and Azure platform signing remain inline. Tauri receives a
+   job-generated throwaway updater key, never the permanent updater key.
 7. **Updater and CLI signing** validates and stages an allowlisted payload,
    then exposes `TAURI_SIGNING_PRIVATE_KEY` only to the minimal standalone
    signer step. It signs the updater bundle, the standalone CLI archive (whose
@@ -294,7 +295,7 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`:
    what `minisign -V` reads.
 8. **Secretless verification** checks payload hashes, candidate provenance,
    updater and CLI archive signatures, CLI versions, and available platform
-   signatures on all three platforms.
+   signatures on all three desktop platforms and the Linux arm64 CLI leg.
 9. **Publication** runs only after every verifier passes. A checkout-free job
    hash-compares any existing R2 object before upload (including `SHA256SUMS`,
    `SHA256SUMS.sig`, and `SHA256SUMS.minisig`), advances the updater manifest,
@@ -398,7 +399,7 @@ page have their own production pass maintained privately beside that service.
 Confirm the two public verification surfaces exist for the version:
 `https://releases.sitecmd.com/v<version>/SHA256SUMS` and
 `https://releases.sitecmd.com/v<version>/SHA256SUMS.minisig` return 200, and
-`gh release view v<version> --repo brambleworks/SiteCMD` lists both as assets.
+`gh release view v<version> --repo brambleworks/SiteCMD-Local` lists both as assets.
 
 If the attestation step fails, R2, the updater manifest, and the Release are
 already live and correct; only the attestation is missing. Re-running

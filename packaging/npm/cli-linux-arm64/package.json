@@ -1,7 +1,7 @@
 {
-  "name": "@sitecmd/cli-darwin-universal",
+  "name": "@sitecmd/cli-linux-arm64",
   "version": "0.0.0-dev",
-  "description": "The macOS universal (Apple Silicon + Intel) sitecmd binary for @sitecmd/cli.",
+  "description": "The Linux arm64 sitecmd binary for @sitecmd/cli.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -9,10 +9,9 @@
   },
   "homepage": "https://sitecmd.com/docs/cli",
   "os": [
-    "darwin"
+    "linux"
   ],
   "cpu": [
-    "x64",
     "arm64"
   ],
   "files": [

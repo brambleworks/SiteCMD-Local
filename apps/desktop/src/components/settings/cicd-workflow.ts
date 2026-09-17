@@ -115,7 +115,7 @@ jobs:
     runs-on: ubuntu-latest
 ${ifLine ? ifLine + "\n" : ""}    steps:
 ${sourceCheckout}      - name: Install SiteCMD CLI
-        uses: brambleworks/SiteCMD/.github/actions/setup-sitecmd@${setupActionRef(sourceCommit, appVersion)}
+        uses: brambleworks/SiteCMD-Local/.github/actions/setup-sitecmd@${setupActionRef(sourceCommit, appVersion)}
         with:
           version: "${appVersion}"
 

@@ -15,6 +15,10 @@ public repository history.
 
 ### Added
 
+- The `sitecmd` CLI ships for Linux arm64. `@sitecmd/cli` installs
+  `@sitecmd/cli-linux-arm64` on arm64 machines, the standalone installer and
+  the GitHub Actions setup action pick the `linux-aarch64` archive, and each
+  release publishes it beside the other signed archives.
 - Coding agents can aim `start_fix` at one Code Scan finding. The MCP tool
   accepts the `relative_path` and `line` that `get_issue` reports, and when
   that location is missing, ambiguous, resolved, or suppressed it returns an

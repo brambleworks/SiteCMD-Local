@@ -371,17 +371,26 @@ jobs:
             rust_target: universal-apple-darwin
             rust_toolchain_targets: aarch64-apple-darwin,x86_64-apple-darwin
             bundles: app
+            cli_only: false
           - os: ubuntu-22.04
             target: linux-x86_64
             rust_target: x86_64-unknown-linux-gnu
             rust_toolchain_targets: x86_64-unknown-linux-gnu
             bundles: appimage
+            cli_only: false
           # Pin the Windows toolchain instead of following windows-latest.
           - os: windows-2025-vs2026
             target: windows-x86_64
             rust_target: x86_64-pc-windows-msvc
             rust_toolchain_targets: x86_64-pc-windows-msvc
             bundles: nsis
+            cli_only: false
+          # The desktop app has no Linux arm64 build; this leg ships only the CLI archive.
+          - os: ubuntu-22.04-arm
+            target: linux-aarch64
+            rust_target: aarch64-unknown-linux-gnu
+            rust_toolchain_targets: aarch64-unknown-linux-gnu
+            cli_only: true
     runs-on: ${{ matrix.os }}
     # Bound hung platform builds well below GitHub's default timeout.
     timeout-minutes: 75
@@ -419,9 +428,12 @@ jobs:
           test "$(sha256_file .github/workflows/release.yml)" = \
             "$(jq -r '.workflow_sha256' release-candidate/manifest.json)"
 
+      # A CLI-only leg skips the desktop build, so it needs no Node toolchain.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: ${{ !matrix.cli_only }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: ${{ !matrix.cli_only }}
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -439,6 +451,7 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
 
       - name: pnpm install
+        if: ${{ !matrix.cli_only }}
         run: pnpm install --frozen-lockfile
 
       - name: Install cargo-license
@@ -536,6 +549,7 @@ jobs:
       # Product builds receive a throwaway updater key, never the production key.
       # Step-scope embedded commercial configuration to minimize dependency exposure.
       - name: Build Tauri app with ephemeral updater key
+        if: ${{ !matrix.cli_only }}
         env:
           RUST_TARGET: ${{ matrix.rust_target }}
           BUNDLES: ${{ matrix.bundles }}
@@ -583,6 +597,7 @@ jobs:
         run: bash .github/scripts/release/build-tauri-app.sh
       # Reject artifacts containing the throwaway private-key marker.
       - name: Verify signing key not embedded in artifacts
+        if: ${{ !matrix.cli_only }}
         shell: bash
         env:
           RUST_TARGET: ${{ matrix.rust_target }}
@@ -634,6 +649,7 @@ jobs:
           exit "$fail"
 
       - name: Locate updater bundle and signature
+        if: ${{ !matrix.cli_only }}
         id: bundle
         env:
           TARGET: ${{ matrix.target }}
@@ -669,12 +685,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifact-info
+          # A CLI-only leg records no updater bundle.
           jq -n \
             --arg target "$TARGET" \
             --arg filename "$FILENAME" \
             --arg dmg_name "$DMG_NAME" \
             --arg cli_archive "$CLI_ARCHIVE" \
-            '{target: $target, filename: $filename, cli_archive: $cli_archive}
+            '{target: $target, cli_archive: $cli_archive}
+              + (if $filename != "" then {filename: $filename} else {} end)
               + (if $dmg_name != "" then {dmg_name: $dmg_name} else {} end)' \
             > "artifact-info/${TARGET}.json"
 
@@ -689,7 +707,7 @@ jobs:
           set -euo pipefail
           OUT="release-staging/$TARGET"
           mkdir -p "$OUT"
-          cp "$ARTIFACT" "$OUT/"
+          if [ -n "$ARTIFACT" ]; then cp "$ARTIFACT" "$OUT/"; fi
           if [ -n "$DMG" ]; then cp "$DMG" "$OUT/"; fi
           cp "$CLI_ARCHIVE" "${CLI_ARCHIVE}.sha256" "$OUT/"
           cp "artifact-info/${TARGET}.json" "$OUT/fragment.json"
@@ -775,6 +793,10 @@ jobs:
             "$SIGNER" signer sign "$GITHUB_WORKSPACE/signing-input/$target/$filename"
             "$SIGNER" signer sign "$GITHUB_WORKSPACE/signing-input/$target/$cli_archive"
           done < signing-plan.tsv
+          # A CLI-only leg has no updater bundle; its archive takes the same key.
+          while IFS=$'\t' read -r target cli_archive; do
+            "$SIGNER" signer sign "$GITHUB_WORKSPACE/signing-input/$target/$cli_archive"
+          done < cli-signing-plan.tsv
           # One checksum manifest for the whole release, signed by the same key.
           MANIFEST="$GITHUB_WORKSPACE/signing-input/SHA256SUMS"
           : > "$MANIFEST"
@@ -788,6 +810,9 @@ jobs:
             dmg_name=$(jq -r '.dmg_name // empty' "$dir/fragment.json")
             if [ -n "$dmg_name" ]; then record_hash "$dir/$dmg_name"; fi
           done < signing-plan.tsv
+          while IFS=$'\t' read -r target cli_archive; do
+            record_hash "$GITHUB_WORKSPACE/signing-input/$target/$cli_archive"
+          done < cli-signing-plan.tsv
           sort -k 2 -o "$MANIFEST" "$MANIFEST"
           "$SIGNER" signer sign "$MANIFEST"
           tr -d '\r' < "$MANIFEST.sig" | base64 --decode > "$MANIFEST.minisig"
@@ -820,6 +845,8 @@ jobs:
             target: linux-x86_64
           - os: windows-2025-vs2026
             target: windows-x86_64
+          - os: ubuntu-22.04-arm
+            target: linux-aarch64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
@@ -952,17 +979,30 @@ jobs:
           }
 
           count=0
+          cli_count=0
           for fragment in payload/*/fragment.json; do
             dir=$(dirname "$fragment")
             (cd "$dir" && sha256sum -c SHA256SUMS)
             test "$(jq -r '.candidate_hash' "$fragment")" = "$EXPECTED_CANDIDATE_HASH"
             target=$(jq -r '.target' "$fragment")
-            filename=$(jq -r '.filename' "$fragment")
-            signature=$(jq -r '.signature' "$fragment")
+            filename=$(jq -r '.filename // empty' "$fragment")
             cli_archive=$(jq -r '.cli_archive' "$fragment")
             dmg_name=$(jq -r '.dmg_name // empty' "$fragment")
-            safe_name "$filename"
             safe_name "$cli_archive"
+            if [ -z "$filename" ]; then
+              # A CLI-only leg publishes its archive and touches no updater platform.
+              case "$target" in
+                linux-aarch64) ;;
+                *) echo "::error::Unexpected CLI-only publication target: $target"; exit 1 ;;
+              esac
+              add_upload "$dir/$cli_archive" "$cli_archive"
+              add_upload "$dir/$cli_archive.sig" "$cli_archive.sig"
+              add_upload "$dir/${cli_archive}.sha256" "${cli_archive}.sha256"
+              cli_count=$((cli_count + 1))
+              continue
+            fi
+            signature=$(jq -r '.signature' "$fragment")
+            safe_name "$filename"
             test "$(sha256sum "$dir/$filename" | awk '{print $1}')" = \
               "$(jq -r '.artifact_sha256' "$fragment")"
             case "$target" in
@@ -992,6 +1032,7 @@ jobs:
             count=$((count + 1))
           done
           test "$count" -eq 3
+          test "$cli_count" -eq 1
 
           for required in darwin-aarch64 darwin-x86_64 linux-x86_64 windows-x86_64; do
             if ! echo "$PLATFORMS" | jq -e --arg t "$required" 'has($t)' >/dev/null; then

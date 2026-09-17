@@ -65,7 +65,7 @@ The source-publication decision record, maintained privately, owns the boundary.
 `,
     "SECURITY.md": `# Security Policy
 
-Use [private vulnerability reporting](https://github.com/brambleworks/SiteCMD/security/advisories/new), or email security@sitecmd.com with the key at [.github/security-contact-key.asc](.github/security-contact-key.asc).
+Use [private vulnerability reporting](https://github.com/brambleworks/SiteCMD-Local/security/advisories/new), or email security@sitecmd.com with the key at [.github/security-contact-key.asc](.github/security-contact-key.asc).
 
 The connected service is in scope: its API, hosted scanner, and delivery paths.
 
@@ -356,8 +356,8 @@ describe("the security intake relationships", () => {
     expect(
       failures((files) => {
         files["SECURITY.md"] = files["SECURITY.md"].replace(
-          "Use [private vulnerability reporting](https://github.com/brambleworks/SiteCMD/security/advisories/new), or email security@sitecmd.com",
-          "Email security@sitecmd.com, or use [private vulnerability reporting](https://github.com/brambleworks/SiteCMD/security/advisories/new)",
+          "Use [private vulnerability reporting](https://github.com/brambleworks/SiteCMD-Local/security/advisories/new), or email security@sitecmd.com",
+          "Email security@sitecmd.com, or use [private vulnerability reporting](https://github.com/brambleworks/SiteCMD-Local/security/advisories/new)",
         );
       }),
     ).toContain("before the email channel");

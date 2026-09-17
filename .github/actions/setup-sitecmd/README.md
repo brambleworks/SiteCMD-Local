@@ -1,6 +1,6 @@
 # Set up the SiteCMD CLI
 
-Downloads an exact Linux x86_64 CLI release, verifies its minisign signature
+Downloads an exact Linux x86_64 or arm64 CLI release, verifies its minisign signature
 against the updater trust root committed with the action, checks the binary's
 reported version, and adds it to `PATH`.
 
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 steps:
-  - uses: brambleworks/SiteCMD/.github/actions/setup-sitecmd@<full-release-commit-sha>
+  - uses: brambleworks/SiteCMD-Local/.github/actions/setup-sitecmd@<full-release-commit-sha>
     with:
       version: <version>
   - run: sitecmd audit . --fail-on high --format sarif --output sitecmd.sarif

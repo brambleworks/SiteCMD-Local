@@ -17,17 +17,22 @@ fi
 test "$(jq -r '.target' "$dir/fragment.json")" = "$TARGET"
 test "$(jq -r '.candidate_hash' "$dir/fragment.json")" = "$EXPECTED_CANDIDATE_HASH"
 test "$(jq -r '.source_commit' "$dir/fragment.json")" = "$EXPECTED_SOURCE_COMMIT"
-filename=$(jq -r '.filename' "$dir/fragment.json")
-test "$(sha256_file "$dir/$filename")" = \
-  "$(jq -r '.artifact_sha256' "$dir/fragment.json")"
+# A CLI-only leg has no updater bundle: only its archive and provenance to check.
+filename=$(jq -r '.filename // empty' "$dir/fragment.json")
+if [ -n "$filename" ]; then
+  test "$(sha256_file "$dir/$filename")" = \
+    "$(jq -r '.artifact_sha256' "$dir/fragment.json")"
+fi
 
 # Normalize jq CRLF before GNU base64 decoding.
 jq -r '.plugins.updater.pubkey' apps/desktop/src-tauri/tauri.conf.json | \
   tr -d '\r' | base64 --decode > updater-public-key.pub
-tr -d '\r' < "$dir/$filename.sig" | base64 --decode > updater-signature.sig
 verifier=".github/updater-verifier/target/release/sitecmd-updater-verifier"
 if [ -x "${verifier}.exe" ]; then verifier="${verifier}.exe"; fi
-"$verifier" updater-public-key.pub "$dir/$filename" updater-signature.sig
+if [ -n "$filename" ]; then
+  tr -d '\r' < "$dir/$filename.sig" | base64 --decode > updater-signature.sig
+  "$verifier" updater-public-key.pub "$dir/$filename" updater-signature.sig
+fi
 
 cli_archive=$(jq -r '.cli_archive' "$dir/fragment.json")
 tr -d '\r' < "$dir/$cli_archive.sig" | base64 --decode > cli-signature.sig
@@ -42,7 +47,9 @@ verify_listed() {
   test -n "$expected"
   test "$(sha256_file "$1")" = "$expected"
 }
-verify_listed "$dir/$filename"
+if [ -n "$filename" ]; then
+  verify_listed "$dir/$filename"
+fi
 verify_listed "$dir/$cli_archive"
 dmg_name=$(jq -r '.dmg_name // empty' "$dir/fragment.json")
 if [ -n "$dmg_name" ]; then verify_listed "$dir/$dmg_name"; fi

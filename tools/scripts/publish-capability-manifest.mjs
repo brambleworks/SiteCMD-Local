@@ -92,7 +92,7 @@ export function classifyPublishResponse({ status, body, digest }) {
     return {
       message:
         `refused (404 ${code}): the connect manifest registry door is not there.${said}${requestId}\n` +
-        "  Either the Worker is deployed without its manifest bucket or its publisher allowlist, or brambleworks/SiteCMD is not the allowed publisher.\n" +
+        "  Either the Worker is deployed without its manifest bucket or its publisher allowlist, or brambleworks/SiteCMD-Local is not the allowed publisher.\n" +
         "  This is a failure and not a no-op: passing here would let a build ship under a digest the registry never learned, and every observation it produces would be quarantined as incomparable.",
       outcome: "refused",
     };

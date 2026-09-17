@@ -15,7 +15,7 @@ fn external_browser_urls_accept_product_and_third_party_sites() {
     for value in [
         "https://sitecmd.com/docs",
         "https://www.bing.com/webmasters/",
-        "https://github.com/brambleworks/SiteCMD",
+        "https://github.com/brambleworks/SiteCMD-Local",
         "http://localhost:4321/",
     ] {
         let parsed = validate_external_browser_url(&format!(" {value} "))

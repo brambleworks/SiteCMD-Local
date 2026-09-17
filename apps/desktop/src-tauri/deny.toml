@@ -6,6 +6,7 @@ targets = [
     { triple = "x86_64-apple-darwin" },
     { triple = "aarch64-apple-darwin" },
     { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
     { triple = "x86_64-pc-windows-msvc" },
 ]
 # Vet the full feature surface: the cargo-deny-action runs with
