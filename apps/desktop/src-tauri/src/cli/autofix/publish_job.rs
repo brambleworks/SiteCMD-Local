@@ -188,13 +188,29 @@ pub fn finding_reports(manifest: &Manifest, published: &str) -> Vec<FindingOutco
         .map(|f| FindingOutcomeReport {
             check_id: f.check_id.clone(),
             identity: f.identity.clone(),
-            outcome: match f.outcome.as_deref() {
-                Some("applied") | Some("issue_opened") => published.to_string(),
-                Some(other) => other.to_string(),
-                None => "unsupported".to_string(),
-            },
+            outcome: promoted_outcome(f.outcome.as_deref(), published),
         })
         .collect()
+}
+
+/// One finding's reported outcome. Each path publishes one kind of outcome and
+/// only that kind survives: the patch path opens no issue and the brief path
+/// opens no pull request, so a manifest outcome the path never published is
+/// reported unsupported rather than promoted into a claim this run cannot make.
+fn promoted_outcome(outcome: Option<&str>, published: &str) -> String {
+    match outcome {
+        Some(kind) if kind == published => published.to_string(),
+        Some("applied" | "issue_opened") | None => "unsupported".to_string(),
+        Some(other) => other.to_string(),
+    }
+}
+
+/// Whether the manifest's brief names anywhere to open an issue about.
+fn brief_names_a_location(manifest: &Manifest) -> bool {
+    manifest
+        .brief
+        .as_ref()
+        .is_some_and(|brief| brief.findings.iter().any(|f| !f.locations.is_empty()))
 }
 
 /// One result for the connected service. `token_revoked` is true on a path
@@ -418,6 +434,21 @@ pub(crate) async fn run_with_witness(
                 claimed.attempt,
                 "patch_rejected",
                 reason,
+                Vec::new(),
+                None,
+                None,
+                true,
+            ),
+        ),
+        // A fix job is single-class by construction, so an artifact carrying
+        // both halves is one this binary never wrote and the path dispatch
+        // would silently drop one of them.
+        Ok(()) if !patch.trim().is_empty() && brief_names_a_location(&manifest) => (
+            1,
+            report(
+                claimed.attempt,
+                "patch_rejected",
+                "artifact carries both a patch and a brief".into(),
                 Vec::new(),
                 None,
                 None,

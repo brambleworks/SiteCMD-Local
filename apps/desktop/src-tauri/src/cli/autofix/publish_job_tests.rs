@@ -2,7 +2,10 @@
 //! against a loopback double of the connected service.
 
 use super::*;
-use crate::cli::autofix::artifact::{write_artifact, ManifestFinding, ARTIFACT_SCHEMA_VERSION};
+use crate::cli::autofix::artifact::{
+    write_artifact, BriefArtifact, BriefArtifactLocation, BriefFinding, ManifestFinding,
+    ARTIFACT_SCHEMA_VERSION,
+};
 use crate::cli::autofix::repo::{self, init_test_repo};
 use crate::connected_service::test_double::respond_in_sequence;
 use crate::connected_service::{ClaimedFinding, Committer};
@@ -407,6 +410,98 @@ async fn reports_patch_rejected_for_a_patch_with_no_hunks() {
         "{}",
         requests[1]
     );
+    assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
+    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
+}
+
+#[test]
+fn only_the_outcome_the_path_published_is_promoted() {
+    let base = "0".repeat(40);
+    let mut mixed = manifest(&base);
+    mixed.findings.push(ManifestFinding {
+        check_id: "code_scan.open-redirect".into(),
+        identity: "f".repeat(64),
+        outcome: Some("issue_opened".into()),
+    });
+    mixed.findings.push(ManifestFinding {
+        check_id: "security.headers.hsts".into(),
+        identity: "/".into(),
+        outcome: Some("no_template".into()),
+    });
+    let outcomes = |published: &str| -> Vec<String> {
+        finding_reports(&mixed, published)
+            .into_iter()
+            .map(|f| f.outcome)
+            .collect()
+    };
+    // The patch path opens no issue, and the brief path opens no pull request.
+    assert_eq!(
+        outcomes("applied"),
+        ["applied", "unsupported", "no_template"]
+    );
+    assert_eq!(
+        outcomes("issue_opened"),
+        ["unsupported", "issue_opened", "no_template"]
+    );
+    assert_eq!(
+        outcomes("unsupported"),
+        ["unsupported", "unsupported", "no_template"]
+    );
+}
+
+#[tokio::test]
+async fn reports_patch_rejected_when_the_artifact_carries_both_halves() {
+    let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    let mut both = manifest(&head);
+    both.brief = Some(BriefArtifact {
+        attempt: 1,
+        findings: vec![BriefFinding {
+            check_id: "code_scan.open-redirect".into(),
+            identity: "f".repeat(64),
+            locations: vec![BriefArtifactLocation {
+                end_line: 3,
+                excerpt: "x".into(),
+                path: "app/route.ts".into(),
+                start_line: 3,
+            }],
+        }],
+        job_id: "job_0123456789abcdef".into(),
+    });
+    write_artifact(
+        &artifact_dir,
+        &both,
+        "diff --git a/vercel.json b/vercel.json\n",
+    )
+    .unwrap();
+    let (origin, captured) = respond_in_sequence(vec![
+        (claim_body(&head), "200 OK"),
+        (RESULT_RECEIPT.to_string(), "200 OK"),
+    ])
+    .await;
+
+    let (code, summary) = run_with_witness(
+        &args(origin, &artifact_dir, repo_dir.path()),
+        "witness-token",
+        true,
+    )
+    .await
+    .expect("the command to report rather than fail");
+
+    assert_eq!(code, 1);
+    assert!(
+        summary.starts_with("artifact carries both a patch and a brief"),
+        "{summary}"
+    );
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(
+        requests[1].contains(r#""outcome_code":"patch_rejected""#),
+        "{}",
+        requests[1]
+    );
+    assert!(requests[1].contains(r#""findings":[]"#), "{}", requests[1]);
     assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
     assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
 }
