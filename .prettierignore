@@ -49,6 +49,10 @@ THIRD_PARTY_DEPENDENCIES.json
 # JSON.stringify expands, so formatting it would fail the test on the next
 # regeneration.
 apps/mcp-server/test/fixtures/tools-list.snapshot.json
+# Fix-template fixture checkouts. The template writers preserve each file's
+# own formatting, so a fixture's exact bytes are the assertion, and prettier
+# collapses short arrays that the golden result expands.
+apps/desktop/src-tauri/tests/fixtures/fix_templates/
 
 # Generated / vendored
 apps/mcp-server/dist-bundle/

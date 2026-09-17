@@ -69,7 +69,7 @@ pub trait Fixer: Sync {
 }
 
 // Fixers register here as they land.
-static FIXERS: &[&dyn Fixer] = &[];
+static FIXERS: &[&dyn Fixer] = &[&fixers::x_content_type_options::XContentTypeOptions];
 
 pub fn all_fixers() -> &'static [&'static dyn Fixer] {
     FIXERS
