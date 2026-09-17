@@ -2,6 +2,9 @@
 //! two halves of a Connect fix job (`run-job`, `publish-job`).
 
 pub mod apply;
+pub mod artifact;
+pub mod redact;
+pub mod secrets;
 
 pub const HELP: &str = concat!(
     "SiteCMD autofix - Apply template fixes, or run a Connect fix job\n\n",
