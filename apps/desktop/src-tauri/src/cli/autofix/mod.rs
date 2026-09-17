@@ -3,6 +3,8 @@
 
 pub mod apply;
 pub mod artifact;
+pub mod brief;
+pub mod locate;
 pub mod redact;
 pub mod secrets;
 
@@ -19,6 +21,15 @@ pub const HELP: &str = concat!(
     "  --dry-run              Plan the patches and print them without writing\n",
     "  --path <PATH>          Checkout root (default: working directory)\n",
     "  --help, -h             Show this help\n\n",
+    "Options for locate:\n",
+    "  --connection-export <PATH>\n",
+    "                         The connection export this site was connected with\n",
+    "  --connection-export-env <NAME>\n",
+    "                         Environment variable holding that export instead\n",
+    "  --passphrase-env <NAME>\n",
+    "                         Variable holding its passphrase (default: SITECMD_CONNECTION_PASSPHRASE)\n",
+    "  --check <SLUG>         Only findings for this rule, such as open-redirect\n",
+    "  --path <PATH>          Checkout root (default: working directory)\n\n",
     "Exit codes:\n",
     "  0  Completed\n",
     "  1  A job reported a failure outcome\n",
@@ -26,11 +37,13 @@ pub const HELP: &str = concat!(
     "Examples:\n",
     "  sitecmd autofix apply --dry-run\n",
     "  sitecmd autofix apply --only security.headers.x_content_type_options\n",
+    "  sitecmd autofix locate --connection-export ./connection.json --check open-redirect\n",
 );
 
 #[derive(Debug)]
 pub enum AutofixCommand {
     Apply(apply::ApplyArgs),
+    Locate(locate::LocateArgs),
 }
 
 pub fn help_requested(args: &[String]) -> bool {
@@ -51,6 +64,7 @@ pub fn parse_args(args: Vec<String>) -> Result<AutofixCommand, String> {
     let mut args = args.into_iter();
     match args.next().as_deref() {
         Some("apply") => apply::parse(args).map(AutofixCommand::Apply),
+        Some("locate") => locate::parse(args).map(AutofixCommand::Locate),
         Some(other) => Err(format!("Unknown autofix command: {other}")),
         None => Err("autofix needs a command: apply, run-job, publish-job or locate".into()),
     }
@@ -61,6 +75,11 @@ pub async fn run(command: AutofixCommand) -> Result<u8, String> {
         AutofixCommand::Apply(args) => {
             let (code, summary) = apply::run(&args)?;
             println!("{summary}");
+            Ok(code)
+        }
+        AutofixCommand::Locate(args) => {
+            let (code, out) = locate::run(&args)?;
+            println!("{out}");
             Ok(code)
         }
     }
@@ -85,10 +104,42 @@ mod tests {
             .to_vec(),
         )
         .unwrap();
-        let AutofixCommand::Apply(args) = parsed;
-        assert_eq!(args.only, vec!["security.headers.x_content_type_options"]);
-        assert!(args.dry_run);
-        assert_eq!(args.path, std::path::PathBuf::from("."));
+        match parsed {
+            AutofixCommand::Apply(args) => {
+                assert_eq!(args.only, vec!["security.headers.x_content_type_options"]);
+                assert!(args.dry_run);
+                assert_eq!(args.path, std::path::PathBuf::from("."));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_locate() {
+        let parsed = parse_args(
+            [
+                "locate",
+                "--connection-export-env",
+                "SITECMD_CONNECTION_EXPORT",
+                "--check",
+                "open-redirect",
+            ]
+            .map(String::from)
+            .to_vec(),
+        )
+        .unwrap();
+        match parsed {
+            AutofixCommand::Locate(args) => {
+                assert_eq!(
+                    args.export,
+                    crate::cli::autofix::secrets::ExportSource::Env(
+                        "SITECMD_CONNECTION_EXPORT".into()
+                    )
+                );
+                assert_eq!(args.check.as_deref(), Some("open-redirect"));
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]
