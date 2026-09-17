@@ -6,6 +6,8 @@ pub mod artifact;
 pub mod brief;
 pub mod locate;
 pub mod redact;
+pub mod repo;
+pub mod run_job;
 pub mod secrets;
 
 pub const HELP: &str = concat!(
@@ -21,6 +23,18 @@ pub const HELP: &str = concat!(
     "  --dry-run              Plan the patches and print them without writing\n",
     "  --path <PATH>          Checkout root (default: working directory)\n",
     "  --help, -h             Show this help\n\n",
+    "Options for run-job:\n",
+    "  --connect-origin <URL>\n",
+    "                         The SiteCMD origin that issued this job\n",
+    "  --connection-export <PATH>\n",
+    "                         The connection export this site was connected with\n",
+    "  --connection-export-env <NAME>\n",
+    "                         Environment variable holding that export instead\n",
+    "  --artifact-dir <DIR>   Where to write manifest.json and patch.diff\n",
+    "  --outputs <FILE>       Where to write publish=true or publish=false\n",
+    "  --passphrase-env <NAME>\n",
+    "                         Variable holding its passphrase (default: SITECMD_CONNECTION_PASSPHRASE)\n",
+    "  --path <PATH>          Checkout root (default: working directory)\n\n",
     "Options for locate:\n",
     "  --connection-export <PATH>\n",
     "                         The connection export this site was connected with\n",
@@ -38,17 +52,27 @@ pub const HELP: &str = concat!(
     "  sitecmd autofix apply --dry-run\n",
     "  sitecmd autofix apply --only security.headers.x_content_type_options\n",
     "  sitecmd autofix locate --connection-export ./connection.json --check open-redirect\n",
+    "  sitecmd autofix run-job job_0123456789abcdef --connect-origin https://connect.sitecmd.com --connection-export-env SITECMD_CONNECTION_EXPORT --artifact-dir ./job\n",
 );
 
 #[derive(Debug)]
 pub enum AutofixCommand {
     Apply(apply::ApplyArgs),
     Locate(locate::LocateArgs),
+    RunJob(run_job::RunJobArgs),
 }
 
 pub fn help_requested(args: &[String]) -> bool {
     args.iter()
         .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
+}
+
+/// A job identifier as the connected service issues it: `job_` and sixteen
+/// lowercase hex digits. Anything else is refused before it reaches a URL.
+pub(crate) fn is_job_id(value: &str) -> bool {
+    value.strip_prefix("job_").is_some_and(|rest| {
+        rest.len() == 16 && rest.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
+    })
 }
 
 pub(crate) fn next_value(
@@ -65,6 +89,7 @@ pub fn parse_args(args: Vec<String>) -> Result<AutofixCommand, String> {
     match args.next().as_deref() {
         Some("apply") => apply::parse(args).map(AutofixCommand::Apply),
         Some("locate") => locate::parse(args).map(AutofixCommand::Locate),
+        Some("run-job") => run_job::parse(args).map(AutofixCommand::RunJob),
         Some(other) => Err(format!("Unknown autofix command: {other}")),
         None => Err("autofix needs a command: apply, run-job, publish-job or locate".into()),
     }
@@ -79,6 +104,11 @@ pub async fn run(command: AutofixCommand) -> Result<u8, String> {
         }
         AutofixCommand::Locate(args) => {
             let (code, out) = locate::run(&args)?;
+            println!("{out}");
+            Ok(code)
+        }
+        AutofixCommand::RunJob(args) => {
+            let (code, out) = run_job::run(&args).await?;
             println!("{out}");
             Ok(code)
         }
@@ -140,6 +170,39 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_run_job() {
+        let parsed = parse_args(
+            [
+                "run-job",
+                "job_0123456789abcdef",
+                "--connect-origin",
+                "https://connect.sitecmd.com",
+                "--connection-export-env",
+                "SITECMD_CONNECTION_EXPORT",
+                "--artifact-dir",
+                "/tmp/a",
+                "--outputs",
+                "/tmp/o",
+            ]
+            .map(String::from)
+            .to_vec(),
+        )
+        .unwrap();
+        match parsed {
+            AutofixCommand::RunJob(args) => {
+                assert_eq!(args.job_id, "job_0123456789abcdef");
+                assert_eq!(args.connect_origin, "https://connect.sitecmd.com");
+                assert_eq!(args.artifact_dir, std::path::PathBuf::from("/tmp/a"));
+                assert_eq!(args.outputs, Some(std::path::PathBuf::from("/tmp/o")));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(parse_args(["run-job", "nope"].map(String::from).to_vec())
+            .unwrap_err()
+            .contains("job id"));
     }
 
     #[test]

@@ -14,7 +14,7 @@ pub(crate) async fn respond_once(
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let address = listener.local_addr().expect("address");
     let captured = tokio::spawn(async move {
-        let (mut stream, _) = listener.accept().await.expect("accept");
+        let (mut stream, _) = accept(&listener).await;
         read_and_answer(&mut stream, body, status).await
     });
     (format!("http://{address}"), captured)
@@ -22,7 +22,6 @@ pub(crate) async fn respond_once(
 
 /// Answer one connection per response, in order, and return every request, for
 /// the flows that make more than one call against the same origin.
-#[allow(dead_code)]
 pub(crate) async fn respond_in_sequence(
     responses: Vec<(&'static str, &'static str)>,
 ) -> (String, JoinHandle<Vec<String>>) {
@@ -31,12 +30,21 @@ pub(crate) async fn respond_in_sequence(
     let captured = tokio::spawn(async move {
         let mut requests = Vec::with_capacity(responses.len());
         for (body, status) in responses {
-            let (mut stream, _) = listener.accept().await.expect("accept");
+            let (mut stream, _) = accept(&listener).await;
             requests.push(read_and_answer(&mut stream, body, status).await);
         }
         requests
     });
     (format!("http://{address}"), captured)
+}
+
+/// A flow that short-circuits must fail the test rather than hang it, so a
+/// connection that never arrives is bounded.
+async fn accept(listener: &TcpListener) -> (TcpStream, std::net::SocketAddr) {
+    tokio::time::timeout(std::time::Duration::from_secs(5), listener.accept())
+        .await
+        .expect("a request within five seconds")
+        .expect("accept")
 }
 
 async fn read_and_answer(stream: &mut TcpStream, body: &str, status: &str) -> String {

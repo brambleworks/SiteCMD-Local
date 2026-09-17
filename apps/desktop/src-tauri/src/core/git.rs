@@ -340,19 +340,15 @@ fn run_git(dir: &Path, args: &[&str]) -> Option<String> {
     String::from_utf8(stdout).ok()
 }
 
-// Only the tests exercise the runner until the fix engine's commands call it.
-
 /// A git invocation whose status and both streams the caller reads, for the
 /// fix engine's apply, commit and push, which need the error text and a
 /// timeout of their own.
-#[allow(dead_code)]
 pub(crate) struct GitRun {
     pub status: Option<i32>,
     pub stdout: String,
     pub stderr: String,
 }
 
-#[allow(dead_code)]
 impl GitRun {
     pub fn ok(&self) -> bool {
         self.status == Some(0)
@@ -363,9 +359,8 @@ impl GitRun {
 /// through the config environment of the single process that needs it, so it
 /// never appears in a URL, in the argument list a process table shows, or in
 /// any config file or remote git stores.
-#[allow(dead_code)]
-pub(crate) struct HttpsTransport {
-    pub authorization_header: String,
+pub struct HttpsTransport {
+    pub(crate) authorization_header: String,
 }
 
 #[allow(dead_code)]
@@ -380,7 +375,6 @@ impl HttpsTransport {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn run_git_command(
     dir: &Path,
     args: &[&str],

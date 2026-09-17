@@ -63,6 +63,12 @@ pub struct BuildOutcome {
     pub ran: bool,
     pub success: bool,
     pub log: String,
+    /// The step that failed, `"install"` or `"build"`, so a result can name it
+    /// without quoting the log. `None` when the check passed or never ran one.
+    pub failed_step: Option<&'static str>,
+    /// The failing step's exit status, or `None` when it timed out or a signal
+    /// ended it.
+    pub exit_status: Option<i32>,
 }
 
 fn install_args(manager: PackageManager) -> (&'static str, &'static [&'static str]) {
@@ -104,6 +110,8 @@ pub fn run_build_check_with_output(
         Ok(Some(manifest)) => manifest,
         Ok(None) => {
             return Ok(BuildOutcome {
+                exit_status: None,
+                failed_step: None,
                 log: "no package.json; no build to run".into(),
                 ran: false,
                 success: true,
@@ -111,6 +119,8 @@ pub fn run_build_check_with_output(
         }
         Err(reason) => {
             return Ok(BuildOutcome {
+                exit_status: None,
+                failed_step: None,
                 log: reason,
                 ran: false,
                 success: false,
@@ -119,6 +129,8 @@ pub fn run_build_check_with_output(
     };
     let Some(script) = build_script(&manifest) else {
         return Ok(BuildOutcome {
+            exit_status: None,
+            failed_step: None,
             log: "package.json has no build script; no build to run".into(),
             ran: false,
             success: true,
@@ -143,6 +155,8 @@ pub fn run_build_check_with_output(
         log.push_str(&step);
         if captured.status != Some(0) {
             return Ok(BuildOutcome {
+                exit_status: captured.status,
+                failed_step: Some("install"),
                 log,
                 ran: true,
                 success: false,
@@ -162,10 +176,13 @@ pub fn run_build_check_with_output(
     );
     emit(out, &step);
     log.push_str(&step);
+    let success = captured.status == Some(0);
     Ok(BuildOutcome {
+        exit_status: if success { None } else { captured.status },
+        failed_step: if success { None } else { Some("build") },
         log,
         ran: true,
-        success: captured.status == Some(0),
+        success,
     })
 }
 
@@ -223,6 +240,7 @@ mod tests {
         let mut sink = Vec::new();
         let outcome = run_build_check_with_output(temp.path(), &mut sink).unwrap();
         assert_eq!((outcome.ran, outcome.success), (false, true));
+        assert_eq!((outcome.failed_step, outcome.exit_status), (None, None));
         assert!(sink.is_empty());
     }
 
@@ -238,6 +256,7 @@ mod tests {
         let outcome = run_build_check_with_output(temp.path(), &mut sink).unwrap();
         assert!(!outcome.ran);
         assert!(!outcome.success);
+        assert_eq!((outcome.failed_step, outcome.exit_status), (None, None));
         assert!(outcome.log.contains("JSON"), "{}", outcome.log);
     }
 
@@ -254,6 +273,8 @@ mod tests {
         let outcome = run_build_check_with_output(temp.path(), &mut sink).unwrap();
         assert!(outcome.ran);
         assert!(!outcome.success);
+        assert_eq!(outcome.failed_step, Some("build"));
+        assert_eq!(outcome.exit_status, Some(2));
         assert!(outcome.log.contains("boom"), "{}", outcome.log);
         let streamed = String::from_utf8_lossy(&sink).into_owned();
         assert!(streamed.contains("$ npm run build"), "{streamed}");

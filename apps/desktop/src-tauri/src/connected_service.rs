@@ -398,7 +398,7 @@ impl ConnectedServiceClient {
         Self::for_endpoint(endpoint, Some(token), true)
     }
 
-    fn for_endpoint(
+    pub(crate) fn for_endpoint(
         endpoint: &str,
         token: Option<&str>,
         allow_http_loopback: bool,
