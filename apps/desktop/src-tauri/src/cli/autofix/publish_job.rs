@@ -440,8 +440,8 @@ async fn publish_artifact(
     if manifest.brief.is_some() {
         return super::brief_publish::publish_brief(root, claimed, manifest, job_client).await;
     }
-    // A decline, like every other, exits zero: nothing failed, there was
-    // simply nothing this job could publish.
+    // A decline, like every other, exits zero: nothing failed, and there was
+    // nothing here for this job to publish.
     Ok((
         0,
         report(
