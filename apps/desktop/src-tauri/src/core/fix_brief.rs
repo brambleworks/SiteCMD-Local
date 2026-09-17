@@ -28,16 +28,16 @@ pub struct BriefLocation {
     pub reason: String,
     /// First line of `excerpt` in the file. Absent when the caller carries no
     /// excerpt, so clients that never collected one stay valid.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub start_line: Option<u32>,
     /// Last line of `excerpt` in the file, inclusive.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub end_line: Option<u32>,
     /// The source lines themselves, so an agent reading the brief alone can
     /// see what the check matched without opening the file first.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub excerpt: Option<String>,
 }
@@ -202,9 +202,14 @@ fn render_where_to_look(input: &FixBriefInput, locations: &[BriefLocation]) -> S
                     location.path, location.label, location.reason
                 ),
             };
-            match location.excerpt.as_deref().map(indent_excerpt) {
-                Some(excerpt) if !excerpt.is_empty() => format!("{bullet}\n{excerpt}"),
-                _ => bullet,
+            match location
+                .excerpt
+                .as_deref()
+                .filter(|text| !text.trim().is_empty())
+                .map(indent_excerpt)
+            {
+                Some(excerpt) => format!("{bullet}\n\n{excerpt}"),
+                None => bullet,
             }
         })
         .collect::<Vec<_>>()
@@ -213,7 +218,11 @@ fn render_where_to_look(input: &FixBriefInput, locations: &[BriefLocation]) -> S
 
 /// Indents every excerpt line eight spaces: four keep it inside its bullet's
 /// list item, four more render it as code. Indented rather than fenced so an
-/// excerpt cannot open or close a code block.
+/// excerpt cannot open or close a code block. Callers separate the block from
+/// the bullet with a blank line, because an indented code block cannot
+/// interrupt a paragraph: without it every excerpt line would be read as more
+/// of the bullet's text, losing its indentation and having its markdown
+/// interpreted.
 fn indent_excerpt(excerpt: &str) -> String {
     excerpt
         .lines()
@@ -387,7 +396,9 @@ mod tests {
         };
         let location = BriefLocation {
             end_line: Some(4),
-            excerpt: Some("return Response.redirect(new URL(returnTo, request.url), 302);".into()),
+            excerpt: Some(
+                "return Response.redirect(new URL(returnTo, request.url), 302);\n```".into(),
+            ),
             label: "Reported location".into(),
             line: Some(4),
             path: "app/api/signin/route.ts".into(),
@@ -401,9 +412,32 @@ mod tests {
         assert!(brief.contains("Fixes #<issue number>"));
         assert!(!brief.contains("request_verification"));
         assert!(brief.contains(
-            "- `app/api/signin/route.ts:4` (Reported location) - the check matched here\n        return Response.redirect"
+            "- `app/api/signin/route.ts:4` (Reported location) - the check matched here\n\n        return Response.redirect"
         ));
-        assert!(!brief.contains("```"));
+        // The excerpt's own fence line is indented with the rest of the block,
+        // so it cannot open a code block of its own.
+        assert!(brief.contains("\n        ```"));
+        assert!(!brief.contains("\n```"));
+    }
+
+    #[test]
+    fn a_whitespace_only_excerpt_renders_no_block() {
+        let input = base_input();
+        let blank = BriefLocation {
+            end_line: None,
+            excerpt: Some("   \n".into()),
+            label: "config".into(),
+            line: None,
+            path: "vercel.json".into(),
+            reason: "headers live here".into(),
+            start_line: None,
+        };
+        let brief = build_fix_brief_with_mode(&input, &[blank], BriefMode::Hosted);
+
+        assert!(
+            brief.contains("- `vercel.json` (config) - headers live here\n\n## How to fix\n"),
+            "{brief}"
+        );
     }
 
     #[test]
@@ -419,9 +453,23 @@ mod tests {
             start_line: None,
         };
 
+        let desktop = build_fix_brief(&input, std::slice::from_ref(&plain));
+
         assert_eq!(
-            build_fix_brief(&input, std::slice::from_ref(&plain)),
+            desktop,
             build_fix_brief_with_mode(&input, std::slice::from_ref(&plain), BriefMode::Desktop)
+        );
+        assert!(
+            desktop.ends_with(
+                "\n## When you are done\n\nCall the SiteCMD MCP tool `request_verification` \
+                 with attempt_id=42 and a one-paragraph summary of what you changed. \
+                 Do NOT mark the issue fixed yourself; SiteCMD verifies the fix.\n"
+            ),
+            "{desktop}"
+        );
+        assert!(
+            desktop.contains("- `vercel.json` (config) - headers live here\n\n## How to fix\n"),
+            "{desktop}"
         );
     }
 }
