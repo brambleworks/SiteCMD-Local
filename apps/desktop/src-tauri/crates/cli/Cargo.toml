@@ -1,6 +1,6 @@
 [package]
 name = "sitecmd-cli"
-version = "1.3.0"
+version = "1.4.0"
 description = "Headless SiteCMD CLI for Web Scan, Code Scan, and connected CI/CD"
 authors = ["Kyle Piontek (Brambleworks LLC)"]
 license = "Apache-2.0"
