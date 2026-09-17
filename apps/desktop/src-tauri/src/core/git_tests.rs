@@ -659,6 +659,20 @@ fn run_git_command_with_transport_reopens_https_through_the_config_environment()
     assert!(configured.ok(), "{}", configured.stderr);
     assert_eq!(configured.stdout.trim(), transport.authorization_header);
 
+    // The same invocation blanks every way git could reach a stored
+    // credential, so an authenticated fetch or push uses the header alone.
+    for key in ["credential.helper", "core.askPass"] {
+        let blanked = super::run_git_command(
+            temp.path(),
+            &["config", "--get", key],
+            std::time::Duration::from_secs(5),
+            Some(&transport),
+        )
+        .expect("ran");
+        assert!(blanked.ok(), "{key}: {}", blanked.stderr);
+        assert_eq!(blanked.stdout.trim(), "", "{key} must be blank");
+    }
+
     let run = super::run_git_command(
         temp.path(),
         &["ls-remote", "https://127.0.0.1:1/repo.git"],

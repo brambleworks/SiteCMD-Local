@@ -707,8 +707,11 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let artifact_dir = workspace.path().join("artifact");
         let outputs = workspace.path().join("outputs.txt");
-        let (origin, captured) =
-            respond_in_sequence(vec![(CLAIM, "200 OK"), (RESULT_RECEIPT, "200 OK")]).await;
+        let (origin, captured) = respond_in_sequence(vec![
+            (CLAIM.to_string(), "200 OK"),
+            (RESULT_RECEIPT.to_string(), "200 OK"),
+        ])
+        .await;
         let args = RunJobArgs {
             artifact_dir: artifact_dir.clone(),
             connect_origin: origin,

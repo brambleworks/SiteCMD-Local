@@ -21,9 +21,11 @@ pub(crate) async fn respond_once(
 }
 
 /// Answer one connection per response, in order, and return every request, for
-/// the flows that make more than one call against the same origin.
+/// the flows that make more than one call against the same origin. The body is
+/// owned so a flow whose answer depends on the test's own fixtures, such as a
+/// claim naming the checkout's head, can build one.
 pub(crate) async fn respond_in_sequence(
-    responses: Vec<(&'static str, &'static str)>,
+    responses: Vec<(String, &'static str)>,
 ) -> (String, JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let address = listener.local_addr().expect("address");
@@ -31,7 +33,7 @@ pub(crate) async fn respond_in_sequence(
         let mut requests = Vec::with_capacity(responses.len());
         for (body, status) in responses {
             let (mut stream, _) = accept(&listener).await;
-            requests.push(read_and_answer(&mut stream, body, status).await);
+            requests.push(read_and_answer(&mut stream, &body, status).await);
         }
         requests
     });

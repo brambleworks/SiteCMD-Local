@@ -4,7 +4,9 @@
 pub mod apply;
 pub mod artifact;
 pub mod brief;
+pub mod github_api;
 pub mod locate;
+pub mod publish_job;
 pub mod redact;
 pub mod repo;
 pub mod run_job;
@@ -35,6 +37,11 @@ pub const HELP: &str = concat!(
     "  --passphrase-env <NAME>\n",
     "                         Variable holding its passphrase (default: SITECMD_CONNECTION_PASSPHRASE)\n",
     "  --path <PATH>          Checkout root (default: working directory)\n\n",
+    "Options for publish-job:\n",
+    "  --connect-origin <URL>\n",
+    "                         The SiteCMD origin that issued this job\n",
+    "  --artifact-dir <DIR>   Where the fix job left manifest.json and patch.diff\n",
+    "  --path <PATH>          Checkout root (default: working directory)\n\n",
     "Options for locate:\n",
     "  --connection-export <PATH>\n",
     "                         The connection export this site was connected with\n",
@@ -53,12 +60,14 @@ pub const HELP: &str = concat!(
     "  sitecmd autofix apply --only security.headers.x_content_type_options\n",
     "  sitecmd autofix locate --connection-export ./connection.json --check open-redirect\n",
     "  sitecmd autofix run-job job_0123456789abcdef --connect-origin https://connect.sitecmd.com --connection-export-env SITECMD_CONNECTION_EXPORT --artifact-dir ./job\n",
+    "  sitecmd autofix publish-job job_0123456789abcdef --connect-origin https://connect.sitecmd.com --artifact-dir ./job\n",
 );
 
 #[derive(Debug)]
 pub enum AutofixCommand {
     Apply(apply::ApplyArgs),
     Locate(locate::LocateArgs),
+    PublishJob(publish_job::PublishJobArgs),
     RunJob(run_job::RunJobArgs),
 }
 
@@ -90,6 +99,7 @@ pub fn parse_args(args: Vec<String>) -> Result<AutofixCommand, String> {
         Some("apply") => apply::parse(args).map(AutofixCommand::Apply),
         Some("locate") => locate::parse(args).map(AutofixCommand::Locate),
         Some("run-job") => run_job::parse(args).map(AutofixCommand::RunJob),
+        Some("publish-job") => publish_job::parse(args).map(AutofixCommand::PublishJob),
         Some(other) => Err(format!("Unknown autofix command: {other}")),
         None => Err("autofix needs a command: apply, run-job, publish-job or locate".into()),
     }
@@ -104,6 +114,11 @@ pub async fn run(command: AutofixCommand) -> Result<u8, String> {
         }
         AutofixCommand::Locate(args) => {
             let (code, out) = locate::run(&args)?;
+            println!("{out}");
+            Ok(code)
+        }
+        AutofixCommand::PublishJob(args) => {
+            let (code, out) = publish_job::run(&args).await?;
             println!("{out}");
             Ok(code)
         }

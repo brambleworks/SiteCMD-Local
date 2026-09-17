@@ -52,7 +52,7 @@ const HELP_SNAPSHOTS = [
   {
     label: "sitecmd autofix --help",
     args: ["autofix", "--help"],
-    sha256: "fb4c9ddf1349ffeab78e3e1d794eb2e4be2e7e72ee8237304384a8f5a7ab3e5f",
+    sha256: "332a0fa321ec58f35ca8964ae8c71d212db1d1fe1c32479e8605ddbf95d49ded",
   },
   {
     label: "sitecmd scan --help",

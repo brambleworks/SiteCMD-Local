@@ -363,7 +363,6 @@ pub struct HttpsTransport {
     pub(crate) authorization_header: String,
 }
 
-#[allow(dead_code)]
 impl HttpsTransport {
     pub fn for_token(token: &str) -> Self {
         use base64::Engine as _;
@@ -381,12 +380,21 @@ pub(crate) fn run_git_command(
     timeout: Duration,
     transport: Option<&HttpsTransport>,
 ) -> Result<GitRun, String> {
-    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 2);
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 6);
     if transport.is_some() {
         // The hardening forbids every transport; https alone is re-enabled for
         // this one invocation. The protocol name is not a secret, so it rides
-        // in the argument list.
-        full.extend(["-c", "protocol.https.allow=always"]);
+        // in the argument list. The credential helper and the askpass hook are
+        // blanked beside it, so an authenticated fetch or push can never read a
+        // credential someone else stored or prompt for one.
+        full.extend([
+            "-c",
+            "protocol.https.allow=always",
+            "-c",
+            "credential.helper=",
+            "-c",
+            "core.askPass=",
+        ]);
     }
     full.extend_from_slice(args);
     let mut command = hardened_git_command(dir, &full);
@@ -394,6 +402,8 @@ pub(crate) fn run_git_command(
         // A process table and `/proc/<pid>/cmdline` are world readable, so the
         // credential travels in git's config environment, which is not. The
         // hardening sets no `GIT_CONFIG_COUNT` of its own, leaving index 0 free.
+        // `GIT_CONFIG_COUNT` needs git 2.31 or newer, which every GitHub-hosted
+        // runner has.
         command
             .env("GIT_CONFIG_COUNT", "1")
             .env("GIT_CONFIG_KEY_0", "http.extraheader")
