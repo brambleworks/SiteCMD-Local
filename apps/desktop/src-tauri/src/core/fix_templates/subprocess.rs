@@ -34,11 +34,24 @@ pub fn allowlisted_env(parent: impl Fn(&str) -> Option<String>) -> Vec<(String, 
 
 /// A command whose environment is built from nothing, so a variable has to be
 /// on the allowlist to exist at all. Stdin is closed: nothing may prompt.
-pub fn allowlisted_command(program: &str, args: &[&str], root: &Path) -> Command {
+///
+/// `lookup_path` is the `PATH` the child is given, which is also where the
+/// program itself is looked for. Production passes `None` for the runner's
+/// own; a caller that needs a missing tool to be deterministic passes a
+/// directory it controls rather than editing this process's environment.
+pub fn allowlisted_command(
+    program: &str,
+    args: &[&str],
+    root: &Path,
+    lookup_path: Option<&str>,
+) -> Command {
     let mut command = Command::new(program);
     command.env_clear();
     for (name, value) in allowlisted_env(|name| std::env::var(name).ok()) {
         command.env(name, value);
+    }
+    if let Some(path) = lookup_path {
+        command.env("PATH", path);
     }
     command.args(args).current_dir(root).stdin(Stdio::null());
     command
@@ -202,7 +215,7 @@ mod tests {
         std::env::set_var("ACTIONS_ID_TOKEN_REQUEST_PROBE", "leak");
         let temp = tempfile::tempdir().unwrap();
         let captured = run_captured(
-            allowlisted_command("env", &[], temp.path()),
+            allowlisted_command("env", &[], temp.path(), None),
             std::time::Duration::from_secs(5),
         )
         .unwrap();
@@ -226,6 +239,7 @@ mod tests {
                 "sh",
                 &["-c", r"printf 'first\n\377bad\nlast\n'"],
                 temp.path(),
+                None,
             ),
             std::time::Duration::from_secs(5),
         )
@@ -240,7 +254,7 @@ mod tests {
     fn a_timeout_keeps_the_output_so_far_and_reports_no_status() {
         let temp = tempfile::tempdir().unwrap();
         let captured = run_captured(
-            allowlisted_command("sh", &["-c", "echo partial; sleep 5"], temp.path()),
+            allowlisted_command("sh", &["-c", "echo partial; sleep 5"], temp.path(), None),
             std::time::Duration::from_secs(1),
         )
         .unwrap();
@@ -259,7 +273,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let started_at = std::time::Instant::now();
         let captured = run_captured(
-            allowlisted_command("sh", &["-c", "echo done; (sleep 6 &)"], temp.path()),
+            allowlisted_command("sh", &["-c", "echo done; (sleep 6 &)"], temp.path(), None),
             std::time::Duration::from_secs(30),
         )
         .unwrap();
@@ -279,6 +293,7 @@ mod tests {
                 "echo token=ghp_abcdefghijklmnopqrstuvwxyz0123456789; exit 3",
             ],
             temp.path(),
+            None,
         );
         command.env("PATH", std::env::var("PATH").unwrap_or_default());
         let captured = run_captured(command, std::time::Duration::from_secs(5)).unwrap();

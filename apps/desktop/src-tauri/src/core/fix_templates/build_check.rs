@@ -94,6 +94,30 @@ fn emit(out: &mut dyn Write, step: &str) {
     let _ = out.flush();
 }
 
+/// A package manager that cannot be started at all is a build failure, not an
+/// operational error: a job that exited here would leave the Actions log empty
+/// and sit `running` until its window closed. The outcome names the step, so
+/// the result carries the fixed sentence for a step without an exit status,
+/// and the log names the tool that is missing.
+fn could_not_start(
+    out: &mut dyn Write,
+    mut log: String,
+    command_line: &str,
+    step: &'static str,
+    error: &str,
+) -> BuildOutcome {
+    let text = format!("{command_line}\n{error}\n");
+    emit(out, &text);
+    log.push_str(&text);
+    BuildOutcome {
+        exit_status: None,
+        failed_step: Some(step),
+        log,
+        ran: true,
+        success: false,
+    }
+}
+
 /// The build check with its step log going to the fix job's stdout, which is
 /// the workflow log a maintainer reads after a failure.
 pub fn run_build_check(root: &Path) -> Result<BuildOutcome, String> {
@@ -105,6 +129,16 @@ pub fn run_build_check(root: &Path) -> Result<BuildOutcome, String> {
 pub fn run_build_check_with_output(
     root: &Path,
     out: &mut dyn Write,
+) -> Result<BuildOutcome, String> {
+    run_build_check_on_path(root, out, None)
+}
+
+/// The same check with an explicit `PATH` to locate the package manager on.
+/// Production passes `None`, which is the runner's own.
+fn run_build_check_on_path(
+    root: &Path,
+    out: &mut dyn Write,
+    lookup_path: Option<&str>,
 ) -> Result<BuildOutcome, String> {
     let manifest = match read_manifest(root) {
         Ok(Some(manifest)) => manifest,
@@ -146,11 +180,15 @@ pub fn run_build_check_with_output(
         } else {
             install_args(manager)
         };
-        let captured = run_captured(
-            allowlisted_command(install.0, install.1, root),
+        let command_line = format!("$ {} {}", install.0, install.1.join(" "));
+        let captured = match run_captured(
+            allowlisted_command(install.0, install.1, root, lookup_path),
             crate::constants::AUTOFIX_INSTALL_TIMEOUT,
-        )?;
-        let step = format!("$ {} {}\n{}", install.0, install.1.join(" "), captured.log);
+        ) {
+            Ok(captured) => captured,
+            Err(error) => return Ok(could_not_start(out, log, &command_line, "install", &error)),
+        };
+        let step = format!("{command_line}\n{}", captured.log);
         emit(out, &step);
         log.push_str(&step);
         if captured.status != Some(0) {
@@ -164,16 +202,15 @@ pub fn run_build_check_with_output(
         }
     }
     let build = build_args(manager);
-    let captured = run_captured(
-        allowlisted_command(build.0, build.1, root),
+    let command_line = format!("$ {} {} ({script})", build.0, build.1.join(" "));
+    let captured = match run_captured(
+        allowlisted_command(build.0, build.1, root, lookup_path),
         crate::constants::AUTOFIX_BUILD_TIMEOUT,
-    )?;
-    let step = format!(
-        "$ {} {} ({script})\n{}",
-        build.0,
-        build.1.join(" "),
-        captured.log
-    );
+    ) {
+        Ok(captured) => captured,
+        Err(error) => return Ok(could_not_start(out, log, &command_line, "build", &error)),
+    };
+    let step = format!("{command_line}\n{}", captured.log);
     emit(out, &step);
     log.push_str(&step);
     let success = captured.status == Some(0);
@@ -258,6 +295,45 @@ mod tests {
         assert!(!outcome.success);
         assert_eq!((outcome.failed_step, outcome.exit_status), (None, None));
         assert!(outcome.log.contains("JSON"), "{}", outcome.log);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_package_manager_that_cannot_be_started_fails_the_build() {
+        let temp = tempfile::tempdir().unwrap();
+        write(
+            temp.path(),
+            "package.json",
+            "{\"scripts\":{\"build\":\"next build\"},\"dependencies\":{\"next\":\"15\"}}",
+        );
+        write(temp.path(), "pnpm-lock.yaml", "");
+        // An empty directory as the lookup path locates nothing, so the spawn
+        // fails the way a runner without the package manager installed does.
+        let nowhere = tempfile::tempdir().unwrap();
+        let mut sink = Vec::new();
+        let outcome = run_build_check_on_path(
+            temp.path(),
+            &mut sink,
+            Some(&nowhere.path().to_string_lossy()),
+        )
+        .unwrap();
+        assert_eq!((outcome.ran, outcome.success), (true, false));
+        assert_eq!(outcome.failed_step, Some("install"));
+        assert_eq!(outcome.exit_status, None);
+        assert!(
+            outcome
+                .log
+                .starts_with("$ pnpm install --frozen-lockfile\n"),
+            "{}",
+            outcome.log
+        );
+        assert!(
+            outcome.log.contains("could not be started"),
+            "{}",
+            outcome.log
+        );
+        let streamed = String::from_utf8_lossy(&sink).into_owned();
+        assert!(streamed.contains("pnpm could not be started"), "{streamed}");
     }
 
     #[cfg(unix)]
