@@ -612,3 +612,108 @@ async fn refuses_an_artifact_directory_inside_the_checkout() {
     assert!(error.contains("outside the checkout"), "{error}");
     assert!(captured.await.expect("capture").is_empty());
 }
+
+#[tokio::test]
+async fn reports_patch_rejected_for_an_artifact_it_cannot_read() {
+    let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    std::fs::create_dir_all(&artifact_dir).unwrap();
+    // A field this binary does not know is an artifact it never wrote.
+    std::fs::write(
+        artifact_dir.join("manifest.json"),
+        r#"{"schema_version":1,"job_id":"job_0123456789abcdef","attempt":1,"base_sha":"0","outcome_code":null,"summary":"","write_set":[],"findings":[],"brief":null,"extra":1}"#,
+    )
+    .unwrap();
+    std::fs::write(artifact_dir.join("patch.diff"), "").unwrap();
+    let (origin, captured) = respond_in_sequence(vec![
+        (claim_body(&head), "200 OK"),
+        (RESULT_RECEIPT.to_string(), "200 OK"),
+    ])
+    .await;
+
+    let (code, summary) = run_with_witness(
+        &args(origin, &artifact_dir, repo_dir.path()),
+        "witness-token",
+        true,
+    )
+    .await
+    .expect("a broken artifact is reported, never an exit 2");
+
+    assert_eq!(code, 1);
+    assert!(summary.contains("manifest is not valid"), "{summary}");
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(
+        requests[1].contains(r#""outcome_code":"patch_rejected""#),
+        "{}",
+        requests[1]
+    );
+}
+
+#[tokio::test]
+async fn an_artifact_with_nothing_to_publish_declines_with_exit_zero() {
+    let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+
+    let (outcome, requests) = publish_this_patch(repo_dir.path(), &artifact_dir, &head, "").await;
+
+    let (code, summary) = outcome.expect("the command to report rather than fail");
+    assert_eq!(code, 0, "a decline exits zero like every other");
+    assert!(
+        summary.starts_with("artifact carries nothing to publish"),
+        "{summary}"
+    );
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(
+        requests[1].contains(r#""outcome_code":"unsupported""#),
+        "{}",
+        requests[1]
+    );
+    // A decline still reports what each finding reached.
+    assert!(
+        requests[1].contains(r#""outcome":"unsupported""#),
+        "{}",
+        requests[1]
+    );
+}
+
+#[tokio::test]
+async fn refuses_a_patch_that_edits_a_workflow_in_place() {
+    let (repo_dir, head) = init_test_repo(&[
+        ("vercel.json", "{}\n"),
+        (".github/workflows/deploy.yml", "name: deploy\n"),
+    ])
+    .unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    // No rename and no second path: a plain hunk against the workflow that
+    // runs this very job.
+    let workflow_hunk = "diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml\nindex 1111111..2222222 100644\n--- a/.github/workflows/deploy.yml\n+++ b/.github/workflows/deploy.yml\n@@ -1 +1,2 @@\n name: deploy\n+on: push\n";
+
+    let (outcome, requests) =
+        publish_this_patch(repo_dir.path(), &artifact_dir, &head, workflow_hunk).await;
+
+    let (code, summary) = outcome.expect("the command to report rather than fail");
+    assert_eq!(code, 1);
+    assert!(
+        summary.contains("patch reaches outside the fixer's write set"),
+        "{summary}"
+    );
+    // The reason crosses back to SiteCMD, so the path itself stays hidden.
+    assert!(!summary.contains(".github/workflows"), "{summary}");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(
+        requests[1].contains(r#""outcome_code":"patch_rejected""#),
+        "{}",
+        requests[1]
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo_dir.path().join(".github/workflows/deploy.yml")).unwrap(),
+        "name: deploy\n",
+        "nothing may be applied"
+    );
+    assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
+    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
+}

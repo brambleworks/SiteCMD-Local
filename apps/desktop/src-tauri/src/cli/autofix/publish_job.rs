@@ -399,6 +399,63 @@ async fn publish_patch(
     ))
 }
 
+/// Which of the two publish paths an artifact takes, or the refusal that
+/// replaces both. A patch and a brief are the two classes a fix job produces
+/// and one job is only ever one of them.
+async fn publish_artifact(
+    args: &PublishJobArgs,
+    root: &Path,
+    claimed: &ClaimedJob,
+    manifest: &Manifest,
+    patch: &str,
+    job_client: &ConnectedServiceClient,
+) -> Result<(u8, ResultReport), String> {
+    let rejected = |summary: String| {
+        (
+            1_u8,
+            report(
+                claimed.attempt,
+                "patch_rejected",
+                summary,
+                Vec::new(),
+                None,
+                None,
+                true,
+            ),
+        )
+    };
+    if let Err(reason) = manifest_matches_claim(manifest, claimed) {
+        return Ok(rejected(reason));
+    }
+    let carries_a_patch = !patch.trim().is_empty();
+    // A fix job is single-class by construction, so an artifact carrying both
+    // halves is one this binary never wrote, and the dispatch below would
+    // silently drop one of them.
+    if carries_a_patch && brief_names_a_location(manifest) {
+        return Ok(rejected("artifact carries both a patch and a brief".into()));
+    }
+    if carries_a_patch {
+        return publish_patch(args, root, claimed, manifest, job_client).await;
+    }
+    if manifest.brief.is_some() {
+        return super::brief_publish::publish_brief(root, claimed, manifest, job_client).await;
+    }
+    // A decline, like every other, exits zero: nothing failed, there was
+    // simply nothing this job could publish.
+    Ok((
+        0,
+        report(
+            claimed.attempt,
+            "unsupported",
+            "artifact carries nothing to publish".into(),
+            finding_reports(manifest, "unsupported"),
+            None,
+            None,
+            true,
+        ),
+    ))
+}
+
 /// Claim this job with the runner's own witness, publish what the fix job
 /// left, and report the outcome.
 pub async fn run(args: &PublishJobArgs) -> Result<(u8, String), String> {
@@ -444,48 +501,20 @@ pub(crate) async fn run_with_witness(
         Some(&claimed.job_token),
         allow_http_loopback,
     )?;
-    let (manifest, patch) = read_artifact(&args.artifact_dir)?;
-    let (code, result) = match manifest_matches_claim(&manifest, &claimed) {
-        Err(reason) => (
+    // The artifact is the fix job's own doing, so one this job cannot read at
+    // all is a rejection it reports rather than an operational failure that
+    // would leave the job waiting out its window.
+    let (code, result) = match read_artifact(&args.artifact_dir) {
+        Ok((manifest, patch)) => {
+            publish_artifact(args, &root, &claimed, &manifest, &patch, &job_client).await?
+        }
+        Err(error) => (
             1,
             report(
                 claimed.attempt,
                 "patch_rejected",
-                reason,
+                redact::summary(&root, &error),
                 Vec::new(),
-                None,
-                None,
-                true,
-            ),
-        ),
-        // A fix job is single-class by construction, so an artifact carrying
-        // both halves is one this binary never wrote and the path dispatch
-        // would silently drop one of them.
-        Ok(()) if !patch.trim().is_empty() && brief_names_a_location(&manifest) => (
-            1,
-            report(
-                claimed.attempt,
-                "patch_rejected",
-                "artifact carries both a patch and a brief".into(),
-                Vec::new(),
-                None,
-                None,
-                true,
-            ),
-        ),
-        Ok(()) if !patch.trim().is_empty() => {
-            publish_patch(args, &root, &claimed, &manifest, &job_client).await?
-        }
-        Ok(()) if manifest.brief.is_some() => {
-            super::brief_publish::publish_brief(&root, &claimed, &manifest, &job_client).await?
-        }
-        Ok(()) => (
-            1,
-            report(
-                claimed.attempt,
-                "unsupported",
-                "artifact carries nothing to publish".into(),
-                finding_reports(&manifest, "unsupported"),
                 None,
                 None,
                 true,
