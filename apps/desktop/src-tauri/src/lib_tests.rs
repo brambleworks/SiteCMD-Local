@@ -857,7 +857,7 @@ fn git_is_spawned_only_by_the_hardened_runner() {
     );
     assert!(
         findings.is_empty(),
-        "git must be spawned only through core::git::run_git so every invocation carries the config and environment hardening. This scan covers src/ only, excluding files named *_tests.rs; crates/cli and crates/engine are not scanned: {:?}",
+        "git must be spawned only through the two runners in core::git, run_git and run_git_command, which share one hardened spawn, so every invocation carries the config and environment hardening apart from the single documented https exception. This scan covers src/ only, excluding files named *_tests.rs; crates/cli and crates/engine are not scanned: {:?}",
         findings,
     );
 }

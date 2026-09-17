@@ -636,3 +636,45 @@ fn run_git_command_with_transport_allows_only_https() {
         run.stderr
     );
 }
+
+#[test]
+fn run_git_command_with_transport_reopens_https_through_the_config_environment() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    super::run_git_command(
+        temp.path(),
+        &["init", "-q"],
+        std::time::Duration::from_secs(5),
+        None,
+    )
+    .expect("init");
+    let transport = super::HttpsTransport::for_token("ghs_abc");
+
+    let configured = super::run_git_command(
+        temp.path(),
+        &["config", "--get", "http.extraheader"],
+        std::time::Duration::from_secs(5),
+        Some(&transport),
+    )
+    .expect("ran");
+    assert!(configured.ok(), "{}", configured.stderr);
+    assert_eq!(configured.stdout.trim(), transport.authorization_header);
+
+    let run = super::run_git_command(
+        temp.path(),
+        &["ls-remote", "https://127.0.0.1:1/repo.git"],
+        std::time::Duration::from_secs(5),
+        Some(&transport),
+    )
+    .expect("ran");
+    assert!(!run.ok());
+    assert!(
+        !run.stderr.contains("not allowed"),
+        "https must clear the transport hardening: {}",
+        run.stderr
+    );
+    assert!(
+        run.stderr.contains("unable to access") || run.stderr.contains("Failed to connect"),
+        "https must reach a connection attempt: {}",
+        run.stderr
+    );
+}

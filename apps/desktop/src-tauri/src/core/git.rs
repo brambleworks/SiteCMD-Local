@@ -20,7 +20,9 @@ const MAX_GIT_OUTPUT_BYTES: usize = 1024 * 1024;
 /// Command-line overrides applied to every git spawn. A registered project
 /// tree may carry a hostile `.git/config`, so every repository key that names
 /// an executable is neutralized before the subcommand, optional index writes
-/// are skipped, and no transport protocol may be negotiated.
+/// are skipped, and no transport protocol may be negotiated. `run_git_command`
+/// re-enables https alone, for one authenticated invocation, as the single
+/// documented exception.
 const GIT_HARDENING_ARGS: &[&str] = &[
     "--no-optional-locks",
     "-c",
@@ -68,8 +70,9 @@ const GIT_FIXED_ENV: &[(&str, &str)] = &[
     ("LC_ALL", "C"),
 ];
 
-/// The one place git is spawned. Every caller goes through `run_git`, which
-/// a source-scanning test in `lib_tests.rs` enforces.
+/// The one place git is spawned. Both runners over it, `run_git` and
+/// `run_git_command`, go through here, which a source-scanning test in
+/// `lib_tests.rs` enforces.
 fn hardened_git_command(dir: &Path, args: &[&str]) -> Command {
     let mut command = Command::new("git");
     command.env_clear();
@@ -356,9 +359,10 @@ impl GitRun {
     }
 }
 
-/// One https push or fetch credential, carried through `http.extraheader`
-/// so it never appears in a URL, an argument list a process table shows, or
-/// a remote git stores.
+/// One https push or fetch credential. It reaches git as `http.extraheader`
+/// through the config environment of the single process that needs it, so it
+/// never appears in a URL, in the argument list a process table shows, or in
+/// any config file or remote git stores.
 #[allow(dead_code)]
 pub(crate) struct HttpsTransport {
     pub authorization_header: String,
@@ -383,21 +387,25 @@ pub(crate) fn run_git_command(
     timeout: Duration,
     transport: Option<&HttpsTransport>,
 ) -> Result<GitRun, String> {
-    let extra_header;
-    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 4);
-    if let Some(transport) = transport {
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 2);
+    if transport.is_some() {
         // The hardening forbids every transport; https alone is re-enabled for
-        // this one invocation, and only with the header the caller supplied.
-        extra_header = format!("http.extraheader={}", transport.authorization_header);
-        full.extend([
-            "-c",
-            "protocol.https.allow=always",
-            "-c",
-            extra_header.as_str(),
-        ]);
+        // this one invocation. The protocol name is not a secret, so it rides
+        // in the argument list.
+        full.extend(["-c", "protocol.https.allow=always"]);
     }
     full.extend_from_slice(args);
-    let mut child = hardened_git_command(dir, &full)
+    let mut command = hardened_git_command(dir, &full);
+    if let Some(transport) = transport {
+        // A process table and `/proc/<pid>/cmdline` are world readable, so the
+        // credential travels in git's config environment, which is not. The
+        // hardening sets no `GIT_CONFIG_COUNT` of its own, leaving index 0 free.
+        command
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "http.extraheader")
+            .env("GIT_CONFIG_VALUE_0", &transport.authorization_header);
+    }
+    let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
