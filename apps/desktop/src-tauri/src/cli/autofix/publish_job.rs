@@ -63,6 +63,22 @@ fn checkout_root(args: &PublishJobArgs) -> Result<PathBuf, String> {
         .map_err(|error| format!("cannot resolve {}: {error}", args.path.display()))
 }
 
+/// The publish job audits its own checkout for anything the patch did not
+/// declare, so an artifact downloaded inside that checkout would make its own
+/// files the evidence against the patch and decline every publish. The
+/// refusal comes before the claim, so a misconfigured workflow costs the job
+/// no attempt. A directory that cannot be resolved is left to the artifact
+/// read, which names what is missing.
+fn refuse_an_artifact_inside_the_checkout(root: &Path, artifact_dir: &Path) -> Result<(), String> {
+    let Ok(artifact) = std::fs::canonicalize(artifact_dir) else {
+        return Ok(());
+    };
+    if artifact.starts_with(root) {
+        return Err("artifact directory must be outside the checkout".into());
+    }
+    Ok(())
+}
+
 /// The artifact crossed an untrusted boundary, so it has to name the very job,
 /// attempt and base commit this runner just claimed.
 pub fn manifest_matches_claim(manifest: &Manifest, claimed: &ClaimedJob) -> Result<(), String> {
@@ -406,6 +422,7 @@ pub(crate) async fn run_with_witness(
     allow_http_loopback: bool,
 ) -> Result<(u8, String), String> {
     let root = checkout_root(args)?;
+    refuse_an_artifact_inside_the_checkout(&root, &args.artifact_dir)?;
     let claim_client =
         ConnectedServiceClient::for_endpoint(&args.connect_origin, None, allow_http_loopback)?;
     let claimed = claim_client

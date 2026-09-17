@@ -591,3 +591,24 @@ async fn refuses_a_header_that_names_two_different_paths() {
     assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
     assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn refuses_an_artifact_directory_inside_the_checkout() {
+    let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    // The audit would see the artifact's own files as paths the patch never
+    // declared, so the job is refused before it costs an attempt.
+    let artifact_dir = repo_dir.path().join("job");
+    write_artifact(&artifact_dir, &manifest(&head), "").unwrap();
+    let (origin, captured) = respond_in_sequence(vec![]).await;
+
+    let error = run_with_witness(
+        &args(origin, &artifact_dir, repo_dir.path()),
+        "witness-token",
+        true,
+    )
+    .await
+    .expect_err("an artifact inside the checkout must refuse");
+
+    assert!(error.contains("outside the checkout"), "{error}");
+    assert!(captured.await.expect("capture").is_empty());
+}

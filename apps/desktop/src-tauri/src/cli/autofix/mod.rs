@@ -60,8 +60,8 @@ pub const HELP: &str = concat!(
     "  sitecmd autofix apply --dry-run\n",
     "  sitecmd autofix apply --only security.headers.x_content_type_options\n",
     "  sitecmd autofix locate --connection-export ./connection.json --check open-redirect\n",
-    "  sitecmd autofix run-job job_0123456789abcdef --connect-origin https://connect.sitecmd.com --connection-export-env SITECMD_CONNECTION_EXPORT --artifact-dir ./job\n",
-    "  sitecmd autofix publish-job job_0123456789abcdef --connect-origin https://connect.sitecmd.com --artifact-dir ./job\n",
+    "  sitecmd autofix run-job job_0123456789abcdef --connect-origin https://connect.sitecmd.com --connection-export-env SITECMD_CONNECTION_EXPORT --artifact-dir \"$RUNNER_TEMP/sitecmd-job\"\n",
+    "  sitecmd autofix publish-job job_0123456789abcdef --connect-origin https://connect.sitecmd.com --artifact-dir \"$RUNNER_TEMP/sitecmd-job\"\n",
 );
 
 #[derive(Debug)]
