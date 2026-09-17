@@ -11,11 +11,13 @@ use sitecmd_runtime::connected_ci::{DeploymentFacts, PublishOrdering};
 use std::process::ExitCode;
 
 mod audit_dispatch;
+mod autofix_dispatch;
 mod help;
 #[cfg(test)]
 mod tests;
 mod validators;
 use audit_dispatch::dispatch_audit;
+use autofix_dispatch::dispatch_autofix;
 use help::*;
 use validators::{parse_categories, parse_positive_seconds, parse_score, warn_deprecated_flag};
 
@@ -615,6 +617,8 @@ fn main() -> ExitCode {
         },
 
         "audit" => dispatch_audit(argv),
+
+        "autofix" => dispatch_autofix(argv),
 
         "scan" => dispatch_scan(argv),
 

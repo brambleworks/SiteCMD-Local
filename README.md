@@ -100,8 +100,8 @@ binary; if that directory is not on your `PATH`, run the `export` command it
 prints. A signed Windows zip is linked from the
 [CLI documentation](https://sitecmd.com/docs/cli).
 
-`sitecmd --help` lists the rest: `init`, `audit`, `scan`, `fix`, `watch`,
-`check`, `connected`, `deploy`, and `gate`.
+`sitecmd --help` lists the rest: `init`, `audit`, `autofix`, `scan`, `fix`,
+`watch`, `check`, `connected`, `deploy`, and `gate`.
 
 ## Verify your download
 

@@ -2,6 +2,7 @@
 
 pub mod audit;
 pub mod audit_suppressions;
+pub mod autofix;
 pub mod check;
 pub mod connected;
 pub mod connected_submit;

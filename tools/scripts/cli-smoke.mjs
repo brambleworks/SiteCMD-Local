@@ -37,7 +37,7 @@ const HELP_SNAPSHOTS = [
   {
     label: "sitecmd --help",
     args: ["--help"],
-    sha256: "239cee1748e471928f157c3ace53e68f6dc264d81134f756721a5b878f9915dc",
+    sha256: "f84eb4eab8b38a4df63da8349d95a175d195c8bc0d667b5042bb92f765c63619",
   },
   {
     label: "sitecmd init --help",
@@ -48,6 +48,11 @@ const HELP_SNAPSHOTS = [
     label: "sitecmd audit --help",
     args: ["audit", "--help"],
     sha256: "be89a099872b81eeb251b53c0440b2268d9fdc91f95b2370716b95fa1b2e715d",
+  },
+  {
+    label: "sitecmd autofix --help",
+    args: ["autofix", "--help"],
+    sha256: "25be6cdc9803133c90101d5c072ae121ea595f43e7f835056282c856bd1b2be1",
   },
   {
     label: "sitecmd scan --help",

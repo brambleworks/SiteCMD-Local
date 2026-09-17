@@ -5,6 +5,7 @@ Usage:\n  sitecmd <command> [options]\n\n\
 Commands:\n  \
   init [url]              Initialize project with .sitecmd/ config\n  \
   audit <path>            Run Code Scan against a source checkout\n  \
+  autofix                 Apply template fixes, or run a Connect fix job\n  \
   scan                    Run a scan and export to .sitecmd/\n  \
   fix                     Output fix prompts from last scan\n  \
   watch                   Monitor URL and rescan at intervals\n  \
