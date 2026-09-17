@@ -278,13 +278,13 @@ mod tests {
     #[test]
     fn github_slug_rejects_path_query_and_fragment_injection() {
         assert_eq!(
-            normalize_github_repo_slug("brambleworks/SiteCMD").unwrap(),
-            "brambleworks/SiteCMD"
+            normalize_github_repo_slug("brambleworks/SiteCMD-Local").unwrap(),
+            "brambleworks/SiteCMD-Local"
         );
         for value in [
-            "brambleworks/SiteCMD/issues",
-            "brambleworks/SiteCMD?state=open",
-            "brambleworks/SiteCMD#fragment",
+            "brambleworks/SiteCMD-Local/issues",
+            "brambleworks/SiteCMD-Local?state=open",
+            "brambleworks/SiteCMD-Local#fragment",
             "../repos/admin",
             "brambleworks/",
         ] {
@@ -325,7 +325,7 @@ mod tests {
         let config = IntegrationConfig {
             integration_type: IntegrationType::GitHub,
             api_key: Some(crate::constants::KEYRING_PLACEHOLDER.to_string()),
-            site_id: Some("brambleworks/SiteCMD".to_string()),
+            site_id: Some("brambleworks/SiteCMD-Local".to_string()),
             extra: None,
             enabled: true,
         };

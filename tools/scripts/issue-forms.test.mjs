@@ -31,7 +31,7 @@ describe("the false-positive issue form", () => {
 describe("the issue chooser", () => {
   it("routes questions to Discussions Q&A", () => {
     expect(read(".github/ISSUE_TEMPLATE/config.yml")).toContain(
-      "https://github.com/brambleworks/SiteCMD/discussions/categories/q-a",
+      "https://github.com/brambleworks/SiteCMD-Local/discussions/categories/q-a",
     );
   });
 });

@@ -158,3 +158,81 @@ export function liveRepositoryProtectionFailures(contract, live) {
   }
   return failures;
 }
+
+// The contract's repository name is load-bearing well beyond documentation.
+// GitHub redirects a renamed repository's web and git paths, so a stale name
+// keeps working everywhere a human clicks - and fails everywhere a machine
+// compares the string. The v1.4.0 release tag died on exactly that: the
+// repository had become SiteCMD-app months earlier while the connect manifest
+// registry's publisher allowlist and the npm packaging manifests still said
+// SiteCMD, so the capability manifest was refused as unprovenanced and the
+// CLI's npm provenance would have been refused after it. Nothing in the tree
+// disagreed with itself, which is why nothing caught it.
+//
+// These rules make the next rename fail here instead, in a cascade: the
+// contract must name the repository this checkout actually belongs to, and
+// every reference to one of our own repositories must use the name the
+// contract gives. Updating the contract after a rename is therefore not a
+// one-line edit that leaves the references behind; it turns every stale
+// reference into a failure until it moves too.
+const REPOSITORY_URL = "github.com/";
+const ACTION_USES = "uses: ";
+
+/** Every reference to a repository owned by `owner`, as it appears in a link or
+ *  an action `uses:` ref - the two shapes a machine compares rather than
+ *  follows. Slugs carry a trailing `.git` in npm manifests and trailing
+ *  punctuation in prose, so both are trimmed. */
+export function ownedRepositoryReferences(owner, files) {
+  const references = [];
+  for (const { file, source } of files) {
+    source.split("\n").forEach((raw, index) => {
+      // A regex literal writes the same reference with its slashes and dots
+      // escaped, and the rename that prompted this rule hid in exactly that
+      // shape: a guardrail asserting the advisories link matched the old name
+      // through an escaped pattern that no plain-text search for the slug
+      // could see. Unescaping first means one scan reads both spellings.
+      const text = raw.replace(/\\([./])/g, "$1");
+      for (const prefix of [REPOSITORY_URL, ACTION_USES]) {
+        let at = text.indexOf(`${prefix}${owner}/`);
+        for (; at !== -1; at = text.indexOf(`${prefix}${owner}/`, at + 1)) {
+          const start = at + prefix.length + owner.length + 1;
+          const name = /^[A-Za-z0-9._-]+/.exec(text.slice(start))?.[0] ?? "";
+          const trimmed = name.replace(/\.git$/, "").replace(/[.]+$/, "");
+          if (trimmed) references.push({ file, line: index + 1, slug: `${owner}/${trimmed}` });
+        }
+      }
+    });
+  }
+  return references;
+}
+
+export function repositoryNameFailures(contract, observed) {
+  const failures = [];
+  const [owner] = contract.repository.split("/");
+  const checkout = observed.checkoutRepository;
+  // Only when the owner matches: a contributor's fork is a different owner and
+  // has nothing to say about our contract, while a rename keeps the owner and
+  // is the case worth failing on.
+  if (checkout && checkout !== contract.repository && checkout.startsWith(`${owner}/`)) {
+    failures.push(
+      `this checkout belongs to ${checkout} but .github/repository-protection.json names ${contract.repository}. ` +
+        "GitHub redirects the old path, so links keep working, but the release pipeline compares the name as a string: " +
+        "the connect manifest registry's publisher allowlist, npm provenance, and `uses:` action refs all refuse a mismatch.",
+    );
+  }
+  if (observed.labelsRepository !== contract.repository) {
+    failures.push(
+      `.github/repository-labels.json names ${observed.labelsRepository}; the protection contract names ${contract.repository}.`,
+    );
+  }
+  const allowed = new Set([contract.repository, ...(contract.referencedRepositories ?? [])]);
+  for (const { file, line, slug } of observed.references) {
+    if (!allowed.has(slug)) {
+      failures.push(
+        `${file}:${line} references ${slug}; this repository is ${contract.repository}. ` +
+          "Add a sibling to referencedRepositories in the contract if the reference is deliberate.",
+      );
+    }
+  }
+  return failures;
+}

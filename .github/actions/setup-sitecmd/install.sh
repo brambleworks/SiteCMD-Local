@@ -18,10 +18,14 @@ if [[ -z "$install_dir" ]]; then
   echo "SiteCMD setup could not determine an installation directory." >&2
   exit 2
 fi
-if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
-  echo "The GitHub Actions setup currently supports Linux x86_64 runners only." >&2
-  exit 2
-fi
+case "$(uname -s) $(uname -m)" in
+  "Linux x86_64") target="linux-x86_64" ;;
+  "Linux aarch64" | "Linux arm64") target="linux-aarch64" ;;
+  *)
+    echo "The GitHub Actions setup currently supports Linux x86_64 and arm64 runners only." >&2
+    exit 2
+    ;;
+esac
 for command in curl base64 minisign tar; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Required command is unavailable: $command" >&2
@@ -29,7 +33,7 @@ for command in curl base64 minisign tar; do
   fi
 done
 
-archive="sitecmd-cli_${version}_linux-x86_64.tar.gz"
+archive="sitecmd-cli_${version}_${target}.tar.gz"
 release_url="https://releases.sitecmd.com/v${version}"
 temporary_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/sitecmd-setup.XXXXXX")
 install_candidate=

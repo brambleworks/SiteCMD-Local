@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@<full-actions-checkout-commit-sha>
-      - uses: brambleworks/SiteCMD/.github/actions/sitecmd-gate@<full-release-commit-sha>
+      - uses: brambleworks/SiteCMD-Local/.github/actions/sitecmd-gate@<full-release-commit-sha>
         with:
           version: <version>
           connection-export: ${{ secrets.SITECMD_CONNECTION_EXPORT }}

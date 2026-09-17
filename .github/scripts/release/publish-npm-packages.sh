@@ -49,6 +49,7 @@ stage_platform() {
 
 stage_platform cli-darwin-universal darwin-universal sitecmd
 stage_platform cli-linux-x64 linux-x86_64 sitecmd
+stage_platform cli-linux-arm64 linux-aarch64 sitecmd
 stage_platform cli-win32-x64 windows-x86_64 sitecmd.exe
 
 # The launcher package pins its platform packages to this exact version so a
@@ -56,7 +57,7 @@ stage_platform cli-win32-x64 windows-x86_64 sitecmd.exe
 MAIN="$NPM_DIR/cli"
 cp LICENSE NOTICE "$MAIN/"
 stamp_version "$MAIN"
-for dep in cli-darwin-universal cli-linux-x64 cli-win32-x64; do
+for dep in cli-darwin-universal cli-linux-x64 cli-linux-arm64 cli-win32-x64; do
   (cd "$MAIN" && npm pkg set "optionalDependencies.@sitecmd/${dep}=${VERSION}" >/dev/null)
 done
 publish_package "$MAIN"

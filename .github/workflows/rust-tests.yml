@@ -68,3 +68,32 @@ jobs:
         # nextest doesn't run doctests; `cargo test --doc` covers them.
         working-directory: apps/desktop/src-tauri
         run: cargo test --doc --workspace
+
+  cli-linux-arm64:
+    name: Build the headless CLI on Linux arm64
+    # The release workflow builds the CLI on this runner type; prove it here first.
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Tauri requires the declared MCP resource path even for compile-only jobs.
+      - name: Provide the mcp-server resource path
+        run: mkdir -p apps/mcp-server/dist-bundle
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+          key: cli-linux-arm64
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and run the CLI
+        working-directory: apps/desktop/src-tauri
+        run: |
+          cargo build --locked --manifest-path crates/cli/Cargo.toml
+          target/debug/sitecmd_cli --version

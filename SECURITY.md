@@ -15,7 +15,7 @@ The connected service has no versions to support: it runs one deployed version, 
 
 Please do not open a public issue for a suspected vulnerability.
 
-1. Preferred: [open a private vulnerability report on GitHub](https://github.com/brambleworks/SiteCMD/security/advisories/new). Private vulnerability reporting is enabled for this repository, and the report stays between you and the maintainers until a fix is coordinated.
+1. Preferred: [open a private vulnerability report on GitHub](https://github.com/brambleworks/SiteCMD-Local/security/advisories/new). Private vulnerability reporting is enabled for this repository, and the report stays between you and the maintainers until a fix is coordinated.
 2. Otherwise: email `security@sitecmd.com` with `SECURITY` in the subject line. Encrypt anything sensitive to the OpenPGP key committed at [`.github/security-contact-key.asc`](.github/security-contact-key.asc).
 
 Fingerprint: `16608F9F6D2C5BDA357311C75209E4BCF71B88E0`

@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   liveRepositoryProtectionFailures,
+  ownedRepositoryReferences,
+  repositoryNameFailures,
   requiredCheckWorkflowFailures,
 } from "./lib/repository-protection-rules.mjs";
 
 const contract = {
-  repository: "brambleworks/SiteCMD",
+  repository: "brambleworks/SiteCMD-Local",
   privateVulnerabilityReporting: true,
   securityAndAnalysis: {
     secret_scanning: "enabled",
@@ -265,5 +267,137 @@ describe("liveRepositoryProtectionFailures", () => {
     expect(failures).toContain('ruleset "protect-main" is missing the deletion rule');
     expect(failures).toContain("grants bypass actors");
     expect(failures).toContain('does not require "Analyze rust"');
+  });
+});
+
+describe("references to our own repositories", () => {
+  it("reads a link, an action ref, and an npm manifest url, with their lines", () => {
+    const references = ownedRepositoryReferences("brambleworks", [
+      {
+        file: "README.md",
+        source: [
+          "# SiteCMD",
+          "Report it at https://github.com/brambleworks/SiteCMD-Local/issues/new.",
+          "",
+          "      - uses: brambleworks/SiteCMD-Local/.github/actions/setup-sitecmd@abc123",
+        ].join("\n"),
+      },
+      {
+        file: "packaging/npm/cli/package.json",
+        source: '    "url": "git+https://github.com/brambleworks/SiteCMD-Local.git"',
+      },
+    ]);
+    expect(references).toEqual([
+      { file: "README.md", line: 2, slug: "brambleworks/SiteCMD-Local" },
+      { file: "README.md", line: 4, slug: "brambleworks/SiteCMD-Local" },
+      {
+        file: "packaging/npm/cli/package.json",
+        line: 1,
+        slug: "brambleworks/SiteCMD-Local",
+      },
+    ]);
+  });
+
+  // A neutral owner on purpose: this file is itself scanned by the rule these
+  // references feed, and a fixture naming our own owner would read as a
+  // reference left behind by a rename.
+  it("reads both references on one line and ignores other owners", () => {
+    const references = ownedRepositoryReferences("acme", [
+      {
+        file: "README.md",
+        source:
+          "[badge](https://github.com/acme/One/actions) and https://github.com/acme/Two " +
+          "next to https://github.com/actions/checkout",
+      },
+    ]);
+    expect(references.map(({ slug }) => slug)).toEqual(["acme/One", "acme/Two"]);
+  });
+
+  it("sees a reference a regex literal wrote with escaped slashes and dots", () => {
+    const references = ownedRepositoryReferences("acme", [
+      {
+        file: "tools/scripts/lib/guard.mjs",
+        source: String.raw`    !/\(https:\/\/github\.com\/acme\/Widget\/security\/advisories\/new\)/.test(text)`,
+      },
+    ]);
+    expect(references).toEqual([
+      { file: "tools/scripts/lib/guard.mjs", line: 1, slug: "acme/Widget" },
+    ]);
+  });
+});
+
+describe("the repository the contract names", () => {
+  const clean = () => ({
+    checkoutRepository: "brambleworks/SiteCMD-Local",
+    labelsRepository: "brambleworks/SiteCMD-Local",
+    references: [
+      { file: "README.md", line: 3, slug: "brambleworks/SiteCMD-Local" },
+      { file: "SECURITY.md", line: 18, slug: "brambleworks/SiteCMD-Local" },
+    ],
+  });
+
+  it("passes when the checkout, the label contract, and every reference agree", () => {
+    expect(repositoryNameFailures(contract, clean())).toEqual([]);
+  });
+
+  it("reports a checkout the contract has not caught up with", () => {
+    const failures = repositoryNameFailures(contract, {
+      ...clean(),
+      checkoutRepository: "brambleworks/SiteCMD-app",
+    });
+    expect(failures.join("\n")).toContain(
+      "this checkout belongs to brambleworks/SiteCMD-app but .github/repository-protection.json names brambleworks/SiteCMD-Local",
+    );
+  });
+
+  it("says nothing about a fork, which owns neither the contract nor the name", () => {
+    expect(
+      repositoryNameFailures(contract, {
+        ...clean(),
+        checkoutRepository: "contributor/SiteCMD-Local",
+      }),
+    ).toEqual([]);
+  });
+
+  it("checks nothing about the checkout when nothing names it", () => {
+    expect(repositoryNameFailures(contract, { ...clean(), checkoutRepository: null })).toEqual([]);
+  });
+
+  it("reports the two contracts disagreeing", () => {
+    const failures = repositoryNameFailures(contract, {
+      ...clean(),
+      labelsRepository: "brambleworks/SiteCMD-app",
+    });
+    expect(failures.join("\n")).toContain(
+      ".github/repository-labels.json names brambleworks/SiteCMD-app",
+    );
+  });
+
+  it("reports a reference left behind by a rename, with its line", () => {
+    const observed = clean();
+    observed.references.push({
+      file: "packaging/npm/cli/package.json",
+      line: 8,
+      slug: "brambleworks/SiteCMD-app",
+    });
+    const failures = repositoryNameFailures(contract, observed);
+    expect(failures.join("\n")).toContain(
+      "packaging/npm/cli/package.json:8 references brambleworks/SiteCMD-app",
+    );
+  });
+
+  it("allows a sibling repository the contract declares", () => {
+    const observed = clean();
+    observed.references.push({
+      file: "CONTRIBUTING.md",
+      line: 11,
+      slug: "brambleworks/SiteCMD-Web",
+    });
+    expect(
+      repositoryNameFailures(
+        { ...contract, referencedRepositories: ["brambleworks/SiteCMD-Web"] },
+        observed,
+      ),
+    ).toEqual([]);
   });
 });

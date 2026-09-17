@@ -4,7 +4,8 @@
 # Usage:
 #   curl -fsSL https://sitecmd.com/install.sh | sh
 #
-# Installs the `sitecmd` binary for macOS (universal) and Linux (x86_64).
+# Installs the `sitecmd` binary for macOS (universal) and Linux (x86_64 and
+# aarch64).
 # Windows users: download the zip from https://releases.sitecmd.com instead
 # (see https://sitecmd.com/docs/cli for the direct link pattern).
 #
@@ -168,7 +169,8 @@ detect_target() {
     Linux)
       case "$arch" in
         x86_64 | amd64) target="linux-x86_64" ;;
-        *) fail "no prebuilt CLI for Linux/$arch yet (x86_64 only). Contact support@sitecmd.com if you need this platform." ;;
+        aarch64 | arm64) target="linux-aarch64" ;;
+        *) fail "no prebuilt CLI for Linux/$arch yet (x86_64 and aarch64 only). Contact support@sitecmd.com if you need this platform." ;;
       esac
       ;;
     MINGW* | MSYS* | CYGWIN*)

@@ -206,7 +206,7 @@ It also creates the GitHub Release for the tag, carrying the changelog notes
 and the signed `SHA256SUMS` and `SHA256SUMS.minisig`; the binaries stay on R2.
 Finally it records a build provenance attestation for every published
 artifact and the checksum manifest with `actions/attest-build-provenance`;
-`gh attestation verify <file> --repo brambleworks/SiteCMD` reads it. The
+`gh attestation verify <file> --repo brambleworks/SiteCMD-Local` reads it. The
 attestation names the workflow run that published the bytes. It is not a
 reproducible-build proof.
 

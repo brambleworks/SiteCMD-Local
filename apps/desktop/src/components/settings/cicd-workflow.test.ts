@@ -12,7 +12,7 @@ describe("generateWorkflow", () => {
     });
 
     expect(yaml).toMatch(
-      /uses: brambleworks\/SiteCMD\/\.github\/actions\/setup-sitecmd@[0-9a-f]{40}/,
+      /uses: brambleworks\/SiteCMD-Local\/\.github\/actions\/setup-sitecmd@[0-9a-f]{40}/,
     );
     expect(yaml).toContain('version: "1.5.4"');
     expect(yaml).toContain("permissions:\n  contents: read");

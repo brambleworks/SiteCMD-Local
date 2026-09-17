@@ -1,8 +1,8 @@
 # SiteCMD
 
-[![Code Scan](https://github.com/brambleworks/SiteCMD/actions/workflows/app-guardrails.yml/badge.svg?branch=main)](https://github.com/brambleworks/SiteCMD/actions/workflows/app-guardrails.yml)
-[![CodeQL](https://github.com/brambleworks/SiteCMD/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/brambleworks/SiteCMD/actions/workflows/codeql.yml)
-[![Latest release](https://img.shields.io/github/v/release/brambleworks/SiteCMD)](https://github.com/brambleworks/SiteCMD/releases)
+[![Code Scan](https://github.com/brambleworks/SiteCMD-Local/actions/workflows/app-guardrails.yml/badge.svg?branch=main)](https://github.com/brambleworks/SiteCMD-Local/actions/workflows/app-guardrails.yml)
+[![CodeQL](https://github.com/brambleworks/SiteCMD-Local/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/brambleworks/SiteCMD-Local/actions/workflows/codeql.yml)
+[![Latest release](https://img.shields.io/github/v/release/brambleworks/SiteCMD-Local)](https://github.com/brambleworks/SiteCMD-Local/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 Desktop website health scanner and command center. SiteCMD scans websites and
@@ -62,7 +62,8 @@ puts the same findings inside an AI coding tool.
 
 `sitecmd` runs a Web Scan against a live URL and the complete Code Scan against
 a source checkout. Neither needs an account. npm is the quickest way to try
-one, and carries the platform binary for macOS, Linux, or Windows:
+one, and carries the platform binary for macOS, Linux (x86_64 and arm64), or
+Windows:
 
 ```bash
 npx @sitecmd/cli audit .
@@ -137,7 +138,7 @@ manifest.
 
 Releases published by the release workflow carry a Sigstore build-provenance
 attestation; verify one with
-`gh attestation verify <file> --repo brambleworks/SiteCMD`. Releases
+`gh attestation verify <file> --repo brambleworks/SiteCMD-Local`. Releases
 back-filled by hand before the workflow change carry none.
 
 ## Where your data lives

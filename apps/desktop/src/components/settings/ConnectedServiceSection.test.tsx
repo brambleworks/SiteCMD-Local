@@ -342,7 +342,7 @@ describe("ConnectedServiceSection", () => {
           id: "cit_abc",
           siteId: "site_123",
           token: "sitecmd_ci_secret",
-          repository: "brambleworks/SiteCMD",
+          repository: "brambleworks/SiteCMD-Local",
           repositoryId: "1296269",
           orderingAuthorityId: "github:1296269:authority",
           orderingAuthorityEpoch: 1,
@@ -356,7 +356,7 @@ describe("ConnectedServiceSection", () => {
       await screen.findByText(/read only the deployment-ordering cursor/i),
     ).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("Repository (optional)"), {
-      target: { value: "brambleworks/SiteCMD" },
+      target: { value: "brambleworks/SiteCMD-Local" },
     });
     fireEvent.change(screen.getByLabelText("Trusted workflow (required for verified CI)"), {
       target: { value: ".github/workflows/sitecmd.yml" },
@@ -376,7 +376,7 @@ describe("ConnectedServiceSection", () => {
     expect(invokeMock).toHaveBeenCalledWith("mint_connected_ci_token", {
       projectId: 7,
       environmentScopeKey: "https://example.com",
-      repository: "brambleworks/SiteCMD",
+      repository: "brambleworks/SiteCMD-Local",
       workflowRef: ".github/workflows/sitecmd.yml",
       gitRef: "refs/heads/main",
     });

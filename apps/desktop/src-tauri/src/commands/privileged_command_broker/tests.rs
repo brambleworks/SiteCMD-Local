@@ -525,7 +525,7 @@ fn every_token_issue_prompted_command_has_purpose_written_copy() {
                     "checkId": "security.csp",
                     "config": {
                         "integrationType": "github",
-                        "siteId": "brambleworks/SiteCMD"
+                        "siteId": "brambleworks/SiteCMD-Local"
                     }
                 })
             )

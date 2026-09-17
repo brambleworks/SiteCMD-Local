@@ -67,7 +67,7 @@ protected environment:
 
 ```bash
 gh variable set RELEASE_ALLOWED_SIGNERS \
-  --env release-tag-trust -R brambleworks/SiteCMD \
+  --env release-tag-trust -R brambleworks/SiteCMD-Local \
   --body "$(cat .github/allowed-signers)"
 ```
 

@@ -12,6 +12,7 @@ const PLATFORM_PACKAGES = {
   "darwin arm64": ["@sitecmd/cli-darwin-universal", "sitecmd"],
   "darwin x64": ["@sitecmd/cli-darwin-universal", "sitecmd"],
   "linux x64": ["@sitecmd/cli-linux-x64", "sitecmd"],
+  "linux arm64": ["@sitecmd/cli-linux-arm64", "sitecmd"],
   "win32 x64": ["@sitecmd/cli-win32-x64", "sitecmd.exe"],
 };
 

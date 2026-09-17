@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 
 import {
   liveRepositoryProtectionFailures,
+  ownedRepositoryReferences,
+  repositoryNameFailures,
   requiredCheckWorkflowFailures,
 } from "./lib/repository-protection-rules.mjs";
 
@@ -26,6 +28,28 @@ const listFiles = (dir, predicate) =>
     .filter(predicate);
 const contract = JSON.parse(read(".github/repository-protection.json"));
 
+const git = (...args) => {
+  try {
+    return execFileSync("git", args, {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    // No remote, no git, or a grep that matched nothing: absence is not a
+    // failure here, it only narrows what can be checked.
+    return "";
+  }
+};
+
+/** The repository this checkout belongs to: what Actions says it is, or what
+ *  the origin remote names locally. */
+const checkoutRepository = () => {
+  if (process.env.GITHUB_REPOSITORY) return process.env.GITHUB_REPOSITORY;
+  const remote = git("remote", "get-url", "origin");
+  return /github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/.exec(remote)?.[1] ?? null;
+};
+
 const gh = (endpoint) =>
   JSON.parse(
     execFileSync("gh", ["api", endpoint], {
@@ -36,6 +60,30 @@ const gh = (endpoint) =>
   );
 
 const failures = requiredCheckWorkflowFailures(contract, read, listFiles);
+
+const owner = contract.repository.split("/")[0];
+const referencing = git(
+  "grep",
+  "-lI",
+  "-e",
+  `github.com/${owner}/`,
+  "-e",
+  `uses: ${owner}/`,
+  "--",
+  ".",
+)
+  .split("\n")
+  .filter(Boolean);
+failures.push(
+  ...repositoryNameFailures(contract, {
+    checkoutRepository: checkoutRepository(),
+    labelsRepository: JSON.parse(read(".github/repository-labels.json")).repository,
+    references: ownedRepositoryReferences(
+      owner,
+      referencing.map((file) => ({ file, source: read(file) })),
+    ),
+  }),
+);
 if (live && failures.length === 0) {
   try {
     const repository = gh(`repos/${contract.repository}`);

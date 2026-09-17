@@ -183,7 +183,7 @@ pub async fn fetch_repository_identity(
 }
 
 /// Fetch GitHub CI/deploy data for a repository.
-/// `repo` should be "owner/repo" format (e.g. "brambleworks/SiteCMD").
+/// `repo` should be "owner/repo" format (e.g. "brambleworks/SiteCMD-Local").
 #[tracing::instrument(skip(token, repo))]
 pub async fn fetch_github_data(token: &str, repo: &str) -> Result<GitHubData, String> {
     let repo = super::validation::normalize_github_repo_slug(repo)?;

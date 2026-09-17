@@ -80,6 +80,39 @@ describe("release workflow scripts", () => {
     );
   });
 
+  it("runs the Linux arm64 leg as CLI-only through every release stage", () => {
+    const workflow = read(".github/workflows/release.yml");
+    const job = (name, next) =>
+      workflow.slice(workflow.indexOf(`\n  ${name}:`), workflow.indexOf(`\n  ${next}:`));
+    const buildJob = job("build", "sign-updaters");
+    const verifyJob = job("verify-release", "publish-release");
+    const publishJob = job("publish-release", "publish-npm");
+
+    expect(buildJob).toMatch(
+      /- os: ubuntu-22\.04-arm\n\s+target: linux-aarch64\n\s+rust_target: aarch64-unknown-linux-gnu\n\s+rust_toolchain_targets: aarch64-unknown-linux-gnu\n\s+cli_only: true\n/,
+    );
+    expect(buildJob.match(/cli_only: false/g)).toHaveLength(3);
+    for (const step of [
+      "pnpm install",
+      "Build Tauri app with ephemeral updater key",
+      "Verify signing key not embedded in artifacts",
+      "Locate updater bundle and signature",
+    ]) {
+      const start = buildJob.indexOf(`- name: ${step}\n`);
+      expect(start, step).toBeGreaterThan(-1);
+      const body = buildJob.slice(start, buildJob.indexOf("\n      - ", start + 1));
+      expect(body, step).toContain("if: ${{ !matrix.cli_only }}");
+    }
+    expect(buildJob).toContain('if $filename != "" then {filename: $filename}');
+    expect(verifyJob).toMatch(/- os: ubuntu-22\.04-arm\n\s+target: linux-aarch64\n/);
+    expect(publishJob).toContain("linux-aarch64) ;;");
+    expect(publishJob).toContain('test "$cli_count" -eq 1');
+    expect(read(`${SCRIPT_DIR}/stage-signer-inputs.sh`)).toContain("linux-aarch64) ;;");
+    expect(read(`${SCRIPT_DIR}/publish-npm-packages.sh`)).toContain(
+      "stage_platform cli-linux-arm64 linux-aarch64 sitecmd",
+    );
+  });
+
   it("parses every script with Bash before a release can use it", () => {
     for (const script of SCRIPT_STEPS.keys()) {
       expect(() =>
