@@ -562,3 +562,77 @@ fn get_recent_commits_on_non_git_dir_returns_empty() {
     let commits = get_recent_commits(&dir.path().to_string_lossy(), 10);
     assert!(commits.is_empty());
 }
+
+#[test]
+fn run_git_command_captures_stderr_and_the_exit_status() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let run = super::run_git_command(
+        temp.path(),
+        &["rev-parse", "HEAD"],
+        std::time::Duration::from_secs(5),
+        None,
+    )
+    .expect("git ran");
+    assert!(!run.ok());
+    assert!(
+        run.stderr.contains("not a git repository"),
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
+fn run_git_command_returns_stdout_on_success() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    super::run_git_command(
+        temp.path(),
+        &["init", "-q"],
+        std::time::Duration::from_secs(5),
+        None,
+    )
+    .expect("init");
+    let run = super::run_git_command(
+        temp.path(),
+        &["rev-parse", "--is-inside-work-tree"],
+        std::time::Duration::from_secs(5),
+        None,
+    )
+    .expect("ran");
+    assert!(run.ok());
+    assert_eq!(run.stdout.trim(), "true");
+}
+
+#[test]
+fn https_transport_encodes_the_installation_token_as_basic_auth() {
+    let transport = super::HttpsTransport::for_token("ghs_abc");
+    assert_eq!(
+        transport.authorization_header,
+        "AUTHORIZATION: basic eC1hY2Nlc3MtdG9rZW46Z2hzX2FiYw=="
+    );
+}
+
+#[test]
+fn run_git_command_with_transport_allows_only_https() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    super::run_git_command(
+        temp.path(),
+        &["init", "-q"],
+        std::time::Duration::from_secs(5),
+        None,
+    )
+    .expect("init");
+    let transport = super::HttpsTransport::for_token("ghs_abc");
+    let run = super::run_git_command(
+        temp.path(),
+        &["ls-remote", "ssh://git@example.invalid/repo.git"],
+        std::time::Duration::from_secs(5),
+        Some(&transport),
+    )
+    .expect("ran");
+    assert!(!run.ok());
+    assert!(
+        run.stderr.contains("protocol") || run.stderr.contains("not allowed"),
+        "{}",
+        run.stderr
+    );
+}

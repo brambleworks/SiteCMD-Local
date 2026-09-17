@@ -337,6 +337,124 @@ fn run_git(dir: &Path, args: &[&str]) -> Option<String> {
     String::from_utf8(stdout).ok()
 }
 
+// Only the tests exercise the runner until the fix engine's commands call it.
+
+/// A git invocation whose status and both streams the caller reads, for the
+/// fix engine's apply, commit and push, which need the error text and a
+/// timeout of their own.
+#[allow(dead_code)]
+pub(crate) struct GitRun {
+    pub status: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[allow(dead_code)]
+impl GitRun {
+    pub fn ok(&self) -> bool {
+        self.status == Some(0)
+    }
+}
+
+/// One https push or fetch credential, carried through `http.extraheader`
+/// so it never appears in a URL, an argument list a process table shows, or
+/// a remote git stores.
+#[allow(dead_code)]
+pub(crate) struct HttpsTransport {
+    pub authorization_header: String,
+}
+
+#[allow(dead_code)]
+impl HttpsTransport {
+    pub fn for_token(token: &str) -> Self {
+        use base64::Engine as _;
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(format!("x-access-token:{token}"));
+        Self {
+            authorization_header: format!("AUTHORIZATION: basic {encoded}"),
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) fn run_git_command(
+    dir: &Path,
+    args: &[&str],
+    timeout: Duration,
+    transport: Option<&HttpsTransport>,
+) -> Result<GitRun, String> {
+    let extra_header;
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 4);
+    if let Some(transport) = transport {
+        // The hardening forbids every transport; https alone is re-enabled for
+        // this one invocation, and only with the header the caller supplied.
+        extra_header = format!("http.extraheader={}", transport.authorization_header);
+        full.extend([
+            "-c",
+            "protocol.https.allow=always",
+            "-c",
+            extra_header.as_str(),
+        ]);
+    }
+    full.extend_from_slice(args);
+    let mut child = hardened_git_command(dir, &full)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("git could not be started: {error}"))?;
+    let stdout = child.stdout.take().ok_or("git stdout unavailable")?;
+    let stderr = child.stderr.take().ok_or("git stderr unavailable")?;
+    let read_all = |mut stream: Box<dyn Read + Send>| {
+        std::thread::spawn(move || {
+            let mut output = Vec::new();
+            let mut buf = [0_u8; 8192];
+            loop {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        let remaining =
+                            crate::constants::AUTOFIX_MAX_LOG_BYTES.saturating_sub(output.len());
+                        output.extend_from_slice(&buf[..n.min(remaining)]);
+                    }
+                }
+            }
+            output
+        })
+    };
+    let stdout_reader = read_all(Box::new(stdout));
+    let stderr_reader = read_all(Box::new(stderr));
+    let started_at = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if started_at.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!(
+                        "git {} timed out after {}s",
+                        args.first().unwrap_or(&""),
+                        timeout.as_secs()
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(error) => return Err(format!("git could not be waited on: {error}")),
+        }
+    };
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| "git stdout reader failed".to_string())?;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| "git stderr reader failed".to_string())?;
+    Ok(GitRun {
+        status: status.code(),
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+    })
+}
+
 fn has_git_dir(dir: &Path) -> bool {
     // Check if we're inside a git repo (even if.git is in a parent)
     run_git(dir, &["rev-parse", "--git-dir"]).is_some()
