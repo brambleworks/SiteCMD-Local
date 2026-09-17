@@ -279,15 +279,16 @@ async fn publish_patch(
             ),
         ));
     }
+    // What the checkout already showed is the audit's baseline: a runner that
+    // arrived with an untracked file of its own must not make every publish
+    // decline.
+    let baseline = repo::changed_paths(root)?;
     if let Err(error) = repo::apply_patch(root, &patch_path) {
         return Ok(declined("patch_rejected", error));
     }
     // Belt and braces over the write set: whatever the diff declared, the
-    // tree itself must show no path outside it.
-    let undeclared: Vec<String> = repo::changed_paths(root)?
-        .into_iter()
-        .filter(|path| !changed.contains(path))
-        .collect();
+    // tree itself must show no new path outside it.
+    let undeclared = repo::undeclared_paths(&baseline, &repo::changed_paths(root)?, &changed);
     if !undeclared.is_empty() {
         return Ok(declined(
             "patch_rejected",

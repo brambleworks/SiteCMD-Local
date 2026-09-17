@@ -505,3 +505,89 @@ async fn reports_patch_rejected_when_the_artifact_carries_both_halves() {
     assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
     assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
 }
+
+#[test]
+fn the_post_apply_audit_is_baselined_against_the_checkout() {
+    let before = vec!["runner-left-this.log".to_string()];
+    let after = vec![
+        "runner-left-this.log".to_string(),
+        "vercel.json".to_string(),
+        "surprise.json".to_string(),
+    ];
+    let declared = vec!["vercel.json".to_string()];
+    assert_eq!(
+        repo::undeclared_paths(&before, &after, &declared),
+        vec!["surprise.json".to_string()]
+    );
+    // A rename line names both of its sides, and each is judged on its own.
+    let renamed = vec!["old.json".to_string(), "new.json".to_string()];
+    assert_eq!(
+        repo::undeclared_paths(&[], &renamed, &["old.json".to_string()]),
+        vec!["new.json".to_string()]
+    );
+    assert!(repo::undeclared_paths(&renamed, &renamed, &[]).is_empty());
+}
+
+#[test]
+fn the_patch_reader_refuses_a_legacy_rename_and_a_symbolic_link() {
+    let (repo_dir, _head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let patches = tempfile::tempdir().unwrap();
+    let legacy = patches.path().join("legacy.diff");
+    std::fs::write(
+        &legacy,
+        "diff --git a/vercel.json b/vercel.json\nsimilarity index 100%\nrename old .github/workflows/deploy.yml\nrename new vercel.json\n",
+    )
+    .unwrap();
+    assert!(
+        repo::patch_paths(repo_dir.path(), &legacy)
+            .unwrap_err()
+            .contains("renames or copies a file"),
+        "the legacy rename headers must be refused too"
+    );
+    let symlink = patches.path().join("symlink.diff");
+    std::fs::write(
+        &symlink,
+        "diff --git a/config b/config\nnew file mode 120000\nindex 0000000..1111111\n--- /dev/null\n+++ b/config\n@@ -0,0 +1 @@\n+/etc/passwd\n",
+    )
+    .unwrap();
+    assert!(repo::patch_paths(repo_dir.path(), &symlink)
+        .unwrap_err()
+        .contains("symbolic link"));
+}
+
+#[tokio::test]
+async fn refuses_a_header_that_names_two_different_paths() {
+    let (repo_dir, head) = init_test_repo(&[
+        ("vercel.json", "{}\n"),
+        (".github/workflows/deploy.yml", "name: deploy\n"),
+    ])
+    .unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    // No rename line at all: the header alone deletes the workflow and
+    // rewrites the destination, and `git apply --numstat` would report only
+    // the destination the write set allows.
+    let mismatched = "diff --git a/.github/workflows/deploy.yml b/vercel.json\nindex 1111111..2222222 100644\n--- a/.github/workflows/deploy.yml\n+++ b/vercel.json\n@@ -1 +1 @@\n-name: deploy\n+{}\n";
+
+    let (outcome, requests) =
+        publish_this_patch(repo_dir.path(), &artifact_dir, &head, mismatched).await;
+
+    let (code, summary) = outcome.expect("the command to report rather than fail");
+    assert_eq!(code, 1);
+    assert!(summary.contains("two paths in one header"), "{summary}");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(
+        requests[1].contains(r#""outcome_code":"patch_rejected""#),
+        "{}",
+        requests[1]
+    );
+    assert!(
+        repo_dir
+            .path()
+            .join(".github/workflows/deploy.yml")
+            .is_file(),
+        "the workflow must still be there"
+    );
+    assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
+    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
+}
