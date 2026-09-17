@@ -12,6 +12,7 @@ pub mod detector;
 pub mod engine_release;
 pub mod event_correlations;
 pub mod fix_brief;
+pub mod fix_templates;
 pub mod git;
 pub mod localhost;
 pub mod native_alerts;
