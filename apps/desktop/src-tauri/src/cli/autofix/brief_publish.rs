@@ -37,7 +37,8 @@ const CLIENT_PACKAGES: &[(&str, &str)] =
     &[("react", "React"), ("vue", "Vue.js"), ("svelte", "Svelte")];
 
 /// Why a brief was not published. The reason is the binary's own sentence,
-/// never the artifact's.
+/// and it names the offending location by its position in the brief, so no
+/// text the artifact chose reaches the result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BriefRejected {
     pub reason: String,
@@ -57,21 +58,33 @@ fn rejected(reason: String) -> BriefRejected {
     BriefRejected { reason }
 }
 
+/// Where a refusal happened, by zero-based position in the brief's arrays.
+fn at(finding: usize, location: usize) -> String {
+    format!("brief finding {finding}, location {location}")
+}
+
 /// Audit the publish job's own checkout once and confirm every location the
 /// brief names: a relative path to a file inside the tree, the brief's rule
-/// reported at that path, the reported line inside the brief's range, and the
-/// excerpt the checkout itself shows. Anything else is a refusal, because the
-/// artifact crossed an untrusted boundary.
+/// reported at that path, a reported line inside the brief's range, and the
+/// excerpt the checkout itself shows there. Anything else is a refusal,
+/// because the artifact crossed an untrusted boundary.
+///
+/// The brief's line range only selects which reported issue a location means,
+/// so a file the audit reports the rule at more than once still resolves.
 pub fn check_brief(
     root: &Path,
     brief: &BriefArtifact,
 ) -> Result<Vec<VerifiedFinding>, BriefRejected> {
     let report = audit_project(root).map_err(rejected)?;
     let mut verified = Vec::new();
-    for finding in &brief.findings {
-        let slug = code_slug(&finding.check_id)
-            .ok_or_else(|| rejected(format!("{} is not a code check", finding.check_id)))?;
-        for location in &finding.locations {
+    for (finding_index, finding) in brief.findings.iter().enumerate() {
+        let slug = code_slug(&finding.check_id).ok_or_else(|| {
+            rejected(format!(
+                "brief finding {finding_index} does not name a code check"
+            ))
+        })?;
+        for (location_index, location) in finding.locations.iter().enumerate() {
+            let at = at(finding_index, location_index);
             let relative = Path::new(&location.path);
             if relative.is_absolute()
                 || relative
@@ -79,44 +92,43 @@ pub fn check_brief(
                     .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
             {
                 return Err(rejected(format!(
-                    "{}: location path reaches outside the checkout",
-                    finding.check_id
+                    "{at}: the path reaches outside the checkout"
                 )));
             }
             if !root.join(relative).is_file() {
                 return Err(rejected(format!(
-                    "{}: location path is not a file in the checkout",
-                    finding.check_id
+                    "{at}: the path is not a file in the checkout"
                 )));
             }
-            let issue = report
+            let reported: Vec<&CodeIssue> = report
                 .issues
                 .iter()
-                .find(|issue| {
+                .filter(|issue| {
                     code_producer_rule_id(&issue.id) == slug && issue.relative_path == location.path
+                })
+                .collect();
+            if reported.is_empty() {
+                return Err(rejected(format!(
+                    "{at}: the checkout does not report this finding there"
+                )));
+            }
+            // The range picks which reported issue this location means, so a
+            // rule the audit reports twice in one file still resolves.
+            let issue = reported
+                .into_iter()
+                .find(|issue| {
+                    issue.line.is_some_and(|line| {
+                        line >= location.start_line && line <= location.end_line
+                    })
                 })
                 .ok_or_else(|| {
                     rejected(format!(
-                        "{}: the checkout does not report this finding at {}",
-                        finding.check_id, location.path
+                        "{at}: the reported line is outside the brief's line range"
                     ))
                 })?;
-            let line = issue.line.ok_or_else(|| {
-                rejected(format!(
-                    "{}: the reported finding has no line",
-                    finding.check_id
-                ))
-            })?;
-            if line < location.start_line || line > location.end_line {
+            if issue.source_excerpt.as_deref().unwrap_or("") != location.excerpt {
                 return Err(rejected(format!(
-                    "{}: the reported line is outside the brief's line range",
-                    finding.check_id
-                )));
-            }
-            if issue.source_excerpt.as_deref() != Some(location.excerpt.as_str()) {
-                return Err(rejected(format!(
-                    "{}: the brief's excerpt is not what the checkout shows",
-                    finding.check_id
+                    "{at}: the brief's excerpt is not what the checkout shows"
                 )));
             }
             verified.push(VerifiedFinding {
@@ -172,7 +184,10 @@ pub fn checkout_stack(root: &Path) -> Option<serde_json::Value> {
 
 /// The issue SiteCMD opens for an agent: the hosted fix brief, addressed to
 /// the agent the claim names. Every sentence is the binary's own or the
-/// claim's; the artifact contributes only the confirmed locations.
+/// claim's, and every path, line and excerpt it prints is the audit's own:
+/// the brief's range only chose which reported issue each location meant.
+///
+/// `verified` must not be empty, which is what [`check_brief`] returns.
 pub fn render_issue(
     claimed: &ClaimedJob,
     verified: &[VerifiedFinding],
@@ -182,13 +197,13 @@ pub fn render_issue(
     let locations: Vec<BriefLocation> = verified
         .iter()
         .map(|v| BriefLocation {
-            end_line: Some(v.location.end_line),
-            excerpt: Some(v.location.excerpt.clone()),
+            end_line: v.issue.line,
+            excerpt: v.issue.source_excerpt.clone(),
             label: "Reported location".into(),
-            line: Some(v.location.start_line),
-            path: v.location.path.clone(),
+            line: v.issue.line,
+            path: v.issue.relative_path.clone(),
             reason: "the check matched here".into(),
-            start_line: Some(v.location.start_line),
+            start_line: v.issue.line,
         })
         .collect();
     let input = FixBriefInput {
@@ -274,7 +289,7 @@ pub async fn publish_brief(
                 issue_number: Some(number),
                 outcome_code: "issue_opened".into(),
                 pull_request: None,
-                summary: format!("opened issue #{number}"),
+                summary: redact::summary(root, &format!("opened issue #{number}")),
                 token_revoked: revoked,
             },
         )),
@@ -338,9 +353,13 @@ mod tests {
 
     #[test]
     fn accepts_a_brief_the_checkout_confirms_and_renders_the_issue() {
-        let (repo, brief, head) = fixture();
+        let (repo, mut brief, head) = fixture();
+        // A wider range than the audit reported still selects the same issue,
+        // and the issue's own line is what the brief prints.
+        brief.findings[0].locations[0].start_line = 1;
         let verified = check_brief(repo.path(), &brief).unwrap();
         assert_eq!(verified.len(), 1);
+        let line = verified[0].issue.line.unwrap();
         let (title, body) = render_issue(
             &claimed(&head, &brief.findings[0].identity),
             &verified,
@@ -349,7 +368,11 @@ mod tests {
         assert!(title.starts_with("SiteCMD: "));
         assert!(body.starts_with("@claude "));
         assert!(body.contains("## Where to look"));
-        assert!(body.contains("app/api/signin/route.ts:"));
+        assert!(
+            body.contains(&format!("`app/api/signin/route.ts:{line}`")),
+            "{body}"
+        );
+        assert!(!body.contains("`app/api/signin/route.ts:1`"), "{body}");
         assert!(body.contains("Response.redirect"));
         assert!(body.contains("Open a pull request"));
         assert!(body.contains("## Previous attempt"));
@@ -397,5 +420,38 @@ mod tests {
         assert_eq!(stack["cdn"], "Vercel");
         let (bare, _) = init_test_repo(&[("readme.md", "# loop\n")]).unwrap();
         assert!(checkout_stack(bare.path()).is_none());
+    }
+
+    #[test]
+    fn verifies_every_location_when_a_rule_is_reported_twice_in_one_file() {
+        let module = "import { pad } from \"left-pad\";\nimport { trim } from \"right-pad\";\n\nexport const value = pad(trim(\"x\"));\n";
+        let (repo, _) = init_test_repo(&[
+            ("package.json", "{\"name\":\"loop\"}"),
+            ("app/lib/util.ts", module),
+        ])
+        .unwrap();
+        let key = ProjectFingerprintKey::from_bytes([7_u8; 32]);
+        let identity = key.location_hash("undeclared-package", "app/lib/util.ts");
+        let matches = locate_findings(
+            repo.path(),
+            &key,
+            &[("code_scan.undeclared-package".into(), identity)],
+        )
+        .unwrap();
+        let brief = crate::cli::autofix::brief::brief_artifact("job_0123456789abcdef", 1, &matches);
+        assert_eq!(brief.findings.len(), 1, "{brief:?}");
+        assert_eq!(brief.findings[0].locations.len(), 2, "{brief:?}");
+        let verified = check_brief(repo.path(), &brief).unwrap();
+        assert_eq!(verified.len(), 2, "{verified:?}");
+        for entry in &verified {
+            let line = entry.issue.line.expect("the audit reported a line");
+            assert!(
+                line >= entry.location.start_line && line <= entry.location.end_line,
+                "{entry:?}"
+            );
+        }
+        let mut lines: Vec<u32> = verified.iter().filter_map(|v| v.issue.line).collect();
+        lines.sort_unstable();
+        assert_eq!(lines, vec![1, 2], "{verified:?}");
     }
 }
