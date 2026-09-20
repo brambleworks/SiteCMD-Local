@@ -150,18 +150,21 @@ fn an_older_deployment_head_defaults_to_the_safe_legacy_oidc_behavior() {
 fn bearer_is_redacted_and_insecure_remote_origins_are_rejected() {
     let client = ConnectedServiceClient::for_endpoint(
         "http://127.0.0.1:8787",
-        "sitecmd_cat_do_not_log",
+        Some("sitecmd_cat_do_not_log"),
         true,
     )
     .expect("test loopback");
     let debug = format!("{client:?}");
     assert!(!debug.contains("sitecmd_cat_do_not_log"));
-    assert!(
-        ConnectedServiceClient::for_endpoint("http://connect.sitecmd.com", "token", false).is_err()
-    );
+    assert!(ConnectedServiceClient::for_endpoint(
+        "http://connect.sitecmd.com",
+        Some("token"),
+        false
+    )
+    .is_err());
     assert!(ConnectedServiceClient::for_endpoint(
         "https://connect.sitecmd.com/unexpected-base",
-        "token",
+        Some("token"),
         false,
     )
     .is_err());

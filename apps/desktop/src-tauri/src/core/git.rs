@@ -20,7 +20,9 @@ const MAX_GIT_OUTPUT_BYTES: usize = 1024 * 1024;
 /// Command-line overrides applied to every git spawn. A registered project
 /// tree may carry a hostile `.git/config`, so every repository key that names
 /// an executable is neutralized before the subcommand, optional index writes
-/// are skipped, and no transport protocol may be negotiated.
+/// are skipped, and no transport protocol may be negotiated. `run_git_command`
+/// re-enables https alone, for one authenticated invocation, as the single
+/// documented exception.
 const GIT_HARDENING_ARGS: &[&str] = &[
     "--no-optional-locks",
     "-c",
@@ -68,8 +70,9 @@ const GIT_FIXED_ENV: &[(&str, &str)] = &[
     ("LC_ALL", "C"),
 ];
 
-/// The one place git is spawned. Every caller goes through `run_git`, which
-/// a source-scanning test in `lib_tests.rs` enforces.
+/// The one place git is spawned. Both runners over it, `run_git` and
+/// `run_git_command`, go through here, which a source-scanning test in
+/// `lib_tests.rs` enforces.
 fn hardened_git_command(dir: &Path, args: &[&str]) -> Command {
     let mut command = Command::new("git");
     command.env_clear();
@@ -335,6 +338,133 @@ fn run_git(dir: &Path, args: &[&str]) -> Option<String> {
         return None;
     }
     String::from_utf8(stdout).ok()
+}
+
+/// A git invocation whose status and both streams the caller reads, for the
+/// fix engine's apply, commit and push, which need the error text and a
+/// timeout of their own.
+pub(crate) struct GitRun {
+    pub status: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl GitRun {
+    pub fn ok(&self) -> bool {
+        self.status == Some(0)
+    }
+}
+
+/// One https push or fetch credential. It reaches git as `http.extraheader`
+/// through the config environment of the single process that needs it, so it
+/// never appears in a URL, in the argument list a process table shows, or in
+/// any config file or remote git stores.
+pub struct HttpsTransport {
+    pub(crate) authorization_header: String,
+}
+
+impl HttpsTransport {
+    pub fn for_token(token: &str) -> Self {
+        use base64::Engine as _;
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(format!("x-access-token:{token}"));
+        Self {
+            authorization_header: format!("AUTHORIZATION: basic {encoded}"),
+        }
+    }
+}
+
+pub(crate) fn run_git_command(
+    dir: &Path,
+    args: &[&str],
+    timeout: Duration,
+    transport: Option<&HttpsTransport>,
+) -> Result<GitRun, String> {
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 6);
+    if transport.is_some() {
+        // The hardening forbids every transport; https alone is re-enabled for
+        // this one invocation. The protocol name is not a secret, so it rides
+        // in the argument list. The credential helper and the askpass hook are
+        // blanked beside it, so an authenticated fetch or push can never read a
+        // credential someone else stored or prompt for one.
+        full.extend([
+            "-c",
+            "protocol.https.allow=always",
+            "-c",
+            "credential.helper=",
+            "-c",
+            "core.askPass=",
+        ]);
+    }
+    full.extend_from_slice(args);
+    let mut command = hardened_git_command(dir, &full);
+    if let Some(transport) = transport {
+        // A process table and `/proc/<pid>/cmdline` are world readable, so the
+        // credential travels in git's config environment, which is not. The
+        // hardening sets no `GIT_CONFIG_COUNT` of its own, leaving index 0 free.
+        // `GIT_CONFIG_COUNT` needs git 2.31 or newer, which every GitHub-hosted
+        // runner has.
+        command
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "http.extraheader")
+            .env("GIT_CONFIG_VALUE_0", &transport.authorization_header);
+    }
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("git could not be started: {error}"))?;
+    let stdout = child.stdout.take().ok_or("git stdout unavailable")?;
+    let stderr = child.stderr.take().ok_or("git stderr unavailable")?;
+    let read_all = |mut stream: Box<dyn Read + Send>| {
+        std::thread::spawn(move || {
+            let mut output = Vec::new();
+            let mut buf = [0_u8; 8192];
+            loop {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        let remaining =
+                            crate::constants::AUTOFIX_MAX_LOG_BYTES.saturating_sub(output.len());
+                        output.extend_from_slice(&buf[..n.min(remaining)]);
+                    }
+                }
+            }
+            output
+        })
+    };
+    let stdout_reader = read_all(Box::new(stdout));
+    let stderr_reader = read_all(Box::new(stderr));
+    let started_at = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if started_at.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!(
+                        "git {} timed out after {}s",
+                        args.first().unwrap_or(&""),
+                        timeout.as_secs()
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(error) => return Err(format!("git could not be waited on: {error}")),
+        }
+    };
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| "git stdout reader failed".to_string())?;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| "git stderr reader failed".to_string())?;
+    Ok(GitRun {
+        status: status.code(),
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+    })
 }
 
 fn has_git_dir(dir: &Path) -> bool {

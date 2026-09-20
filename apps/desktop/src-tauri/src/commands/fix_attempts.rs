@@ -189,6 +189,9 @@ pub(crate) fn create_fix_attempt_inner(
                     path: location.relative_path,
                     line: None,
                     reason: location.reason,
+                    start_line: None,
+                    end_line: None,
+                    excerpt: None,
                 })
                 .collect()
         }
@@ -458,6 +461,9 @@ mod tests {
             path: "src/http.ts".to_string(),
             line: Some(12),
             reason: "Code Scan occurrence".to_string(),
+            start_line: None,
+            end_line: None,
+            excerpt: None,
         }]);
 
         let dto = create_fix_attempt_inner(&db, args, 2_000).expect("create mapped attempt");
@@ -556,6 +562,9 @@ mod tests {
             path: "content/security.ts".to_string(),
             line: Some(371),
             reason: "Code Scan occurrence".to_string(),
+            start_line: None,
+            end_line: None,
+            excerpt: None,
         }]);
 
         let error = create_fix_attempt_inner(&db, args, 2_000)

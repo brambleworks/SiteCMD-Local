@@ -34,7 +34,22 @@ export type BaselineDecisionResult = { applied: boolean, refusal: string, messag
  */
 export type BillingInterval = "monthly" | "yearly";
 
-export type BriefLocation = { label: string, path: string, line: number | null, reason: string, };
+export type BriefLocation = { label: string, path: string, line: number | null, reason: string,
+/**
+ * First line of `excerpt` in the file. Absent when the caller carries no
+ * excerpt, so clients that never collected one stay valid.
+ */
+start_line?: number,
+/**
+ * Last line of `excerpt` in the file, inclusive.
+ */
+end_line?: number,
+/**
+ * The source lines themselves, so an agent reading the brief alone can
+ * see what the check matched without opening the file first.
+ */
+excerpt?: string, };
+
 export type CategoryScore = { category: ScanCategory, score: number, issuesTotal: number, issuesCritical: number, issuesHigh: number, issuesMedium: number, issuesLow: number, issuesPassed: number, };
 export type CategorySummary = { name: string, score: number, previousScore: number | null, issueCount: number, };
 

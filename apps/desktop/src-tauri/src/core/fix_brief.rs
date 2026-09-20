@@ -3,7 +3,7 @@
 
 use crate::checks::Severity;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct FixBriefInput {
     pub attempt_id: i64,
     pub check_id: String,
@@ -19,20 +19,57 @@ pub struct FixBriefInput {
     pub occurrence_target: Option<BriefLocation>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, ts_rs::TS)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
 #[ts(export_to = "ipc-bindings.ts")]
 pub struct BriefLocation {
     pub label: String,
     pub path: String,
     pub line: Option<u32>,
     pub reason: String,
+    /// First line of `excerpt` in the file. Absent when the caller carries no
+    /// excerpt, so clients that never collected one stay valid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub start_line: Option<u32>,
+    /// Last line of `excerpt` in the file, inclusive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub end_line: Option<u32>,
+    /// The source lines themselves, so an agent reading the brief alone can
+    /// see what the check matched without opening the file first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub excerpt: Option<String>,
+}
+
+/// Which loop the brief is written for. The two differ only in how the agent
+/// hands its work back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BriefMode {
+    /// The desktop's MCP loop: the agent reports back through
+    /// `request_verification`.
+    Desktop,
+    /// A SiteCMD-opened issue in the customer's repository: the agent opens a
+    /// pull request and SiteCMD verifies it there.
+    Hosted,
 }
 
 /// Pretty-printed evidence JSON longer than this many bytes is cut off so
 /// the brief stays readable inside agent context windows.
 const EVIDENCE_MAX_BYTES: usize = 1800;
 
+/// Renders the brief for the desktop's MCP loop. Byte-identical to
+/// [`build_fix_brief_with_mode`] with [`BriefMode::Desktop`].
 pub fn build_fix_brief(input: &FixBriefInput, locations: &[BriefLocation]) -> String {
+    build_fix_brief_with_mode(input, locations, BriefMode::Desktop)
+}
+
+/// Renders the brief, closing it with the hand-back the given loop expects.
+pub fn build_fix_brief_with_mode(
+    input: &FixBriefInput,
+    locations: &[BriefLocation],
+    mode: BriefMode,
+) -> String {
     let mut brief = format!(
         "# SiteCMD Fix Brief: {}\n\nAttempt: {} | Check: `{}` | Severity: {} | Site: {}\n",
         input.title, input.attempt_id, input.check_id, input.severity, input.url
@@ -75,16 +112,20 @@ pub fn build_fix_brief(input: &FixBriefInput, locations: &[BriefLocation]) -> St
         &render_acceptance_criteria(input),
     );
 
-    push_section(
-        &mut brief,
-        "When you are done",
-        &format!(
+    let closing = match mode {
+        BriefMode::Desktop => format!(
             "Call the SiteCMD MCP tool `request_verification` with attempt_id={} \
              and a one-paragraph summary of what you changed. \
              Do NOT mark the issue fixed yourself; SiteCMD verifies the fix.",
             input.attempt_id
         ),
-    );
+        BriefMode::Hosted => "Open a pull request from your branch against the repository's \
+             default branch whose description references this issue with \
+             `Fixes #<issue number>`. SiteCMD verifies the fix from that pull \
+             request; do not close this issue yourself."
+            .to_string(),
+    };
+    push_section(&mut brief, "When you are done", &closing);
 
     brief
 }
@@ -150,16 +191,42 @@ fn render_where_to_look(input: &FixBriefInput, locations: &[BriefLocation]) -> S
 
     locations
         .iter()
-        .map(|location| match location.line {
-            Some(line) => format!(
-                "- `{}:{}` ({}) - {}",
-                location.path, line, location.label, location.reason
-            ),
-            None => format!(
-                "- `{}` ({}) - {}",
-                location.path, location.label, location.reason
-            ),
+        .map(|location| {
+            let bullet = match location.line {
+                Some(line) => format!(
+                    "- `{}:{}` ({}) - {}",
+                    location.path, line, location.label, location.reason
+                ),
+                None => format!(
+                    "- `{}` ({}) - {}",
+                    location.path, location.label, location.reason
+                ),
+            };
+            match location
+                .excerpt
+                .as_deref()
+                .filter(|text| !text.trim().is_empty())
+                .map(indent_excerpt)
+            {
+                Some(excerpt) => format!("{bullet}\n\n{excerpt}"),
+                None => bullet,
+            }
         })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Indents every excerpt line eight spaces: four keep it inside its bullet's
+/// list item, four more render it as code. Indented rather than fenced so an
+/// excerpt cannot open or close a code block. Callers separate the block from
+/// the bullet with a blank line, because an indented code block cannot
+/// interrupt a paragraph: without it every excerpt line would be read as more
+/// of the bullet's text, losing its indentation and having its markdown
+/// interpreted.
+fn indent_excerpt(excerpt: &str) -> String {
+    excerpt
+        .lines()
+        .map(|line| format!("        {line}"))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -215,6 +282,9 @@ mod tests {
             path: "src/middleware.ts".to_string(),
             line: None,
             reason: "Response headers are set here".to_string(),
+            start_line: None,
+            end_line: None,
+            excerpt: None,
         }
     }
 
@@ -276,6 +346,9 @@ mod tests {
             path: "src/db.ts".to_string(),
             line: Some(118),
             reason: "Unparameterized SQL is built here".to_string(),
+            start_line: None,
+            end_line: None,
+            excerpt: None,
         };
         input.occurrence_target = Some(location.clone());
         let brief = build_fix_brief(&input, &[location]);
@@ -303,5 +376,100 @@ mod tests {
         assert!(prompt.contains("request_verification"));
         assert!(prompt.contains("attempt_id=42"));
         assert!(prompt.contains("Missing security headers"));
+    }
+
+    #[test]
+    fn hosted_mode_ends_with_a_pull_request_instruction_and_shows_the_excerpt() {
+        let input = FixBriefInput {
+            attempt_id: 1,
+            check_id: "code_scan.open-redirect".into(),
+            description: "desc".into(),
+            detected_stack: None,
+            evidence: None,
+            manual_fix: Some("Trace the target".into()),
+            occurrence_target: None,
+            previous_failure: None,
+            severity: Severity::High,
+            title: "Possible request-derived redirect".into(),
+            url: "https://loop.example.com".into(),
+            why_it_matters: None,
+        };
+        let location = BriefLocation {
+            end_line: Some(4),
+            excerpt: Some(
+                "return Response.redirect(new URL(returnTo, request.url), 302);\n```".into(),
+            ),
+            label: "Reported location".into(),
+            line: Some(4),
+            path: "app/api/signin/route.ts".into(),
+            reason: "the check matched here".into(),
+            start_line: Some(4),
+        };
+        let brief = build_fix_brief_with_mode(&input, &[location], BriefMode::Hosted);
+
+        assert!(brief.contains("## When you are done"));
+        assert!(brief.contains("Open a pull request"));
+        assert!(brief.contains("Fixes #<issue number>"));
+        assert!(!brief.contains("request_verification"));
+        assert!(brief.contains(
+            "- `app/api/signin/route.ts:4` (Reported location) - the check matched here\n\n        return Response.redirect"
+        ));
+        // The excerpt's own fence line is indented with the rest of the block,
+        // so it cannot open a code block of its own.
+        assert!(brief.contains("\n        ```"));
+        assert!(!brief.contains("\n```"));
+    }
+
+    #[test]
+    fn a_whitespace_only_excerpt_renders_no_block() {
+        let input = base_input();
+        let blank = BriefLocation {
+            end_line: None,
+            excerpt: Some("   \n".into()),
+            label: "config".into(),
+            line: None,
+            path: "vercel.json".into(),
+            reason: "headers live here".into(),
+            start_line: None,
+        };
+        let brief = build_fix_brief_with_mode(&input, &[blank], BriefMode::Hosted);
+
+        assert!(
+            brief.contains("- `vercel.json` (config) - headers live here\n\n## How to fix\n"),
+            "{brief}"
+        );
+    }
+
+    #[test]
+    fn desktop_mode_is_unchanged_by_the_new_fields() {
+        let input = base_input();
+        let plain = BriefLocation {
+            end_line: None,
+            excerpt: None,
+            label: "config".into(),
+            line: None,
+            path: "vercel.json".into(),
+            reason: "headers live here".into(),
+            start_line: None,
+        };
+
+        let desktop = build_fix_brief(&input, std::slice::from_ref(&plain));
+
+        assert_eq!(
+            desktop,
+            build_fix_brief_with_mode(&input, std::slice::from_ref(&plain), BriefMode::Desktop)
+        );
+        assert!(
+            desktop.ends_with(
+                "\n## When you are done\n\nCall the SiteCMD MCP tool `request_verification` \
+                 with attempt_id=42 and a one-paragraph summary of what you changed. \
+                 Do NOT mark the issue fixed yourself; SiteCMD verifies the fix.\n"
+            ),
+            "{desktop}"
+        );
+        assert!(
+            desktop.contains("- `vercel.json` (config) - headers live here\n\n## How to fix\n"),
+            "{desktop}"
+        );
     }
 }

@@ -80,7 +80,7 @@ pub fn build_dry_run_payload(
         .map_err(|error| format!("failed to render connected payload: {error}"))
 }
 
-pub(super) fn read_connection_export(path: &std::path::Path) -> Result<String, String> {
+pub(crate) fn read_connection_export(path: &std::path::Path) -> Result<String, String> {
     crate::app_identity::validate_private_file_target(path)
         .map_err(|error| format!("refused unsafe connection export: {error}"))?;
     let mut file = std::fs::File::open(path)

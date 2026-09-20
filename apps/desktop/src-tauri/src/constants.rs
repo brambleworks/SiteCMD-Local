@@ -314,6 +314,21 @@ pub const PROJECT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 /// dies, so the pipe readers need an independent timeout.
 pub const PROJECT_COMMAND_OUTPUT_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// A local git operation in the fix engine (apply, commit, rev-parse).
+pub const AUTOFIX_GIT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// A git operation that talks to GitHub (fetch, push).
+pub const AUTOFIX_GIT_NETWORK_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// The package manager install the fix job runs before the build check.
+pub const AUTOFIX_INSTALL_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// The repository's own build script in the fix job.
+pub const AUTOFIX_BUILD_TIMEOUT: Duration = Duration::from_secs(900);
+
+/// How much of a build or git log the fix engine keeps in memory.
+pub const AUTOFIX_MAX_LOG_BYTES: usize = 256 * 1024;
+
 /// Polling cadence for the integration scheduler tick that walks the
 /// adapter set and the immediate-poll channel.
 pub const INTEGRATION_SCHEDULER_TICK: Duration = Duration::from_secs(30);

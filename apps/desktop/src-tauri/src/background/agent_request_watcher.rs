@@ -203,6 +203,9 @@ pub(crate) fn fulfil_start_fix(
             path: path.clone(),
             line: item.metadata.line,
             reason: "Code Scan occurrence".to_string(),
+            start_line: None,
+            end_line: None,
+            excerpt: None,
         }]
     });
     let attempt_target = match code_locations.as_deref() {
