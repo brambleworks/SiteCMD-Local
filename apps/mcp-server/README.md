@@ -74,24 +74,24 @@ package metadata, and SiteCMD release are bumped together.
 
 ## Tools
 
-| Tool                   | Description                                                                                                       |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `get_projects`         | List projects with ids, URLs, frameworks, and linked folders                                                      |
-| `get_scan_score`       | Current SiteCMD Score and counts, plus the latest scan artifact score as historical diagnostics                   |
-| `get_issues`           | Open issues with id, check id, source, confidence, and location; filter by min_severity, category, min_confidence |
-| `get_issue`            | One check with evidence, occurrences, fix prompt, causes, and attempt                                             |
-| `get_fix_prompts`      | Fix prompts (default 5, max 20), or one by check_id                                                               |
-| `get_scan_history`     | Get scan artifact score history over time                                                                         |
-| `get_dismissed_issues` | List issues dismissed in SiteCMD or suppressed by .sitecmd/config.json                                            |
-| `compare_scans`        | Compare two web scans by id (default: the two most recent)                                                        |
-| `how_to_rescan`        | Explain the CLI and desktop steps that produce a fresh scan; does not queue one                                   |
-| `get_fix_brief`        | Get the fix brief for a fix attempt, with acceptance criteria                                                     |
-| `start_fix`            | Queue a fix attempt for one check or an exact Code Scan location; the running desktop app creates the attempt     |
-| `get_fix_status`       | Read a fix attempt's status, verify timing, and failure detail                                                    |
-| `run_scan`             | Queue web (default), code, or full scanning; the desktop app must be running to process it                        |
-| `get_scan_status`      | Read a queued scan request's status and, once fulfilled, its execution id                                         |
-| `request_verification` | Tell SiteCMD a fix is done so it can re-run the check and verify                                                  |
-| `list_fix_attempts`    | List open fix attempts (include_settled for verified and failed ones)                                             |
+| Tool                   | Description                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `get_projects`         | List projects with ids, URLs, frameworks, and linked folders                                                  |
+| `get_scan_score`       | Current SiteCMD Score and counts, plus the latest scan artifact score as historical diagnostics               |
+| `get_issues`           | Compact open-issue pages with ids, source, confidence, and location; filter by severity, category, confidence |
+| `get_issue`            | One check with evidence, occurrences, fix prompt, causes, and attempt                                         |
+| `get_fix_prompts`      | Unique fix-prompt pages (default 5, max 20), or one check_id; distinct occurrence guidance is retained        |
+| `get_scan_history`     | Get scan artifact score history over time                                                                     |
+| `get_dismissed_issues` | List issues dismissed in SiteCMD or suppressed by .sitecmd/config.json                                        |
+| `compare_scans`        | Compare two web scans by id (default: the two most recent)                                                    |
+| `how_to_rescan`        | Explain the CLI and desktop steps that produce a fresh scan; does not queue one                               |
+| `get_fix_brief`        | Get the fix brief for a fix attempt, with acceptance criteria                                                 |
+| `start_fix`            | Queue a fix attempt for one check or an exact Code Scan location; the running desktop app creates the attempt |
+| `get_fix_status`       | Read a fix attempt's status, verify timing, and failure detail                                                |
+| `run_scan`             | Queue web (default), code, or full scanning; the desktop app must be running to process it                    |
+| `get_scan_status`      | Read a queued scan request's status and, once fulfilled, its execution id                                     |
+| `request_verification` | Tell SiteCMD a fix is done so it can re-run the check and verify                                              |
+| `list_fix_attempts`    | List open fix attempts (include_settled for verified and failed ones)                                         |
 
 `request_scan` is a deprecated alias of `how_to_rescan`; it will be removed in the next major release.
 
@@ -101,6 +101,21 @@ package metadata, and SiteCMD release are bumped together.
 and integration findings appear beside web and code scan findings. Each issue
 names its source, and the counts add up to the open-issue total in
 `get_scan_score`.
+
+For efficient agent context, start with `get_issues` (default 25, maximum 100
+summaries), then call `get_issue` for the selected check's full description,
+evidence, occurrences, and fix prompt. Issue summaries use at most 300 description
+characters each and 16,000 characters per page body after escaping.
+
+`get_issues` and `get_fix_prompts` accept `offset` (default 0). Follow the next-page
+offset returned by the tool with the same filters; a page can contain fewer rows
+than `limit` when its size budget is reached. Restart at offset 0 after a scan or
+lifecycle change, since pages reflect current findings rather than a frozen snapshot.
+
+Fix-prompt page bodies use at most 24,000 characters after escaping. Entries stay
+whole across pages unless a single prompt exceeds that budget. Oversized prompts
+carry a shortening notice. Exact duplicate prompts appear once; prompts with
+different check ids, metadata, or occurrence-specific guidance remain separate.
 
 ### Choosing a Code Scan occurrence
 
