@@ -11,13 +11,15 @@ public repository history.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-21
+
 ### Added
 
-- The `sitecmd` CLI can write template fixes into a checkout. `sitecmd autofix
-apply` sets `X-Content-Type-Options: nosniff` in a Vercel project's
-  `vercel.json`, `--only <CHECK_ID>` narrows the run to one check, and
-  `--dry-run` prints what it would write without touching the working tree. A
-  config that already sets the header for every route is reported as
+- The `sitecmd` CLI can write template fixes into a checkout.
+  `sitecmd autofix apply` sets `X-Content-Type-Options: nosniff` in a Vercel
+  project's `vercel.json`, `--only <CHECK_ID>` narrows the run to one check,
+  and `--dry-run` prints what it would write without touching the working
+  tree. A config that already sets the header for every route is reported as
   satisfied, and one that sets a different value is reported as unsupported
   rather than overwritten.
 - `sitecmd autofix locate` prints the identity hash, path, and line of the
