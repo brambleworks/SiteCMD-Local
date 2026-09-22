@@ -11,6 +11,28 @@ public repository history.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-21
+
+### Added
+
+- The `sitecmd` CLI can write template fixes into a checkout.
+  `sitecmd autofix apply` sets `X-Content-Type-Options: nosniff` in a Vercel
+  project's `vercel.json`, `--only <CHECK_ID>` narrows the run to one check,
+  and `--dry-run` prints what it would write without touching the working
+  tree. A config that already sets the header for every route is reported as
+  satisfied, and one that sets a different value is reported as unsupported
+  rather than overwritten.
+- `sitecmd autofix locate` prints the identity hash, path, and line of the
+  Code Scan findings in a checkout, so a coding agent can name the exact
+  occurrence it is fixing. It reads the connection export the site was
+  connected with, and `--check <SLUG>` limits the output to one rule.
+- `sitecmd autofix run-job` and `sitecmd autofix publish-job` run the two
+  halves of a hosted fix job inside GitHub Actions. The first applies the fix,
+  installs dependencies, and runs the project's build, leaving a patch and a
+  manifest behind; the second reads those on a fresh runner and opens the pull
+  request. They are separate commands so the half that runs the project's own
+  build never holds a token that can write to the repository.
+
 ## [1.4.0] - 2026-09-16
 
 ### Added
