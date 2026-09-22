@@ -232,12 +232,12 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
+        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
         with:
           tool: cargo-nextest
 
       - name: Install cargo-audit
-        uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
+        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
         with:
           tool: cargo-audit
 
@@ -455,7 +455,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install cargo-license
-        uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
+        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
         with:
           tool: cargo-license
 
