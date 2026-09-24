@@ -50,6 +50,33 @@ describe("publicFaceFailures", () => {
     expect(run()).toBe("");
   });
 
+  it("catches a spec that returns to the nonce allocator envelope", () => {
+    expect(
+      run((files) => {
+        files[PROTOCOL_SPEC] +=
+          "\nStored as `{envelope_version, algorithm, kid, nonce, ciphertext}` under MAX_ENCRYPTIONS_PER_KID.\n";
+      }),
+    ).toContain("specifies a retired Connect crypto contract");
+  });
+
+  it("catches a delivery spec that adopts the desktop's body-only signature again", () => {
+    expect(
+      run((files) => {
+        files["docs/engineering/connected-service/alert-delivery-spec.md"] +=
+          "\nSignatures are the desktop's exact format (`sha256=` lowercase hex over the raw body).\n";
+      }),
+    ).toContain("specifies a retired Connect crypto contract");
+  });
+
+  it("catches a spec that signs outgoing webhooks with the body-only HMAC again", () => {
+    expect(
+      run((files) => {
+        files[PROTOCOL_SPEC] +=
+          "\nThe signature is the desktop's existing `sha256=` lowercase-hex HMAC contract.\n";
+      }),
+    ).toContain("specifies a retired Connect crypto contract");
+  });
+
   // docs/product/get-value-in-5-minutes.md still reads as product intent ("SiteCMD
   // should ...") today; the rule module excludes it until the desktop-repo-public-face
   // plan's Task 8 rewrites the walkthrough. Prove the exclusion is narrow: the intent

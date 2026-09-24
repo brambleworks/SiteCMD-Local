@@ -2596,8 +2596,17 @@ destination_in_use` while any site references it, exactly as the
   secret minted and shown once, listed thereafter only as a
   fingerprint, tested via an explicitly-marked signed test delivery,
   rotated with a bounded dual-validity overlap so consumers can roll
-  without a delivery gap, deleted immediately. The signature is the
-  desktop's existing `sha256=` lowercase-hex HMAC contract.
+  without a delivery gap, deleted immediately. Deliveries are signed
+  in the [Standard Webhooks](https://www.standardwebhooks.com/)
+  format: `webhook-id` (the attempt id, stable across retries),
+  `webhook-timestamp` (each try's own send time), and
+  `webhook-signature` (`v1,` plus base64 HMAC-SHA256 over
+  `{webhook-id}.{webhook-timestamp}.{raw body}`, with both
+  generations' signatures space-separated during a rotation
+  overlap). The secret is shown as `whsec_` plus base64, and
+  receivers verify with any Standard Webhooks library, which also
+  refuses a stale timestamp, so a captured delivery cannot be
+  replayed.
 
 All three ride export as registry record types and erase in the
 cascade.
@@ -2928,8 +2937,7 @@ contract:
   third store with the same obligations as the other two - its
   PITR is a privileged operation run only through the restore
   orchestration, which fences the coordinator, restores, replays
-  its delivery facts, burns its
-  allocator block, and resumes by CAS; ordinary eviction and
+  its delivery facts, and resumes by CAS; ordinary eviction and
   recreation preserve storage and reconcile nothing), never in
   the global control store. **The replay source exists and is
   named**, because facts that live only in a restorable store
@@ -2996,10 +3004,9 @@ contract:
   its successor). Global uniqueness trivially satisfies the
   per-KEK requirement, and no new allocator machinery is needed -
   the position protocol already is one. Concurrency, retry, and
-  restore fixtures pin it. Stream records use the same versioned AEAD
-  envelope contract as attempt bodies, with the nonce derived from
-  the stream's own chain position (unique by chain construction)
-  and AAD binding
+  restore fixtures pin it. Stream records are sealed the way attempt
+  bodies are, as a jose flattened JWE with a random IV, with the
+  additional authenticated data binding
   `{account, scope, generation, stream_position, record_type}`;
   R2 object keys and metadata are tenant-free (opaque positions
   under account-hash prefixes). **Key lifecycle operations are
@@ -3558,62 +3565,30 @@ itself is part of this registry:
   because idempotent replay requires identical bytes and an attempt
   re-rendered from a mutable record would change its payload and
   answer `invalid_idempotent_request`, wedging the barrier at
-  exactly the moment it must terminate - and **stored encrypted in
-  a versioned envelope with an exact cryptographic contract**:
-  `{envelope_version, algorithm, kid, nonce, ciphertext}`, where v1
-  `algorithm` is **AES-256-GCM** (WebCrypto-native in Workers) with
-  256-bit keys, a 96-bit nonce, and a 128-bit tag appended to the
-  ciphertext; the nonce is **derived deterministically from the
-  allocator reservation, never drawn at random** - the encoding of
-  `(block number, in-block cursor)`, stored in the envelope -
-  because random 96-bit nonces make collision merely improbable
-  (about 2^-49 at the full budget) while the allocator's
-  never-refunded blocks and rewind burns make the `(block,
-cursor)` pair **provably never reused**, turning the existing
-  non-rollback machinery into an actual uniqueness guarantee (the
-  deterministic construction NIST prefers) rather than a budget
-  beside a probability. The invocation
-  budget stands on top of that, an **enforced budget with a
-  non-rollback allocator, never
-  an estimate**: `MAX_ENCRYPTIONS_PER_KID = 2^24` (a factor of 256
-  inside NIST SP 800-38D's 2^32 random-IV invocation bound), where
-  `kid` identifies one global key version and invocations are
-  **reserved before use, in blocks and then again at the
-  cursor**: each per-account write
-  coordinator draws a block (1,024 invocations) from the global
-  allocator - an atomic control-store decrement at block
-  granularity, so allocator traffic stays low-rate - and encrypts
-  only against reservations it holds, advancing its **in-block
-  cursor durably before each encryption** (the safe failure
-  direction is a counted-but-unused invocation, never the
-  reverse). The burn semantics are exact, because Durable Objects
-  are routinely evicted and that is not a crash: **ordinary
-  eviction and recreation preserve storage and resume from the
-  durable cursor, burning nothing**; a burn - abandoning the
-  block's remainder and drawing fresh - happens on any coordinator
-  restore (commanded by the restore orchestration, which is the
-  only path to coordinator PITR) and on self-detected rewind (the
-  control store records the last block issued to each coordinator;
-  a coordinator holding an older block than its own record knows
-  its storage went backward). The nonce is the cursor position, so a
-  rewound cursor is exactly a nonce-reuse threat - which is why
-  the burn on rewind is load-bearing twice over: it keeps the
-  budget sound against the at most 1,024 invocations a rewind
-  could hide, and it guarantees no `(block, cursor)` pair - and
-  therefore no nonce - is ever encrypted under twice. The
-  allocator's high-water mark is durable, monotonic, and
-  archived, so no restore of any store can wind it back and reissue
-  a spent nonce budget; concurrency, mid-block crash resume,
-  eviction-without-burn, coordinator-PITR burn, and
-  restore-no-refund are each fixtured. **Fail-closed rotation**:
-  reaching the bound
-  stops encryption under that `kid` (attempts wait behind the
-  rotation alarm rather than spending nonce-collision risk) until
-  the next `kid` is active;
-  nonce and ciphertext are raw BLOBs. **AAD binds the ciphertext to
+  exactly the moment it must terminate - and **sealed as a JOSE
+  flattened JWE by the `jose` library, never by a hand-built AEAD
+  envelope**: the protected header is
+  `{alg: "dir", enc: "A256GCM", kid}`, so the content key is the
+  256-bit key version `kid` names and the header that selects it is
+  itself authenticated. The row stores the protected header, the
+  96-bit IV, the ciphertext, and the 128-bit tag, the last three as
+  raw BLOBs, and keeps `kid` in its own column as well so the key
+  retirement rule below is a query. **Every seal draws a fresh
+  random IV from jose, and no nonce allocator exists** - no
+  reservation, block, cursor, or burn: NIST SP 800-38D allows 2^32
+  random-IV encryptions under one key, far above what this store
+  seals under one `kid`, and a new `kid` is a new key. The active
+  `kid` is the one row marked active in `encryption_kids`, and an
+  attempt row is inserted only while its `kid` is still active,
+  checked in the same statement, so nothing is sealed under a key
+  rotated out mid-flight. Opening accepts only `alg: "dir"` with
+  `enc: "A256GCM"` and resolves the key by the protected header's
+  `kid`, so any other algorithm is refused before a key is chosen.
+  **The JWE additional authenticated data binds the ciphertext to
   the attempt identity** - the UTF-8 bytes of the canonical JSON
   (sorted keys, no insignificant whitespace) of
-  `{envelope_version, attempt_id, account, class, target, source_key, idempotency_key}` -
+  `{envelope_version, attempt_id, account, class, target, source_key, idempotency_key}`,
+  recomputed from the row at every open and never stored -
   so a valid ciphertext cannot be transplanted
   onto another row. **Authentication failure is a terminal
   integrity event, never a retry**: the attempt closes as a
@@ -3635,10 +3610,11 @@ cursor)` pair **provably never reused**, turning the existing
   holds only as hashes, and a plaintext frozen body would make one
   D1 read sufficient to redeem them; transport credentials are
   never part of any body. **Frozen requests have fixed per-class size
-  ceilings enforced before insertion**, measured on the **complete
-  encoded envelope as stored** (nonce, tag, and ciphertext
-  included - the bytes D1 actually holds, against its hard
-  2,000,000-byte row bound): **256 KB per email-class attempt**
+  ceilings enforced before insertion**, measured on the **sealed
+  body as stored** (IV, ciphertext, and tag included - the bytes D1
+  actually holds for the body, against its hard 2,000,000-byte row
+  bound; the protected header, like the `kid` column, is a few dozen
+  bytes and is not counted): **256 KB per email-class attempt**
   (the report-projection precedent) and **64 KB per webhook
   attempt** - fixed here, not operational configuration, because a
   valid observation can carry 50,000 occurrences and no path may
@@ -3889,7 +3865,6 @@ cursor)` pair **provably never reused**, turning the existing
   | Journal rows, live tenant                                                             | 90 days (the restore horizon is 30; 3x margin)                                                                                                                                                                                                                                    | Bucket Lock 60 days (age rule on `journal/` - twice the horizon, so an entry created just before an event that extends its need by another horizon is still covered); pruned at 90 by the pruner                                                                                                                                                                                                                                                                                                                                  |
   | Journal rows, erased tenant                                                           | 30 days past the receipt, then purged                                                                                                                                                                                                                                             | Same 60-day lock: every entry a restore can still need is at most 30 days old at the receipt, so its lock outlives the receipt-plus-30 requirement by construction                                                                                                                                                                                                                                                                                                                                                                |
   | Checkpoint objects                                                                    | n/a (R2-only)                                                                                                                                                                                                                                                                     | Journal rule; the pruner keeps the newest checkpoint rooting current verification                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-  | Allocator high-water marks                                                            | Life of the key version plus 90 days                                                                                                                                                                                                                                              | **Indefinite** lock rule **per key prefix** (`allocator/{kid}/` - lock rules apply by prefix, so one shared rule could neither retire a single key nor stay: removing it would unlock every active key's history); each rule removed independently 90 days after that key's dated retirement marker, and the rule count stays trivially inside the 1,000-rule bucket cap because key versions rotate at most a handful a year and retired rules are cleaned as the one manual step                                                |
   | Coordinator store: activation clocks                                                  | Site-keyed in the coordinator DO; retained until capability expiry plus 7 days; site erase purges the site's records through the coordinator behind the fence; account erase `deleteAll`                                                                                          | Per-account delivery stream: journal rule (60-day lock, pruned at 90); erasure crypto-shreds - the site's stream key is destroyed before the receipt, and what the lock retains is ciphertext without a key, disclosed as such                                                                                                                                                                                                                                                                                                    |
   | Coordinator store: terminal outcomes                                                  | Site-keyed in the coordinator DO, 90 days; site erase purges the site's records; account erase `deleteAll`                                                                                                                                                                        | Same delivery-stream rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
   | Coordinator store: epochs, leases, cursors                                            | Account-level operational state in the coordinator DO, transient; account erase `deleteAll` behind the fence                                                                                                                                                                      | n/a - never archived                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |

@@ -43,8 +43,11 @@ Delivery is the spec that gets to reuse the most shipped code:
   `sha256=` plus lowercase hex over the raw body, the strict
   ExternalCallback egress policy with connect-time resolved-IP
   validation, and URL redaction in logs and errors. The hosted channel
-  adopts this wire format verbatim so a receiver written for desktop
-  webhooks works unchanged.
+  keeps that egress policy and redaction but signs in the
+  [Standard Webhooks](https://www.standardwebhooks.com/) format
+  instead, because a body-only HMAC carries no timestamp and a
+  captured delivery would verify forever; receivers verify with any
+  Standard Webhooks library.
 - **The desktop deep-link scheme is live**: `sitecmd://` with
   registered `activate`, `import`, and `connected` hosts
   (`desktop_deep_links.rs`), so "Open in SiteCMD" is a route addition,
@@ -575,10 +578,11 @@ a general read:
   default ports, the address-filtering rule set, resolved-address
   validation at connect time (this channel controls its connections),
   no redirects followed, response bodies read only to a bounded
-  length and never persisted. Signatures are the desktop's exact
-  format (`sha256=` lowercase hex over the raw body) with a
-  shown-once per-endpoint secret; delivery is **best-effort with
-  bounded retries, documented as such** - retries with
+  length and never persisted. Signatures follow Standard Webhooks
+  (`webhook-id`, `webhook-timestamp`, and `webhook-signature`
+  headers) under a shown-once per-endpoint `whsec_` secret, so a
+  receiver's library refuses a stale timestamp; delivery is
+  **best-effort with bounded retries, documented as such** - retries with
   persistent-failure auto-disable can produce zero, one, or
   several receiver effects, which is neither "exactly once" nor a
   true at-least-once guarantee, and the endpoint documentation says

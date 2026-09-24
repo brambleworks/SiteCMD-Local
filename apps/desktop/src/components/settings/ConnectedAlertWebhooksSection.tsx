@@ -138,10 +138,10 @@ export function ConnectedAlertWebhooksSection({
       </div>
       <p className="body-muted">
         The machine channel. Every alert this site raises is posted to each endpoint as JSON with
-        check ids, severities, and public routes, signed sha256 over the raw body in the
-        X-SiteCMD-Signature header. Delivery ignores email muting: mute quiets your inbox, not your
-        automation. An endpoint that keeps failing is disabled visibly here, and a successful test
-        turns it back on.
+        check ids, severities, and public routes, signed in the Standard Webhooks format with
+        webhook-id, webhook-timestamp, and webhook-signature headers. Delivery ignores email muting:
+        mute quiets your inbox, not your automation. An endpoint that keeps failing is disabled
+        visibly here, and a successful test turns it back on.
       </p>
       {webhooksQuery.isError ? (
         <p className="agent-handoff-error" role="alert">
@@ -225,8 +225,8 @@ export function ConnectedAlertWebhooksSection({
           <pre className="connected-payload">{revealed.secret}</pre>
           <p className="text-body-muted">
             {revealed.rotationOverlapUntil
-              ? "Verify X-SiteCMD-Signature with this secret. For 24 hours deliveries carry the previous generation's signature too, so your receiver can switch without a gap."
-              : "Verify X-SiteCMD-Signature against the raw request body with this secret. SiteCMD stores only a fingerprint, so this is the one time it is readable."}
+              ? "Verify deliveries with this whsec_ secret and any Standard Webhooks library. For 24 hours webhook-signature carries the previous generation's signature too, so your receiver can switch without a gap."
+              : "Verify deliveries with this whsec_ secret and any Standard Webhooks library, which checks the signature over the raw request body and refuses stale timestamps. SiteCMD stores only a fingerprint, so this is the one time it is readable."}
           </p>
         </div>
       ) : null}
