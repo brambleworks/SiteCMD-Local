@@ -1,3 +1,5 @@
+import { workflowJobEnvironments } from "./guardrail-text-utils.mjs";
+
 export function releaseArtifactSafetyFailures(read, exists, listFiles) {
   const failures = [];
   const check = (condition, message) => {
@@ -68,14 +70,21 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
     staticPublishKeyFiles.length === 0,
     `RELEASE_ADMIN_KEY must not return to the release pipeline (found in ${staticPublishKeyFiles.join(", ")}); publishing authenticates with the job's GitHub Actions OIDC token for https://releases.sitecmd.com.`,
   );
-  const releasePublishJobs = [...releaseWorkflow.matchAll(/\n {2}([A-Za-z0-9_-]+):\n/g)]
-    .map((match) => match[1])
-    .filter((job) =>
-      /\n {4}environment:\s*(?:\n\s+name:\s*)?["']?release-publish\b/.test(jobSection(job)),
-    );
+  // Any workflow can be dispatched against a tag ref, and an expression could
+  // resolve to release-publish, so both count as membership.
+  const releasePublishJobs = listFiles(".github/workflows", (file) => /\.ya?ml$/.test(file))
+    .flatMap((file) =>
+      workflowJobEnvironments(read(file))
+        .filter(({ block }) => block.includes("release-publish") || block.includes("${{"))
+        .map(({ job }) => `${file}#${job}`),
+    )
+    .sort();
+  const allowedPublishJobs = ["publish-npm", "publish-release", "validate-publish-key"].map(
+    (job) => `.github/workflows/release.yml#${job}`,
+  );
   check(
-    releasePublishJobs.join(",") === "validate-publish-key,publish-release,publish-npm",
-    `Only validate-publish-key, publish-release and publish-npm may run in the release-publish environment (found: ${releasePublishJobs.join(", ")}); every job there can mint the OIDC token the releases worker accepts.`,
+    releasePublishJobs.join(",") === allowedPublishJobs.join(","),
+    `Only release.yml's validate-publish-key, publish-release and publish-npm jobs may use the release-publish environment (found: ${releasePublishJobs.join(", ")}); every job there can mint the OIDC token the releases worker accepts, and an expression environment could resolve to it.`,
   );
   check(
     signedReleaseTag &&

@@ -197,3 +197,38 @@ export function objectValueExpression(source, key) {
   }
   return value.trim();
 }
+
+/**
+ * Each GitHub Actions job's `environment:` line with every deeper line under
+ * it, read by indentation, so the url-first, flow and expression forms are all
+ * visible without a YAML parser.
+ */
+export function workflowJobEnvironments(workflow) {
+  const lines = workflow.split("\n");
+  const indent = (line) => line.length - line.trimStart().length;
+  const meaningful = (line) => line.trim() !== "" && !line.trimStart().startsWith("#");
+  const found = [];
+  const start = lines.findIndex((line) => /^jobs:\s*(?:#.*)?$/.test(line));
+  if (start === -1) return found;
+  let [job, jobIndent, keyIndent] = [null, null, null];
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!meaningful(line)) continue;
+    const depth = indent(line);
+    if (depth === 0) break;
+    jobIndent ??= depth;
+    if (depth === jobIndent) {
+      [job, keyIndent] = [line.trim().replace(/:.*$/, ""), null];
+      continue;
+    }
+    keyIndent ??= depth;
+    if (depth !== keyIndent || !/^environment\s*:/.test(line.trimStart())) continue;
+    let block = line.trim();
+    while (i + 1 < lines.length && (!meaningful(lines[i + 1]) || indent(lines[i + 1]) > depth)) {
+      i += 1;
+      block += `\n${lines[i]}`;
+    }
+    found.push({ job, block });
+  }
+  return found;
+}

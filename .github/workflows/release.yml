@@ -177,9 +177,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com" | jq -r '.value // empty')
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::GitHub gave this job no OIDC token endpoint; it needs permissions: id-token: write."
+            exit 1
+          fi
+          response=$(curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com") || {
+            echo "::error::Requesting the OIDC token from GitHub failed: ${response}"
+            exit 1
+          }
+          token=$(jq -r '.value // empty' <<<"$response" 2>/dev/null || true)
           if [ -z "$token" ]; then
-            echo "::error::GitHub issued no OIDC token for https://releases.sitecmd.com; this job needs permissions: id-token: write."
+            echo "::error::GitHub's OIDC token service answered without a token."
             exit 1
           fi
           echo "::add-mask::${token}"
@@ -190,7 +198,7 @@ jobs:
             https://releases.sitecmd.com/api/releases-admin)
           if [ "$status" != "400" ]; then
             echo "::error::Probe expected 400 (authenticated, body rejected) but got $status: $(cat "$RUNNER_TEMP/probe-response.json")"
-            echo "::error::401 means the releases worker refused this job's OIDC token. It accepts only brambleworks/SiteCMD-Local in the release-publish environment on a v* tag, for audience https://releases.sitecmd.com; fix whichever side moved, then re-run the failed jobs."
+            echo "::error::401 means the releases worker refused this job's OIDC token. It accepts only release.yml in brambleworks/SiteCMD-Local, in the release-publish environment on a v* tag, for audience https://releases.sitecmd.com; fix whichever side moved, then re-run the failed jobs."
             exit 1
           fi
 
@@ -1111,13 +1119,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com" | jq -r '.value // empty')
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::GitHub gave this job no OIDC token endpoint; it needs permissions: id-token: write."
+            exit 1
+          fi
+          response=$(curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com") || {
+            echo "::error::Requesting the OIDC token from GitHub failed: ${response}"
+            exit 1
+          }
+          token=$(jq -r '.value // empty' <<<"$response" 2>/dev/null || true)
           if [ -z "$token" ]; then
-            echo "::error::GitHub issued no OIDC token for https://releases.sitecmd.com; this job needs permissions: id-token: write."
+            echo "::error::GitHub's OIDC token service answered without a token."
             exit 1
           fi
           echo "::add-mask::${token}"
-          curl --fail -sS -X POST \
+          curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer ${token}" \
             -H "Content-Type: application/json" \
             --data-binary @publication/manifest.json \

@@ -103,12 +103,12 @@ done
 
 Configure these GitHub environments:
 
-| Environment               | Protection                                                                                 | Values                                                                                         |
-| ------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `release-tag-trust`       | Deployment tags limited to `v*`; protected from workflow-authenticated writes              | `RELEASE_ALLOWED_SIGNERS`, matching `.github/allowed-signers`                                  |
-| `release-signing`         | One required reviewer, admin bypass disabled, deployment tags limited to `v*`              | License configuration, desktop OAuth credentials, Sentry DSN, Apple credentials, Azure secrets |
-| `release-updater-signing` | Deployment tags limited to `v*`; reachable only after the approved platform builds succeed | `TAURI_SIGNING_PRIVATE_KEY` and its optional password                                          |
-| `release-publish`         | Deployment tags limited to `v*`; no reviewer or timer                                      | R2 credentials; the releases worker takes the job's OIDC token, never a stored key             |
+| Environment               | Protection                                                                                 | Values                                                                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `release-tag-trust`       | Deployment tags limited to `v*`; protected from workflow-authenticated writes              | `RELEASE_ALLOWED_SIGNERS`, matching `.github/allowed-signers`                                                                                          |
+| `release-signing`         | One required reviewer, admin bypass disabled, deployment tags limited to `v*`              | License configuration, desktop OAuth credentials, Sentry DSN, Apple credentials, Azure secrets                                                         |
+| `release-updater-signing` | Deployment tags limited to `v*`; reachable only after the approved platform builds succeed | `TAURI_SIGNING_PRIVATE_KEY` and its optional password                                                                                                  |
+| `release-publish`         | Deployment tags limited to `v*`; no reviewer or timer                                      | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `NPM_TOKEN`; no releases-worker key, because publishing presents the job's OIDC token |
 
 Put `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, and `AZURE_SIGN_PROFILE` in the
 `release-signing` environment as variables. Move the listed secrets out of
@@ -401,9 +401,12 @@ holds a stored key. Each has `permissions: id-token: write`, asks GitHub for an
 Actions OIDC token with the audience `https://releases.sitecmd.com`, and sends
 it as the bearer. The worker verifies the token against GitHub's published keys
 and accepts it only when the repository is `brambleworks/SiteCMD-Local`, the
-environment is `release-publish`, and the ref is a `v*` tag. Membership of
+workflow is `.github/workflows/release.yml`, the environment is
+`release-publish`, and the ref is a `v*` tag. Membership of
 `release-publish` is therefore the publish credential, and a repository
-guardrail limits it to the probe, `publish-release`, and `publish-npm`.
+guardrail scans every workflow in `.github/workflows`, since any of them could be
+dispatched against a tag, and allows only the probe, `publish-release`, and
+`publish-npm` in `release.yml` to use that environment.
 
 The probe posts an empty manifest and expects `400`: the worker accepted the
 token and refused the body, so nothing was published. Any other status fails

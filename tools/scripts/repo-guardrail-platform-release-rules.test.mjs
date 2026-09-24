@@ -506,9 +506,30 @@ describe("release pipeline probe and CRLF rules", () => {
     expect(failures.join("\n")).toContain("releases-audience OIDC token (id-token: write)");
   });
 
+  it("catches a manifest advance that hides the worker's refusal reason", () => {
+    const failures = run((file, source) =>
+      file.includes("release.yml")
+        ? source.replace("curl --fail-with-body -sS -X POST", "curl --fail -sS -X POST")
+        : source,
+    );
+    expect(failures.join("\n")).toContain("curl --fail-with-body");
+  });
+
+  it("catches a token request that no longer fails on a token-service error", () => {
+    const failures = run((file, source) =>
+      file.includes("release.yml")
+        ? source.replaceAll(
+            'response=$(curl --fail-with-body -sS -H "Authorization: bearer',
+            'response=$(curl -sS -H "Authorization: bearer',
+          )
+        : source,
+    );
+    expect(failures.join("\n")).toContain("validate-publish-key");
+  });
+
   it("catches a releases-audience token requested by a third step", () => {
     const tokenLine =
-      '          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com" | jq -r \'.value // empty\')\n';
+      '          response=$(curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com")\n';
     const failures = run((file, source) =>
       file.includes("release.yml")
         ? source.replace(

@@ -236,7 +236,7 @@ export function releasePipelineSafetyFailures(read) {
   // The releases worker verifies a GitHub Actions OIDC token minted for its
   // audience in release-publish on a v* tag; no stored key authenticates.
   const releasesTokenRequest =
-    'curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com"';
+    'curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com"';
   const presentsReleasesToken = (source) =>
     source.includes(releasesTokenRequest) && source.includes('"Authorization: Bearer ${token}"');
   const advanceManifestStep =
@@ -248,9 +248,10 @@ export function releasePipelineSafetyFailures(read) {
       publisherJob.includes("name: release-publish") &&
       publisherJob.includes("\n      id-token: write\n") &&
       presentsReleasesToken(advanceManifestStep) &&
+      advanceManifestStep.includes("curl --fail-with-body -sS -X POST") &&
       !publisherJob.includes("uses: actions/checkout@") &&
       orderedBefore(releaseWorkflow, "\n  verify-release:\n", "\n  publish-release:\n"),
-    "release.yml must publish only after every secretless verification leg, advance the updater manifest with the job's own releases-audience OIDC token (id-token: write), and must not check out or execute product source in the credentialed publisher.",
+    "release.yml must publish only after every secretless verification leg, advance the updater manifest with the job's own releases-audience OIDC token (id-token: write) through curl --fail-with-body so a refusal prints the worker's reason, and must not check out or execute product source in the credentialed publisher.",
   );
 
   // Retain prior signing keys; the lookbehind distinguishes overwrite from append.

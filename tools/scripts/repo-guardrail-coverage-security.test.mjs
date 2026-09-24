@@ -359,22 +359,61 @@ describe.concurrent(
       );
     });
 
-    it("fails when another job joins the release-publish environment", () => {
+    for (const [form, environment] of [
+      ["the short form", "    environment: release-publish\n"],
+      [
+        "a url before the name",
+        "    environment:\n      url: https://example.com\n      name: release-publish\n",
+      ],
+      ["the flow form", "    environment: { name: release-publish }\n"],
+      ["a quoted name", '    environment:\n      name: "release-publish"\n'],
+      ["an expression", "    environment: ${{ inputs.target }}\n"],
+    ]) {
+      it(`fails when another release job joins release-publish through ${form}`, () => {
+        expectGuardrailFailure(
+          releaseArtifactSafetyFailures,
+          (fixtureRoot) => {
+            const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+            writeFixtureFile(
+              fixtureRoot,
+              ".github/workflows/release.yml",
+              mustMutate(
+                workflow,
+                "    environment:\n      name: release-updater-signing\n    steps:\n      - uses: actions/checkout@",
+                `${environment}    steps:\n      - uses: actions/checkout@`,
+              ),
+            );
+          },
+          ".github/workflows/release.yml#validate-updater-key",
+        );
+      });
+    }
+
+    it("fails when a dispatchable workflow's job uses release-publish", () => {
       expectGuardrailFailure(
         releaseArtifactSafetyFailures,
         (fixtureRoot) => {
-          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
           writeFixtureFile(
             fixtureRoot,
-            ".github/workflows/release.yml",
-            mustMutate(
-              workflow,
-              "    environment:\n      name: release-updater-signing\n    steps:\n      - uses: actions/checkout@",
-              "    environment: release-publish\n    steps:\n      - uses: actions/checkout@",
-            ),
+            ".github/workflows/manual-publish.yml",
+            [
+              "name: Manual publish",
+              "on:",
+              "  workflow_dispatch:",
+              "jobs:",
+              "  publish:",
+              "    runs-on: ubuntu-22.04",
+              "    permissions:",
+              "      id-token: write",
+              "    environment:",
+              "      name: release-publish",
+              "    steps:",
+              "      - run: echo publish",
+              "",
+            ].join("\n"),
           );
         },
-        "Only validate-publish-key, publish-release and publish-npm may run in the release-publish environment (found: validate-updater-key,",
+        ".github/workflows/manual-publish.yml#publish",
       );
     });
 
