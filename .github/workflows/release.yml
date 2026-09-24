@@ -159,7 +159,7 @@ jobs:
             signer sign "$RUNNER_TEMP/probe.bin"
           test -s "$RUNNER_TEMP/probe.bin.sig"
 
-  # Authenticate the publish key with an invalid, non-mutating request.
+  # Authenticate the publish OIDC token with an invalid, non-mutating request.
   validate-publish-key:
     name: Validate publish credential
     needs: tag-gate
@@ -167,27 +167,30 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      # The releases worker accepts only a GitHub Actions OIDC token for its
+      # audience, minted in release-publish on a v* tag of this repository.
+      id-token: write
     environment:
       name: release-publish
     steps:
       - name: Probe the releases-admin endpoint without publishing
-        env:
-          RELEASE_ADMIN_KEY: ${{ secrets.RELEASE_ADMIN_KEY }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${RELEASE_ADMIN_KEY:-}" ]; then
-            echo "::error::RELEASE_ADMIN_KEY is missing from release-publish."
+          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com" | jq -r '.value // empty')
+          if [ -z "$token" ]; then
+            echo "::error::GitHub issued no OIDC token for https://releases.sitecmd.com; this job needs permissions: id-token: write."
             exit 1
           fi
-          status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
-            -H "Authorization: Bearer ${RELEASE_ADMIN_KEY}" \
+          echo "::add-mask::${token}"
+          status=$(curl -sS -o "$RUNNER_TEMP/probe-response.json" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${token}" \
             -H "Content-Type: application/json" \
             --data '{}' \
             https://releases.sitecmd.com/api/releases-admin)
           if [ "$status" != "400" ]; then
-            echo "::error::Probe expected 400 (authenticated, body rejected) but got $status."
-            echo "::error::401 means RELEASE_ADMIN_KEY drifted between GitHub and the releases worker; re-sync both sides and rerun failed jobs."
+            echo "::error::Probe expected 400 (authenticated, body rejected) but got $status: $(cat "$RUNNER_TEMP/probe-response.json")"
+            echo "::error::401 means the releases worker refused this job's OIDC token. It accepts only brambleworks/SiteCMD-Local in the release-publish environment on a v* tag, for audience https://releases.sitecmd.com; fix whichever side moved, then re-run the failed jobs."
             exit 1
           fi
 
@@ -932,7 +935,8 @@ jobs:
     permissions:
       # Creating the GitHub Release needs write; the job still checks out nothing.
       contents: write
-      # Sigstore provenance for the verified artifacts.
+      # Sigstore provenance for the verified artifacts, and the OIDC token the
+      # releases worker accepts in place of any stored publish key.
       id-token: write
       attestations: write
     # Publishing credentials are isolated from build and signer jobs.
@@ -1104,13 +1108,17 @@ jobs:
           done < publication/upload-plan.tsv
 
       - name: Advance the production updater manifest
-        env:
-          RELEASE_ADMIN_KEY: ${{ secrets.RELEASE_ADMIN_KEY }}
         shell: bash
         run: |
           set -euo pipefail
+          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com" | jq -r '.value // empty')
+          if [ -z "$token" ]; then
+            echo "::error::GitHub issued no OIDC token for https://releases.sitecmd.com; this job needs permissions: id-token: write."
+            exit 1
+          fi
+          echo "::add-mask::${token}"
           curl --fail -sS -X POST \
-            -H "Authorization: Bearer ${RELEASE_ADMIN_KEY}" \
+            -H "Authorization: Bearer ${token}" \
             -H "Content-Type: application/json" \
             --data-binary @publication/manifest.json \
             https://releases.sitecmd.com/api/releases-admin

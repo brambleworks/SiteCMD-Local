@@ -50,12 +50,32 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
       !nonPublisherWorkflow.includes("${{ secrets.R2_ACCESS_KEY_ID }}") &&
       !nonPublisherWorkflow.includes("${{ secrets.R2_SECRET_ACCESS_KEY }}") &&
       !nonPublisherWorkflow.includes("${{ secrets.R2_ACCOUNT_ID }}") &&
-      !nonPublisherWorkflow.includes("${{ secrets.RELEASE_ADMIN_KEY }}") &&
+      !nonPublisherWorkflow.includes("audience=https://releases.sitecmd.com") &&
       publishProbeJob.includes("name: release-publish") &&
       !publishProbeJob.includes("${{ secrets.R2_ACCESS_KEY_ID }}") &&
       !publishProbeJob.includes("${{ secrets.R2_SECRET_ACCESS_KEY }}") &&
       !publishProbeJob.includes("${{ secrets.R2_ACCOUNT_ID }}"),
-    "release.yml must keep R2 and manifest-promotion credentials in the checkout-free publish-release job, after secretless verification, and hash-compare any existing object before upload; RELEASE_ADMIN_KEY alone may also appear in the release-publish-environment validate-publish-key probe, which must hold no R2 credentials.",
+    "release.yml must keep R2 credentials and the releases-audience OIDC token request in the checkout-free publish-release job, after secretless verification, and hash-compare any existing object before upload; only the release-publish-environment validate-publish-key probe may also request that token, and it must hold no R2 credentials.",
+  );
+
+  // The releases worker accepts any OIDC token minted in release-publish on a
+  // v* tag, so membership of that environment is now the publish credential,
+  // and a stored key would be a second, longer-lived way to move `latest`.
+  const staticPublishKeyFiles = listFiles(".github", () => true).filter((file) =>
+    read(file).includes("RELEASE_ADMIN_KEY"),
+  );
+  check(
+    staticPublishKeyFiles.length === 0,
+    `RELEASE_ADMIN_KEY must not return to the release pipeline (found in ${staticPublishKeyFiles.join(", ")}); publishing authenticates with the job's GitHub Actions OIDC token for https://releases.sitecmd.com.`,
+  );
+  const releasePublishJobs = [...releaseWorkflow.matchAll(/\n {2}([A-Za-z0-9_-]+):\n/g)]
+    .map((match) => match[1])
+    .filter((job) =>
+      /\n {4}environment:\s*(?:\n\s+name:\s*)?["']?release-publish\b/.test(jobSection(job)),
+    );
+  check(
+    releasePublishJobs.join(",") === "validate-publish-key,publish-release,publish-npm",
+    `Only validate-publish-key, publish-release and publish-npm may run in the release-publish environment (found: ${releasePublishJobs.join(", ")}); every job there can mint the OIDC token the releases worker accepts.`,
   );
   check(
     signedReleaseTag &&

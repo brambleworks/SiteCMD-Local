@@ -108,7 +108,7 @@ Configure these GitHub environments:
 | `release-tag-trust`       | Deployment tags limited to `v*`; protected from workflow-authenticated writes              | `RELEASE_ALLOWED_SIGNERS`, matching `.github/allowed-signers`                                  |
 | `release-signing`         | One required reviewer, admin bypass disabled, deployment tags limited to `v*`              | License configuration, desktop OAuth credentials, Sentry DSN, Apple credentials, Azure secrets |
 | `release-updater-signing` | Deployment tags limited to `v*`; reachable only after the approved platform builds succeed | `TAURI_SIGNING_PRIVATE_KEY` and its optional password                                          |
-| `release-publish`         | Deployment tags limited to `v*`; no reviewer or timer                                      | R2 credentials and `RELEASE_ADMIN_KEY` only                                                    |
+| `release-publish`         | Deployment tags limited to `v*`; no reviewer or timer                                      | R2 credentials; the releases worker takes the job's OIDC token, never a stored key             |
 
 Put `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, and `AZURE_SIGN_PROFILE` in the
 `release-signing` environment as variables. Move the listed secrets out of
@@ -298,7 +298,8 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`:
    signatures on all three desktop platforms and the Linux arm64 CLI leg.
 9. **Publication** runs only after every verifier passes. A checkout-free job
    hash-compares any existing R2 object before upload (including `SHA256SUMS`,
-   `SHA256SUMS.sig`, and `SHA256SUMS.minisig`), advances the updater manifest,
+   `SHA256SUMS.sig`, and `SHA256SUMS.minisig`), advances the updater manifest
+   with the job's own OIDC token (see [Publish credential](#publish-credential)),
    and then creates the GitHub Release for the tag with the changelog section
    as notes and the two checksum files attached. Binaries stay on R2. Once the
    Release exists, a SHA-pinned `actions/attest-build-provenance` step attests
@@ -318,8 +319,9 @@ produced safe bytes. The post-publication reproducible-build milestone in the
 [repository and release security specification](../engineering/repository-release-security-spec.md)
 addresses that remaining source-to-bytes gap.
 
-Cost: a clean release is roughly 300-600 billed GitHub Actions minutes (macOS
-bills at 10x). Signing runbooks live in
+Cost: the repository is public, and every release job runs on a standard
+GitHub-hosted runner, so a release bills no Actions minutes and a failed job is
+recovered by re-running it. Signing runbooks live in
 [macos-code-signing.md](../engineering/macos-code-signing.md) and
 [windows-code-signing.md](../engineering/windows-code-signing.md); key rotation
 in [release-signing-key-rotation.md](../engineering/release-signing-key-rotation.md).
@@ -389,6 +391,37 @@ deployed without its manifest bucket or publisher allowlist, or this repository
 is not the allowed publisher. Passing on a 404 would let the release ship under
 a digest the registry never learned, which is the exact state the ingest gate
 quarantines.
+
+### Publish credential
+
+Two jobs call the releases worker's admin endpoint,
+`https://releases.sitecmd.com/api/releases-admin`: the `validate-publish-key`
+probe before any build, and the manifest advance in `publish-release`. Neither
+holds a stored key. Each has `permissions: id-token: write`, asks GitHub for an
+Actions OIDC token with the audience `https://releases.sitecmd.com`, and sends
+it as the bearer. The worker verifies the token against GitHub's published keys
+and accepts it only when the repository is `brambleworks/SiteCMD-Local`, the
+environment is `release-publish`, and the ref is a `v*` tag. Membership of
+`release-publish` is therefore the publish credential, and a repository
+guardrail limits it to the probe, `publish-release`, and `publish-npm`.
+
+The probe posts an empty manifest and expects `400`: the worker accepted the
+token and refused the body, so nothing was published. Any other status fails
+the run before the platform builds, and the step prints the worker's answer. A
+`401` means the worker refused the token: either the job no longer runs in
+`release-publish` on a `v*` tag, or the deployed worker expects another audience
+or claim. Fix whichever side moved, then use **Re-run failed jobs**.
+
+There is no manual publish path. When the manifest advance fails, fix the cause
+and re-run the failed `publish-release` job the same way. It rebuilds nothing,
+skips R2 objects that already hold the verified bytes, and must run within the
+24-hour retention of the `signed-release-payload` artifact, as
+[Verify the release](#verify-the-release) describes.
+
+Nothing reads `RELEASE_ADMIN_KEY` any more. Once the releases worker that
+verifies OIDC tokens is deployed, delete the `RELEASE_ADMIN_KEY` secret from the
+`release-publish` environment. A repository guardrail refuses the name anywhere
+under `.github/`.
 
 ## Verify the release
 

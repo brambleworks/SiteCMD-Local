@@ -309,7 +309,86 @@ describe.concurrent(
             ),
           );
         },
-        "release.yml must keep R2 and manifest-promotion credentials in the checkout-free publish-release job",
+        "release.yml must keep R2 credentials and the releases-audience OIDC token request in the checkout-free publish-release job",
+      );
+    });
+
+    it("fails when a job outside the publishers requests a releases-audience OIDC token", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/release.yml",
+            mustMutate(
+              workflow,
+              "          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}",
+              [
+                "          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}",
+                '          RELEASES_TOKEN_URL: "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com"',
+              ].join("\n"),
+            ),
+          );
+        },
+        "release.yml must keep R2 credentials and the releases-audience OIDC token request in the checkout-free publish-release job",
+      );
+    });
+
+    it("fails when the stored publish key returns to the release workflow", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/release.yml",
+            mustMutate(
+              workflow,
+              "      - name: Advance the production updater manifest\n",
+              [
+                "      - name: Advance the production updater manifest",
+                "        env:",
+                "          RELEASE_ADMIN_KEY: ${{ secrets.RELEASE_ADMIN_KEY }}",
+                "",
+              ].join("\n"),
+            ),
+          );
+        },
+        "RELEASE_ADMIN_KEY must not return to the release pipeline (found in .github/workflows/release.yml)",
+      );
+    });
+
+    it("fails when another job joins the release-publish environment", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/release.yml",
+            mustMutate(
+              workflow,
+              "    environment:\n      name: release-updater-signing\n    steps:\n      - uses: actions/checkout@",
+              "    environment: release-publish\n    steps:\n      - uses: actions/checkout@",
+            ),
+          );
+        },
+        "Only validate-publish-key, publish-release and publish-npm may run in the release-publish environment (found: validate-updater-key,",
+      );
+    });
+
+    it("fails when a release helper script reads the stored publish key", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/scripts/release/advance-manifest.sh",
+            'curl -H "Authorization: Bearer ${RELEASE_ADMIN_KEY}" https://releases.sitecmd.com/api/releases-admin\n',
+          );
+        },
+        "RELEASE_ADMIN_KEY must not return to the release pipeline (found in .github/scripts/release/advance-manifest.sh)",
       );
     });
 
