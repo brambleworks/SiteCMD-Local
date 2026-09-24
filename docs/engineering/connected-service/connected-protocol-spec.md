@@ -1612,11 +1612,12 @@ there is no such thing as an unlisted way in.
   fail-closed on empty secret). Vercel and Netlify doors use the
   provider's own signing; mechanics belong to the hosted scanner spec, but
   the credential object and its rotation live here.
-- **Report link.** A short-lived signed token following the telemetry
-  ingest-token pattern (base64url claims plus HMAC, expiry inside the
-  claims, signature checked before parse;
-  `apps/sitecmd-telemetry/src/ingest-auth.ts`). Contents and redemption
-  are the alert and report delivery spec's.
+- **Report link.** An opaque random token following the bearer-credential
+  precedent above (32 random bytes, base64url); the service stores only
+  its SHA-256 hash, in the report's registry row alongside the row's
+  expiry. The render path looks the row up by the presented token's hash
+  and checks expiry and revocation there, never in the token itself.
+  Contents and redemption are the alert and report delivery spec's.
 
 Rotation and revocation are first-class endpoints for all three held
 credentials. Revocation is a permanent tombstone, mirroring
@@ -2238,10 +2239,11 @@ Reports (installation token; rendering rules in the delivery spec):
 
 - `POST /v1/sites/{site}/reports` - create a report registry row from
   current connect state with explicit content toggles; returns the
-  `report_id` and the signed link.
+  `report_id` and the link.
 - `GET /v1/sites/{site}/reports` - the registry with provenance.
 - `POST /v1/sites/{site}/reports/{id}/revoke` - immediate revocation;
-  the render path checks the registry, not just the signature.
+  the render path looks the token up by hash in the registry, so
+  revocation takes effect regardless of the token's own expiry.
 
 Baselines (installation token):
 
@@ -2641,13 +2643,13 @@ Hosted reports are registry rows first, links second:
   retention table, with rows retained for the life of the site and
   links bounded by their TTL.
 - The row also records content toggles, creator installation,
-  creation time, TTL, and revocation state. The link is a signed
-  token naming `report_id` and expiry with a `kid` claim naming the
-  signing key;
-  key rotation is additive (a successor key signs new links, old
-  links age out), and revocation is the registry's job, not the
-  key's: the render path requires registry presence and not-revoked,
-  so `revoke` is immediate regardless of token expiry.
+  creation time, TTL, and revocation state. The link is an opaque
+  random token (32 bytes, base64url); the row stores only its
+  SHA-256, alongside the row's own expiry. There is no signing key
+  and nothing to rotate: the render path looks the row up by the
+  presented token's hash and requires it to be present, unexpired,
+  and not revoked, so `revoke` is immediate regardless of the
+  token's own expiry.
 - The render path is `GET /r/{token}` on the connect origin with
   `Cache-Control: no-store`, `X-Robots-Tag: noindex`, a strict CSP,
   no third-party assets, and `Referrer-Policy: no-referrer`. What a
