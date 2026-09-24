@@ -431,6 +431,67 @@ describe.concurrent(
       );
     });
 
+    it("fails when publish-npm moves back into release-publish", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/release.yml",
+            mustMutate(workflow, "      name: npm-publish\n", "      name: release-publish\n"),
+          );
+        },
+        "may use the release-publish environment (found: .github/workflows/release.yml#publish-npm,",
+      );
+    });
+
+    it("fails when another job joins npm-publish", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/manual-npm.yml",
+            [
+              "name: Manual npm publish",
+              "on:",
+              "  workflow_dispatch:",
+              "jobs:",
+              "  publish:",
+              "    runs-on: ubuntu-22.04",
+              "    permissions:",
+              "      id-token: write",
+              "    environment: npm-publish",
+              "    steps:",
+              "      - run: npm publish",
+              "",
+            ].join("\n"),
+          );
+        },
+        "(found: .github/workflows/manual-npm.yml#publish, .github/workflows/release.yml#publish-npm)",
+      );
+    });
+
+    it("fails when a stored npm token returns to the npm publish", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/release.yml",
+            mustMutate(
+              workflow,
+              "          VERSION: ${{ needs.prepare-candidate.outputs.version }}\n        shell: bash\n        run: bash .github/scripts/release/publish-npm-packages.sh\n",
+              "          VERSION: ${{ needs.prepare-candidate.outputs.version }}\n          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}\n        shell: bash\n        run: bash .github/scripts/release/publish-npm-packages.sh\n",
+            ),
+          );
+        },
+        "A stored npm token must not return to the release pipeline (found in .github/workflows/release.yml)",
+      );
+    });
+
     it("fails when the shipped desktop build drops the Connected service endpoint", () => {
       expectGuardrailFailure(
         releaseArtifactSafetyFailures,

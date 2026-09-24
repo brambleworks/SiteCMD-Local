@@ -1252,10 +1252,15 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      # npm publish --provenance attests the publication through GitHub OIDC.
+      # npm trusted publishing: npm exchanges this job's GitHub OIDC token for
+      # a short-lived publish token and attests provenance, so no npm token is
+      # stored anywhere. Each package's trusted publisher names release.yml
+      # and the npm-publish environment.
       id-token: write
+    # Its own environment, never release-publish: every job there can mint the
+    # OIDC token the releases worker accepts, and publishing to npm needs none.
     environment:
-      name: release-publish
+      name: npm-publish
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -1269,6 +1274,5 @@ jobs:
       - name: Publish the verified binaries as @sitecmd/cli
         env:
           VERSION: ${{ needs.prepare-candidate.outputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: bash .github/scripts/release/publish-npm-packages.sh

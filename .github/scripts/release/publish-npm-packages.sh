@@ -4,7 +4,9 @@ set -euo pipefail
 # releases.sitecmd.com, re-verifies each payload directory's checksums, and
 # skips any package version npm already has, so a re-run repairs a partial
 # publication instead of conflicting with it. The binaries are the exact
-# signed release artifacts; nothing is rebuilt here.
+# signed release artifacts; nothing is rebuilt here. npm authenticates each
+# publish through trusted publishing with the job's GitHub OIDC token, which
+# needs npm 11.5.1 or later (the Node in .nvmrc ships a newer one).
 
 test -n "$VERSION"
 NPM_DIR="packaging/npm"

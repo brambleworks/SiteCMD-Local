@@ -71,20 +71,36 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
     `RELEASE_ADMIN_KEY must not return to the release pipeline (found in ${staticPublishKeyFiles.join(", ")}); publishing authenticates with the job's GitHub Actions OIDC token for https://releases.sitecmd.com.`,
   );
   // Any workflow can be dispatched against a tag ref, and an expression could
-  // resolve to release-publish, so both count as membership.
-  const releasePublishJobs = listFiles(".github/workflows", (file) => /\.ya?ml$/.test(file))
-    .flatMap((file) =>
-      workflowJobEnvironments(read(file))
-        .filter(({ block }) => block.includes("release-publish") || block.includes("${{"))
-        .map(({ job }) => `${file}#${job}`),
-    )
-    .sort();
-  const allowedPublishJobs = ["publish-npm", "publish-release", "validate-publish-key"].map(
-    (job) => `.github/workflows/release.yml#${job}`,
+  // resolve to either publish environment, so both count as membership.
+  const workflowFiles = listFiles(".github/workflows", (file) => /\.ya?ml$/.test(file));
+  const environmentJobs = (name) =>
+    workflowFiles
+      .flatMap((file) =>
+        workflowJobEnvironments(read(file))
+          .filter(({ block }) => block.includes(name) || block.includes("${{"))
+          .map(({ job }) => `${file}#${job}`),
+      )
+      .sort();
+  const releaseJobs = (...jobs) => jobs.map((job) => `.github/workflows/release.yml#${job}`);
+  const releasePublishJobs = environmentJobs("release-publish");
+  check(
+    releasePublishJobs.join(",") ===
+      releaseJobs("publish-release", "validate-publish-key").join(","),
+    `Only release.yml's validate-publish-key and publish-release jobs may use the release-publish environment (found: ${releasePublishJobs.join(", ")}); every job there can mint the OIDC token the releases worker accepts, and an expression environment could resolve to it.`,
+  );
+  // npm trusted publishing accepts an OIDC token from release.yml in
+  // npm-publish, so membership of that environment is the npm credential.
+  const npmPublishJobs = environmentJobs("npm-publish");
+  check(
+    npmPublishJobs.join(",") === releaseJobs("publish-npm").join(","),
+    `Only release.yml's publish-npm job may use the npm-publish environment, and it must use no other (found: ${npmPublishJobs.join(", ")}); npm's trusted publisher accepts an OIDC token from any job there, and an expression environment could resolve to it.`,
+  );
+  const storedNpmTokenFiles = listFiles(".github", () => true).filter((file) =>
+    /\b(?:NPM_TOKEN|NODE_AUTH_TOKEN)\b/.test(read(file)),
   );
   check(
-    releasePublishJobs.join(",") === allowedPublishJobs.join(","),
-    `Only release.yml's validate-publish-key, publish-release and publish-npm jobs may use the release-publish environment (found: ${releasePublishJobs.join(", ")}); every job there can mint the OIDC token the releases worker accepts, and an expression environment could resolve to it.`,
+    storedNpmTokenFiles.length === 0,
+    `A stored npm token must not return to the release pipeline (found in ${storedNpmTokenFiles.join(", ")}); publish-npm authenticates through npm trusted publishing with its GitHub Actions OIDC token.`,
   );
   check(
     signedReleaseTag &&
