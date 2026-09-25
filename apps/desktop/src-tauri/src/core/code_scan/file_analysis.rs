@@ -2,6 +2,7 @@ use super::*;
 mod ai_checks;
 mod architecture_checks;
 mod blanking;
+mod handler_spans;
 mod js_sinks;
 mod php_sinks;
 mod python_sinks;

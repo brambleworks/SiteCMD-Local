@@ -84,8 +84,7 @@ pub(super) struct FileAnalysisSignals {
     pub(super) has_payment_flow: bool,
     pub(super) uses_stripe_checkout: bool,
     pub(super) has_user_controlled_stripe_price: bool,
-    pub(super) has_redirect_sink: bool,
-    pub(super) has_user_controlled_redirect: bool,
+    pub(super) open_redirect_line: Option<u32>,
     pub(super) has_redirect_allowlist: bool,
     pub(super) has_user_controlled_stripe_redirect: bool,
     pub(super) has_stripe_price_allowlist: bool,
@@ -295,14 +294,31 @@ impl FileAnalysisSignals {
         let has_user_controlled_redirect = has_any(content, &USER_CONTROLLED_REDIRECT_PATTERNS);
         let has_user_controlled_stripe_redirect =
             has_any(content, &USER_CONTROLLED_STRIPE_REDIRECT_PATTERNS);
-        let has_redirect_allowlist = if is_js_source_path(&file.relative_path) {
+        let js_source = is_js_source_path(&file.relative_path);
+        // In JavaScript this guards only the Stripe return URL check; open
+        // redirects are paired per handler below.
+        let has_redirect_allowlist = if js_source {
             route_like
-                && ((has_redirect_sink && has_user_controlled_redirect)
-                    || (uses_stripe_checkout && has_user_controlled_stripe_redirect))
+                && uses_stripe_checkout
+                && has_user_controlled_stripe_redirect
                 && super::redirect_guards::has_guarded_redirects(content, uses_stripe_checkout)
         } else {
             has_any(content, &REDIRECT_ALLOWLIST_PATTERNS)
         };
+        // JavaScript pairs a request field with a redirect inside one route
+        // handler; other languages keep the file-level pairing.
+        let open_redirect_line =
+            if !(route_like && has_redirect_sink && has_user_controlled_redirect) {
+                None
+            } else if js_source {
+                super::redirect_guards::unguarded_request_redirect(content)
+                    .map(|field| line_number(content, field))
+            } else if has_redirect_allowlist {
+                None
+            } else {
+                first_match_line(content, &USER_CONTROLLED_REDIRECT_PATTERNS)
+                    .or_else(|| first_match_line(content, &REDIRECT_SINK_PATTERNS))
+            };
         let has_stripe_price_allowlist = has_any(content, &STRIPE_PRICE_ALLOWLIST_PATTERNS);
         let has_email_flow = has_any(content, &EMAIL_PATTERNS);
         let user_controlled_fetch = route_like && ssrf_like && !has_ssrf_guard;
@@ -471,8 +487,7 @@ impl FileAnalysisSignals {
             has_payment_flow,
             uses_stripe_checkout,
             has_user_controlled_stripe_price,
-            has_redirect_sink,
-            has_user_controlled_redirect,
+            open_redirect_line,
             has_redirect_allowlist,
             has_user_controlled_stripe_redirect,
             has_stripe_price_allowlist,

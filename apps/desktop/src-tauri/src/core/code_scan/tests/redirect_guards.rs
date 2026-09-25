@@ -108,3 +108,182 @@ fn reports_destinations_not_protected_by_nearby_validation() {
         "unguarded destinations were missed: {missed:?}"
     );
 }
+
+fn reports_open_redirect(relative_path: &str, source: &str) -> bool {
+    let temp = TempDir::new().unwrap();
+    write_file(temp.path(), relative_path, source);
+    audit_project(temp.path())
+        .unwrap()
+        .issues
+        .iter()
+        .any(|issue| issue.check_id == "code_scan.open-redirect")
+}
+
+#[test]
+fn ignores_a_scan_handler_beside_a_route_that_redirects_elsewhere() {
+    let source = r#"import { Hono } from "hono";
+
+const app = new Hono();
+
+app.get("/results", async (c) => {
+  const rawUrl = c.req.query("url")?.trim();
+  if (!rawUrl) return c.redirect("/");
+  return c.redirect(resultPath(normalizePublicScanUrl(rawUrl).toString()), 301);
+});
+
+app.get("/img/pattern-matching.jpg", (c) => {
+  return c.redirect("/pattern-matching.jpg", 301);
+});
+
+app.post("/api/scan", async (c) => {
+  const parsedBody = scanRequestSchema.safeParse(await c.req.json());
+  if (!parsedBody.success) return c.json({ error: "Invalid JSON body" }, 400);
+  const body = parsedBody.data;
+  const rawUrl = body.url?.trim();
+  if (!rawUrl) return c.json({ error: "Missing 'url' field" }, 400);
+  return c.json(await scanSite(normalizePublicScanUrl(rawUrl)));
+});
+
+export default app;
+"#;
+
+    assert!(!reports_open_redirect(
+        "apps/wasitvibed.com/src/index.ts",
+        source
+    ));
+}
+
+#[test]
+fn ignores_request_fields_and_redirects_in_different_route_handlers() {
+    let cases = [
+        (
+            "hono",
+            "src/index.ts",
+            r#"import { Hono } from "hono";
+const app = new Hono();
+app.get("/go/:slug", (c) => c.redirect(shortLinkTarget(c.req.param("slug"))));
+app.post("/api/feed", async (c) => {
+  const body = await c.req.json();
+  return c.json(await loadFeed(body.nextCursor));
+});
+export default app;
+"#,
+        ),
+        (
+            "exported verbs",
+            "app/api/feed/route.ts",
+            r#"export async function GET(request: Request) {
+  const slug = new URL(request.url).pathname.slice(4);
+  return Response.redirect(shortLinkTarget(slug), 302);
+}
+
+export async function POST(request: Request) {
+  const body = await request.json();
+  return Response.json(await loadFeed(body.nextCursor));
+}
+"#,
+        ),
+    ];
+    let reported = cases
+        .iter()
+        .filter(|(_, path, source)| reports_open_redirect(path, source))
+        .map(|(name, _, _)| *name)
+        .collect::<Vec<_>>();
+    assert!(
+        reported.is_empty(),
+        "separate handlers were paired: {reported:?}"
+    );
+}
+
+#[test]
+fn ignores_constant_redirects_beside_a_request_field() {
+    let source = r#"import { Hono } from "hono";
+const app = new Hono();
+const HOME = "/dashboard";
+app.post("/api/signup", async (c) => {
+  const body = await c.req.json();
+  await saveReturnPreference(body.returnTo);
+  if (!body.email) return c.redirect("/signup?error=missing-email");
+  return c.redirect(`${HOME}?welcome=1`, 303);
+});
+export default app;
+"#;
+
+    assert!(!reports_open_redirect("src/index.ts", source));
+}
+
+#[test]
+fn ignores_a_validation_result_flag_beside_a_computed_redirect() {
+    let source = r#"import { Hono } from "hono";
+const app = new Hono();
+app.post("/api/signup", async (c) => {
+  const parsedBody = signupSchema.safeParse(await c.req.json());
+  if (!parsedBody.success) return c.json({ error: "Invalid JSON body" }, 400);
+  const account = await createAccount(parsedBody.data);
+  return c.redirect(account.dashboardPath, 303);
+});
+export default app;
+"#;
+
+    assert!(!reports_open_redirect("src/index.ts", source));
+}
+
+#[test]
+fn reports_request_redirects_that_share_a_handler_or_leave_it() {
+    let cases = [
+        (
+            "local variable",
+            r#"app.get("/health", (c) => c.redirect("/status"));
+app.post("/login", async (c) => {
+  const body = await c.req.json();
+  const destination = body.redirectTo;
+  return c.redirect(destination);
+});"#,
+        ),
+        (
+            "request-derived template",
+            r#"app.get("/health", (c) => c.redirect("/status"));
+app.post("/login", async (c) => {
+  const body = await c.req.json();
+  return c.redirect(`${body.returnTo}`);
+});"#,
+        ),
+        (
+            "express accessor",
+            r#"app.post("/logout", (req, res) => res.redirect("/"));
+app.get("/callback", (req, res) => {
+  res.redirect(req.query.next);
+});"#,
+        ),
+        (
+            "helper outside the handler",
+            r#"function finish(c, target) {
+  return c.redirect(target);
+}
+app.post("/login", async (c) => {
+  const body = await c.req.json();
+  return finish(c, body.returnTo);
+});"#,
+        ),
+        (
+            "success destination",
+            r#"app.post("/checkout/done", async (c) => {
+  const body = await c.req.json();
+  return c.redirect(body.successUrl);
+});"#,
+        ),
+    ];
+    let mut missed = Vec::new();
+    for (name, routes) in cases {
+        let source = format!(
+            "import {{ Hono }} from \"hono\";\nconst app = new Hono();\n{routes}\nexport default app;\n"
+        );
+        if !reports_open_redirect("src/index.ts", &source) {
+            missed.push(name);
+        }
+    }
+    assert!(
+        missed.is_empty(),
+        "request redirects were missed: {missed:?}"
+    );
+}

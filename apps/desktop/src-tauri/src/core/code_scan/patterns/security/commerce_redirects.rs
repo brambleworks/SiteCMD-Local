@@ -54,18 +54,19 @@ pub(in crate::core::code_scan) static REDIRECT_SINK_PATTERNS: LazyLock<Vec<regex
         ]
     });
 
+/// A redirect-style property name. Bare `success` and `cancel` are flags, such
+/// as a zod `safeParse` result, so they count only with a destination word.
+const REDIRECT_FIELD_NAME: &str = r"[A-Za-z0-9_]*(?:redirect|return|callback|next|(?:success|cancel)[A-Za-z0-9_]*?(?:url|uri|href|path|page|dest|target|location|redirect))[A-Za-z0-9_]*";
+
 pub(in crate::core::code_scan) static USER_CONTROLLED_REDIRECT_PATTERNS: LazyLock<
     Vec<regex::Regex>,
 > = LazyLock::new(|| {
     vec![
-        regex::Regex::new(
-            r#"(?is)(?:body|input|payload|params|query|data)\.[A-Za-z0-9_]*(?:redirect|return|callback|next|success|cancel)[A-Za-z0-9_]*"#,
-        )
+        regex::Regex::new(&format!(
+            r"(?is)(?:body|input|payload|params|query|data)\.{REDIRECT_FIELD_NAME}"
+        ))
         .unwrap(),
-        regex::Regex::new(
-            r#"(?is)\breq\.(?:query|body)\.[A-Za-z0-9_]*(?:redirect|return|callback|next|success|cancel)[A-Za-z0-9_]*"#,
-        )
-        .unwrap(),
+        regex::Regex::new(&format!(r"(?is)\breq\.(?:query|body)\.{REDIRECT_FIELD_NAME}")).unwrap(),
         regex::Regex::new(
             r#"(?is)searchParams\.get\(\s*["'`](?:redirectTo|returnTo|callbackUrl|callbackURL|returnUrl|next|nextUrl|redirect|successUrl|cancelUrl|success_url|cancel_url)["'`]\s*\)"#,
         )
@@ -161,7 +162,35 @@ pub(in crate::core::code_scan) static EMAIL_PATTERNS: LazyLock<Vec<regex::Regex>
 
 #[cfg(test)]
 mod tests {
-    use super::REDIRECT_ALLOWLIST_PATTERNS;
+    use super::{REDIRECT_ALLOWLIST_PATTERNS, USER_CONTROLLED_REDIRECT_PATTERNS};
+
+    fn request_redirect_field(source: &str) -> bool {
+        USER_CONTROLLED_REDIRECT_PATTERNS
+            .iter()
+            .any(|pattern| pattern.is_match(source))
+    }
+
+    #[test]
+    fn success_and_cancel_fields_need_a_destination_name() {
+        for field in [
+            "body.successUrl",
+            "body.success_url",
+            "input.cancelUrl",
+            "payload.onSuccessRedirect",
+            "req.body.cancel_url",
+            "query.redirectTo",
+        ] {
+            assert!(request_redirect_field(field), "{field} should count");
+        }
+        for flag in [
+            "if (!parsedBody.success) return;",
+            "data.success",
+            "req.body.cancel",
+            "params.cancelToken",
+        ] {
+            assert!(!request_redirect_field(flag), "{flag} should not count");
+        }
+    }
 
     fn allowlisted(source: &str) -> bool {
         REDIRECT_ALLOWLIST_PATTERNS
