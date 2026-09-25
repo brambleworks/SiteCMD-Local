@@ -24,18 +24,19 @@ pub(super) fn is_framework_provided(package: &str, declared: &HashSet<String>) -
     false
 }
 
-/// Find a supported lockfile between a manifest and the scanned project root.
-/// This recognizes workspace-root lockfiles without escaping scan scope.
+/// The directory of the supported lockfile that covers a manifest, searched
+/// between the manifest and the scanned project root. This recognizes
+/// workspace-root lockfiles without escaping scan scope.
 ///
 /// An ancestor's lockfile only covers a manifest that the ancestor declares as
 /// a workspace member. A nested project that merely sits below a monorepo (an
 /// example or sample app) installs on its own and is not described by that
 /// lockfile at all.
-pub(super) fn has_lockfile_in_scope(
+pub(super) fn lockfile_dir_in_scope(
     manifest_dir: &std::path::Path,
     root: &std::path::Path,
     workspace_members: &mut HashMap<PathBuf, Vec<PathBuf>>,
-) -> bool {
+) -> Option<PathBuf> {
     const MAX_DEPTH: usize = 8;
     let mut current = manifest_dir.to_path_buf();
     for depth in 0..MAX_DEPTH {
@@ -50,19 +51,16 @@ pub(super) fn has_lockfile_in_scope(
                     .iter()
                     .any(|member| member == manifest_dir);
             if covers_manifest {
-                return true;
+                return Some(current);
             }
         }
         // Stop after checking the repo root or the scan root; do not look higher.
         if current.join(".git").exists() || current == root {
-            return false;
+            return None;
         }
-        match current.parent() {
-            Some(parent) => current = parent.to_path_buf(),
-            None => return false,
-        }
+        current = current.parent()?.to_path_buf();
     }
-    false
+    None
 }
 
 /// The DefinitelyTyped package that supplies declarations for `package`,
