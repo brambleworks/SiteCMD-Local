@@ -1768,13 +1768,13 @@ CI bearer, normative and closed, in **two route classes** with
 different rules, because provider webhooks and mail systems are not
 browsers and must not be handed browser assumptions:
 
-- **Server-to-server doors** (the four hook doors and the RFC 8058
-  unsubscribe): no origin policy and no cookies - the callers cannot
-  and need not establish browser context; authentication is the
-  signature or single-purpose token alone. Responses are bare status
-  codes with empty or minimal JSON bodies and **never redirect**. The
-  unsubscribe door implements RFC 8058 exactly: it accepts the
-  mail-receiver's context-free POST with the
+- **Server-to-server doors** (the four hook doors, the RFC 8058
+  unsubscribe and the deploy's storage probe): no origin policy and no
+  cookies - the callers cannot and need not establish browser context;
+  authentication is the signature or single-purpose token alone.
+  Responses are bare status codes with empty or minimal JSON bodies
+  and **never redirect**. The unsubscribe door implements RFC 8058
+  exactly: it accepts the mail-receiver's context-free POST with the
   `List-Unsubscribe=One-Click` form body, answers `2xx` on success,
   and performs the cadence demotion with no confirmation page and no
   redirect chain, because the caller is a mail system acting on the
@@ -1813,6 +1813,7 @@ resource).
 | `POST /d/{token}/confirm`        | Confirmation token                         | Yes                    | 24h from first send initiation | Confirms the destination (double-opt-in completes)                           |
 | `POST /u/{token}`                | Unsubscribe token (RFC 8058)               | Yes, idempotent replay | 30d from first send initiation | Sets destination policy per its message class; expired answers `410`         |
 | `GET /r/{token}`                 | Report link token plus registry check      | No                     | Report TTL, revocable          | Renders the stored report projection                                         |
+| `GET /v1/internal/storage-probe` | Deploy probe bearer, constant-time         | No                     | n/a                            | Deploy check: writes, reads back and deletes one row; no tenant data         |
 
 The generic deploy door's body, exact:
 
