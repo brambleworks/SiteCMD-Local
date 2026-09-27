@@ -277,7 +277,7 @@ async fn a_job_that_already_moved_on_does_nothing_and_succeeds() {
     let artifact_dir = workspace.path().join("artifact");
     let outputs = workspace.path().join("outputs.txt");
     let (origin, captured) = respond_in_sequence(vec![(
-        r#"{"error":{"code":"job_state_conflict","message":"the job is not waiting for an execute claim"}}"#
+        r#"{"type":"about:blank","title":"Conflict","status":409,"detail":"the job is not waiting for an execute claim","code":"job_state_conflict","request_id":"req_0123456789abcdef"}"#
             .to_string(),
         "409 Conflict",
     )])

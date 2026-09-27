@@ -286,6 +286,7 @@ mod tests {
             message: "This subscription is suspended.".into(),
             request_id: None,
             status: 403,
+            retry_after: None,
         };
         assert!(not_entitled(&forbidden));
         assert!(!not_entitled(&ConnectedServiceError {

@@ -15,6 +15,142 @@ fn error_parser_never_echoes_an_unstructured_response() {
 }
 
 #[test]
+fn an_empty_refusal_reads_as_request_failed_with_its_status() {
+    let error = parse_response::<Value>(StatusCode::SERVICE_UNAVAILABLE, b"").expect_err("failure");
+    assert_eq!(error.code, "request_failed");
+    assert_eq!(error.status, 503);
+    assert!(error.details.is_none());
+}
+
+#[test]
+fn an_html_refusal_reads_as_request_failed_with_its_status() {
+    let error = parse_response::<Value>(
+        StatusCode::BAD_GATEWAY,
+        b"<!DOCTYPE html><html><body><h1>502 Bad Gateway</h1></body></html>",
+    )
+    .expect_err("failure");
+    assert_eq!(error.code, "request_failed");
+    assert_eq!(error.status, 502);
+    assert!(error.details.is_none());
+    assert!(!error.to_string().contains("Bad Gateway"));
+}
+
+#[test]
+fn a_problem_without_detail_keeps_its_code() {
+    let error = parse_response::<Value>(
+        StatusCode::CONFLICT,
+        br#"{"code":"stale_revision","stale_groups":[{"check":"security.csp","current_state":"active","current_state_revision":43}]}"#,
+    )
+    .expect_err("failure");
+    assert_eq!(error.code, "stale_revision");
+    assert_eq!(error.stale_groups("security.csp").len(), 1);
+}
+
+const STALE_PROBLEM: &[u8] = br#"{"type":"about:blank","title":"Conflict","status":409,"detail":"The lifecycle state changed after revision 41.","code":"stale_revision","request_id":"req_0123456789abcdef","stale_groups":[{"check":"security.csp","current_state":"active","current_state_revision":43}]}"#;
+
+#[test]
+fn problem_details_parse_with_their_members_as_details() {
+    let error = parse_response::<Value>(StatusCode::CONFLICT, STALE_PROBLEM).expect_err("failure");
+    assert_eq!(error.status, 409);
+    assert_eq!(error.code, "stale_revision");
+    assert_eq!(
+        error.message,
+        "The lifecycle state changed after revision 41."
+    );
+    assert_eq!(error.request_id.as_deref(), Some("req_0123456789abcdef"));
+    assert!(error.is_stale_revision());
+    assert_eq!(error.stale_groups("security.csp").len(), 1);
+}
+
+#[test]
+fn a_problem_extension_member_reaches_the_reason_match() {
+    let error = parse_response::<Value>(
+        StatusCode::FORBIDDEN,
+        br#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"x","code":"provenance_rejected","request_id":"req_0123456789abcdef","reason":"workflow_mismatch"}"#,
+    )
+    .expect_err("failure");
+    let reason = error
+        .details
+        .as_ref()
+        .and_then(|details| details.get("reason"))
+        .and_then(Value::as_str);
+    assert_eq!(reason, Some("workflow_mismatch"));
+}
+
+#[test]
+fn the_retired_error_envelope_reads_as_an_unstructured_refusal() {
+    let error = parse_response::<Value>(
+        StatusCode::CONFLICT,
+        br#"{"error":{"code":"stale_revision","message":"changed","request_id":"req_0123456789abcdef"}}"#,
+    )
+    .expect_err("failure");
+    assert_eq!(error.code, "request_failed");
+    assert!(error.details.is_none());
+}
+
+const IN_PROGRESS_PROBLEM: &str = r#"{"type":"about:blank","title":"Conflict","status":409,"detail":"A request under this Idempotency-Key is still being processed.","code":"request_in_progress","request_id":"req_0123456789abcdef"}"#;
+
+#[tokio::test]
+async fn a_refusal_carries_the_seconds_its_retry_after_names() {
+    let (origin, _) = test_double::respond_once_with_headers(
+        IN_PROGRESS_PROBLEM,
+        "409 Conflict",
+        &["Retry-After: 42"],
+    )
+    .await;
+    let client = ConnectedServiceClient::for_test_origin(&origin, Some("t")).expect("client");
+    let url = client
+        .url(&["v1", "sites", "s", "sync", "ci"])
+        .expect("url");
+    let error = client
+        .request::<Value>(Method::POST, url, Some("key-1"), Some("{}".into()))
+        .await
+        .expect_err("refused");
+    assert_eq!(error.code, "request_in_progress");
+    assert_eq!(error.retry_after, Some(42));
+}
+
+#[test]
+fn a_retry_after_names_a_wait_only_in_whole_seconds() {
+    let refused = |value: Option<&str>| {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(value) = value {
+            headers.insert(
+                reqwest::header::RETRY_AFTER,
+                value.parse().expect("header value"),
+            );
+        }
+        problem::refusal(
+            StatusCode::CONFLICT,
+            &headers,
+            IN_PROGRESS_PROBLEM.as_bytes(),
+        )
+    };
+    assert_eq!(refused(Some(" 7 ")).retry_after, Some(7));
+    assert_eq!(
+        refused(Some("Wed, 21 Oct 2026 07:28:00 GMT")).retry_after,
+        None
+    );
+    assert_eq!(refused(Some("-1")).retry_after, None);
+    let bare = refused(None);
+    assert_eq!(bare.retry_after, None);
+    assert_eq!(bare.code, "request_in_progress");
+}
+
+#[tokio::test]
+async fn a_request_with_a_body_is_sent_as_json() {
+    let (origin, captured) = test_double::respond_once("{}", "200 OK").await;
+    let client = ConnectedServiceClient::for_test_origin(&origin, Some("t")).expect("client");
+    let url = client.url(&["v1", "account"]).expect("url");
+    let _: Value = client
+        .request(Method::POST, url, None, Some("{}".into()))
+        .await
+        .expect("answered");
+    let request = captured.await.expect("capture").to_ascii_lowercase();
+    assert!(request.contains("\r\ncontent-type: application/json\r\n"));
+}
+
+#[test]
 fn stale_revision_details_support_batch_and_single_shapes() {
     let batch = ConnectedServiceError {
         status: 409,
@@ -28,6 +164,7 @@ fn stale_revision_details_support_batch_and_single_shapes() {
                 "current_state_revision": 43
             }]
         })),
+        retry_after: None,
     };
     assert_eq!(
         batch.stale_groups("ignored"),

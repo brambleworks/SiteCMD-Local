@@ -379,6 +379,7 @@ mod tests {
             message: "The settings changed since this revision was read.".into(),
             request_id: None,
             details: current.map(|value| serde_json::json!({ "current_revision": value })),
+            retry_after: None,
         }
     }
 
@@ -453,6 +454,7 @@ mod tests {
                 message: "No destination of that id exists on this account.".into(),
                 request_id: None,
                 details: None,
+                retry_after: None,
             },
             2,
         )
@@ -472,6 +474,7 @@ mod tests {
                 message: "The connected service could not be reached.".into(),
                 request_id: None,
                 details: None,
+                retry_after: None,
             },
             1,
         )

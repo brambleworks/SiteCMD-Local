@@ -1223,7 +1223,7 @@ the entry - never a 101-route scan against a 100-route budget. A
 `422 scope_exceeds_plan` naming the cap, never silently truncated. The
 request carries `{ "based_on_scope_revision": n, "routes": […], "check_families": […] }`
 and the response returns the new `scope_revision`; a stale basis is
-`409 stale_revision` with the current scope in `details`.
+`409 stale_revision` whose problem details carry the current scope.
 
 ### Bootstrap and the mutation outbox
 
@@ -1669,12 +1669,11 @@ the public client specification. Four properties are load-bearing:
   lookup keyed on the id alone reads the other account's site. That case
   was found by a negative control that passed, and both halves of the
   predicate now have a repo guardrail behind them.
-- **The error envelope is the reconciliation path.** Every non-2xx on a
-  bearer `/v1` route carries `{ error: { code, message, details?,
-request_id } }`, because the desktop reads `code` to recognize
-  `stale_revision` and `details.stale_groups` to reconcile without a
-  second read. A guardrail fails the build when a 4xx or 5xx is answered
-  outside it.
+- **Problem details are the reconciliation path.** Every non-2xx on a
+  bearer `/v1` route is RFC 9457 problem details, because the desktop
+  reads `code` to recognize `stale_revision` and the top-level
+  `stale_groups` member to reconcile without a second read. A guardrail
+  fails the build when a 4xx or 5xx is answered outside them.
 - **Customer-origin egress is fully disclosed.** Ownership verification
   queries the named DNS resolver or fetches the customer's well-known route,
   and hosted scans fetch only the configured public routes. `/scanner` names
@@ -1781,8 +1780,8 @@ browsers and must not be handed browser assumptions:
   user's gesture.
 - **Browser-form routes** (the OAuth callback, alert landing, redeem,
   view, and resend, destination confirmation, report render): render
-  HTML, including their failures - the `/v1/*` JSON error envelope
-  does not apply here; the error page is an HTML page with the same
+  HTML, including their failures - the `/v1/*` problem details do not
+  apply here; the error page is an HTML page with the same
   security headers. POSTs are same-origin form posts; the only cookie
   in the system is the alert view session
   (`HttpOnly` + `SameSite=Strict`), so capability possession is the
@@ -1869,28 +1868,41 @@ does not apply). Past the retention
 window the landing page's remaining offers are the deep link and
 nothing else, which is the honest answer.
 
-- **Errors** use one stable envelope on every non-2xx response from a
-  **bearer-authenticated `/v1/*` route** - the public surface has its
-  own response matrix instead: browser-form routes answer every
-  failure, `429` included, with an HTML page carrying the same
-  security headers; server-to-server doors answer bare status codes
-  with minimal JSON bodies; and the resend action's anti-oracle
-  generic `200` overrides even that, as its row states. The envelope:
+- **Errors:** every refusal from a **bearer-authenticated `/v1/*`
+  route** is RFC 9457 problem details, served as
+  `application/problem+json` - the public surface has its own response
+  matrix instead: browser-form routes answer every failure, `429`
+  included, with an HTML page carrying the same security headers;
+  server-to-server doors answer bare status codes with minimal JSON
+  bodies; and the resend action's anti-oracle generic `200` overrides
+  even that, as its row states. A refusal:
 
   ```json
   {
-    "error": {
-      "code": "stale_revision",
-      "message": "The lifecycle state changed after revision 41.",
-      "details": { "current_state_revision": 43 },
-      "request_id": "req_…"
-    }
+    "type": "about:blank",
+    "title": "Conflict",
+    "status": 409,
+    "detail": "The lifecycle state changed after revision 41.",
+    "code": "stale_revision",
+    "request_id": "req_0123456789abcdef",
+    "stale_groups": [
+      {
+        "check": "security.csp",
+        "current_state": "active",
+        "current_state_revision": 43
+      }
+    ]
   }
   ```
 
-  `code` is a closed vocabulary; `details` is per-code structured data;
-  `request_id` correlates with server logs. No error ever echoes payload
-  contents.
+  `type`, `title`, `status` and `detail` are RFC 9457's standard
+  members (the service sends no `instance`): `type` is `about:blank`
+  and `title` is the status's reason phrase, because `code`, not a URI,
+  names the problem, and `detail` is the sentence a person reads.
+  `code` and `request_id` are extension members every refusal carries:
+  `code` is a closed vocabulary, and `request_id` correlates with the
+  service's logs. Any other member carries the refusal's own facts.
+  No refusal ever echoes payload contents.
 
 - **Status codes:** `200` action results, reads, and idempotent no-op
   redeliveries; `201` with a `Location` header for site creation; `202`
@@ -1900,46 +1912,91 @@ nothing else, which is the honest answer.
   (`entitlement_suspended`, `unverified_site`, scope violations); `404`
   unknown resource within the caller's scope; `409` conflicts
   (`stale_revision`, `stale_submission`, `stale_key_version`,
-  `key_commitment_mismatch`, `idempotency_conflict`,
-  `deployment_conflict`, `already_bootstrapped`,
-  `rotation_in_progress`, `last_admin` with
-  `details: { admins_remaining: 1 }`, `recovery_pending` with
-  `details: { requested_by, eligible_at }`, and `destination_in_use`
-  with `details: { referencing_sites: [...] }`);
-  `410` `cursor_expired`; `422` well-formed but invalid content (schema
-  violations, unknown fields, oversized vectors, excessive clock skew,
-  `incomplete_snapshot`, `record_capacity`, `scope_exceeds_plan`,
-  `report_too_large` with
-  `details: { bound_bytes, projected_bytes, exceeded_collection }`);
-  `429` with `Retry-After`
+  `key_commitment_mismatch`, `request_in_progress` with `Retry-After`,
+  `secret_already_issued` with the member `issued`,
+  `deployment_conflict`, `already_bootstrapped`, `rotation_in_progress`
+  with the member `pending`, `last_admin` with the member `remedy`, and
+  `destination_in_use` with the member `sites`); `410`
+  `cursor_expired`; `413` `payload_too_large` for a body over its
+  route's limit, naming no bound; `415` `unsupported_media_type` for a
+  JSON body sent without `Content-Type: application/json`; `422`
+  well-formed but invalid content (schema violations, unknown fields,
+  oversized vectors, excessive clock skew, `idempotency_conflict` for an
+  `Idempotency-Key` reused on a different request,
+  `incomplete_snapshot`, `record_capacity`, `scope_exceeds_plan` with
+  the members `cap` and `effective_routes`, and `report_too_large` with
+  the members `actual`, `bound` and `limit`); `429` with `Retry-After`
   from the shared rate-limit helper; `503` fail-closed when a binding or
-  upstream dependency is unavailable.
+  upstream dependency is unavailable. `stale_revision` carries the
+  current state in a member that depends on the write: `stale_groups`
+  (every stale group's `check`, `current_state` and
+  `current_state_revision`) on the mutation batch
+  (`POST /v1/sites/{site}/mutations`); `current_revision` on the
+  notification settings and destination policy writes
+  (`PUT /v1/sites/{site}/notification-settings`,
+  `PATCH /v1/destinations/{id}`); and `current` on the scope write
+  (`PUT /v1/sites/{site}/scope`, the stored scope or `null`), the site
+  metadata write (`PATCH /v1/sites/{site}`, `alias` and
+  `metadata_revision`), the verified-good acceptance
+  (`POST /v1/sites/{site}/verified-good/accept`, `field` and
+  `profile_revision`) and the protected-list write
+  (`PUT /v1/account/protected-sites`, `revision` and `site_ids`).
 - **Caching:** every authenticated response and every error carries
   `Cache-Control: no-store`.
-- **Idempotency is transport-level.** Authenticated client mutations
-  carry an `Idempotency-Key` header, bound to the tuple (method,
-  canonical path, credential, body hash) and retained for 7 days. A
-  header key covers bodyless requests (`DELETE`) that a body field could
-  not. Replay is evaluated before every other guard (sequence, revision,
-  conflict), so retries converge on the original result. Replaying a key
-  with the same tuple returns the original result; replaying it with a
-  different tuple is `409 idempotency_conflict`, never the first
-  request's result. **Secret-bearing responses are the one documented
-  divergence:** plaintext credentials are shown once and stored
-  hash-only, so a replayed mint cannot return the secret again; it
-  returns `200 { "status": "secret_already_issued", "token_id": "…" }`,
-  and the remedy for a lost secret is revoke-and-remint. Provider hooks
-  do not use the header: their idempotency is the provider event
-  identity, as specified under deployment records. Local precedent
-  exists in `scan_executions.idempotency_key UNIQUE`; server precedent
-  in the activation nonce and the hashed webhook event id.
-- **Limits, v1 values:** request bodies 8 MB; 50,000 occurrences per
-  snapshot and 2,000 groups per bootstrap; 200 entries per mutation
-  batch; coverage bounded at 5,000 routes, 1,000 checks, and 20,000
-  exception entries per snapshot, with an expanded route-by-check
-  product cap of 2,000,000 pairs; page `limit` on cursor reads is
-  optional, default 100, maximum 500. Requests over a limit are `422`
-  with the offending bound named in `details`.
+- **Idempotency is transport-level.** An authenticated client mutation
+  whose operation declares it takes an `Idempotency-Key` header of 1 to
+  255 printable ASCII characters; any other value is
+  `400 malformed_request`. The CI submission requires the key
+  (`400 idempotency_key_required` without it); every other such
+  operation takes it as optional. The service keeps one record per
+  account, operation and key, and never stores the key itself: the
+  record holds the key's SHA-256 and the SHA-256 of the canonical
+  request (method, path, credential, body).
+  Replay is evaluated before every other guard (sequence, revision,
+  conflict), so retries converge on the original result. The first
+  request takes the record `in_progress` under a three-minute lease; a
+  retry inside the lease is `409 request_in_progress` with a
+  `Retry-After` of the lease's remaining seconds, rounded up, and a
+  retry of the same request after the lease lapses takes the record
+  over and applies, while the holder it replaced commits nothing. A
+  completed record holds the `2xx` answer and replays it byte for byte
+  for 24 hours, after which the key is free again. A refusal is never
+  stored: a non-`2xx` answer deletes the record, so the same request
+  runs again once its cause is fixed. The same key on a different
+  request (another body, path or credential) is
+  `422 idempotency_conflict`, never the first request's result.
+  **Secret-issuing operations are the one documented divergence:**
+  plaintext credentials are shown once and stored hash-only, so their
+  record keeps only what was created, never the answer, and a retry is
+  `409 secret_already_issued` whose `issued` member names the created
+  resource's kind and id; the remedy for a lost secret is
+  revoke-and-recreate. An effect outside the service that a request
+  under a record causes, such as a webhook delivery or a mail send,
+  either commits with the record's completion or carries a key derived
+  from the record that a takeover does not change, so a receiver that
+  deduplicates by that key sees one effect. Provider hooks do not use
+  the header: their idempotency is the provider event identity, as
+  specified under deployment records. Local precedent exists in
+  `scan_executions.idempotency_key UNIQUE`; server precedent in the
+  activation nonce and the hashed webhook event id.
+- **Limits, v1 values:** request bodies are bounded per route (4 KiB
+  unless the route states otherwise, a route that takes an
+  `Idempotency-Key` and reads no body of its own included, since the
+  key is bound to the body's hash; 4 MiB for the desktop and CI
+  submissions, the CI gate, the mutation batch and the scope write;
+  512 KiB for a capability manifest; 64 KiB for a fix-job result;
+  256,000 bytes for the GitHub, Vercel and Netlify webhook doors and
+  the site's own deploy door; 64,000 bytes for the Resend webhook
+  door), each stated in bytes as the route's `x-body-limit` in the
+  OpenAPI document, and a body over its route's limit is refused with
+  `413 payload_too_large`, whose problem names no bound; 50,000
+  occurrences per snapshot and 2,000 groups per bootstrap; 200
+  entries per mutation batch; coverage bounded at 5,000 routes, 1,000
+  checks, and 20,000 exception entries per snapshot, with an expanded
+  route-by-check product cap of 2,000,000 pairs; page `limit` on
+  cursor reads is optional, default 100, maximum 500. Requests over a
+  count limit are `422` whose problem details name the offending
+  bound.
 - **Version evolution:** request bodies reject unknown fields (the
   activation and catalog-pack `deny_unknown_fields` posture), clients
   must ignore unknown response fields, and breaking changes bump
@@ -1977,9 +2034,9 @@ apply in producer order. Mutation batches
 group and carries that group's `based_on_revision`; the server validates
 every entry, applies all or none, and the whole batch produces one new
 `state_revision`. If any entry is stale the batch fails
-`409 stale_revision` and `details` carries the current state and revision
-of every stale group, so the client reconciles and resubmits without a
-second read. Stale mutations are never merged.
+`409 stale_revision` and its `stale_groups` member carries the current
+state and revision of every stale group, so the client reconciles and
+resubmits without a second read. Stale mutations are never merged.
 
 ### Recovery
 
@@ -2408,10 +2465,11 @@ with the credentials):
     exposure plus 72 hours). Completion is timer-driven against the
     predicate; no write promotes in the same breath it warns.
     Completion and cancellation race on a
-    single row and exactly one wins. `409 recovery_pending` guards
-    operations the pending state excludes. `last_admin`,
-    `recovery_pending`, and `destination_in_use` are members of the
-    closed error vocabulary like every other code in this spec.
+    single row and exactly one wins. A pending recovery refuses no
+    request: the `X-SiteCMD-Recovery-Pending` header announces it on
+    every authenticated response until it completes or is cancelled.
+    `last_admin` and `destination_in_use` are members of the closed
+    error vocabulary like every other code in this spec.
 - `PUT /v1/account/protected-sites` - the user-chosen protected list
   the over-plan selection rule consults, revision-guarded.
 - `GET /v1/account/export` - account-wide export: every site's export
@@ -2448,9 +2506,9 @@ Verified-good baseline (installation token):
   `based_on_profile_revision`, and the expected value digest (or source
   observation id), so a delayed acceptance cannot bless a value the
   user never saw: a newer value having arrived is `409 stale_revision`
-  with the current state in `details`. The response returns the new
-  profile revision and the accepted source provenance. Lifecycle
-  semantics in the hosted scanner spec.
+  whose problem details carry the current state. The response returns
+  the new profile revision and the accepted source provenance.
+  Lifecycle semantics in the hosted scanner spec.
 
 Credential management (installation token): `POST /v1/tokens/ci`,
 `POST /v1/tokens/webhook`, `POST /v1/tokens/{id}/rotate`,
@@ -2748,8 +2806,8 @@ CI token:
 
 ## Physical write strategy and the shard key
 
-The v1 limits (8 MB bodies, 50,000 occurrences, 20,000 coverage
-exceptions, 200-mutation batches) must be physically writable inside
+The v1 limits (4 MiB submission bodies, 50,000 occurrences, 20,000
+coverage exceptions, 200-mutation batches) must be physically writable inside
 D1's real invocation limits: bounded statements per batch, bounded
 bound parameters per statement, serial per-database execution. The
 contract:
@@ -3465,7 +3523,7 @@ figures: `REPLAY_RETENTION_DAYS = 90` in the activation worker and
 | Current deployment head and ordering watermarks | Life of the connected site                                      |
 | Events, observations, deployments, alerts       | 90 days                                                         |
 | Disconnected-site state                         | 30 days after disconnect, then expired                          |
-| Idempotency keys                                | 7 days                                                          |
+| Idempotency-Key records (key stored as a hash)  | 24 hours                                                        |
 | Route profiles (signatures, MAC key)            | Life of the site, compacted with routes                         |
 | Measurement series                              | 90 days                                                         |
 | Notification settings, alert webhooks           | Life of the connected site                                      |
@@ -3503,8 +3561,9 @@ itself is part of this registry:
 - **Operational** is service telemetry about the tenant's traffic,
   not tenant content, excluded from export with its retention stated:
   raw per-channel delivery logs (90 days; their outcomes are
-  already summarized on the exportable alert record), idempotency
-  keys (7 days), rate-limit counters (transient), scan records and
+  already summarized on the exportable alert record),
+  `Idempotency-Key` records (24 hours; the key itself is stored only
+  as its SHA-256), rate-limit counters (transient), scan records and
   admission leases (24-hour transient execution state),
   redemption-nonce records (hashes only, TTL plus 7 days), the
   coalescing-generation watermark (a counter, no tenant content;
@@ -3988,8 +4047,8 @@ visible backpressure, never silent dropping.
   `scope_id` (the site id, or the account-scope id for account
   erasure - one receipt schema serves both endpoints), a
   non-reversible binding of the owning subscription (an
-  HMAC of the subscription id, so a repeated erase request from the same
-  account can be matched after the tenant's idempotency rows are gone),
+  HMAC of the subscription id, so a repeated account erase from the
+  same subscription can be matched after every tenant row is gone),
   and the deletion time - `deleted_at`, recorded after
   `send_quiesced_at` and therefore doubling as the externally
   attested no-initiation cutoff, while the internal quiescence
@@ -4003,21 +4062,31 @@ visible backpressure, never silent dropping.
   contract, consistent with the secret-replay rule: **the status token
   is minted once, never re-shown, never replaced**, and stays valid for
   the receipt's retention, so a poller's token cannot be invalidated
-  behind its back. A replayed erase while the tenant still exists (same
-  `Idempotency-Key`, erasure in flight) answers
-  `200 secret_already_issued` with the `job_id` and no token, like any
-  other secret-bearing replay. A retried erase after deletion, when the
-  tenant's idempotency rows are gone, authenticates with any valid
-  installation token of the owning subscription: the server HMACs the
-  caller's subscription id, matches it against the receipt's account
-  binding, and answers
-  `200` with the same exact envelope - status, receipt projection, and
-  `ciphertext_deletion` - and no token: the record-deletion fact is
+  behind its back. The erase routes keep no `Idempotency-Key` record:
+  the delete commits in the request's own transaction, so by the time
+  the first answer leaves there is no tenant state left for a retry to
+  replay from, and a lost status token stays lost. The two erase routes
+  answer a retry after deletion differently. A retried **site** erase
+  resolves no site and answers `404 not_found`, the answer for any site
+  the caller cannot see; on this route the one thing that `404` can
+  mean is that the site is already gone, and the status token from the
+  first answer still reads the receipt. The site receipt also records
+  the subscription binding when the service holds a binding key, but no
+  retry is matched against it. A retried **account** erase after
+  deletion authenticates with any valid installation token of the
+  owning subscription: the account is gone,
+  so the server HMACs the caller's subscription id under every
+  configured binding key, matches it against the account receipt's
+  binding, advances the erasure once if it is still draining, and
+  answers `200` with the envelope the status endpoint serves - status,
+  receipt projection, and `ciphertext_deletion` - and no token. Every
+  other route answers that caller `404`. The record-deletion fact is
   final, while ciphertext deletion may still be `pending`, which is
   exactly why the envelope carries it and why "no further polling
-  needed" was retired as a claim. The receipt is the durable idempotency record for
-  exactly this case, and its contents are disclosed here because the
-  minimal-receipt promise has to name every field to mean anything.
+  needed" was retired as a claim. The account receipt is the durable
+  idempotency record for exactly this case, and its contents are
+  disclosed here because the minimal-receipt promise has to name every
+  field to mean anything.
 - **Point-in-time history and restore are part of the deletion
   story, not outside it.** D1 Time Travel is always enabled,
   retains up to 30 days of history, and restoring overwrites the
@@ -4619,14 +4688,18 @@ The implementation contract rests on these decisions:
     `event_sequence`, `alert_sequence`, `submission_sequence`), and
     recovery is watermark-plus-replay over live-served pages, so
     event-retention expiry degrades catch-up but never loses state.
-15. **Secret-bearing responses replay as `secret_already_issued`.**
-    "Shown once, stored hash-only" and "replay returns the original
-    result" cannot both hold, and the hash-only property wins; the
-    remedy is revoke-and-remint. The erasure retry is the same
-    principle carried through consistently: the status token is minted
-    once and never replaced; in-flight replays answer
-    `secret_already_issued`, and post-deletion retries answer with the
-    completion fact, matched by the receipt's account binding.
+15. **A retried secret-issuing request answers
+    `409 secret_already_issued`.** "Shown once, stored hash-only" and
+    "replay returns the original result" cannot both hold, and the
+    hash-only property wins: the `Idempotency-Key` record keeps only
+    what was created, never the answer, and the refusal's `issued`
+    member names it; the remedy is revoke-and-recreate. The erasure
+    retry is the same principle carried through consistently: the
+    status token is minted once and never replaced, and erasure keeps
+    no `Idempotency-Key` record to replay. After deletion, a retried
+    account erase answers with the completion fact, matched by the
+    receipt's account binding, and a retried site erase answers `404`
+    because the site is gone.
 16. **Correlation pairs are keyed by stable installation identity** and
     merged as a validated union: independent submission counters are
     never compared, and credential rotation cannot orphan or clobber

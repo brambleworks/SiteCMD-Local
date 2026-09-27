@@ -31,6 +31,7 @@ fn error(code: &str, message: &str) -> ConnectedServiceError {
         message: message.into(),
         request_id: Some("req_9f2".into()),
         details: None,
+        retry_after: None,
     }
 }
 
@@ -100,6 +101,7 @@ fn a_refusal_carries_neither_the_token_nor_the_tenant_content_it_was_handed() {
                 "target": "customer-production"
             }
         })),
+        retry_after: None,
     };
 
     let rendered = refusal(&leaky, "submission", "SITECMD_CI_TOKEN");
@@ -122,6 +124,74 @@ fn an_unknown_refusal_still_prints_the_services_own_words() {
     );
     assert!(rendered.contains("some_future_code"), "{rendered}");
     assert!(rendered.contains("has not learned"), "{rendered}");
+}
+
+#[test]
+fn in_progress_issued_secret_and_media_type_refusals_name_a_next_action() {
+    for code in [
+        "request_in_progress",
+        "secret_already_issued",
+        "unsupported_media_type",
+    ] {
+        let action = next_action(&error(code, "refused"), "SITECMD_CI_TOKEN");
+        assert!(
+            action
+                .as_deref()
+                .is_some_and(|sentence| !sentence.is_empty()),
+            "{code} has no next action"
+        );
+    }
+}
+
+#[test]
+fn an_in_progress_refusal_names_the_wait_its_retry_after_gave() {
+    let mut in_progress = error("request_in_progress", "refused");
+    in_progress.retry_after = Some(42);
+    let action = next_action(&in_progress, "SITECMD_CI_TOKEN").expect("a next action");
+    assert!(
+        action.contains("re-run this step after 42 seconds."),
+        "{action}"
+    );
+    assert!(!action.contains("few minutes"), "{action}");
+
+    in_progress.retry_after = Some(1);
+    let action = next_action(&in_progress, "SITECMD_CI_TOKEN").expect("a next action");
+    assert!(action.contains("after 1 second."), "{action}");
+
+    // No header: the order of a lease, which is what the service holds.
+    let bare = next_action(&error("request_in_progress", "refused"), "SITECMD_CI_TOKEN")
+        .expect("a next action");
+    assert!(
+        bare.contains("re-run this step in a few minutes."),
+        "{bare}"
+    );
+}
+
+#[test]
+fn a_throttled_refusal_names_the_wait_its_retry_after_gave() {
+    let mut throttled = error("rate_limited", "refused");
+    throttled.retry_after = Some(30);
+    let action = next_action(&throttled, "SITECMD_CI_TOKEN").expect("a next action");
+    assert!(action.contains("Retry after 30 seconds."), "{action}");
+}
+
+#[test]
+fn an_already_issued_secret_says_where_to_revoke_it_and_names_it() {
+    let mut issued = error("secret_already_issued", "refused");
+    issued.details = Some(serde_json::json!({
+        "code": "secret_already_issued",
+        "issued": { "kind": "ci_token", "id": "cit_0123456789abcdef" }
+    }));
+    let action = next_action(&issued, "SITECMD_CI_TOKEN").expect("a next action");
+    assert!(action.contains("desktop app"), "{action}");
+    assert!(action.contains("cit_0123456789abcdef"), "{action}");
+
+    let unnamed = next_action(
+        &error("secret_already_issued", "refused"),
+        "SITECMD_CI_TOKEN",
+    )
+    .expect("a next action");
+    assert!(unnamed.contains("desktop app"), "{unnamed}");
 }
 
 #[test]

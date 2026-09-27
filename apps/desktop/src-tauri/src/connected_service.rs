@@ -8,8 +8,12 @@ use sitecmd_engine::sync::{ClientGroupState, DesktopSubmission, DismissalPolicy}
 
 pub(crate) mod autofix_jobs;
 pub(crate) mod deployment_ordering;
+mod problem;
 #[cfg(test)]
 pub(crate) mod test_double;
+
+pub(crate) use problem::local_error;
+use problem::parse_response;
 
 pub use autofix_jobs::{
     ClaimedFinding, ClaimedJob, Committer, FindingOutcomeReport, OperationToken, PullRequestReport,
@@ -118,6 +122,9 @@ pub struct ConnectedServiceError {
     pub message: String,
     pub request_id: Option<String>,
     pub details: Option<Value>,
+    /// The seconds a refusal's `Retry-After` header names, such as the lease
+    /// left on a `request_in_progress` key.
+    pub retry_after: Option<u64>,
 }
 
 impl ConnectedServiceError {
@@ -175,21 +182,6 @@ impl std::fmt::Display for ConnectedServiceError {
 }
 
 impl std::error::Error for ConnectedServiceError {}
-
-#[derive(Deserialize)]
-struct ErrorEnvelope {
-    error: ErrorBody,
-}
-
-#[derive(Deserialize)]
-struct ErrorBody {
-    code: String,
-    message: String,
-    #[serde(default)]
-    details: Option<Value>,
-    #[serde(default)]
-    request_id: Option<String>,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GroupMutationEntry {
@@ -482,8 +474,9 @@ impl ConnectedServiceClient {
         parse_response(status, &bytes)
     }
 
-    /// One wire exchange: the transport concerns without the body parse, for
-    /// the routes that answer `204` and give a parser nothing to read.
+    /// One wire exchange: the transport concerns and a refusal's problem
+    /// details, leaving a success's body unparsed for the routes that answer
+    /// `204` and give a parser nothing to read.
     async fn send(
         &self,
         method: Method,
@@ -540,6 +533,7 @@ impl ConnectedServiceClient {
             )
         })?;
         let status = response.status();
+        let headers = response.headers().clone();
         let bytes = crate::http_client::read_body_limited(
             response,
             MAX_RESPONSE_BYTES,
@@ -552,21 +546,20 @@ impl ConnectedServiceClient {
                 "the connected service response could not be read",
             )
         })?;
+        if !status.is_success() {
+            return Err(problem::refusal(status, &headers, &bytes));
+        }
         Ok((status, bytes))
     }
 
     /// One exchange for the routes that answer `204` and give a parser
-    /// nothing to read: success is success, anything else is the envelope.
+    /// nothing to read: success is success, anything else is a refusal.
     pub(crate) async fn no_content(
         &self,
         method: Method,
         url: url::Url,
     ) -> Result<(), ConnectedServiceError> {
-        let (status, bytes) = self.send(method, url, None, None, None).await?;
-        if status.is_success() {
-            return Ok(());
-        }
-        Err(parse_error(status, &bytes))
+        self.send(method, url, None, None, None).await.map(|_| ())
     }
 
     /// Idempotently disconnect a site while retaining its state window.
@@ -744,51 +737,6 @@ impl ConnectedServiceClient {
         let url = self.url(&["v1", "sites", site_id, "mutations"])?;
         self.request(Method::POST, url, Some(idempotency_key), Some(body))
             .await
-    }
-}
-
-pub(crate) fn local_error(code: &str, message: &str) -> ConnectedServiceError {
-    ConnectedServiceError {
-        status: 0,
-        code: code.into(),
-        message: message.into(),
-        request_id: None,
-        details: None,
-    }
-}
-
-fn parse_response<T: DeserializeOwned>(
-    status: StatusCode,
-    bytes: &[u8],
-) -> Result<T, ConnectedServiceError> {
-    if status.is_success() {
-        return serde_json::from_slice(bytes).map_err(|_| ConnectedServiceError {
-            status: status.as_u16(),
-            code: "malformed_response".into(),
-            message: "the connected service returned an invalid response".into(),
-            request_id: None,
-            details: None,
-        });
-    }
-    Err(parse_error(status, bytes))
-}
-
-/// The service's error envelope, or the uniform refusal when there is none.
-fn parse_error(status: StatusCode, bytes: &[u8]) -> ConnectedServiceError {
-    let envelope = serde_json::from_slice::<ErrorEnvelope>(bytes).ok();
-    let error = envelope.map(|envelope| envelope.error);
-    ConnectedServiceError {
-        status: status.as_u16(),
-        code: error
-            .as_ref()
-            .map(|error| error.code.clone())
-            .unwrap_or_else(|| "request_failed".into()),
-        message: error
-            .as_ref()
-            .map(|error| error.message.clone())
-            .unwrap_or_else(|| "the connected service refused the request".into()),
-        request_id: error.as_ref().and_then(|error| error.request_id.clone()),
-        details: error.and_then(|error| error.details),
     }
 }
 

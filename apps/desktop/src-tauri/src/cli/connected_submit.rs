@@ -345,11 +345,35 @@ fn refusal(error: &ConnectedServiceError, door: &str, token_env: &str) -> String
 }
 
 fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String> {
-    // The one refusal whose next step names a variable rather than a fact, so
-    // it is answered before the table of fixed sentences.
+    // The refusals whose next step names a variable or the service's own id
+    // are answered before the table of fixed sentences.
     if error.code == "unauthorized" {
         return Some(format!(
             "The CI token in {token_env} is unknown or revoked. Mint a fresh one for this site in the desktop app and replace the secret."
+        ));
+    }
+    // The two refusals that say when to come back name the wait the service's
+    // Retry-After gave.
+    if error.code == "request_in_progress" {
+        let wait = retry_wait(error.retry_after, "in a few minutes");
+        return Some(format!(
+            "An earlier run of this step with the same payload is still being applied. Nothing new was applied; re-run this step {wait}."
+        ));
+    }
+    if error.code == "rate_limited" {
+        let wait = retry_wait(error.retry_after, "after the interval the service named");
+        return Some(format!("This site is sending too fast. Retry {wait}."));
+    }
+    if error.code == "secret_already_issued" {
+        let issued = error
+            .details
+            .as_ref()
+            .and_then(|details| details.pointer("/issued/id"))
+            .and_then(serde_json::Value::as_str)
+            .map(|id| format!(" ({id})"))
+            .unwrap_or_default();
+        return Some(format!(
+            "This request already created a secret{issued}, which is shown only once. Revoke it in the desktop app and create a new one."
         ));
     }
     let action = match error.code.as_str() {
@@ -398,6 +422,9 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
         "idempotency_conflict" => {
             "This submission's key was already used for a different request. Nothing was applied. Re-run the step; the key is derived from the payload, so a genuine retry cannot land here."
         }
+        "unsupported_media_type" => {
+            "The service could not read this request's body type. Install the current CLI release."
+        }
         "concurrent_write" => "Another write landed first and nothing was applied. Re-run this step.",
         "stale_key_version" | "key_commitment_mismatch" | "unclaimed_key_version"
         | "rotation_incomplete" => {
@@ -406,13 +433,22 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
         "malformed_request" => {
             "The service could not read this payload. That usually means the CLI is older than the service's schema; install the current release."
         }
-        "rate_limited" => "This site is sending too fast. Retry after the interval the service named.",
         "transport_failed" | "response_failed" | "unsafe_endpoint" => {
             "The service was not reached, so nothing was applied. Re-run this step."
         }
         _ => return None,
     };
     Some(action.to_string())
+}
+
+/// When to retry: after the whole seconds a Retry-After named, or `fallback`
+/// where it named none.
+fn retry_wait(seconds: Option<u64>, fallback: &str) -> String {
+    match seconds {
+        Some(1) => "after 1 second".into(),
+        Some(seconds) => format!("after {seconds} seconds"),
+        None => fallback.into(),
+    }
 }
 
 #[cfg(test)]
