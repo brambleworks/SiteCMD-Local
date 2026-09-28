@@ -2085,8 +2085,13 @@ specified:
   opaque tokens minted from `alert_sequence`; no cursor returns the
   newest page. Content rules in the delivery spec.
 
-The route-profile contract is **not implemented in Connect**. Both routes
-below are absent from its OpenAPI paths and have no implemented access rule:
+Connect stores route profiles in `site_route_profiles` and exports them as
+`route_profile` records. Site deletion cascades to those profiles and the
+per-site content-MAC salt from which the site's MAC key derives. The key
+and salt are excluded from export.
+
+The two public routes below are **not implemented in Connect**. They are
+absent from its OpenAPI paths and have no implemented access rule:
 
 - `GET /v1/sites/{site}/route-profiles?cursor=&limit=` (**not implemented**)
   describes paginated server-owned route profiles: page signatures as
@@ -2095,12 +2100,12 @@ below are absent from its OpenAPI paths and have no implemented access rule:
   describes a per-route reset guarded by `based_on_revision`, with
   `409 stale_revision` on mismatch and a recorded reset event.
 
-Under this unimplemented contract, route profiles accompany exports and
-are erased with the site, including the content-MAC key. Their retention
-follows their routes: profiles of routes out of scope for more than
-180 days retire under the same cumulative bound as occurrence records.
-This bounds growth from route churn. The hosted scanner's reset references
-name this contract; Connect exposes no route-profile reset.
+The contract also specifies retirement of profiles whose routes are out
+of scope for more than 180 days, under the same cumulative bound as
+occurrence records. That compaction is **not implemented**: the retention
+sweep does not prune `site_route_profiles`. Profiles remain until their
+site is deleted. The hosted scanner's reset references name the
+unimplemented public reset contract.
 
 Paginated responses are
 `{ "items": […], "next_cursor": "…" | null, "current_sequence": 912 }`.
@@ -3407,7 +3412,7 @@ disclosure section keeps the two in agreement.
 | Events, observations, deployments, alerts       | 90 days                                                         |
 | Disconnected-site state                         | 30 days after disconnect, then expired                          |
 | Idempotency-Key records (key stored as a hash)  | 24 hours                                                        |
-| Route profiles (signatures, MAC key)            | Life of the site, compacted with routes                         |
+| Route profiles (signatures, MAC salt)           | Life of the site; 180-day route compaction is not implemented   |
 | Measurement series                              | 90 days                                                         |
 | Notification settings, alert webhooks           | Life of the connected site                                      |
 | Destinations (account-level)                    | Life of the account or explicit delete                          |
@@ -3419,7 +3424,7 @@ disclosure section keeps the two in agreement.
 | Security notices                                | Pending until drained; deleted 30 days after draining           |
 | Erasure receipts (see contents below)           | 1 year                                                          |
 
-**The export record registry, v1.** Every stored data family is
+**The export record registry, v1.** Connect's Postgres data families are
 classified into exactly one of four classes, and the classification
 itself is part of this registry:
 
@@ -3455,8 +3460,7 @@ itself is part of this registry:
   their outcomes are
   already summarized on the exportable alert record),
   `Idempotency-Key` records (24 hours; the key itself is stored only
-  as its SHA-256), rate-limit counters (transient), scan records and
-  admission leases (24-hour transient execution state),
+  as its SHA-256), rate-limit counters (transient),
   redemption-nonce records (hashes only, TTL plus 7 days), the
   coalescing-generation watermark (a counter, no tenant content;
   survives disconnect so a reconnected site continues its sequence,
@@ -3847,14 +3851,41 @@ itself is part of this registry:
   (the row's metadata is operational; the ciphertext embeds live
   capabilities and is Secret until purged at terminal outcome).
 
-**The inventory is derived, not remembered**: a guardrail maps every
-persistence surface in **every connected-service worker** - Postgres
-tables, Durable Object storage keys, Queue message payloads, and any
-tenant-bearing R2 object - to exactly one registry class. Connect's
-`src/lib/export-registry.ts` classifies its Postgres tables, and its tests
-check that classification against the database schema. The control archive
-and coordinator storage described above belong to the unimplemented
-storage contract. They are not additional stores in this deployment.
+**The classification check covers Postgres tables.** Connect's
+`src/export.test.ts` reads the current schema's base tables from
+`information_schema`, applies the registry's `classifiable` filter, and
+checks that every remaining table has exactly one entry in
+`src/lib/export-registry.ts`. It also rejects entries for absent tables.
+That test does not classify Durable Object storage, Queue payloads, or R2
+objects. Those stores exist outside its coverage:
+
+- The scan Worker's `ScanCoordinator` persists per-site scan records and
+  an alarm schedule. Records contain routes, progress, sanitized partial
+  results, and browser-session state. Its alarm deletes terminal records
+  once 24 hours have elapsed since `terminal_at`; a terminal record without
+  that timestamp is deleted on the next sweep. Running records are not
+  deleted by that sweep. An erasure response that requests storage clearing
+  deletes the scan record without waiting for the terminal TTL.
+- `AdmissionShard` persists browser-capacity leases and their provider
+  session identifiers; `AccountAdmission` persists the account's fairness
+  leases without session registrations. Lease deadlines are capped at the
+  900-second browser-session budget and renewal does not extend them.
+  Unregistered expired leases are removed when the stored lease collection
+  is next read and rewritten. The shard schedules reconciliation at
+  60-second intervals while leases remain. Registered shard leases and
+  session identifiers stay until release or successful reconciliation;
+  expiry alone does not remove them. The account object has no cleanup
+  alarm, so an expired lease can remain stored until a later operation.
+- Connect's delivery Queue messages contain `attempt_id`, `erasure_epoch`,
+  and `dispatch_generation`. Its configuration names the dispatch queue
+  and its dead-letter queue, with no message-retention override.
+- Connect's `MANIFEST_REGISTRY` R2 bucket stores engine-manifest documents
+  by digest. Publication reads or creates an object and indexes it in
+  Postgres; the manifest implementation has no deletion or expiry path.
+
+The delivery write coordinator and control archive described in the
+unimplemented storage contract are distinct from the scan Worker's
+implemented Durable Objects.
 
 **Occurrence-record compaction.** Durable records need a cumulative
 bound, because route churn otherwise grows state without limit against a
@@ -3997,7 +4028,7 @@ visible backpressure, never silent dropping.
   nonce or consumed token must never be un-consumed by a restore);
   first-initiation timestamps and terminal delivery outcomes (the
   per-delivery members - journaled in the account's write
-  coordinator, per the physical write strategy, not the global
+  coordinator, per **Additional storage contracts (not implemented)**, not the global
   store); and erasure
   itself. Each
   journal row is an **operation**: a deterministic operation id,
@@ -4065,9 +4096,8 @@ visible backpressure, never silent dropping.
   `receipt` member of the status endpoint's exact envelope - the
   endpoint returns the envelope, never the bare projection. Non-erasure journal rows for an erased
   tenant do **not** become a second immortal artifact: they outlive
-  the receipt only through the provider's maximum point-in-time
-  horizon (30 days - exactly while a restore could still resurrect
-  what they re-kill), then purge; the receipt projection alone
+  the receipt only through this contract's assumed 30-day restore
+  horizon, then purge; the receipt projection alone
   lives the year. Third, **restores run only through
   the restore orchestration, and quarantine is an exclusive write
   path, never a glance**: a check-then-write pair ("observed
