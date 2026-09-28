@@ -243,9 +243,15 @@ digest message** - and only those: the transactional classes
 (confirmation, courtesy, security) carry no unsubscribe headers,
 because no unsubscribe transition is defined for them and a header
 promising one would be a lie a mail client acts on - plus a
-notification-settings link in
-every message of every class (settings changes require sign-in through
-the dashboard; an unsubscribe token only disables its message class), **no HTML, no images, and no tracking of any kind**: no
+notification-settings link in every message of every class:
+`sitecmd://connected/settings/notifications`. It opens the desktop's
+settings surface. Connect allows a client with a personal token holding
+`read` to read settings, not change them. The shipped desktop instead sends
+an installation token and receives `401`. Settings and destination-policy
+changes require a signed-in person through the dashboard's `/api/v1/*`
+forwarding at `app.sitecmd.com`; the dashboard has no settings page.
+An unsubscribe token only disables its message class. There is **no HTML,
+no images, and no tracking of any kind**: no
 open pixels, no click redirectors, no per-recipient beacons. A privacy
 product does not surveil its own alarm bell.
 
@@ -445,9 +451,10 @@ deliberately narrow:
   days therefore simply cannot one-click unsubscribe (the caller is
   a mail system, the response is a bare status, and RFC 8058 forbids
   redirecting the POST - there is no page to land on), and the
-  message's separate settings deep link remains the recovery path -
-  the accepted trade for not
-  keeping token records forever. Per RFC 8058 section 3.2 the
+  message's settings deep link cannot perform the change. Changing or
+  clearing a policy bit requires a signed-in person through the dashboard's
+  API forwarding; a personal token cannot authorize it, and the dashboard
+  has no settings page. Per RFC 8058 section 3.2 the
   endpoint accepts **both** permitted encodings,
   `application/x-www-form-urlencoded` and `multipart/form-data`,
   carrying `List-Unsubscribe=One-Click`. Fixtures cover both
@@ -475,9 +482,11 @@ deliberately narrow:
   the mode governs what the _email_ said in transit, not what the
   recipient may see after redeeming).
 - **Open in SiteCMD** is `sitecmd://connected/alerts/{alert_id}`; the
-  desktop resolves it with a full personal token holding `read`
-  (`GET /v1/alerts` and the event stream) and lands on the local
-  dossier with full detail.
+  link opens the local dossier. The shipped desktop attempts its connected
+  reads with an installation token, which Connect refuses with `401`.
+  A direct client can read `GET /v1/alerts` and the event stream with a
+  full personal token holding `read`; the shipped desktop does not
+  implement that authentication.
 - **An expired or used link is never a dead end**: the fallback page
   offers exactly two things: "resend a fresh link" (rate-limited,
   sent only to the currently verified destination) and "open in the
@@ -645,13 +654,15 @@ language carry the same staged clauses.
 
 ## Prerequisites
 
-1. **Desktop**: the alert timeline consuming `GET /v1/alerts` (the
-   AlertDossier surfaces exist and gain the connected source), a
-   notification-settings surface (destination, mode, cadence, mute,
-   severity floor), the `sitecmd://connected/alerts/{id}` deep-link
-   route, and gate configuration documentation in the CLI.
-2. **Connect**: delivery lives inside connect (alerts are its
-   state): Resend sending with the established retry constants, the
+1. **Client access**: `GET /v1/alerts` requires a signed-in person or a
+   full personal token holding `read`. For a personal-token client the
+   connected notification-settings surface is read-only; changes require
+   the dashboard's signed-in API forwarding. The shipped desktop still
+   sends an installation token, so Connect refuses its connected reads
+   and writes with `401`. Its deep links open local surfaces, not an
+   authenticated Connect session. The dashboard has no settings page.
+2. **Connect** owns alert state and delivery: Resend sending with the
+   established retry constants, the
    bounce and complaint webhook endpoint, the digest scheduler (an
    hourly cron selecting due accounts, the repository's existing
    pattern), the nonce and view routes, the report renderer and

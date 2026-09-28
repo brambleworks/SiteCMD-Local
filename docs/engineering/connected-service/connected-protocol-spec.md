@@ -34,13 +34,13 @@ deployment-record ordering, retention, recovery, and deletion.
 
 Out of scope, with owners: how the hosted scanner executes and proves
 comparability (hosted scanner spec); what alert emails contain and how the
-redemption nonce works (alert and report delivery spec); allowances, caps,
-and overage (set outside this specification); the rewrite of the governing documents
+redemption nonce works (alert and report delivery spec); pricing and
+commercial terms (set outside this specification); the rewrite of the governing documents
 (maintained-surface matrix).
 
 Normative artifacts: this document is the semantics authority. The exact
-wire shapes live in Connect's `apps/sitecmd-connect/openapi.yaml` beside the
-worker implementation and kept in agreement by contract tests; prose and
+wire shapes are defined in `apps/sitecmd-connect/openapi.yaml` in the
+separate SiteCMD-Connect repository and kept in agreement by contract tests; prose and
 schema disagreeing is a build failure, not a judgment call.
 
 ## Resource model
@@ -373,10 +373,13 @@ is the record's identity epoch, and epoch migration mirrors key rotation:
   the wrong key for a claimed version (`409 key_commitment_mismatch`)
   instead of silently corrupting identity matching. Code snapshots carry
   the commitment of the key they used. **Version 1 is claimed at site
-  creation**: the desktop generates the key when it connects the site,
-  and `POST /v1/sites` carries the version-1 commitment, so the
-  commitment exists before any snapshot and independently of whether the
-  bootstrap contains code. There is no unclaimed window in which a
+  creation**: `POST /v1/sites` requires the version-1 commitment and a
+  signed-in person through the dashboard. The shipped desktop generates
+  the key locally, but its installation token cannot call this route.
+  No implemented handoff transfers that commitment to the dashboard's
+  site-creation request. The commitment exists before any accepted
+  snapshot, independently of whether the bootstrap contains code. There is
+  no unclaimed window in which a
   web-only bootstrap would let the first later CI or desktop submission
   establish a conflicting key; a version-1 submission with a different
   commitment is `409 key_commitment_mismatch` like any other version.
@@ -387,15 +390,15 @@ is the record's identity epoch, and epoch migration mirrors key rotation:
   import of the site connection. The export file is encrypted and
   authenticated under a user-supplied passphrase, contains the site
   connection metadata and the fingerprint key, and **never contains any
-  credential**: each client supplies its own personal token, so the export
-  authorizes nothing by itself. There is no cloud
+  credential**, so the export authorizes nothing by itself. There is no cloud
   channel for the key, by construction, because any cloud channel would
   put it on SiteCMD infrastructure.
-- **Account access is separate from key transfer.** A second desktop uses
-  a personal token with the required scope and access to the site. Importing
-  the key file grants the ability to compute and resolve fingerprints; it
-  grants no server authorization. The dashboard manages account access and
-  personal tokens. These operations do not transfer the fingerprint key.
+- **Account access is separate from key transfer.** Direct client access
+  requires a personal token with the required scope and site access. The
+  shipped desktop instead sends an installation token, refused with `401`.
+  Importing the key file grants the ability to compute and resolve fingerprints; it
+  grants no server authorization. Signed-in API calls through the dashboard
+  manage account access and personal tokens without transferring the key.
 - **Rotation, including concurrent rotation.** Rotation is a
   server-coordinated epoch so two clients cannot mint different
   keys under the same version number:
@@ -1180,8 +1183,13 @@ otherwise quietly strand a user-selected route as excluded forever; a
 `pending_reentry` record that observations keep failing to resolve
 stays visibly pending and surfaces as operationally unhealthy.
 Connect scans the accepted scope without allowance-driven truncation or
-a grace period that changes scope. The desktop retains `scope_over_plan`
-and its grace-expiry field; Connect ignores them.
+a grace period that changes scope. Connect's site state no longer returns
+`scope_over_plan`,
+`site_allowance_over_plan`, their grace-expiry fields, or
+`scope_overflow_count`. The desktop's state reader still declares them
+with defaults: `false` for the flags, `null` for the expiry fields, and
+`0` for the overflow count. They are response fields, never submission
+fields. Connect returns `scope_effective_route_count` and `scope_route_cap`.
 A site cannot leave
 `pending_bootstrap` until both bootstrap and an initial scope have
 committed, because a connected site with no scope would be a guardian
@@ -1227,19 +1235,14 @@ After bootstrap, group changes travel exclusively as revision-guarded
 mutations (`POST /v1/sites/{site}/mutations`). No replacement operation
 on groups exists in the protocol.
 
-Offline decisions keep their original basis. When the desktop changes a
-group's lifecycle while connected-but-stale or offline, it records the
-intent at decision time in a persisted **connected-mutation outbox**: the
-target group, the intended transition, the group revision the user's
-decision was actually based on, and a pre-assigned idempotency key. On
-reconnect the outbox submits with that **original** `based_on_revision`,
-even when the desktop has since pulled newer server state: silently
-relabeling an old decision as based on state the user never saw would
-defeat the guard. A conflicting server change therefore surfaces as
-`409 stale_revision` for explicit reconciliation, exactly as intended.
-The lifecycle table stores neither server revisions nor pending intent;
-both live in the desktop stores described in implementation contract item 4
-below.
+The shipped desktop records offline lifecycle decisions in its
+connected-mutation outbox with the original group revision and idempotency
+key. Its installation token is refused with `401`; replacing it with a
+personal token does not authorize these writes (`403 signed_in_required`).
+A signed-in person calls `POST /v1/sites/{site}/mutations` through the
+dashboard's API forwarding. The mutation carries the revision on which the
+decision is based; a conflicting change answers `409 stale_revision`.
+Pulling newer state does not authorize rebasing an older decision.
 
 The desktop submission payload, complete except the optional
 `transient` projection envelope (elided here; bounds in this spec's
@@ -1527,16 +1530,22 @@ there is no such thing as an unlisted way in.
   characters. The checksum covers the prefix and body, encodes the unsigned
   CRC32 as four big-endian bytes in that alphabet, and is left-padded with
   `0` to six characters. Changing the prefix invalidates the checksum.
-  Dashboard sessions and the separate capability tokens do not use this format.
+  Dashboard sessions, webhook secrets, and the separate capability tokens
+  do not use this format. A generic webhook secret is `sitecmd_whs_`
+  followed by a base64url-encoded 32-byte HMAC-SHA256 value.
 - **Job token.** A `sitecmd_job_` bearer authorizes the fix-job operations
   assigned to that token. It is distinct from the site's CI credential.
 - **CI token.** Minted by a signed-in person through the dashboard, bound to exactly one site, shown
-  once, stored hash-only, chained to the owning subscription for
-  suspension. Repository identity is recorded as both the canonical
+  once, and stored hash-only. Every CI request checks the site's
+  subscription admission and answers `403 entitlement_suspended` when
+  watching is refused. Repository identity is recorded as both the canonical
   `owner/repo` and GitHub's immutable decimal repository id when a trusted
-  workflow is pinned. The desktop resolves both directly from GitHub before
-  minting, so a repository rename or later reuse of the old name cannot
-  satisfy the OIDC binding. These are additional constraints the server
+  workflow is pinned. The shipped desktop resolves both directly from
+  GitHub, but minting requires a dashboard session. No implemented handoff
+  transfers those desktop-resolved values to the dashboard request.
+  Connect checks the immutable id so a repository rename or later reuse
+  of the old name cannot satisfy the OIDC binding. These are additional
+  constraints the server
   checks against submitted deployment facts, not an alternative scope. It
   can submit deployments, CI sync payloads, and coverage for its site. Its
   only state read is `GET /v1/sites/{site}/deployment-head`, which returns
@@ -1559,10 +1568,9 @@ there is no such thing as an unlisted way in.
   fail-closed on empty secret). Vercel and Netlify doors use the
   provider's own signing; mechanics belong to the hosted scanner spec, but
   the credential object and its rotation live here.
-- **Report link.** An opaque random token following the bearer-credential
-  precedent above (32 random bytes, base64url); the service stores only
-  its SHA-256 hash, in the report's registry row alongside the row's
-  expiry. The render path looks the row up by the presented token's hash
+- **Report link.** An opaque token containing 32 random bytes encoded as
+  base64url. The service stores its SHA-256 hash alongside the report's
+  expiry. The render path looks the report up by the presented token's hash
   and checks expiry and revocation there, never in the token itself.
   Contents and redemption are the alert and report delivery spec's.
 
@@ -1579,10 +1587,9 @@ subscription stops; account access and credential management remain available.
 
 ## API protocol
 
-Connect serves `connect.sitecmd.com`. Its own data lives in Postgres,
-reached through the `HYPERDRIVE` binding, with SQL migrations applied before
-deploy. Rate limits fail closed through the shared helper. Entitlement
-reads the account's subscription from `subscriptions`.
+Connect serves `connect.sitecmd.com`. Account credentials and sign-in
+are resolved before route access checks. Entitlement reads the account's
+subscription from `subscriptions`.
 
 Conformance is judged against this protocol and its route inventory.
 
@@ -1623,9 +1630,9 @@ independently of the credential used for the request.
 **The CI gate is live end to end.** The CI token is real: minted from
 the dashboard by a signed-in person (`POST /v1/sites/{site}/tokens`),
 bound to one site, shown once, stored hash-only in this service's own
-store, listed and revoked by a public handle, and chained to the
-subscription by reading the canonical state rather than caching it - so
-the same suspension paths reach it with no machinery of its own.
+store, and listed and revoked by a public handle. Every CI door checks
+subscription admission on each request and answers
+`403 entitlement_suspended` when the account cannot watch its sites.
 `POST /v1/sites/{site}/gate` evaluates a candidate's code fingerprints
 against the baseline and answers with the new identities and a verdict,
 persisting nothing; a repo guardrail fails the build if that module ever
@@ -1662,7 +1669,7 @@ connections, reports, reconnect, key rotation, retention, and erasure. Their
 current wire shapes are frozen in the OpenAPI document named below.
 
 The OpenAPI document this spec obligates exists now, at
-`apps/sitecmd-connect/openapi.yaml` beside the Connect implementation. It
+`apps/sitecmd-connect/openapi.yaml` in the separate SiteCMD-Connect repository. It
 freezes only shapes with an implementation behind them; its header
 names the absent surfaces so a path that answers 404 is a bug and a
 capability it does not describe is one the service does not have.
@@ -1684,10 +1691,11 @@ CI bearer, normative and closed, in **two route classes** with
 different rules, because provider webhooks and mail systems are not
 browsers and must not be handed browser assumptions:
 
-- **Server-to-server doors** (the four hook doors, the RFC 8058
+- **Server-to-server doors** (the signed webhook doors, fix-job doors, the RFC 8058
   unsubscribe and the deploy's storage probe): no origin policy and no
   cookies - the callers cannot and need not establish browser context;
-  authentication is the signature or single-purpose token alone.
+  authentication is the signature, runner OIDC token, or single-purpose
+  token alone.
   Responses are bare status codes with empty or minimal JSON bodies
   and **never redirect**. The unsubscribe door implements RFC 8058
   exactly: it accepts the mail-receiver's context-free POST with the
@@ -1714,23 +1722,28 @@ configuration, which carries per-class keys (hook doors per site,
 Resend intake globally, browser-form routes per source address per
 resource).
 
-| Method + path                           | Authentication                             | Single-use               | TTL                            | Behavior                                                                     |
-| --------------------------------------- | ------------------------------------------ | ------------------------ | ------------------------------ | ---------------------------------------------------------------------------- |
-| `POST /v1/hooks/github-secret-scanning` | GitHub ECDSA signature over raw body       | Revocation is idempotent | n/a                            | Leaked-token feedback and security notice; 1 MiB body limit                  |
-| `POST /v1/hooks/vercel`                 | Provider signature (per provider contract) | Dedup by event id        | n/a                            | Deploy event; unverifiable = dropped and counted, never applied              |
-| `POST /v1/hooks/netlify`                | Provider signature (per provider contract) | Dedup by event id        | n/a                            | Same contract as above                                                       |
-| `POST /v1/hooks/{site}/deploy`          | `sha256=` HMAC over raw body               | Dedup by `event_id`      | 5-minute skew window           | Generic deploy door; body schema below; duplicate `event_id` converges `200` |
-| `POST /v1/hooks/resend`                 | Svix signature over raw body               | Dedup by `svix-id`       | 5-minute tolerance             | Bounce and complaint intake (delivery spec)                                  |
-| `GET /connect/callback`                 | OAuth `state` token (single-use, hashed)   | Yes                      | 15 minutes                     | Provider code exchange, server-side; completion page carries no tokens       |
-| `GET /a/{alert}/{nonce}`                | None (landing renders nothing sensitive)   | No (non-consuming)       | 72h from first send initiation | Alert landing page: one button, no alert content                             |
-| `POST /a/{alert}/{nonce}/redeem`        | Alert nonce (bound to `{alert}`)           | Yes                      | 72h from first send initiation | Exchanges nonce for the 30-minute view session cookie                        |
-| `GET /a/view`                           | Alert view session cookie                  | No                       | 30 minutes                     | The alert view (delivery spec's content ceiling)                             |
-| `POST /a/{alert}/{nonce}/resend`        | The nonce record (used or expired counts)  | Rate-limited             | Nonce TTL + 7 days             | Fresh link to the currently verified destination only; generic `200` always  |
-| `GET /d/{token}`                        | None (landing, non-consuming)              | No                       | 24h from first send initiation | Destination confirmation landing: one button                                 |
-| `POST /d/{token}/confirm`               | Confirmation token                         | Yes                      | 24h from first send initiation | Confirms the destination (double-opt-in completes)                           |
-| `POST /u/{token}`                       | Unsubscribe token (RFC 8058)               | Yes, idempotent replay   | 30d from first send initiation | Sets destination policy per its message class; expired answers `410`         |
-| `GET /r/{token}`                        | Report link token plus registry check      | No                       | Report TTL, revocable          | Renders the stored report projection                                         |
-| `GET /v1/internal/storage-probe`        | Deploy probe bearer, constant-time         | No                       | n/a                            | Deploy check: writes, reads back and deletes one row; no tenant data         |
+| Method + path                           | Authentication                                         | Single-use                 | TTL                            | Behavior                                                                     |
+| --------------------------------------- | ------------------------------------------------------ | -------------------------- | ------------------------------ | ---------------------------------------------------------------------------- |
+| `POST /v1/hooks/github-secret-scanning` | GitHub ECDSA signature over raw body                   | Revocation is idempotent   | n/a                            | Leaked-token feedback and security notice; 1 MiB body limit                  |
+| `POST /v1/hooks/github`                 | `X-Hub-Signature-256`: HMAC-SHA256 over raw body       | No                         | n/a                            | GitHub App pull-request deliveries for the fix loop                          |
+| `POST /v1/fix-jobs/{id}/claim`          | `X-GitHub-OIDC-Token`, checked against the job binding | One claim per purpose      | OIDC validity                  | Issues a purpose-scoped job token for execute or publish                     |
+| `POST /v1/fix-jobs/{id}/result`         | Purpose-scoped job-token bearer                        | One result per job attempt | Job timeout                    | Commits the outcome and revokes the job's live tokens                        |
+| `POST /v1/fix-jobs/{id}/publish-token`  | Publish-purpose job-token bearer                       | No                         | Job timeout                    | Mints a GitHub token for contents and pull requests in one repository        |
+| `POST /v1/fix-jobs/{id}/issue-token`    | Publish-purpose job-token bearer                       | No                         | Job timeout                    | Mints a GitHub token for issues in one repository                            |
+| `POST /v1/hooks/vercel`                 | Provider signature (per provider contract)             | Dedup by event id          | n/a                            | Deploy event; unverifiable = dropped and counted, never applied              |
+| `POST /v1/hooks/netlify`                | Provider signature (per provider contract)             | Dedup by event id          | n/a                            | Same contract as above                                                       |
+| `POST /v1/hooks/{site}/deploy`          | `sha256=` HMAC over raw body                           | Dedup by `event_id`        | 5-minute skew window           | Generic deploy door; body schema below; duplicate `event_id` converges `200` |
+| `POST /v1/hooks/resend`                 | Svix signature over raw body                           | Dedup by `svix-id`         | 5-minute tolerance             | Bounce and complaint intake (delivery spec)                                  |
+| `GET /callbacks/{provider}`             | OAuth `state` token (single-use, hashed)               | Yes                        | 15 minutes                     | Provider code exchange, server-side; completion page carries no tokens       |
+| `GET /a/{alert}/{nonce}`                | None (landing renders nothing sensitive)               | No (non-consuming)         | 72h from first send initiation | Alert landing page: one button, no alert content                             |
+| `POST /a/{alert}/{nonce}/redeem`        | Alert nonce (bound to `{alert}`)                       | Yes                        | 72h from first send initiation | Exchanges nonce for the 30-minute view session cookie                        |
+| `GET /a/view`                           | Alert view session cookie                              | No                         | 30 minutes                     | The alert view (delivery spec's content ceiling)                             |
+| `POST /a/{alert}/{nonce}/resend`        | The nonce record (used or expired counts)              | Rate-limited               | Nonce TTL + 7 days             | Fresh link to the currently verified destination only; generic `200` always  |
+| `GET /d/{token}`                        | None (landing, non-consuming)                          | No                         | 24h from first send initiation | Destination confirmation landing: one button                                 |
+| `POST /d/{token}/confirm`               | Confirmation token                                     | Yes                        | 24h from first send initiation | Confirms the destination (double-opt-in completes)                           |
+| `POST /u/{token}`                       | Unsubscribe token (RFC 8058)                           | Yes, idempotent replay     | 30d from first send initiation | Sets destination policy per its message class; expired answers `410`         |
+| `GET /r/{token}`                        | Report link token plus registry check                  | No                         | Report TTL, revocable          | Renders the stored report projection                                         |
+| `GET /v1/internal/storage-probe`        | Deploy probe bearer, constant-time                     | No                         | n/a                            | Deploy check: writes, reads back and deletes one row; no tenant data         |
 
 The generic deploy door's body, exact:
 
@@ -1751,26 +1764,28 @@ The signature is computed over `{sent_at}.{raw body}` with the
 or a header/body timestamp mismatch is rejected before parsing, a
 duplicate `event_id` inside retention converges `200`, and the
 deployment object follows the create-or-match semantics deployments
-already have. Notification settings are managed by a signed-in person through the
-dashboard at `app.sitecmd.com`. The desktop deep link
-(`sitecmd://connected/...`) opens local detail; it does not authorize a
-settings mutation.
+already have. Notification-settings writes require a signed-in person
+through the dashboard's API forwarding at `app.sitecmd.com`; the dashboard
+has no settings page. The emailed link is
+`sitecmd://connected/settings/notifications`. It opens a local desktop
+surface, but the shipped desktop's installation token is refused with
+`401`. A personal token with `read` can read settings, not change them.
 
 The alert path carries the **opaque alert id beside the nonce** (the
 delivery spec always specified "no metadata in the URL beyond the
 opaque alert id"; the id is what survives): the nonce is bound to
 that alert at mint and redemption checks the binding, and after the
 nonce record's retention ends, the landing page can still offer the
-working desktop deep link (`sitecmd://connected/alerts/{alert}`)
-because the id is in the path - a fallback that needed nothing
+desktop deep link (`sitecmd://connected/alerts/{alert}`)
+because the id is in the path - a local route that needs nothing
 secret, only a route that did not throw the id away, and one
 **bounded by alert retention**: past the alert's 90-day retention
 the landing page states that the alert has aged out and offers no
 deep link (a link to a record that no longer exists is an offer,
 not a fallback), and the desktop's deep-link handler has a defined
-not-found state for an unresolvable alert id - the connected alert
-timeline with an aged-out notice, never a dead end or an error
-dialog. The resend
+not-found state for an unresolvable alert id. The shipped desktop
+cannot fetch current Connect detail with its installation token; the
+link does not resolve that authentication failure. The resend
 action's authority, precisely: the path nonce identifies
 the alert-and-destination binding by hash lookup for as long as the
 nonce record exists (its TTL plus the 7-day retention window), used
@@ -1827,7 +1842,9 @@ nothing else, which is the honest answer.
   for accepted asynchronous work (erase); `204` for completed idempotent
   deletions and disconnections; `400` malformed request; `401` unknown or
   revoked credential, uniform; `403` valid credential refused
-  (`entitlement_suspended`, `unverified_site`, scope violations); `404`
+  (`entitlement_suspended`, `unverified_site`, `signed_in_required`,
+  `insufficient_scope`, `token_site_limited`, `account_required`,
+  `account_creation_refused`); `404`
   unknown resource within the caller's scope; `409` conflicts
   (`stale_revision`, `stale_submission`, `stale_key_version`,
   `key_commitment_mismatch`, `request_in_progress` with `Retry-After`,
@@ -1845,7 +1862,8 @@ nothing else, which is the honest answer.
   the members `cap` and `effective_routes`, and `report_too_large` with
   the members `actual`, `bound` and `limit`); `429` with `Retry-After`
   from the shared rate-limit helper; `503` fail-closed when a binding or
-  upstream dependency is unavailable. `stale_revision` carries the
+  upstream dependency is unavailable, including `identity_unavailable`
+  when the sign-in provider cannot be reached. `stale_revision` carries the
   current state in a member that depends on the write: `stale_groups`
   (every stale group's `check`, `current_state` and
   `current_state_revision`) on the mutation batch
@@ -2008,7 +2026,7 @@ Site lifecycle (signed in through the dashboard):
 - `DELETE /v1/sites/{site}` - disconnect: triggers stop, credentials for
   the site revoke, state is retained for the retention window; `204`.
 - `POST /v1/sites/{site}/reconnect` - resume a
-  disconnected-but-retained or dunning-suspended site; semantics in
+  disconnected-but-retained site; semantics in
   the allowance-transitions section (allowance check, retention-clock
   cancel, credential remint, webhook reprovisioning, all evented).
 - `POST /v1/sites/{site}/erase` - deletion: physical removal, defined
@@ -2019,8 +2037,9 @@ State and sync:
 - `GET /v1/sites/{site}/state` - site phase, current `state_revision`,
   `event_sequence`, per-producer `submission_sequence` watermarks, group
   and occurrence summaries, the current deployment head with its
-  ordering watermarks, entitlement state, and the key-migration
+  ordering watermarks and the key-migration
   status (current version, pending claim, per-actor version watermarks).
+  Entitlement is returned by `GET /v1/account`, not site state.
 - `POST /v1/sites/{site}/sync/desktop` - the desktop submission
   (signed in or a personal token with `submit`), including bootstrap.
 - `POST /v1/sites/{site}/mutations` - atomic lifecycle batch
@@ -2050,19 +2069,9 @@ specified:
   `scope_membership`, and last-evidence sequence. The legacy scalar
   `scope_route` is a compatibility projection only; `scope_routes` is the
   authoritative set.
-- `GET /v1/sites/{site}/route-profiles?cursor=&limit=` and
-  `POST /v1/sites/{site}/route-profiles/reset` (requires sign-in) - the server-owned
-  route-profile resource (page signatures as keyed MACs, the
-  `document_changed` flag, per-route profile revision): reads are
-  paginated like every list; reset is revision-guarded per route
-  (`based_on_revision`, `409 stale_revision` on mismatch) and recorded
-  as an event, which is what makes the hosted scanner spec's
-  user-visible reset implementable rather than promised. Route
-  profiles ride export, are erased with the site (including the
-  content-MAC key), have their own retention row, and are compacted
-  with their routes: profiles of routes out of scope beyond 180 days
-  retire under the same cumulative bound as occurrence records, so
-  route churn cannot grow them without limit.
+- Route-profile reads and `POST /v1/sites/{site}/route-profiles/reset`
+  are not implemented in Connect and are absent from its OpenAPI paths.
+  They have no implemented access rule or reset behavior.
 - `GET /v1/sites/{site}/measurements?check=&route=&vantage=&from=&to=&cursor=&limit=` -
   measurement series per the measurement contract, vantage-filtered.
 - `GET /v1/sites/{site}/events?cursor=&limit=` - the append-only site
@@ -2156,7 +2165,7 @@ semantics in the alert and report delivery spec):
   **Every** mutation of the resource
   advances `destination_revision`: token redemptions, bounces and
   complaints, confirmation, re-verification, policy `PATCH` - so a
-  desktop write racing a newer unsubscribe fails its revision guard
+  signed-in policy write racing a newer unsubscribe fails its revision guard
   instead of silently overwriting it. Address identity is
   **normalized and unique**: normalization trims whitespace and
   lowercases the domain part (the local part stays byte-exact, per
@@ -2238,7 +2247,10 @@ Accounts, personal tokens, and sessions:
 - `GET /v1/account` accepts a signed-in person or a full personal token with
   `read`. It returns the account's `id`, nullable `name`, `entitlement`
   (`status` and nullable `site_limit`), and `connected_sites` allowance and
-  leases with release times.
+  leases with release times. Status is `trialing`, `active`, `past_due`,
+  `canceled`, `unpaid`, `incomplete`, `incomplete_expired`, or `paused`
+  for a subscription, `none` without one, or `self_hosted` when
+  `SELF_HOSTED=1`.
 - `POST /v1/account/tokens` requires sign-in and accepts
   `{ "label": "...", "scopes": ["read"], "site_ids": ["..."] }`.
   `label` is trimmed to 1 to 80 characters; `scopes` contains one to four
@@ -2327,17 +2339,23 @@ GitHub secret scanning:
 - `POST /v1/hooks/github-secret-scanning` verifies the raw body using
   `Github-Public-Key-Identifier` and `Github-Public-Key-Signature` against
   GitHub's published ECDSA keys. It accepts at most 1 MiB.
-  The handler reads a JSON array of objects with string `token`, `type`,
-  `url`, and `source` fields. OpenAPI specifies the headers and response;
-  it does not declare the request-body schema.
+  As with every signed third-party webhook door, Connect verifies the
+  signature over the raw bytes before any parse. OpenAPI declares no
+  body schema that could be validated before that check. After signature
+  verification, the handler parses a JSON array of objects with string
+  `token`, `type`, `url`, and `source` fields.
 - `200` returns an array of `{ "token_hash": "...", "token_type": "...", "label": "true_positive" }`.
   `token_hash` is the 64-character SHA-256 digest; `token_type` is a string
-  of at most 1 MiB; `label` is `true_positive` or `false_positive`.
+  of at most 1,048,576 characters; `label` is `true_positive` or
+  `false_positive`. Feedback includes only reported values that parse
+  as Connect tokens with a valid checksum. A source outside the accepted
+  GitHub source vocabulary is stored as `unknown`.
   Malformed reports answer `400`, invalid signatures `401`, oversized
   bodies `413`, throttling `429`, and unavailable published keys `503`.
-- Personal and CI tokens are revoked atomically with a
-  `token_found_in_public` security notice. A job token revokes its job's
-  tokens. Erasure status tokens receive feedback without revocation.
+- Personal, CI, and job tokens are revoked atomically with a
+  `token_found_in_public` security notice. A job-token report revokes
+  every token of that job. Erasure status tokens receive feedback without
+  revocation.
   Notices keep internal identifiers and a closed source value, never the
   reported URL, token, or token hash. The security lane sends them to
   verified, unsuppressed destinations independently of alert preferences
@@ -2414,24 +2432,27 @@ provider teams and client-owned accounts; a single-connection model
 would exclude exactly the agency shape the RFC targets. A site binds
 `{connection_id, external_project_id}`.
 
-- **Creation.** `POST /v1/provider-connections` with the provider name
-  creates a `pending` connection and returns the provider's authorize
-  URL carrying a connect-minted single-use `state` token (bound to the
-  connection id, 15-minute TTL, hash-stored). The desktop opens that
-  URL in the system browser; the provider redirects to connect's
-  callback, which validates `state`, performs the code exchange
-  entirely server-side, and stores the provider credential encrypted
-  at rest. The desktop polls `GET /v1/provider-connections/{id}` for
-  the `active` transition; the completion page in the browser carries
-  no tokens. No provider credential ever passes through the desktop or
-  appears in a URL, a log, or an export.
+- **Creation.** A signed-in person calls `POST /v1/provider-connections`
+  through the dashboard's API forwarding with the provider name. The
+  response contains a `pending` connection and an authorize URL carrying
+  a single-use `state` token (bound to the connection id, 15-minute TTL,
+  hash-stored). Opening that URL takes the person to the provider, which
+  redirects to `GET /callbacks/{provider}`. Connect validates `state`,
+  exchanges the code server-side, and stores the provider credential
+  encrypted at rest. `GET /v1/provider-connections/{id}` exposes the
+  `active` transition to a signed-in person or a full personal token with
+  `read`; the completion page carries no tokens. The shipped desktop's
+  installation token cannot create or poll the connection. No provider
+  credential passes through a client or appears in a URL, log, or export.
 - **Scope.** The minimum the two jobs need: reading the project list
   (for site verification) and provisioning deploy webhooks. Granted
   scopes are recorded on the resource and shown before authorize.
 - **Project binding.** The provider-attested verification route names
   `{connection_id, external_project_id}`; the binding is stored on the
-  site, and the projects endpoint exists so the desktop can present
-  the choice. One provider project backs at most one connected site;
+  site. A signed-in person or a full personal token with `read` can
+  list projects. Submitting the choice to the verification route requires
+  sign-in through the dashboard's API forwarding. One provider project
+  backs at most one connected site;
   the ownership claim is exclusive.
 - **Webhook provisioning.** On site connection, connect provisions the
   provider webhook for the bound project and holds the provider-side
@@ -3094,7 +3115,7 @@ contract:
 
 ## Allowance transitions
 
-Connect has one hosted plan. Entitlement reads
+Connect has one hosted subscription offering. Entitlement reads
 `subscriptions`, which the Stripe refresh updates. `trialing` and `active`
 allow watching, fix-job dispatch, and adding sites. `past_due` allows
 watching but refuses dispatch and adding sites. `canceled`, `unpaid`,
@@ -3109,14 +3130,30 @@ account endpoint shows its release time. Exhaustion answers
 `422 connected_sites_exceed_plan` with the allowance and next release;
 a subscription that cannot add sites answers `403 entitlement_suspended`.
 The site limit gates admission only. A site that already holds its slot
-keeps working subject to subscription status; Connect does not rank sites,
-suspend a subset after an allowance change.
+keeps working subject to subscription status; Connect does not rank sites
+or suspend a subset after an allowance change.
 
-`POST /v1/sites/{site}/reconnect` requires sign-in and checks entitlement
-and lease availability for a retained site. It cancels the retention
-clock and resumes the connection. An expired site must be connected again.
-The desktop retains `site_allowance_over_plan`, `scope_over_plan`, and
-their grace-expiry fields; Connect ignores them.
+`POST /v1/sites/{site}/reconnect` requires sign-in through the dashboard
+and resumes a disconnected-but-retained site. It checks that the
+subscription permits adding sites and reclaims the site's own cooling
+slot before taking a new slot. It cancels the retention clock, restores
+the phase from the retained markers, and records the transition.
+A webhook secret revoked by disconnect is reminted and shown once on the
+transition; CI tokens remain revoked and require new minting. An expired
+site answers `404` and must be connected again. If another live site has
+taken its domain or provider project, reconnect answers `409 site_exists`
+or `409 project_already_claimed` without changing it.
+
+A retry on an already-live site converges with `200` and mints no new
+secret. Both resume and converge reprovision the provider webhook through
+the stored binding when the connection has a live credential, or report
+a degraded trigger. While the subscription does not permit watching, the
+converge path returns the existing trigger state without reprovisioning.
+
+Connect's site state omits `scope_over_plan`, `site_allowance_over_plan`,
+their grace-expiry fields, and `scope_overflow_count`. The desktop's state
+reader defaults these missing values to `false`, `null`, and `0`,
+respectively; the desktop does not send them to Connect.
 
 ## Deployment records and ordering
 
@@ -3324,9 +3361,7 @@ the site.
 
 Retention values, v1. This spec is the authority for these numbers; the
 trust and privacy pages must state them, and the guardrail in the
-disclosure section keeps the two in agreement. Precedent for the 90-day
-figures: `REPLAY_RETENTION_DAYS = 90` in the activation worker and
-`RAW_EVENT_RETENTION_DAYS = 90` in the telemetry worker.
+disclosure section keeps the two in agreement.
 
 | Data                                            | Retention                                                       |
 | ----------------------------------------------- | --------------------------------------------------------------- |
@@ -3371,7 +3406,16 @@ itself is part of this registry:
   and `personal_token_site`.
 - **Operational** is service telemetry about the tenant's traffic,
   not tenant content, excluded from export with its retention stated:
-  raw per-channel delivery logs (90 days; their outcomes are
+  `security_notices` contains internal token identifiers and a closed
+  source value; undrained notices remain until delivery or account erasure,
+  and drained notices are deleted 30 days after `drained_at`.
+  `account_creation_attempts` contains the creation lease and provider
+  identifiers used to make retries converge. A completed creation stays
+  for the account's lifetime and is erased with it; an unfinished creation
+  stays until completion or seven days after it began, when the daily
+  sweep deletes its provider organization and then its creation record.
+  Other operational data includes raw per-channel delivery logs (90 days;
+  their outcomes are
   already summarized on the exportable alert record),
   `Idempotency-Key` records (24 hours; the key itself is stored only
   as its SHA-256), rate-limit counters (transient), scan records and
@@ -3380,10 +3424,10 @@ itself is part of this registry:
   coalescing-generation watermark (a counter, no tenant content;
   survives disconnect so a reconnected site continues its sequence,
   resets only with erasure - scan idempotency is keyed by erasure
-  epoch for exactly this), and the **`delivery_attempt` rows - one
-  family, one exact schema, for every delivery class** (the
-  courtesy and security outbox rows are its earliest members, not a
-  parallel mechanism): attempt id; `class` from the delivery spec's
+  epoch for exactly this), and **`delivery_attempt` records**, one
+  family with one schema for every delivery class. `security_notices`
+  supplies the durable leaked-token notices enqueued for delivery.
+  Each attempt contains: attempt id; `class` from the delivery spec's
   closed enum; the owning **account**; the **site-dependency set
   with erasure epochs** - every site whose data the frozen body
   contains (one site for site-scoped classes, several for a digest,
@@ -3513,10 +3557,11 @@ itself is part of this registry:
   is delivering that URL and a counts summary would be a body with
   no function; the courtesy note, which carries **no** capability,
   falls back to its fixed informational sentence with the
-  truncated alias; the security notice, which likewise carries
-  none, falls back to the fixed takeover-alarm sentence with the
-  pending state named and the desktop settings deep link (a
-  `sitecmd://` route, not a web capability); webhooks fall back to
+  truncated alias; the leaked-token notice uses its original body as
+  the fallback: token kind, label and source, the revocation statement,
+  and the desktop settings deep link. A job-token notice also states
+  that every token for the job is revoked. It names no pending state;
+  webhooks fall back to
   the bounded projection reduced
   to counts with its overflow marker. The owner is still woken -
   or the capability still delivered - while the integrity alarm
@@ -3625,7 +3670,7 @@ itself is part of this registry:
   at an unknown earlier point. In normal operation an indeterminate
   security notice is then re-sent under a fresh attempt-scoped
   idempotency key - at-least-once on purpose, because for the
-  takeover alarm a duplicate warning beats a maybe-never one; during
+  leaked-token notice a duplicate warning beats a maybe-never one; during
   erasure it is not (erasure is the owner saying stop). Erasure runs
   a **drain barrier** on this machinery, and the barrier has **two
   named boundaries, because its own reconciliation sends are
@@ -3833,8 +3878,9 @@ visible backpressure, never silent dropping.
   Account erasure
   runs this cascade for every site and then removes account-scoped
   state: destinations, provider connections and their credentials,
-  personal tokens, subscriptions, every remaining `delivery_attempt`,
-  and security notices. The identity drain deletes the WorkOS organization
+  personal tokens, subscriptions, slot leases, members, the account's
+  creation record, every remaining delivery attempt, and security notices.
+  The identity drain deletes the WorkOS organization
   and each member's WorkOS user that no other account or unfinished
   creation names. The erasure
   fixtures cover every family the retention table names, both
@@ -4337,8 +4383,13 @@ visible backpressure, never silent dropping.
 
 ## Desktop and CLI implementation contract
 
-The desktop and CLI implement the producer half of this protocol through one
-shared engine vocabulary and one canonical payload builder.
+The desktop and CLI share an engine vocabulary and canonical payload
+builder. The shipped desktop is incompatible with Connect's account
+authentication: it stores and sends an installation token, which Connect
+refuses with `401`. It does not implement personal-token custody. Direct
+clients use personal tokens for routes accepting their scopes; routes
+requiring sign-in are called through the dashboard at `app.sitecmd.com`.
+The local producer behavior and the service's access rules are distinct:
 
 1. **Release provenance.** Every persisted scan run carries the engine release,
    capability-manifest digest, canonicalizer, crawl profile, execution profile,
@@ -4358,24 +4409,31 @@ shared engine vocabulary and one canonical payload builder.
    local submission sequences and capture the event watermark at
    scan start. Connect keys submissions by the sending credential's actor,
    `user:<subject>` or `token:<token_id>`. Revision-guarded lifecycle decisions enter a transactional
-   outbox with their original basis and idempotency key. Pulling newer state
-   never silently rebases an offline decision.
+   outbox with their original basis and idempotency key. The shipped
+   desktop cannot deliver these mutations with its installation token;
+   a personal token is also refused because the route requires sign-in.
+   Pulling newer state never rebases an offline decision.
 5. **Canonical payload and inspectors.** The database builds the wire payload
    from persisted runs, scope, lifecycle state, coverage, engine stamps, and
    bootstrap tombstones. The desktop inspector and the standalone CLI
    `connected --dry-run` render that exact serialization without allocating a
    sequence or sending it. CI code-gate submissions use the same builder.
-6. **Credential custody and transfer.** Personal tokens and project
-   fingerprint keys belong in the OS credential store, not SQLite. Encrypted
-   connection exports carry site metadata and the fingerprint key but never the
-   personal token. Key rotation keeps a pending key until the completing
-   snapshot commits.
+6. **Credential custody and transfer.** The shipped desktop stores the
+   retired installation token and project fingerprint keys in the OS
+   credential store. Encrypted connection exports carry site metadata
+   and the fingerprint key, never the installation token. Connect refuses
+   that token. A direct client using personal tokens must keep them in
+   its credential store and exclude them from SQLite and connection
+   exports. Key-rotation mutations require a signed-in person through
+   the dashboard; the desktop cannot authorize them.
 7. **Bootstrap derivation.** Bootstrap is the union of current canonical groups
    and stored lifecycle overrides. Last-known occurrences come from the most
    recent complete execution that saw each group. Unknown or malformed state
    fails closed instead of being repaired by guesswork.
-8. **Source boundaries.** Desktop sync can carry Web and Code Scan observations
-   plus user lifecycle intent. CI can submit code evidence and deployment
+8. **Source boundaries.** The desktop submission schema carries Web and
+   Code Scan observations and bootstrap lifecycle state. Later lifecycle
+   changes use the separate signed-in mutation route. CI can submit code
+   evidence and deployment
    provenance but cannot mutate groups or claim a desktop submission sequence.
 
 Changes to any of these invariants must update the shared wire types, inspector

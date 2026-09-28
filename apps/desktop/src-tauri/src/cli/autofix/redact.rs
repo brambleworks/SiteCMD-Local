@@ -48,7 +48,7 @@ pub fn summary(root: &Path, text: &str) -> String {
 }
 
 /// SiteCMD's own credentials are `sitecmd_<kind>_<opaque>`: a job token, a
-/// connection access token, a hook secret. `redact_secrets` knows the
+/// personal token, a hook secret. `redact_secrets` knows the
 /// providers' shapes and not ours, so one of ours that reached a tool's output
 /// is masked here first. Two underscores after the prefix is the whole shape,
 /// the opaque half runs to the first character no base64url tail can carry,
