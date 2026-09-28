@@ -886,8 +886,9 @@ produces them.
   ordinary visitors still see broken. The exclusion is a named
   coverage exception (`document_changed`), visible like every other.
   **Self-heal**: three consecutive consistent observations of the new
-  signature adopt it and lift the exclusion; the explicit route-profile
-  reset lifts it immediately for deliberate redesigns. A first scan
+  signature adopt it and lift the exclusion. The route-profile contract
+  describes an immediate reset for deliberate redesigns, but Connect
+  does not implement that endpoint. A first scan
   has no signature and gates on challenge markers alone - **unless
   standing evidence exists for that vantage**, in which case the
   missing signature is `profile_cold`, not first-scan innocence: a
@@ -1027,11 +1028,10 @@ produces them.
   their entries unresolved indefinitely, as a named content-variant
   condition in site state - visible, explained, never silently
   accepted and never silently flagged forever.
-  The route profile is a protocol resource with reads and a
-  revision-guarded reset endpoint (protocol spec), so the user-visible
-  reset is implementable, exported, erased with the site, and bounded
-  by compaction; a deliberate redesign can be acknowledged immediately
-  instead of waiting out the healing window. The `bot_challenge` exception is
+  The protocol spec describes route-profile reads and a revision-guarded
+  reset, with export, site erasure, and compaction requirements. Connect
+  implements neither route, so a deliberate redesign has no API reset
+  that bypasses the healing window. The `bot_challenge` exception is
   user-visible and actionable: the site is challenging its own
   guardian, and the scanner page documents how to allowlist it.
 
@@ -1377,7 +1377,7 @@ actually computed from:
   the modeled total back to the actual invoice line, so the
   allocation model is checked against the bill every month rather
   than trusted.
-- **Workers requests and CPU time, D1 reads, writes, and storage,
+- **Workers requests and CPU time, Postgres queries and storage, Hyperdrive,
   Durable Object duration and storage, Queue operations, and R2
   operations**, attributed to site and activity (scan, ingest,
   delivery, render) by the worker doing the work.
