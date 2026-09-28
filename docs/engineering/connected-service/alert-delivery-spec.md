@@ -14,7 +14,7 @@ this document.
 Revision history is maintained in Git. Only the current normative text in
 this document is part of the implementation contract.
 
-**Audience:** Engineers building delivery in SiteCMD-Web and the
+**Audience:** Engineers building Connect delivery and the
 desktop's notification surfaces.
 
 **After reading:** A reader should be able to say, for any alertable
@@ -154,8 +154,7 @@ Immediate, by default:
   the core promise; `medium` and `low` regressions go to the digest.
 - **Certificate horizon** crossing its warning bands: clock-driven and
   genuinely time-critical.
-- **Protection degradation**: `scope_over_plan` entering its grace
-  window, allowance exhaustion, a failing webhook endpoint or stale CI
+- **Protection degradation**: allowance exhaustion, a failing webhook endpoint or stale CI
   key version, and the first `bot_challenge` on a route (the site is
   blocking its own guardian; that is actionable today). The RFC's rule
   that protection never quits quietly makes these wake-ups, not
@@ -245,11 +244,8 @@ digest message** - and only those: the transactional classes
 because no unsubscribe transition is defined for them and a header
 promising one would be a lie a mail client acts on - plus a
 notification-settings link in
-every message of every class (the settings link is the desktop deep
-link - no hosted
-settings page exists, per the protocol's public-surface table; the
-only email-actionable hosted capability is the cadence-demoting
-unsubscribe token), **no HTML, no images, and no tracking of any kind**: no
+every message of every class (settings changes require sign-in through
+the dashboard; an unsubscribe token only disables its message class), **no HTML, no images, and no tracking of any kind**: no
 open pixels, no click redirectors, no per-recipient beacons. A privacy
 product does not surveil its own alarm bell.
 
@@ -304,8 +300,8 @@ destination, ever**:
   overlap mirroring the outbound contract. An unverifiable event is
   dropped and counted on the ops lane, never applied.
 - Per-destination and per-account daily send caps backstop every
-  class **except the security lane** (admin-recovery notices bypass
-  the caps by design - a takeover alarm must not queue behind a
+  class **except the security lane** (`token_found_in_public` notices bypass
+  the caps by design - a leaked-token notice must not queue behind a
   noisy day); the caps are operational configuration with disclosed
   defaults.
 - **Every delivery class initiates through the protocol spec's
@@ -337,15 +333,15 @@ The matrix is the single authority on which message class may reach
 which destination, superseding any looser sentence elsewhere in this
 spec or the protocol:
 
-| Message class                      | Verification required               | Suppressed destination              | Policy bits                                             | Caps                                |
-| ---------------------------------- | ----------------------------------- | ----------------------------------- | ------------------------------------------------------- | ----------------------------------- |
-| Immediate alert                    | Verified                            | Never                               | Blocked by `immediate_disabled`                         | Capped                              |
-| Storm summary                      | Verified                            | Never                               | Blocked by `immediate_disabled`                         | Own rolling 6-hour rule             |
-| Digest                             | Verified                            | Never                               | Blocked by `digest_disabled`                            | Capped                              |
-| Confirmation / re-verification     | Unverified by nature                | Only via the explicit resend action | Ignored                                                 | Rate-limited per destination        |
-| Security notice (admin recovery)   | Verified                            | Never                               | Ignored - unsubscribe must not blind takeover detection | Exempt                              |
-| Courtesy note (association switch) | Old address must have been verified | Never; skipped silently             | Ignored                                                 | Capped                              |
-| Fresh-link resend                  | Verified (current destination only) | Never                               | Blocked by `immediate_disabled`                         | Rate-limited per alert, destination |
+| Message class                             | Verification required               | Suppressed destination              | Policy bits                                        | Caps                                |
+| ----------------------------------------- | ----------------------------------- | ----------------------------------- | -------------------------------------------------- | ----------------------------------- |
+| Immediate alert                           | Verified                            | Never                               | Blocked by `immediate_disabled`                    | Capped                              |
+| Storm summary                             | Verified                            | Never                               | Blocked by `immediate_disabled`                    | Own rolling 6-hour rule             |
+| Digest                                    | Verified                            | Never                               | Blocked by `digest_disabled`                       | Capped                              |
+| Confirmation / re-verification            | Unverified by nature                | Only via the explicit resend action | Ignored                                            | Rate-limited per destination        |
+| Security notice (`token_found_in_public`) | Verified                            | Never                               | Ignored - unsubscribe must not hide a leaked token | Exempt                              |
+| Courtesy note (association switch)        | Old address must have been verified | Never; skipped silently             | Ignored                                            | Capped                              |
+| Fresh-link resend                         | Verified (current destination only) | Never                               | Blocked by `immediate_disabled`                    | Rate-limited per alert, destination |
 
 The storm summary row states what "inherits immediate-alert
 eligibility" means exactly: same verification, suppression, and
@@ -366,13 +362,14 @@ was never verified receives nothing except the verification mail
 whose job is to verify it; and "both policy bits set" silences
 **alert** mail only - the transactional classes above have their own
 rows, which is why the guardian can still warn a fully-unsubscribed
-account that someone is trying to take it over.
+account that a credential appears in public.
 
 ## The redemption flow and the hosted alert view
 
-**There are no web accounts in v1, and this spec does not invent
-them.** Identity lives in the desktop (installation tokens) and in CI
-(scoped tokens); the hosted alert view is therefore nonce-gated and
+People sign in at `app.sitecmd.com` through WorkOS AuthKit. The dashboard
+holds the session and forwards calls to Connect through its dashboard
+entrypoint. Personal tokens authorize direct clients; CI uses site-scoped
+tokens. An emailed alert link uses its own nonce and remains
 deliberately narrow:
 
 - The email link carries a single-use redemption nonce: 32 random
@@ -431,8 +428,8 @@ deliberately narrow:
   destination **policy**
   overlay: recorded as events, visible everywhere delivery health
   appears, revision-advanced on every mutation source (tokens,
-  bounces, confirmations, re-verification) so a stale desktop write
-  fails its guard, and cleared from the desktop through the
+  bounces, confirmations, re-verification) so a stale settings write
+  fails its guard, and cleared by a signed-in person through the
   revision-guarded
   destination `PATCH`. Lifecycle, one rule (the public-surface table
   states the same): hash-stored,
@@ -455,9 +452,9 @@ deliberately narrow:
   `application/x-www-form-urlencoded` and `multipart/form-data`,
   carrying `List-Unsubscribe=One-Click`. Fixtures cover both
   encodings, expiry, replay, and the concurrent-reversal race: a
-  redemption landing after the desktop re-enabled the destination
+  redemption landing after a signed-in person re-enabled the destination
   applies the demotion again (the mail user's later gesture wins,
-  visibly, and the desktop can reverse it once more), while
+  visibly, and a signed-in person can reverse it once more), while
   single-use means one token can never flap the state twice. And per
   RFC 8058 the
   outbound message's **DKIM signature must cover the
@@ -478,14 +475,14 @@ deliberately narrow:
   the mode governs what the _email_ said in transit, not what the
   recipient may see after redeeming).
 - **Open in SiteCMD** is `sitecmd://connected/alerts/{alert_id}`; the
-  desktop resolves it through its installation token
+  desktop resolves it with a full personal token holding `read`
   (`GET /v1/alerts` and the event stream) and lands on the local
   dossier with full detail.
 - **An expired or used link is never a dead end**: the fallback page
   offers exactly two things: "resend a fresh link" (rate-limited,
   sent only to the currently verified destination) and "open in the
-  SiteCMD desktop app". No login wall, because no logins exist; that
-  honest sentence is on the page.
+  SiteCMD desktop app". Redemption uses the emailed capability and does
+  not require a dashboard session.
 - Nonce hygiene: lookup by hash, constant-time comparison, no
   metadata in the URL beyond the opaque alert id, `Cache-Control:
 no-store` on every view, and the link-lifecycle fixtures cover
@@ -512,8 +509,8 @@ The report answers a client's "is it fine?" without opening an app:
   group state for the active-set predicate, manifest category); a
   second score implementation in worker TypeScript is forbidden, so a
   report can never disagree with the app about the number.
-- Generated **only from the desktop's Reports surface**, through the
-  protocol spec's report registry (installation token). The hosted
+- Generated by a signed-in person through the protocol spec's report
+  registry. The hosted
   alert view cannot generate reports because its nonce authorizes the
   alert view and nothing else. The registry row records provenance:
   who generated it, when, and with which content toggles.
@@ -653,7 +650,7 @@ language carry the same staged clauses.
    notification-settings surface (destination, mode, cadence, mute,
    severity floor), the `sitecmd://connected/alerts/{id}` deep-link
    route, and gate configuration documentation in the CLI.
-2. **SiteCMD-Web**: delivery lives inside connect (alerts are its
+2. **Connect**: delivery lives inside connect (alerts are its
    state): Resend sending with the established retry constants, the
    bounce and complaint webhook endpoint, the digest scheduler (an
    hourly cron selecting due accounts, the repository's existing
@@ -679,10 +676,10 @@ language carry the same staged clauses.
    regressions of verified fixes, certificate horizons, and
    protection degradation, the last because a guardian that quits
    quietly is worse than none.
-3. **No web accounts are invented for the alert view.** The nonce
-   gates one alert's mode-bounded view; expiry falls back to resend
-   or the desktop, honestly labeled; identity keeps living where it
-   already lives.
+3. **The alert view uses its emailed capability.** The nonce gates one
+   alert's mode-bounded view without a dashboard session; expiry falls
+   back to resend or the desktop. Account access uses WorkOS AuthKit
+   through the dashboard.
 4. **Minimal mode bounds the email, not the redeemed view**: the
    nonce proves receipt at the verified destination, and what
    traveled unauthenticated is what the mode was protecting.

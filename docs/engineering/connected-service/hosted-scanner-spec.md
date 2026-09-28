@@ -5,8 +5,7 @@
 Revision history is maintained in Git. Only the current normative text in
 this document is part of the implementation contract.
 
-This implementation specification fulfills the hosted-runner portion of the
-connected service architecture record in the private SiteCMD-Web repository. The
+This specification defines hosted-scan execution. The
 [protocol and state spec](connected-protocol-spec.md) owns the wire
 contract this scanner feeds: identity, coverage encoding, evidence
 precedence, deployment currency, the scan-scope resource, the
@@ -19,7 +18,7 @@ drift checks. It does not own alert content or wake-up policy (alert
 and report delivery spec) or allowances and pricing, which are set
 outside this specification.
 
-**Audience:** Engineers building the hosted runner in SiteCMD-Web and
+**Audience:** Engineers building the hosted runner and
 maintaining the desktop engine it must match.
 
 **After reading:** A reader should be able to say, for any of the
@@ -185,7 +184,7 @@ tier names the artifact that proves agreement:
    is the same structured identity as everything else: hosted
    transport measurements carry the attested colo, hosted browser
    measurements the `unattested` lane (the session API exposes no
-   location), desktop measurements their installation. These checks are
+   location), desktop measurements their credential-keyed producer. These checks are
    marked `class: measurement` and follow the measurement rules below,
    including their exclusion from automatic lifecycle transitions.
 
@@ -426,9 +425,8 @@ blames an operator for the calendar.
 
 ## Execution architecture
 
-Two workers in SiteCMD-Web, following the repository's conventions
-(migrations-owned D1, fail-closed rate limits, `nodejs_compat`,
-observability on):
+Two workers provide hosted execution, with fail-closed rate limits,
+`nodejs_compat`, and observability:
 
 - **`apps/sitecmd-connect`** (protocol spec) owns triggers, durable
   tenant state, the event log, and the manifest registry. It never
@@ -601,27 +599,30 @@ prices, replaced by the pricing pass's decided values at graduation:
   with a changelog line, so "what were the limits when this scan ran"
   is answerable:
 
-  | Key                              | Beta-1 value                                                                                                                                                                                                                                                                                                                         |
-  | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-  | Scheduled standard scan          | 1 per site per day                                                                                                                                                                                                                                                                                                                   |
-  | Periodic full pass               | 1 per site per week                                                                                                                                                                                                                                                                                                                  |
-  | Deploy debounce window           | 120 seconds                                                                                                                                                                                                                                                                                                                          |
-  | Deploy-scan fair-use ceiling     | 30 deploy-triggered scans per site per day                                                                                                                                                                                                                                                                                           |
-  | Coalescing floor                 | Full profile for the first 10 deploy scans per day, `standard` after                                                                                                                                                                                                                                                                 |
-  | Per-destination send cap         | 50 messages per day                                                                                                                                                                                                                                                                                                                  |
-  | Per-account send cap             | 200 messages per day                                                                                                                                                                                                                                                                                                                 |
-  | Installation-token rate limit    | 120 requests per minute                                                                                                                                                                                                                                                                                                              |
-  | CI-token rate limit              | 60 requests per minute                                                                                                                                                                                                                                                                                                               |
-  | Hook-door rate limit             | 60 events per minute per site                                                                                                                                                                                                                                                                                                        |
-  | Resend-intake rate limit         | 300 events per minute, global                                                                                                                                                                                                                                                                                                        |
-  | Browser-form public-route limit  | 30 requests per minute per source address per resource                                                                                                                                                                                                                                                                               |
-  | Per-site daily budget            | 60 scans, 15 sessions, 13,500 session seconds, 6,000 pages                                                                                                                                                                                                                                                                           |
-  | Per-scan budget                  | 100 routes, 1 browser session, 900 session seconds, 400 outbound probe requests per route                                                                                                                                                                                                                                            |
-  | Allowance-slot cooldown          | 7 days                                                                                                                                                                                                                                                                                                                               |
-  | Dunning grace (beta entitlement) | 7 days                                                                                                                                                                                                                                                                                                                               |
-  | Browser admission partition      | Ceiling = the billed-free concurrency allowance (10), deliberately not the platform limit (120) recorded beside it: the provider refuses above one and bills above the other, so they are different numbers on purpose; reserve 2; 4 shards; per-shard quota = floor((ceiling - reserve) / 4), literals stamped at config generation |
-  | Scheduled reservation, daily     | Up to 3 attempts: 300 pages, 0 sessions, per site                                                                                                                                                                                                                                                                                    |
-  | Scheduled reservation, weekly    | Up to 3 attempts: 300 pages, 3 sessions, 2,700 session seconds, per site                                                                                                                                                                                                                                                             |
+  | Key                                 | Beta-1 value                                                                                                                                                                                                                                                                                                                         |
+  | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | Scheduled standard scan             | 1 per site per day                                                                                                                                                                                                                                                                                                                   |
+  | Periodic full pass                  | 1 per site per week                                                                                                                                                                                                                                                                                                                  |
+  | Deploy debounce window              | 120 seconds                                                                                                                                                                                                                                                                                                                          |
+  | Deploy-scan fair-use ceiling        | 30 deploy-triggered scans per site per day                                                                                                                                                                                                                                                                                           |
+  | Coalescing floor                    | Full profile for the first 10 deploy scans per day, `standard` after                                                                                                                                                                                                                                                                 |
+  | Per-destination send cap            | 50 messages per day                                                                                                                                                                                                                                                                                                                  |
+  | Per-account send cap                | 200 messages per day                                                                                                                                                                                                                                                                                                                 |
+  | `account_token_requests_per_minute` | 120 requests per minute                                                                                                                                                                                                                                                                                                              |
+  | CI-token rate limit                 | 60 requests per minute                                                                                                                                                                                                                                                                                                               |
+  | Hook-door rate limit                | 60 events per minute per site                                                                                                                                                                                                                                                                                                        |
+  | Resend-intake rate limit            | 300 events per minute, global                                                                                                                                                                                                                                                                                                        |
+  | Browser-form public-route limit     | 30 requests per minute per source address per resource                                                                                                                                                                                                                                                                               |
+  | Per-site daily budget               | 60 scans, 15 sessions, 13,500 session seconds, 6,000 pages                                                                                                                                                                                                                                                                           |
+  | Per-scan budget                     | 100 routes, 1 browser session, 900 session seconds, 400 outbound probe requests per route                                                                                                                                                                                                                                            |
+  | Allowance-slot cooldown             | 7 days                                                                                                                                                                                                                                                                                                                               |
+  | Dunning grace (beta entitlement)    | 7 days                                                                                                                                                                                                                                                                                                                               |
+  | Browser admission partition         | Ceiling = the billed-free concurrency allowance (10), deliberately not the platform limit (120) recorded beside it: the provider refuses above one and bills above the other, so they are different numbers on purpose; reserve 2; 4 shards; per-shard quota = floor((ceiling - reserve) / 4), literals stamped at config generation |
+  | Scheduled reservation, daily        | Up to 3 attempts: 300 pages, 0 sessions, per site                                                                                                                                                                                                                                                                                    |
+  | Scheduled reservation, weekly       | Up to 3 attempts: 300 pages, 3 sessions, 2,700 session seconds, per site                                                                                                                                                                                                                                                             |
+
+The `account_token_requests_per_minute` limit applies per dashboard session
+bearer or personal token. It also applies through the dashboard entrypoint.
 
 - **The trigger algorithm, deterministic end to end.** "Day" means
   the UTC calendar day, everywhere a daily quantity appears (rolling
@@ -905,12 +906,12 @@ produces them.
   `{ producer_instance, layer, locality }`, with each part earning
   its place:
 
-  - **`producer_instance`** is a stable instance identity, not a
-    producer kind: for the desktop it is the **installation id**,
-    because two installations are two vantage points. A laptop in
-    one country must not clear evidence established by a workstation
-    in another. For the hosted scanner it is `hosted`; for CI it is the
-    CI token's stable identity.
+  - **`producer_instance`** identifies the authenticated producer. For a
+    desktop submission it is `user:<subject>` for a dashboard session or
+    `token:<token_id>` for a personal token. Clients sharing that actor
+    share a vantage; separate personal tokens create separate vantages.
+    For the hosted scanner it is `hosted`; for CI it is the CI token's
+    stable identity. The client cannot supply this key.
   - **`layer`** is the check's manifest layer, as before.
   - **`locality` is recorded only from a documented platform fact at
     the scan step's own execution** - one derivation function, no
@@ -929,8 +930,8 @@ produces them.
     locality is the constant `unattested` - one lane, honestly
     unlocalized, with the residual geo-variance risk stated rather
     than a fabricated colo pretending precision. Desktop locality is
-    the constant `local` (the installation is the stability, and a
-    roaming laptop stays one vantage by that choice). There are no
+    the constant `local`; the credential-keyed producer supplies identity,
+    so changing location does not change its vantage. There are no
     epochs and no lane transitions: an attested locality **is** the
     identity - if attestation ever exists, a moved execution point
     simply produces a
@@ -965,7 +966,7 @@ produces them.
   spec (32 entries, with the aggregate-overflow rule).
   Profiles store and compare signatures per the same full
   `(producer_instance, layer, locality)` identity - a narrower
-  signature key would collapse installations and localities right
+  signature key would collapse credential-keyed producers and localities right
   back together. The browser layer executes page code and uses a
   browser request profile even though its target traffic is fetched by
   the Worker, so a site may legitimately produce different content than
@@ -1383,10 +1384,10 @@ actually computed from:
   classes attribute to their site; account-level security notices
   are account overhead, allocated **equally across the account's
   connected site-days in the billing month** - deliberately not the
-  session-seconds rule, because an account can send recovery notices
+  session-seconds rule, because an account can send leaked-token notices
   on a day with zero browser activity, and a zero-denominator
-  allocation is undefined. An account can also hold installations,
-  destinations, and recovery state with **zero** connected site-days
+  allocation is undefined. An account can also hold personal tokens,
+  destinations, and security notices with **zero** connected site-days
   (every site disconnected, none erased), so the rule has an
   explicit floor: with no site-days in the period, the cost lands in
   a named **account overhead bucket** in the cost report - its own
@@ -1469,7 +1470,7 @@ must consume:
    publish its digest before product artifacts are built. Persisted runs and
    connected envelopes carry the matching release and profile facts.
 
-SiteCMD-Web owns hosted transport adapters, scheduling, tenant isolation, and
+The hosted service owns transport adapters, scheduling, tenant isolation, and
 deployment. A hosted implementation is conformant only when it consumes these
 artifacts, passes the same corpus, and refuses an unknown or mismatched manifest
 digest. Copying verdict logic into TypeScript is not a supported fallback.
@@ -1504,22 +1505,15 @@ digest. Copying verdict logic into TypeScript is not a supported fallback.
 6. **The currency predicate is exact**: current head (including the
    no-deployment state) and current scope revision; bare
    event-sequence movement never invalidates an observation.
-7. **Scope validity is a standing condition, not a `PUT`-time check**:
-   entitlement downgrades produce the visible `scope_over_plan` state
-   with a grace window and then visibly excepted overflow (protocol
-   spec), an occurrence becomes `out_of_scope` only when none of its
-   authored `scope_routes` remains selected, absence requires every
-   currently in-scope provenance route to be covered, and
-   groups with no in-scope records go dormant instead of lying.
-8. **Scope and scan capacity are the same number by construction**:
-   the entitlement cap is enforced at scope `PUT` with a visible
-   error, so no route is ever silently unscannnable and session
-   coverage is always achievable - with **one stated exception**: a
-   site truncated after the `scope_over_plan` grace scans the
-   plan-cap prefix, so session-scoped checks there are inconclusive
-   with cause `coverage_truncated` (protocol spec), attributed and
-   remediable, never "achievable by construction" in a state the
-   construction explicitly permits to exceed the cap.
+7. **Scope membership follows the selected routes**: an occurrence becomes
+   `out_of_scope` only when none of its authored `scope_routes` remains
+   selected. Absence requires every currently in-scope provenance route
+   to be covered, and groups with no in-scope records go dormant.
+8. **Scope and scan capacity use the same cap**: scope `PUT` refuses an
+   excessive route count explicitly. Connect scans the accepted scope
+   without allowance-driven truncation. The desktop still carries
+   `scope_over_plan` fields; Connect ignores them. Incomplete execution
+   still produces coverage exceptions and cannot prove absence.
 9. **TLS facts come from a schema with runtime adapters**, because
    Workers cannot open direct TCP to every Cloudflare-fronted target.
    The hosted adapter therefore keeps the Workers-fetch chain verdict

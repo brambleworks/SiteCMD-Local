@@ -5,9 +5,7 @@
 Revision history is maintained in Git. Only the current normative text in
 this document is part of the implementation contract.
 
-This implementation specification fulfills the protocol portion of the
-connected service architecture record in the private SiteCMD-Web repository,
-which owns the product direction and privacy semantics. This document owns the
+This specification defines the connected-service
 wire contract: issue identity, the sync payload, credentials, the
 lifecycle-state protocol, the concurrency invariants, and custody of the
 project fingerprint key. It does not own hosted-scan execution, parity, or
@@ -16,7 +14,7 @@ redemption (alert and report delivery spec), or quantities and pricing,
 which are set outside this specification.
 
 **Audience:** Engineers implementing the sync client in the desktop and CLI,
-and the connected-service workers in SiteCMD-Web.
+and the connected-service workers.
 
 **After reading:** A reader should be able to implement either side of the
 protocol from this document, the referenced source, and the OpenAPI
@@ -41,7 +39,7 @@ and overage (set outside this specification); the rewrite of the governing docum
 (maintained-surface matrix).
 
 Normative artifacts: this document is the semantics authority. The exact
-wire shapes live in an OpenAPI document checked into SiteCMD-Web beside the
+wire shapes live in Connect's `apps/sitecmd-connect/openapi.yaml` beside the
 worker implementation and kept in agreement by contract tests; prose and
 schema disagreeing is a build failure, not a judgment call.
 
@@ -230,9 +228,9 @@ Every snapshot and every hosted observation pins:
   **only** vantage fact a client may state, because vantage identity
   is clearing authority and clearing authority is never
   client-asserted: `producer_instance` is derived server-side from
-  the authenticated credential (the bearer's installation identity,
-  the CI token's identity, or the internal hosted path - a submission
-  cannot stamp itself as another installation), and locality is
+  the authenticated credential (`user:<subject>` or `token:<token_id>`
+  for desktop submissions, the CI token's identity, or the internal
+  hosted path; a submission cannot select another producer), and locality is
   derived from what the server itself can attest (its own execution
   for hosted transport, the constants otherwise). Wire values for
   either field do not exist; a payload carrying them is rejected as
@@ -389,30 +387,27 @@ is the record's identity epoch, and epoch migration mirrors key rotation:
   import of the site connection. The export file is encrypted and
   authenticated under a user-supplied passphrase, contains the site
   connection metadata and the fingerprint key, and **never contains any
-  credential**: installation tokens are per-install and issued by the
-  service, so the export authorizes nothing by itself. There is no cloud
+  credential**: each client supplies its own personal token, so the export
+  authorizes nothing by itself. There is no cloud
   channel for the key, by construction, because any cloud channel would
   put it on SiteCMD infrastructure.
-- **Installation assignment is separate from key transfer.** A second
-  installation authenticates with its own installation token (issued
-  through the activation exchange) and must then be assigned to the site
-  by an already-assigned installation
-  (`POST /v1/sites/{site}/installations`). Importing the key file grants
-  the ability to compute and resolve fingerprints; it grants no server
-  authorization, and assignment grants no key. Both are required, and the
-  two travel by different roads on purpose.
+- **Account access is separate from key transfer.** A second desktop uses
+  a personal token with the required scope and access to the site. Importing
+  the key file grants the ability to compute and resolve fingerprints; it
+  grants no server authorization. The dashboard manages account access and
+  personal tokens. These operations do not transfer the fingerprint key.
 - **Rotation, including concurrent rotation.** Rotation is a
-  server-coordinated epoch so two installations cannot mint different
+  server-coordinated epoch so two clients cannot mint different
   keys under the same version number:
-  1. The initiating desktop generates a candidate key locally and claims
-     the next version:
+  1. The client generates a candidate key locally. A signed-in person
+     claims the next version through the dashboard:
      `POST /v1/sites/{site}/key-rotations { "commitment": "…" }`. The
      server assigns `fingerprint_key_version + 1` to exactly one claim
      (atomic insert). While a claim is pending, another claim answers
      `409 rotation_in_progress` with the pending version and commitment.
   2. A pending claim ends one of three ways: **completion**, **abort**
-     (`POST /v1/sites/{site}/key-rotations/abort`, any assigned
-     installation, for the machine-lost case), or **expiry** after 72
+     (`POST /v1/sites/{site}/key-rotations/abort`, a signed-in person
+     in the account), or **expiry** after 72
      hours. After abort or expiry a new claim may be made; the aborted
      version number is burned, never reused. This replaces any looser
      "supersede the winner" notion: exactly one pending claim exists at a
@@ -429,7 +424,7 @@ is the record's identity epoch, and epoch migration mirrors key rotation:
   4. The rotation response and `GET /v1/sites/{site}/state` report the
      migration status: current version, pending claim if any, the key
      version and commitment of the most recent CI submission, and which
-     assigned installations have submitted under the current version. A
+     credential-keyed desktop producers have submitted under the current version. A
      stale CI secret or an unmigrated second desktop is visible, not
      silent.
   5. After completion, submissions carrying a `fingerprint_key_version`
@@ -562,14 +557,10 @@ takes its layer from the check that produced it; nothing is
 mislabeled by the scan profile. `producer_instance` is a **stable
 instance identity, derived server-side from the authenticated
 credential and never read from the wire** - clearing authority
-cannot be a client claim, or installation B would stamp a clean
-snapshot as installation A and clear A's evidence: the installation
-id for desktop (each
-installation is its own vantage - one installation's clean scan
-must never clear evidence another installation established from
-somewhere else on earth), `hosted` for the internal hosted path,
-the CI
-token's stable identity for CI. `locality` exists only where a
+cannot be a client claim. For desktop submissions it is the caller's actor,
+`user:<subject>` or `token:<token_id>`; for the internal hosted path it is
+`hosted`; for CI it is the CI
+token's stable identity. `locality` exists only where a
 documented platform fact attests it at the step's own execution
 (the hosted scanner spec's derivation; in practice hosted lanes are
 `unattested` in v1, since alarm- and RPC-driven steps have no
@@ -783,7 +774,7 @@ versions; MAC-key rotation starts the comparison history over
 (equivalence is re-demonstrated, never carried across keys). They
 follow the route profile's lifecycle: compacted with routes, exported
 as route-profile records, erased with the site. **Profile cells are
-bounded per pair**, because installation and colo churn would
+bounded per pair**, because credential and colo churn would
 otherwise grow an active route's storage without limit while the
 evidence bound looks the other way: at most **8 unpinned vantage
 cells per
@@ -866,7 +857,7 @@ to make sure the distinction survives to that layer. `active`,
 
 ### Transition authority
 
-- **User mutations** (desktop, authenticated by installation token) may
+- **User mutations** (signed in through the dashboard) may
   perform any group transition except into `verified_fixed`; the user's
   terminal claim is `claimed_fixed`. Reopening (`dismissed` to `active`)
   is an explicit transition, never an inferred one. Every mutation is
@@ -910,7 +901,7 @@ coverage may resolve absent findings", `ScanCoverageManifest` in
 `core/normalized_scan.rs`).
 
 - **Desktop submission** (`POST /v1/sites/{site}/sync/desktop`,
-  installation token): one request carrying one or both source-specific
+  signed in or a personal token with `submit`): one request carrying one or both source-specific
   snapshots, `web` and `code`, each from a successfully completed scan,
   each with its own `observed_at`, `based_on_event_sequence`, `versions`,
   coverage, and occurrences. A snapshot for a scan that did not complete
@@ -932,12 +923,12 @@ coverage may resolve absent findings", `ScanCoverageManifest` in
 Client wall clocks are never a concurrency authority, and ephemeral
 runners never carry counters they cannot keep:
 
-1. **Stateful desktop producers order themselves.** Each installation
-   has a `submission_sequence`, keyed to its stable installation
-   identity rather than its current credential, so token rotation
-   continues the counter instead of resetting the namespace: a
-   client-persisted monotonic counter, strictly increasing across
-   submissions, surviving restarts.
+1. **Stateful desktop producers order themselves.** A desktop submission's
+   producer key is the caller's actor: `user:<subject>` for a dashboard
+   session or `token:<token_id>` for a personal token. Its client-persisted
+   `submission_sequence` increases across submissions and survives restarts.
+   Clients sharing a credential share that producer's ordering namespace;
+   minting a new personal token creates a different namespace.
    The server rejects a non-increasing sequence with
    `409 stale_submission`. A desktop that scans offline submits its
    backlog in scan order when it reconnects. Idempotency replay is
@@ -1067,8 +1058,8 @@ from ruling from the grave:
   trust level), `compatible` (the
   known-ancestor-with-unchanged-files predicate
   the desktop computes with git - machine-independent, so
-  installation B's compatible snapshot soundly clears what
-  installation A established), `stale`, or `unknown` - and
+  producer B's compatible snapshot soundly clears what
+  producer A established), `stale`, or `unknown` - and
   `unvouched` lists the `(check, location_hash)` pairs the basis
   does **not** cover, because compatibility is per path: one
   snapshot can vouch for findings in untouched files while its
@@ -1163,8 +1154,8 @@ Coverage describes what a completed scan observed; it cannot define what
 future scans should observe, so scope is its own resource, not a
 projection of coverage. The scan scope is a revisioned per-environment
 configuration object: the selected routes (the same canonical route
-form as occurrences) and the expected check families. The desktop sets
-it (`PUT /v1/sites/{site}/scope`, installation token), guarded by its
+form as occurrences) and the expected check families. A signed-in person sets
+it through the dashboard (`PUT /v1/sites/{site}/scope`), guarded by its
 own `scope_revision` with the same stale-rejection semantics as every
 other guard, bounded by the coverage limits (5,000 routes), served in
 `GET /v1/sites/{site}/state` summaries, included in export, and erased
@@ -1187,35 +1178,17 @@ with current status, or removal on proven absence). It is deliberately
 **not** the `pending_fresh_evidence` flag, whose 90-day expiry would
 otherwise quietly strand a user-selected route as excluded forever; a
 `pending_reentry` record that observations keep failing to resolve
-stays visibly pending and surfaces as operationally unhealthy. Site
-state exposes `scope_over_plan`, the grace expiry, the effective route
-count, and the overflow count; post-grace truncation reserves the
-**environment entry route first** (origin-scoped checks require the
-entry page, so lexicographic order must never truncate it away),
-followed by the remaining routes in stable canonical order
-(lexicographic by canonical route string), so which routes fall into
-overflow is deterministic and documented. Scope validity is also a standing
-condition, not a `PUT`-time check: an entitlement downgrade that leaves
-a stored scope above the new cap puts the site in a visible
-`scope_over_plan` state with a 14-day grace window during which the
-full scope keeps scanning; after grace, scans cover the plan-cap prefix
-in stable route order with the overflow **visibly excepted** in every
-coverage report until the user trims - and the truncation says what
-happens to **session-scoped checks**, whose coverage requires the
-complete route set to have run: on a post-grace truncated site they
-are marked inconclusive with the explicit cause
-`coverage_truncated`, attributed to the `scope_over_plan` state with
-trim-or-upgrade as the named remedy, never silently degraded (the
-scanner spec's decision 8 carries this as its one stated
-exception). Protection degrades loudly; it
-never quits quietly and never truncates silently. A site cannot leave
+stays visibly pending and surfaces as operationally unhealthy.
+Connect scans the accepted scope without allowance-driven truncation or
+a grace period that changes scope. The desktop retains `scope_over_plan`
+and its grace-expiry field; Connect ignores them.
+A site cannot leave
 `pending_bootstrap` until both bootstrap and an initial scope have
 committed, because a connected site with no scope would be a guardian
 watching nothing.
 
 The wire limit of 5,000 routes bounds the resource; the **effective
-scannable scope** is bounded by the entitlement's connected-scope cap
-(a plan value set outside this specification; the hosted scanner's v1 ceiling is 100). **The environment's entry URL counts toward the effective cap**
+scannable scope** is bounded by the hosted scanner's 100-route ceiling. **The environment's entry URL counts toward the effective cap**
 (deduplicated when it is also listed, exactly as the scanner spec
 counts it as a route), so a maximal scope is 100 routes including
 the entry - never a 101-route scan against a 100-route budget. A
@@ -1485,11 +1458,10 @@ Field notes:
   `sitecmd_engine::coverage` is this encoding, shared by every producer;
   its `covers(route, check)` is the decision, and no consumer reimplements
   it.
-- `correlation_pairs` is keyed by **stable installation identity**, not
-  by credential: each installation's pair set is replaced by that
-  installation's own latest submission (its `submission_sequence` orders
-  only itself; independent counters are never compared), and the server
-  serves the validated union across installations, deduplicated by
+- `correlation_pairs` is keyed by the caller's actor, `user:<subject>` or
+  `token:<token_id>`. Each producer's latest submission replaces its pair
+  set; independent submission counters are never compared. The server
+  serves the validated union across producers, deduplicated by
   identity tuple. Pair sets are pinned to the fingerprint key version
   their code side was computed under and retired at key rotation. Pairs
   link occurrences by their identity tuples only; both sides are already
@@ -1504,86 +1476,61 @@ inspector and `--dry-run` render exactly these objects.
 
 ## Credentials
 
-Two credential families. **Bearer credentials** are opaque random
-tokens following the catalog precedent (`sitecmd_cat_` plus 32 random
-bytes hex, stored server-side only as SHA-256;
-`apps/sitecmd-activation/src/lib/activation.ts`,
-`apps/sitecmd-catalog/src/lib/entitlement.ts` in SiteCMD-Web).
+Two credential families. **Bearer credentials** include dashboard sessions
+and Connect's personal, CI, job, and erasure status tokens. Connect mints
+the latter four with the checksum format below and stores only their SHA-256
+digests.
 **Capability tokens** are narrow, single-purpose, and mostly
 single-use; each grants exactly one operation on exactly one resource,
 and the complete inventory lives with the public-surface table below -
 there is no such thing as an unlisted way in.
 
-| Credential           | Kind       | Scope                                          | Issued by                             | Held by                 |
-| -------------------- | ---------- | ---------------------------------------------- | ------------------------------------- | ----------------------- |
-| Installation token   | bearer     | Sites assigned to one installation             | Activation exchange (license + nonce) | Desktop OS keychain     |
-| CI token             | bearer     | Submit and read deployment cursor for one site | Desktop, under installation token     | CI secret store         |
-| Webhook secret       | bearer/mac | Trigger scans for one environment              | Desktop, under installation token     | Provider webhook config |
-| Erasure status token | bearer     | Read one erasure job's status                  | Service, at erase                     | Requester               |
-| Report link token    | capability | Render one report until TTL or revocation      | Service, at report creation           | Email or clipboard      |
-| Alert nonce          | capability | Redeem one alert view, once                    | Service, at alert delivery            | The alert email         |
-| Alert view session   | capability | View one alert for 30 minutes                  | Service, at redemption                | HttpOnly cookie         |
-| Confirmation token   | capability | Confirm one destination, once                  | Service, at destination creation      | The confirmation email  |
-| Unsubscribe token    | capability | Demote one destination's cadence               | Service, per message                  | `List-Unsubscribe-Post` |
-| OAuth state token    | capability | Complete one provider authorization, once      | Service, at connection creation       | The authorize URL       |
+| Credential           | Kind       | Scope                                          | Issued by                        | Held by                 |
+| -------------------- | ---------- | ---------------------------------------------- | -------------------------------- | ----------------------- |
+| Dashboard session    | bearer     | The signed-in person's account                 | WorkOS AuthKit                   | Dashboard               |
+| Personal token       | bearer     | Account or selected sites, with named scopes   | Signed-in person                 | Client credential store |
+| Job token            | bearer     | Assigned fix-job operations                    | Connect                          | Fix-job runner          |
+| CI token             | bearer     | Submit and read deployment cursor for one site | Signed-in person                 | CI secret store         |
+| Webhook secret       | bearer/mac | Trigger scans for one environment              | Signed-in person                 | Provider webhook config |
+| Erasure status token | bearer     | Read one erasure job's status                  | Service, at erase                | Requester               |
+| Report link token    | capability | Render one report until TTL or revocation      | Service, at report creation      | Email or clipboard      |
+| Alert nonce          | capability | Redeem one alert view, once                    | Service, at alert delivery       | The alert email         |
+| Alert view session   | capability | View one alert for 30 minutes                  | Service, at redemption           | HttpOnly cookie         |
+| Confirmation token   | capability | Confirm one destination, once                  | Service, at destination creation | The confirmation email  |
+| Unsubscribe token    | capability | Demote one destination's cadence               | Service, per message             | `List-Unsubscribe-Post` |
+| OAuth state token    | capability | Complete one provider authorization, once      | Service, at connection creation  | The authorize URL       |
 
-- **Installation token.** Issued through the same exchange shape as the
-  catalog credential: license key plus `installation_id` plus a persisted
-  nonce, refused unless the subscription is entitled. The activation
-  worker remains the single subscription-trust authority; connected
-  credentials live in the same credential store with a scope
-  discriminator, so the existing webhook-driven suspension, restoration,
-  retier, and the six-hourly reconcile sweep govern connected entitlement
-  with no parallel machinery. Stored in the desktop keychain through the
-  app-secrets layer. Holding an installation token grants nothing about a
-  site until the installation is assigned to it - and site assignment
-  grants nothing about the account, because account administration is
-  a flag on the **stable installation membership** (the same identity
-  that keys `submission_sequence`), never on the token: rotating a
-  credential preserves admin, and stealing a token confers exactly
-  the membership's standing. The subscription's first installation is
-  admin; an admin can grant or revoke admin on other installations
-  (`POST /v1/account/admins`, `DELETE /v1/account/admins/{installation}`).
-  The **last-admin invariant is atomic**: revocation is a single
-  conditional statement that fails unless another admin row exists at
-  that moment, so two admins revoking each other concurrently cannot
-  both succeed - one gets the `409`. The flag is visible in the
-  tokens list. Losing the sole admin device is recoverable without
-  web accounts through the **subscription-owner recovery flow**: any
-  installation of the subscription may request admin recovery; the
-  request creates a visible pending state, notifies every verified
-  destination and surfaces on every installation, and completes only
-  through the exposure-gated predicate defined with the account
-  endpoints below - 72 hours after an owner-controlled channel
-  demonstrably received it (a verified destination accepted the
-  notice, or an installation that already held admin when the
-  request was made acknowledged the pending state), or 14 days with
-  no exposure ever demonstrated, as the last resort - unless an
-  existing admin cancels it first, and the 72-hour clock runs from
-  that exposure, so the owner always keeps a response window. The
-  security claim is stated exactly, not rounded up: the license key
-  alone **cannot self-satisfy the 72-hour branch** - installations
-  minted from the key are not owner-controlled channels and
-  demonstrate nothing - while the 14-day branch **is** a
-  license-key-only takeover path for an account whose admin device
-  is gone and whose alarms never demonstrably land: an explicitly
-  accepted recovery risk, priced against the alternative of
-  permanently locking the paying owner out of erasure, export, and
-  their own pager wiring, and mitigated only by fourteen days of
-  visible pending state on every response.
-  Every grant, revocation, request, cancellation, and completion is
-  an audited event. Admin is required for every account-wide surface -
-  provider connections, destinations, protected sites, account export,
-  and account erasure - so a secondary installation assigned to one
-  client site cannot enumerate the account's destination addresses,
-  rewire another site's delivery, or erase the account; without admin,
-  those endpoints answer the ordinary `403`. Account erasure
-  additionally requires an explicit confirmation echo: the request
-  body must carry the account-scope id the caller is destroying
-  (`{ "confirm": "<scope_id>" }`, from `GET /v1/account`), so no
-  automation path can erase an account by hitting an endpoint with an
-  empty body.
-- **CI token.** Minted from the desktop, bound to exactly one site, shown
+- **Dashboard session.** Accounts are WorkOS AuthKit organizations. A person
+  signs in at `app.sitecmd.com`; the dashboard holds the session and forwards
+  API calls over its service binding to Connect's `DashboardEntrypoint`.
+  Connect's public entrypoint refuses dashboard session bearers with `401`.
+  A signed-in person reaches their organization's account, and Connect keeps
+  provider identifiers rather than the person's email address or name.
+- **Personal token.** A signed-in person mints a `sitecmd_pat_` token with
+  `read`, `submit`, `record_fix_attempts`, or `request_scans` scopes. It
+  reaches every site in the account unless limited to specified site ids.
+  Connect stores only its SHA-256 digest and shows the secret once. A client
+  stores it in its credential store, outside SQLite and connection exports.
+  An account holds at most 50 live personal tokens; revocation frees a place.
+  Revoked tokens remain visible for 30 days after revocation, then are deleted.
+  Missing scope answers `403 insufficient_scope`; a site-limited token
+  receives `404` for any other site and `403 token_site_limited` on an
+  account-wide route. A route requiring `signed_in` refuses personal tokens
+  with `403 signed_in_required`, regardless of their scopes. A session
+  without an account receives `403 account_required` on account routes;
+  an unavailable sign-in provider answers `503 identity_unavailable`.
+- **Minted bearer format.** Personal, CI, job, and erasure status tokens use
+  `sitecmd_<kind>_` followed by 30 base62 body characters and a six-character
+  base62 CRC32 checksum. The kinds are `pat`, `ci`, `job`, and `ers`.
+  The alphabet is `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
+  The body encodes 22 random bytes and is left-padded with `0` to 30
+  characters. The checksum covers the prefix and body, encodes the unsigned
+  CRC32 as four big-endian bytes in that alphabet, and is left-padded with
+  `0` to six characters. Changing the prefix invalidates the checksum.
+  Dashboard sessions and the separate capability tokens do not use this format.
+- **Job token.** A `sitecmd_job_` bearer authorizes the fix-job operations
+  assigned to that token. It is distinct from the site's CI credential.
+- **CI token.** Minted by a signed-in person through the dashboard, bound to exactly one site, shown
   once, stored hash-only, chained to the owning subscription for
   suspension. Repository identity is recorded as both the canonical
   `owner/repo` and GitHub's immutable decimal repository id when a trusted
@@ -1619,38 +1566,25 @@ there is no such thing as an unlisted way in.
   and checks expiry and revocation there, never in the token itself.
   Contents and redemption are the alert and report delivery spec's.
 
-Rotation and revocation are first-class endpoints for all three held
-credentials. Revocation is a permanent tombstone, mirroring
-`catalog_credentials.revoked_at`. Every credential row records
-`last_used_at`, and `GET /v1/sites/{site}/tokens` lists the site's
-credentials, cursor-paginated like every other list (revocation
-tombstones accumulate), with scope, creation time, `last_used_at`, and
-key-version watermark where applicable, so the desktop can show which CI
-secrets and webhook configurations are live and which are stale.
+Site credentials have rotation and revocation endpoints.
+`GET /v1/sites/{site}/tokens` lists the site's credentials, with scope,
+creation time, `last_used_at`, and key-version watermark where applicable.
+Personal tokens use the account token endpoints: mint a replacement and
+revoke the old token; revoked personal tokens are deleted after 30 days.
 
-Suspension semantics: an unknown or revoked credential answers a uniform
-`401 unauthorized` with no detail, exactly like the catalog. A valid
-credential whose subscription is suspended answers
-`403 entitlement_suspended`: the caller has proven possession, and the
-owner of a lapsed subscription must be told why protection stopped,
-because a guardian that quits silently violates the RFC's own promise.
+An unknown or revoked credential answers uniform `401 unauthorized`.
+Entitlement is checked separately for operations that watch sites, dispatch
+fix jobs, or add sites. A credential does not expire solely because a
+subscription stops; account access and credential management remain available.
 
 ## API protocol
 
-One new worker in SiteCMD-Web (`apps/sitecmd-connect`, custom domain
-`connect.sitecmd.com`), following the repository's established conventions:
-its own D1 database with `migrations_dir`, migrations applied before deploy
-under a shared concurrency group - by the restore orchestrator, which CI
-triggers without ever holding the D1 edit credential (the physical write
-strategy section owns the credential model: one platform permission covers
-migrate and restore alike) - rate limits that fail closed through the
-shared helper, `nodejs_compat`, observability on. It additionally binds the
-entitlement database read-only-by-convention for credential validation,
-exactly as the catalog worker does today.
+Connect serves `connect.sitecmd.com`. Its own data lives in Postgres,
+reached through the `HYPERDRIVE` binding, with SQL migrations applied before
+deploy. Rate limits fail closed through the shared helper. Entitlement
+reads the account's subscription from `subscriptions`.
 
-The worker implementation is owned by SiteCMD-Web. Conformance is judged
-against this protocol and its route inventory, not a dated deployment note in
-the public client specification. Four properties are load-bearing:
+Conformance is judged against this protocol and its route inventory.
 
 - **The lifecycle rules are executed, not just written down.** Bootstrap
   commits from its own marker rather than from group-set emptiness;
@@ -1663,12 +1597,10 @@ the public client specification. Four properties are load-bearing:
   and mutation batches are atomic, refusing whole and naming every
   stale group. Each of those has a negative control that was run: the
   rule removed, exactly the relevant test red, the rule restored.
-- **A site is reached by assignment AND account, never by either
-  alone.** Installation ids are machine identities, so one laptop on two
-  subscriptions carries a single id in two accounts; an assignment
-  lookup keyed on the id alone reads the other account's site. That case
-  was found by a negative control that passed, and both halves of the
-  predicate now have a repo guardrail behind them.
+- **A site belongs to its account.** Every site lookup checks the caller's
+  account. A personal token limited to specific sites must also name the
+  requested site. A person's session in one organization cannot read
+  another organization's sites.
 - **Problem details are the reconciliation path.** Every non-2xx on a
   bearer `/v1` route is RFC 9457 problem details, because the desktop
   reads `code` to recognize `stale_revision` and the top-level
@@ -1683,28 +1615,13 @@ the public client specification. Four properties are load-bearing:
   range. `network-facts.ts` and the trust pages enumerate the remaining
   provider and delivery destinations.
 
-Two things about the credential foundation are worth restating, because
-later sections depend on them too:
-
-- **The installation token is real and is issued.** Catalog migration
-  0009 added the `scope` discriminator this spec's credential section
-  calls for, and `POST /v1/connect/activate` on the activation worker
-  mints one through the same exchange as the catalog credential: same
-  nonce replay, same fingerprint binding on that replay, same refusal
-  to mint without a subscription id, same entitled gate. It carries no
-  seat cap, because device caps are not the sold quantity. Suspension, restoration, retier, and the
-  six-hourly sweep reach it without a line of new machinery, which is
-  the whole reason the credential lives in that store; the activation
-  worker's suite executes each of those four paths and asserts both
-  scopes moved.
-- **The unauthenticated surface is a list the code reads.** It is
-  currently empty, and the router consults it rather than trusting each
-  handler to remember. A repo guardrail fails the build when a route is
-  matched before the caller is resolved, so an endpoint added above the
-  authentication check is a red build rather than an open door.
+Connect resolves the caller before applying each route's access rule. Public
+capability and signed-hook routes declare their authentication separately.
+Entitlement comes from `subscriptions`, updated by the Stripe refresh,
+independently of the credential used for the request.
 
 **The CI gate is live end to end.** The CI token is real: minted from
-the desktop under an installation token (`POST /v1/sites/{site}/tokens`),
+the dashboard by a signed-in person (`POST /v1/sites/{site}/tokens`),
 bound to one site, shown once, stored hash-only in this service's own
 store, listed and revoked by a public handle, and chained to the
 subscription by reading the canonical state rather than caching it - so
@@ -1745,7 +1662,7 @@ connections, reports, reconnect, key rotation, retention, and erasure. Their
 current wire shapes are frozen in the OpenAPI document named below.
 
 The OpenAPI document this spec obligates exists now, at
-`apps/sitecmd-connect/openapi.yaml` in the SiteCMD-Web repository. It
+`apps/sitecmd-connect/openapi.yaml` beside the Connect implementation. It
 freezes only shapes with an implementation behind them; its header
 names the absent surfaces so a path that answers 404 is a bug and a
 capability it does not describe is one the service does not have.
@@ -1762,7 +1679,7 @@ capability it does not describe is one the service does not have.
 
 ### The public surface
 
-Every internet-reachable route that does not take an installation or
+Every internet-reachable route that does not take an account or
 CI bearer, normative and closed, in **two route classes** with
 different rules, because provider webhooks and mail systems are not
 browsers and must not be handed browser assumptions:
@@ -1797,22 +1714,23 @@ configuration, which carries per-class keys (hook doors per site,
 Resend intake globally, browser-form routes per source address per
 resource).
 
-| Method + path                    | Authentication                             | Single-use             | TTL                            | Behavior                                                                     |
-| -------------------------------- | ------------------------------------------ | ---------------------- | ------------------------------ | ---------------------------------------------------------------------------- |
-| `POST /v1/hooks/vercel`          | Provider signature (per provider contract) | Dedup by event id      | n/a                            | Deploy event; unverifiable = dropped and counted, never applied              |
-| `POST /v1/hooks/netlify`         | Provider signature (per provider contract) | Dedup by event id      | n/a                            | Same contract as above                                                       |
-| `POST /v1/hooks/{site}/deploy`   | `sha256=` HMAC over raw body               | Dedup by `event_id`    | 5-minute skew window           | Generic deploy door; body schema below; duplicate `event_id` converges `200` |
-| `POST /v1/hooks/resend`          | Svix signature over raw body               | Dedup by `svix-id`     | 5-minute tolerance             | Bounce and complaint intake (delivery spec)                                  |
-| `GET /connect/callback`          | OAuth `state` token (single-use, hashed)   | Yes                    | 15 minutes                     | Provider code exchange, server-side; completion page carries no tokens       |
-| `GET /a/{alert}/{nonce}`         | None (landing renders nothing sensitive)   | No (non-consuming)     | 72h from first send initiation | Alert landing page: one button, no alert content                             |
-| `POST /a/{alert}/{nonce}/redeem` | Alert nonce (bound to `{alert}`)           | Yes                    | 72h from first send initiation | Exchanges nonce for the 30-minute view session cookie                        |
-| `GET /a/view`                    | Alert view session cookie                  | No                     | 30 minutes                     | The alert view (delivery spec's content ceiling)                             |
-| `POST /a/{alert}/{nonce}/resend` | The nonce record (used or expired counts)  | Rate-limited           | Nonce TTL + 7 days             | Fresh link to the currently verified destination only; generic `200` always  |
-| `GET /d/{token}`                 | None (landing, non-consuming)              | No                     | 24h from first send initiation | Destination confirmation landing: one button                                 |
-| `POST /d/{token}/confirm`        | Confirmation token                         | Yes                    | 24h from first send initiation | Confirms the destination (double-opt-in completes)                           |
-| `POST /u/{token}`                | Unsubscribe token (RFC 8058)               | Yes, idempotent replay | 30d from first send initiation | Sets destination policy per its message class; expired answers `410`         |
-| `GET /r/{token}`                 | Report link token plus registry check      | No                     | Report TTL, revocable          | Renders the stored report projection                                         |
-| `GET /v1/internal/storage-probe` | Deploy probe bearer, constant-time         | No                     | n/a                            | Deploy check: writes, reads back and deletes one row; no tenant data         |
+| Method + path                           | Authentication                             | Single-use               | TTL                            | Behavior                                                                     |
+| --------------------------------------- | ------------------------------------------ | ------------------------ | ------------------------------ | ---------------------------------------------------------------------------- |
+| `POST /v1/hooks/github-secret-scanning` | GitHub ECDSA signature over raw body       | Revocation is idempotent | n/a                            | Leaked-token feedback and security notice; 1 MiB body limit                  |
+| `POST /v1/hooks/vercel`                 | Provider signature (per provider contract) | Dedup by event id        | n/a                            | Deploy event; unverifiable = dropped and counted, never applied              |
+| `POST /v1/hooks/netlify`                | Provider signature (per provider contract) | Dedup by event id        | n/a                            | Same contract as above                                                       |
+| `POST /v1/hooks/{site}/deploy`          | `sha256=` HMAC over raw body               | Dedup by `event_id`      | 5-minute skew window           | Generic deploy door; body schema below; duplicate `event_id` converges `200` |
+| `POST /v1/hooks/resend`                 | Svix signature over raw body               | Dedup by `svix-id`       | 5-minute tolerance             | Bounce and complaint intake (delivery spec)                                  |
+| `GET /connect/callback`                 | OAuth `state` token (single-use, hashed)   | Yes                      | 15 minutes                     | Provider code exchange, server-side; completion page carries no tokens       |
+| `GET /a/{alert}/{nonce}`                | None (landing renders nothing sensitive)   | No (non-consuming)       | 72h from first send initiation | Alert landing page: one button, no alert content                             |
+| `POST /a/{alert}/{nonce}/redeem`        | Alert nonce (bound to `{alert}`)           | Yes                      | 72h from first send initiation | Exchanges nonce for the 30-minute view session cookie                        |
+| `GET /a/view`                           | Alert view session cookie                  | No                       | 30 minutes                     | The alert view (delivery spec's content ceiling)                             |
+| `POST /a/{alert}/{nonce}/resend`        | The nonce record (used or expired counts)  | Rate-limited             | Nonce TTL + 7 days             | Fresh link to the currently verified destination only; generic `200` always  |
+| `GET /d/{token}`                        | None (landing, non-consuming)              | No                       | 24h from first send initiation | Destination confirmation landing: one button                                 |
+| `POST /d/{token}/confirm`               | Confirmation token                         | Yes                      | 24h from first send initiation | Confirms the destination (double-opt-in completes)                           |
+| `POST /u/{token}`                       | Unsubscribe token (RFC 8058)               | Yes, idempotent replay   | 30d from first send initiation | Sets destination policy per its message class; expired answers `410`         |
+| `GET /r/{token}`                        | Report link token plus registry check      | No                       | Report TTL, revocable          | Renders the stored report projection                                         |
+| `GET /v1/internal/storage-probe`        | Deploy probe bearer, constant-time         | No                       | n/a                            | Deploy check: writes, reads back and deletes one row; no tenant data         |
 
 The generic deploy door's body, exact:
 
@@ -1833,10 +1751,10 @@ The signature is computed over `{sent_at}.{raw body}` with the
 or a header/body timestamp mismatch is rejected before parsing, a
 duplicate `event_id` inside retention converges `200`, and the
 deployment object follows the create-or-match semantics deployments
-already have. There is no hosted notification-settings page: the
-settings link in every email is the desktop deep link
-(`sitecmd://connected/...`), because settings mutation requires the
-installation token and no web accounts exist.
+already have. Notification settings are managed by a signed-in person through the
+dashboard at `app.sitecmd.com`. The desktop deep link
+(`sitecmd://connected/...`) opens local detail; it does not authorize a
+settings mutation.
 
 The alert path carries the **opaque alert id beside the nonce** (the
 delivery spec always specified "no metadata in the URL beyond the
@@ -1915,7 +1833,7 @@ nothing else, which is the honest answer.
   `key_commitment_mismatch`, `request_in_progress` with `Retry-After`,
   `secret_already_issued` with the member `issued`,
   `deployment_conflict`, `already_bootstrapped`, `rotation_in_progress`
-  with the member `pending`, `last_admin` with the member `remedy`, and
+  with the member `pending`, `token_limit_reached`, and
   `destination_in_use` with the member `sites`); `410`
   `cursor_expired`; `413` `payload_too_large` for a body over its
   route's limit, naming no bound; `415` `unsupported_media_type` for a
@@ -1939,8 +1857,7 @@ nothing else, which is the honest answer.
   metadata write (`PATCH /v1/sites/{site}`, `alias` and
   `metadata_revision`), the verified-good acceptance
   (`POST /v1/sites/{site}/verified-good/accept`, `field` and
-  `profile_revision`) and the protected-list write
-  (`PUT /v1/account/protected-sites`, `revision` and `site_ids`).
+  `profile_revision`).
 - **Caching:** every authenticated response and every error carries
   `Cache-Control: no-store`.
 - **Idempotency is transport-level.** An authenticated client mutation
@@ -2017,15 +1934,12 @@ Ordering state, per site unless noted:
   snapshots, deployments, transitions, submissions. It exists for
   cursors, catch-up, cross-producer ordering, and the staleness shield.
 - **`alert_sequence`**, per account, increments for every alert minted
-  across all of the account's sites. `GET /v1/alerts` spans every site
-  assigned to the calling installation, so its cursor pages over this
-  account-level stream, filtered to the caller's assigned sites.
-- **`submission_sequence`**, per stable installation identity
-  (credential rotation continues the same counter and the server's
-  watermark follows the installation, not the token), client-persisted,
-  orders that desktop producer's own submissions and nothing else:
-  independent producers' counters are never compared. CI credentials
-  have none (see evidence ordering).
+  across all of the account's sites. `GET /v1/alerts` requires a signed-in
+  person or a full personal token with `read`; site-limited tokens are refused.
+- **`submission_sequence`**, per credential-keyed desktop producer
+  (`user:<subject>` or `token:<token_id>`), is client-persisted and orders
+  that producer's own submissions only. Independent producers' counters
+  are never compared. CI credentials have none (see evidence ordering).
 
 Snapshots carry no revision guard: they hold no lifecycle, and
 coverage-scoped application under the evidence rules makes them safe to
@@ -2066,7 +1980,7 @@ resumes from now without needing any per-site state.
 
 ### Endpoints
 
-Site lifecycle (installation token):
+Site lifecycle (signed in through the dashboard):
 
 - `POST /v1/sites` - create a connected site; `201` with `Location`,
   the `site_id`, and the ownership-verification challenge. The site
@@ -2088,9 +2002,6 @@ Site lifecycle (installation token):
   environment's ordering authority, guarded by the current authority
   epoch; the transition semantics live in the deployment-ordering
   section.
-- `POST /v1/sites/{site}/installations` - assign another installation to
-  the site, authorized by an already-assigned installation. The
-  fingerprint key travels separately, by local export (see key custody).
 - `POST /v1/sites/{site}/key-rotations` - claim the next fingerprint key
   version; `POST /v1/sites/{site}/key-rotations/abort` - clear a pending
   claim (see key custody).
@@ -2111,9 +2022,9 @@ State and sync:
   ordering watermarks, entitlement state, and the key-migration
   status (current version, pending claim, per-actor version watermarks).
 - `POST /v1/sites/{site}/sync/desktop` - the desktop submission
-  (installation token), including bootstrap.
+  (signed in or a personal token with `submit`), including bootstrap.
 - `POST /v1/sites/{site}/mutations` - atomic lifecycle batch
-  (installation token).
+  (signed in through the dashboard).
 - `POST /v1/sites/{site}/deployments` - deployment facts without a code
   scan (CI token).
 - `GET /v1/sites/{site}/deployment-head` - the ordering authority, when the
@@ -2128,7 +2039,7 @@ State and sync:
   identities out, nothing persisted, no state mutated (alert and
   report delivery spec).
 
-Reads (installation token), cursor-paginated, keyset or sequence based as
+Reads (signed in or a personal token with `read`), cursor-paginated, keyset or sequence based as
 specified:
 
 - `GET /v1/sites/{site}/groups?cursor=&limit=` - all lifecycle groups
@@ -2140,7 +2051,7 @@ specified:
   `scope_route` is a compatibility projection only; `scope_routes` is the
   authoritative set.
 - `GET /v1/sites/{site}/route-profiles?cursor=&limit=` and
-  `POST /v1/sites/{site}/route-profiles/reset` - the server-owned
+  `POST /v1/sites/{site}/route-profiles/reset` (requires sign-in) - the server-owned
   route-profile resource (page signatures as keyed MACs, the
   `document_changed` flag, per-route profile revision): reads are
   paginated like every list; reset is revision-guarded per route
@@ -2161,7 +2072,8 @@ specified:
   with scope, creation time, `last_used_at`, and key-version watermarks;
   revocation tombstones accumulate, so this list pages like any other.
 - `GET /v1/alerts?cursor=&limit=` - the account-level alert stream
-  filtered to sites assigned to the calling installation; cursors are
+  available to signed-in people and full personal tokens with `read`;
+  site-limited tokens are refused. Cursors are
   opaque tokens minted from `alert_sequence`; no cursor returns the
   newest page. Content rules in the delivery spec.
 
@@ -2180,8 +2092,8 @@ Erasure status (status-token bearer, see deletion):
   makes completion confirmable after the site and its credentials are
   gone without ever putting a secret in a URL.
 
-Provider connections (**admin** installation token; semantics in the
-provider connections section):
+Provider connections (signed in for changes, `read` for metadata;
+account-wide, so site-limited tokens are refused):
 
 - `POST /v1/provider-connections` - begin a provider authorization;
   returns the pending connection and the provider authorize URL.
@@ -2194,8 +2106,8 @@ provider connections section):
   provider webhooks, discard provider credentials, degrade dependent
   sites' triggers visibly.
 
-Delivery management (installation token; content semantics in the
-alert and report delivery spec):
+Delivery management (signed in for changes, `read` for reads; content
+semantics in the alert and report delivery spec):
 
 - `GET` and `PUT /v1/sites/{site}/notification-settings` - mute,
   severity floor, digest cadence, and content mode, guarded by
@@ -2204,10 +2116,8 @@ alert and report delivery spec):
   one policy - however many sites deliver to it; site-scoped
   destination rows could not represent the cross-site digest or the
   destination-level unsubscribe), and destination management is
-  **admin-only** because the list is a list of email addresses and
-  the policy is every subscribed site's pager; a non-admin
-  installation reads only the verification and health status of the
-  destinations its own sites reference, never the address list:
+  signed-in for changes. Listing accepts `read` from a full personal token;
+  site-limited tokens cannot enumerate this account-wide resource:
   `POST /v1/destinations` - add an alert destination (starts
   unverified; double-opt-in);
   `GET /v1/destinations` - list with verification, suppression, and
@@ -2231,7 +2141,7 @@ alert and report delivery spec):
   unsubscribe token sets `immediate_disabled`; a digest token sets
   `digest_disabled`; **tokens only ever set bits true** (monotonic
   OR, so no token, however old or replayed, can re-enable any mail),
-  while the admin `PATCH` may clear either bit. Both bits true means
+  while a signed-in `PATCH` may clear either bit. Both bits true means
   no **alert** email to that destination - the in-app timeline is
   unaffected - and the derived display states (normal, digest-only,
   immediates-only, silent) are presentation, never storage. The
@@ -2293,7 +2203,7 @@ alert and report delivery spec):
   rotation with a bounded dual-validity overlap;
   `DELETE /v1/sites/{site}/alert-webhooks/{id}`.
 
-Reports (installation token; rendering rules in the delivery spec):
+Reports (signed in for changes, `read` for reads; rendering rules in the delivery spec):
 
 - `POST /v1/sites/{site}/reports` - create a report registry row from
   current connect state with explicit content toggles; returns the
@@ -2303,183 +2213,80 @@ Reports (installation token; rendering rules in the delivery spec):
   the render path looks the token up by hash in the registry, so
   revocation takes effect regardless of the token's own expiry.
 
-Baselines (installation token):
+Baselines (signed in or a personal token with `read` for the site):
 
 - `GET /v1/sites/{site}/verified-good` - the current verified-good
   profile per fact family, with the provenance of each fact and the
   revision the acceptance endpoint guards on.
 
-Account (**admin** installation token; the admin flag, its grant and
-revocation endpoints, and the erasure confirmation echo are defined
-with the credentials):
+Accounts, personal tokens, and sessions:
 
-- `GET /v1/account` - entitlement snapshot: allowance, slots in use,
-  slot leases with release times, the over-plan set, subscription
-  state, the account-scope id, and the admin list.
-- `POST /v1/account/admins` and
-  `DELETE /v1/account/admins/{installation}` - grant and revoke the
-  admin flag; revoking the last admin answers `409 last_admin` (the
-  atomic invariant with the credentials).
-- The recovery flow is an API, not prose - and its read is
-  deliberately **not** admin-gated, because the requester is by
-  definition not an admin:
-  `POST /v1/account/recovery` (any installation of the subscription) -
-  create the pending request; at most one exists, and a replay or a
-  second requester gets `200` with the existing pending state, never
-  a second request. Creation is transactional with its alarm bell:
-  the same transaction that commits the pending row writes the
-  security notices into a **reserved-priority security outbox**
-  (one row per **verified destination** - and only those, matching
-  the delivery spec's matrix; installations have no email address or
-  push endpoint, so their defined notification channel is the
-  pending-recovery header on every authenticated response plus the
-  authenticated `GET` - a **channel, never an exposure fact**: reads
-  stay safe-method reads, and exposure is recorded only through the
-  explicit acknowledgment action below, only from a request-time
-  admin), so a
-  crash after commit cannot leave the 72-hour timer running with
-  nobody warned - the timer and the warnings are one write. The
-  security lane is exempt from the per-destination and per-account
-  send caps (the delivery spec's caps backstop alert mail, not the
-  takeover alarm) and drains with the same at-least-once,
-  provider-idempotency-keyed contract as the courtesy outbox. A
-  queued row is not yet a warned owner, so promotion runs on **one
-  complete persisted predicate**, with the exposure facts stored on
-  the recovery record as they occur. Both exposure classes are
-  channels the license key cannot mint, because the activation
-  exchange means "some other installation fetched" is a fact the
-  requester can manufacture with a second activation - request from
-  A, fetch from B, admin at hour 72 without an owner ever seeing
-  anything - so a plain other-installation read is **not** exposure.
-  The facts are: `notice_accepted_at`, the first provider-accepted
-  security notice to a verified destination (destinations are
-  admin-created and owner-confirmed, so the key alone cannot add
-  one); and `acknowledged_by_admin_at`, the first acknowledgment -
-  `POST /v1/account/recovery/ack`, idempotent, defined with the
-  endpoints below - by an installation, other than the requester,
-  that **held admin when the recovery was requested and still holds
-  it, under the same grant, at the moment of the ack**. The
-  request-time end: the admin set is snapshotted onto the recovery
-  record at creation, each membership with its grant identity (every
-  grant is an audited event, so each has one), so an admin the
-  completed recovery itself would mint can never be its own witness.
-  The ack-time end: a membership revoked mid-pending stops being a
-  witness the moment the revocation lands, because revocation is
-  exactly how an owner declares a device distrusted - the stolen
-  admin laptop whose flag was just pulled must not be able to arm
-  the 72-hour clock by auto-acking the banner. Same grant, not
-  merely admin-again: a revoke-and-regrant is a new grant and does
-  not silently restore witness standing for a recovery that predates
-  it (the live admin who performed the regrant can ack or cancel
-  themselves - conservative costs nothing here). The desktop surfaces the
-  `X-SiteCMD-Recovery-Pending: {eligible_at}` header, carried on
-  every authenticated response while a recovery pends, as a blocking
-  banner whose render fires the acknowledgment POST automatically -
-  exposure is still display, not a user ceremony, but it rides a
-  write verb, because a `GET` that mutates account-authority state
-  breaks safe-method semantics and turns cache warmers and
-  prefetchers into witnesses. Every installation acks; only the
-  prior-admin device's ack is the recorded exposure fact - an admin
-  who sees the alarm and chooses not to cancel is exposure, anyone
-  else is just an audience the key could have hired. The completion
-  CAS evaluates the whole predicate, not part of it: pending, and
-  uncancelled, and either (an exposure fact is set **and** 72 hours
-  have elapsed **since the first one** - the response window: the
-  owner gets three full days to cancel after the alarm demonstrably
-  reached them, however late that happens) or (**14 days elapsed
-  with no exposure fact ever recorded** - the last-resort branch).
-  The branches are **mutually exclusive**, which is what makes the
-  "three full days, however late" promise true rather than
-  approximately true: exposure on day 13 makes eligibility day 16,
-  and exposure landing after day 14 - the fallback ripe but the
-  timer not yet fired - retracts fallback eligibility and starts the
-  72-hour window, the conservative direction (an owner's device
-  coming online late buys the owner time, never the requester;
-  `first_exposure_at` is immutable once set, so the window cannot be
-  re-extended). Anchoring the 72
-  hours to exposure rather than to the request is load-bearing: a
-  request-anchored clock with exposure at hour 120 promotes the
-  requester in the same instant the admin's device first renders the
-  banner - an alarm and a verdict in one breath, no cancellation
-  window at all - and since exposure can never precede the request,
-  the exposure branch still never completes before hour 72. The
-  last-resort branch is deliberately exposure-free
-  because the topology it serves cannot demonstrate exposure: the
-  last-admin invariant means a lost admin device always leaves its
-  membership behind, so "sole installation" never describes this
-  case, and an account whose only destinations are suppressed or
-  unverified would otherwise deadlock forever - locked out precisely
-  because its pager was broken, which is when recovery matters most.
-  Fourteen days of a visible pending state, a header on every
-  response, and attempted notices is the stated, accepted residual
-  risk; an implementation that omits either branch is wrong in one
-  of two opposite ways (permanent lockout, or exposure-free
-  promotion at 72 hours), which is why the predicate is written out
-  here;
-  `GET /v1/account/recovery` (any installation) - the pending state:
-  requester, requested time, eligible time, or none - a read with no
-  side effects;
-  `POST /v1/account/recovery/ack` (any installation) - the explicit,
-  idempotent acknowledgment: records the caller's ack timestamp once,
-  sets `acknowledged_by_admin_at` only when the caller is in the
-  request-time admin snapshot, **currently holds admin under that
-  snapshot's same grant**, and is not the requester, and answers
-  `200` with the pending state either way (replays are `200` no-ops).
-  The live-grant check and the exposure write are **one conditional
-  statement, never a read followed by a write**: a check-then-write
-  pair leaves a window where the ack reads grant G live, the owner
-  revokes G, and the ack still writes the exposure fact - the
-  distrusted device arming the clock after its authority was pulled,
-  exactly what the same-grant rule exists to prevent. The write is a
-  single guarded update whose predicate joins the live admin row on
-  the snapshot's grant identity (one atomic statement or batch), so
-  ack and revocation serialize with no third interleaving, and the
-  recovery fixtures pin both serial orders plus the later-channel
-  case: revocation first means **this ack writes no
-  `acknowledged_by_admin_at`** - it silences that installation only,
-  and a later provider-accepted notice, or an ack from another
-  installation that still qualifies under the request-time snapshot,
-  establishes exposure exactly as ever (the third fixture pins it:
-  revocation wins the race, a valid notice then lands, and the
-  72-hour window opens); ack first means the exposure stands,
-  because it was recorded while the grant was demonstrably live and
-  the revocation landed after a valid witness had already seen the
-  alarm;
-  `DELETE /v1/account/recovery` (admin) - cancel. Completion is
-  server-side through one conditional update whose predicate is
-  **exactly**:
-  `pending && uncancelled && ((exposure_exists && now >= first_exposure_at + 72h) || (!exposure_exists && now >= requested_at + 14d))`
-  - the full predicate, in the CAS itself, never a reduced one: a
-    CAS that checks only elapsed time either promotes an unexposed
-    request at 72 hours or is paired with scheduling that starves an
-    exposed one, and `first_exposure_at` (the earliest recorded
-    exposure fact) is immutable once set - later exposure facts never
-    move it. `eligible_at` is **derived display, never an input**,
-    and it reports exactly what the CAS will do:
-    `first_exposure_at + 72h` when exposure exists and
-    `requested_at + 14d` otherwise, recomputed the moment exposure
-    is recorded. The recovery fixtures pin the boundary trio:
-    exposure on day 13 (eligible day 16, never day 14), exposure at
-    exactly day 14, and exposure landing after day 14 with
-    completion not yet fired (no fallback eligibility; eligible at
-    exposure plus 72 hours). Completion is timer-driven against the
-    predicate; no write promotes in the same breath it warns.
-    Completion and cancellation race on a
-    single row and exactly one wins. A pending recovery refuses no
-    request: the `X-SiteCMD-Recovery-Pending` header announces it on
-    every authenticated response until it completes or is cancelled.
-    `last_admin` and `destination_in_use` are members of the closed
-    error vocabulary like every other code in this spec.
-- `PUT /v1/account/protected-sites` - the user-chosen protected list
-  the over-plan selection rule consults, revision-guarded.
-- `GET /v1/account/export` - account-wide export: every site's export
-  stream plus account-scoped records, same record registry.
-- `POST /v1/account/erase` - account-level erasure: every connected
-  site's erase cascade plus account-scoped state (provider
-  connections, protected list, account settings), with the same job,
-  status-token, and receipt contract as site erasure.
+- `GET /v1/session` requires a dashboard session and returns `200` with
+  `{ "subject": "...", "organization_id": "...", "account": { "id": "...", "name": "..." } }`.
+  `organization_id` and `account` can be `null`; `account.name` can be `null`.
+  This distinguishes a person with an account from one who can create one.
+- `POST /v1/accounts` requires a dashboard session. The JSON body supplies
+  `name`, trimmed to 1 to 80 characters, unless the person's unfinished
+  creation already supplies it. Connect creates a WorkOS organization with
+  the account id as its external id and the person as owner. `201`, or `200`
+  for the same existing account, returns
+  `{ "account_id": "...", "organization_id": "...", "name": "..." }`,
+  where `name` can be `null`. The dashboard switches the session into that
+  organization. A retry finishes the same creation. A concurrent creation
+  or unfinished identity erasure answers `409 request_in_progress` with
+  `Retry-After`; an unrelated organization is `403 account_creation_refused`.
+- `GET /v1/account` accepts a signed-in person or a full personal token with
+  `read`. It returns the account's `id`, nullable `name`, `entitlement`
+  (`status` and nullable `site_limit`), and `connected_sites` allowance and
+  leases with release times.
+- `POST /v1/account/tokens` requires sign-in and accepts
+  `{ "label": "...", "scopes": ["read"], "site_ids": ["..."] }`.
+  `label` is trimmed to 1 to 80 characters; `scopes` contains one to four
+  distinct values from `read`, `submit`, `record_fix_attempts`, and
+  `request_scans`. Optional `site_ids` contains 1 to 100 distinct ids from
+  this account, each 1 to 512 characters; omitting it grants account-wide
+  site access. `201` returns `token`, `token_id`, `label`, `scopes`,
+  `site_ids`, and `created_at`. `site_ids` is sorted or `null` for a full
+  token. The secret is shown once. At 50 live tokens the response is
+  `409 token_limit_reached`. An `Idempotency-Key` replay after creation
+  answers `409 secret_already_issued`, naming what was issued without
+  returning the secret again.
+- `GET /v1/account/tokens` accepts sign-in or a full personal token with
+  `read`. `200` returns `{ "tokens": [...] }`, oldest first. Each item has
+  `token_id`, `label`, `scopes`, `site_ids`, `created_at`, nullable
+  `last_used_at`, and nullable `revoked_at`. Secrets never appear.
+  `last_used_at` is written at most once in five minutes. Revoked tokens
+  appear for 30 days after revocation and are then deleted.
+- `DELETE /v1/account/tokens/{token_id}` requires sign-in and returns `204`.
+  Repeating it while the revoked token is retained also returns `204` and
+  preserves the first revocation time. After deletion it returns `404`.
+- `GET /v1/account/sessions` requires sign-in and returns `200` with
+  `{ "sessions": [...] }`. Each item has `session_id`, `device`,
+  `created_at`, `expires_at`, and `current`. `device` has nullable `os`
+  (`macOS`, `Windows`, `Linux`, `iOS`, `Android`, `ChromeOS`) and nullable
+  `browser` (`Chrome`, `Safari`, `Firefox`, `Edge`). No user-agent text or
+  IP address appears. The list contains the caller's active sessions;
+  `current` identifies the one making the request. Provider listing reads
+  at most ten pages of one hundred sessions.
+- `DELETE /v1/account/sessions/{session_id}` requires sign-in and returns
+  `204` for a session in the caller's active list, including the current
+  session or one that disappears before revocation. An absent session is
+  `404`.
+- `POST /v1/account/sessions/end-others` requires sign-in, takes no body,
+  and returns `200` with `{ "ended": 0 }`, a nonnegative count of listed
+  sessions ended except the current session. The count includes sessions
+  that disappear before revocation. A provider failure can leave some
+  sessions ended; retrying finishes the operation. Session operations
+  answer `503 identity_unavailable` when the provider cannot be reached.
+- `GET /v1/account/export` requires sign-in and streams every site's export
+  plus account-scoped data.
+- `POST /v1/account/erase` requires sign-in and takes no request body.
+  It erases all sites and account-scoped data, including personal tokens,
+  subscriptions, provider connections, destinations, and security notices.
+  `202` returns `{ "job_id": "...", "status_token": "..." }`. The receipt
+  completes after identity deletion at WorkOS as well as the delivery drain.
 
-Export (installation token):
+Export (signed in or a personal token with `read` for the site):
 
 - `GET /v1/sites/{site}/export` - the tenant's stored state as
   streamed NDJSON, one record per line, every line
@@ -2498,7 +2305,7 @@ spec, contract shape here):
 - `POST /v1/hooks/vercel`, `POST /v1/hooks/netlify` - provider doors.
 - `POST /v1/hooks/{site}/deploy` - generic door, HMAC-signed.
 
-Verified-good baseline (installation token):
+Verified-good baseline (signed in through the dashboard):
 
 - `POST /v1/sites/{site}/verified-good/accept` - the explicit
   accept-as-new-baseline action for a drifted profile field, distinct
@@ -2510,9 +2317,32 @@ Verified-good baseline (installation token):
   the new profile revision and the accepted source provenance.
   Lifecycle semantics in the hosted scanner spec.
 
-Credential management (installation token): `POST /v1/tokens/ci`,
-`POST /v1/tokens/webhook`, `POST /v1/tokens/{id}/rotate`,
-`DELETE /v1/tokens/{id}`.
+Site credential management (signed in through the dashboard):
+`POST /v1/sites/{site}/tokens` for CI, `POST /v1/sites/{site}/tokens/webhook`,
+`POST /v1/sites/{site}/tokens/{token}/rotate`, and
+`DELETE /v1/sites/{site}/tokens/{token}`.
+
+GitHub secret scanning:
+
+- `POST /v1/hooks/github-secret-scanning` verifies the raw body using
+  `Github-Public-Key-Identifier` and `Github-Public-Key-Signature` against
+  GitHub's published ECDSA keys. It accepts at most 1 MiB.
+  The handler reads a JSON array of objects with string `token`, `type`,
+  `url`, and `source` fields. OpenAPI specifies the headers and response;
+  it does not declare the request-body schema.
+- `200` returns an array of `{ "token_hash": "...", "token_type": "...", "label": "true_positive" }`.
+  `token_hash` is the 64-character SHA-256 digest; `token_type` is a string
+  of at most 1 MiB; `label` is `true_positive` or `false_positive`.
+  Malformed reports answer `400`, invalid signatures `401`, oversized
+  bodies `413`, throttling `429`, and unavailable published keys `503`.
+- Personal and CI tokens are revoked atomically with a
+  `token_found_in_public` security notice. A job token revokes its job's
+  tokens. Erasure status tokens receive feedback without revocation.
+  Notices keep internal identifiers and a closed source value, never the
+  reported URL, token, or token hash. The security lane sends them to
+  verified, unsuppressed destinations independently of alert preferences
+  and daily caps. Failed notices remain pending for retry; those without
+  an eligible destination drain without mail.
 
 **Internal service-binding surface.** The scan worker commits hosted
 observations to connect over the service binding, never over the public
@@ -2676,7 +2506,7 @@ cascade.
 
 Hosted reports are registry rows first, links second:
 
-- Creation requires the installation token. The alert-view nonce
+- Creation requires a signed-in person through the dashboard. The alert-view nonce
   cannot create reports because its authority is limited to the alert
   view.
 - **A report is a frozen snapshot, not a live view.** Creation
@@ -2701,7 +2531,7 @@ Hosted reports are registry rows first, links second:
   The projection rides export with the row. Retention follows the
   retention table, with rows retained for the life of the site and
   links bounded by their TTL.
-- The row also records content toggles, creator installation,
+- The row also records content toggles, creator actor,
   creation time, TTL, and revocation state. The link is an opaque
   random token (32 bytes, base64url); the row stores only its
   SHA-256, alongside the row's own expiry. There is no signing key
@@ -2845,7 +2675,7 @@ contract:
   Every tenant-scoped table keys on `site_id` first, but the unit
   that moves together is the account, because real account-global
   state exists and is promised: the `alert_sequence` stream, the
-  allowance and its leases, the protected list, account export and
+  allowance and its leases, account export and
   erasure. Sharding below the account would turn every one of those
   into a cross-database protocol for no benefit. One global D1 is
   the v1 deployment, not the contract: because no query joins across
@@ -3264,48 +3094,29 @@ contract:
 
 ## Allowance transitions
 
-The plan allowance is enforced with states, not
-adjectives:
+Connect has one hosted plan. Entitlement reads
+`subscriptions`, which the Stripe refresh updates. `trialing` and `active`
+allow watching, fix-job dispatch, and adding sites. `past_due` allows
+watching but refuses dispatch and adding sites. `canceled`, `unpaid`,
+`incomplete`, `incomplete_expired`, `paused`, and no subscription allow none
+of those operations. A self-hosted Connect with `SELF_HOSTED=1` has no
+subscription requirement or site limit.
 
-- **Slot leases.** Connecting a site consumes an allowance slot.
-  Disconnecting releases the lease only after a cooldown window (a
-  beta operating value in the hosted scanner spec's operating
-  configuration; the pricing pass may revisit it), so one paid slot
-  cannot rotate through many sites inside a period. The account
-  endpoint shows every lease and its release time, and connecting
-  with all slots leased answers the allowance `422` naming the next
-  release.
-- **`sites_over_plan`.** When the allowance drops below the number of
-  connected sites (downgrade, dunning outcome), the server ranks
-  **every** connected site by one total order -
-  `(protected descending, connected_at descending, site_id
-ascending)` - and the winner set is the first allowance-many sites.
-  One order, applied to the protected cohort too, so a protected
-  list larger than the allowance still selects deterministically
-  (and the account endpoint surfaces that condition visibly).
-  `sites_over_plan` is
-  the complement - defined this way around so no reading of the rule
-  can suspend a protected site while an unprotected one keeps its
-  slot. It is site state with the `scope_over_plan` grace shape:
-  during grace, full protection with visible warnings; after grace,
-  triggers and scheduled scans stop, state is retained under
-  disconnected-site retention, and site operations answer the
-  suspension-family `403`.
-- **Restore and reconnect.** When the allowance rises again, over-plan
-  sites resume automatically in winner-set order; resumption is an
-  event and a digest line, never silent. For sites that stopped
-  harder - disconnected-but-retained, or suspended through dunning -
-  `POST /v1/sites/{site}/reconnect` (installation token) is the
-  explicit transition: it validates the allowance and lease
-  availability, cancels the retention clock, remints revoked site
-  credentials (new webhook secret shown once; CI tokens are reminted
-  by the user, since theirs live in CI secret stores), reprovisions
-  the provider webhook through the stored
-  `{connection_id, external_project_id}` binding when the connection
-  is still active (and reports a visible degraded trigger state when
-  it is not), and resumes triggers - all as recorded events. A site
-  past its retention window is gone - physical expiry is real - and
-  must be connected fresh.
+The trialing status allows one connected site; an active subscription has
+no site limit. Adding a site checks entitlement and slot leases. A lease
+remains held through the cooldown after disconnect or erasure, and the
+account endpoint shows its release time. Exhaustion answers
+`422 connected_sites_exceed_plan` with the allowance and next release;
+a subscription that cannot add sites answers `403 entitlement_suspended`.
+The site limit gates admission only. A site that already holds its slot
+keeps working subject to subscription status; Connect does not rank sites,
+suspend a subset after an allowance change.
+
+`POST /v1/sites/{site}/reconnect` requires sign-in and checks entitlement
+and lease availability for a retained site. It cancels the retention
+clock and resumes the connection. An expired site must be connected again.
+The desktop retains `site_allowance_over_plan`, `scope_over_plan`, and
+their grace-expiry fields; Connect ignores them.
 
 ## Deployment records and ordering
 
@@ -3393,7 +3204,7 @@ transition. Exactly one authority is active per environment, stored as
 environment state independent of the deployment head, because a site
 may select its authority before its first deployment ever happens. The
 transition is its own operation,
-`PUT /v1/sites/{site}/ordering-authority`, installation-token
+`PUT /v1/sites/{site}/ordering-authority`, dashboard-session
 authorized, idempotent, and guarded by the current epoch, and it is
 recorded as an event.
 
@@ -3532,7 +3343,8 @@ figures: `REPLAY_RETENTION_DAYS = 90` in the activation worker and
 | Provider connections (metadata and credentials) | Life of the account or until revoked                            |
 | Coalescing generation watermark                 | Life of the site; survives disconnect, resets only with erasure |
 | `delivery_attempt` rows (every delivery class)  | 7 days after terminal outcome, then deleted                     |
-| Admin state (admins, pending recovery)          | Life of the account                                             |
+| Personal tokens                                 | Live until revoked; deleted 30 days after revocation            |
+| Security notices                                | Pending until drained; deleted 30 days after draining           |
 | Erasure receipts (see contents below)           | 1 year                                                          |
 
 **The export record registry, v1.** Every stored data family is
@@ -3553,11 +3365,10 @@ itself is part of this registry:
   account export only - `destination` (with verification,
   suppression, and policy state; account-level like the resource),
   `provider_connection` (metadata and granted
-  scopes, never provider credentials), `protected_sites`,
-  `slot_lease` (site, release time), `account_settings`, and
-  `admin_state` (the admin list and any pending recovery request -
-  tenant-visible by design, since a non-admin must be able to see a
-  recovery in flight).
+  scopes, never provider credentials), `slot_lease` (site, release time),
+  `account_settings`, `member` (provider identifiers and membership),
+  `subscription`, `personal_token` (metadata, never its hash or secret),
+  and `personal_token_site`.
 - **Operational** is service telemetry about the tenant's traffic,
   not tenant content, excluded from export with its retention stated:
   raw per-channel delivery logs (90 days; their outcomes are
@@ -3587,7 +3398,7 @@ itself is part of this registry:
   re-verification `(destination, verification round)`, each
   explicit resend a new generation; courtesy
   `(site, notification_revision)`; security notice
-  `(recovery request, notice kind)`; fresh-link resend
+  `(security notice id, notice kind)`; fresh-link resend
   `(alert, destination)`, each rate-limited human click a new
   generation; webhook `(site, observation)` for alert deliveries
   and `(endpoint, test idempotency key)` for explicit test sends.
@@ -3604,7 +3415,7 @@ itself is part of this registry:
   reductions reference; `(attempt, dispatch_generation)` is what
   pointers carry. Unique, so
   creating the same attempt twice converges on one row instead of
-  two sends, while one recovery notice **per verified destination**
+  two sends, while one leaked-token notice **per verified destination**
   and one alert **per webhook endpoint** stay distinct rows rather
   than collapsing under a target-blind constraint; the destination
   or webhook endpoint reference **plus
@@ -4022,10 +3833,10 @@ visible backpressure, never silent dropping.
   Account erasure
   runs this cascade for every site and then removes account-scoped
   state: destinations, provider connections and their credentials,
-  the protected
-  list, account settings, every remaining `delivery_attempt` row,
-  and the admin state including any pending
-  recovery request and its queued security notices - the erasure
+  personal tokens, subscriptions, every remaining `delivery_attempt`,
+  and security notices. The identity drain deletes the WorkOS organization
+  and each member's WorkOS user that no other account or unfinished
+  creation names. The erasure
   fixtures cover every family the retention table names, both
   scopes. Erase answers `202`
   with `{ "job_id": "…", "status_token": "…" }`: the job id is a plain
@@ -4045,10 +3856,7 @@ visible backpressure, never silent dropping.
   never stored, so a lost token cannot be re-shown), the erasure
   scope as `scope_kind: site | account` plus the matching opaque
   `scope_id` (the site id, or the account-scope id for account
-  erasure - one receipt schema serves both endpoints), a
-  non-reversible binding of the owning subscription (an
-  HMAC of the subscription id, so a repeated account erase from the
-  same subscription can be matched after every tenant row is gone),
+  erasure - one receipt schema serves both endpoints),
   and the deletion time - `deleted_at`, recorded after
   `send_quiesced_at` and therefore doubling as the externally
   attested no-initiation cutoff, while the internal quiescence
@@ -4070,23 +3878,12 @@ visible backpressure, never silent dropping.
   resolves no site and answers `404 not_found`, the answer for any site
   the caller cannot see; on this route the one thing that `404` can
   mean is that the site is already gone, and the status token from the
-  first answer still reads the receipt. The site receipt also records
-  the subscription binding when the service holds a binding key, but no
-  retry is matched against it. A retried **account** erase after
-  deletion authenticates with any valid installation token of the
-  owning subscription: the account is gone,
-  so the server HMACs the caller's subscription id under every
-  configured binding key, matches it against the account receipt's
-  binding, advances the erasure once if it is still draining, and
-  answers `200` with the envelope the status endpoint serves - status,
-  receipt projection, and `ciphertext_deletion` - and no token. Every
-  other route answers that caller `404`. The record-deletion fact is
-  final, while ciphertext deletion may still be `pending`, which is
-  exactly why the envelope carries it and why "no further polling
-  needed" was retired as a claim. The account receipt is the durable
-  idempotency record for exactly this case, and its contents are
-  disclosed here because the minimal-receipt promise has to name every
-  field to mean anything.
+  first answer still reads the receipt. A retried account erase after
+  deletion finds no account (`403 account_required` for a valid dashboard
+  session) and does not recover a lost status token. The
+  original `sitecmd_ers_` token remains the way to read the receipt and
+  the delivery and identity drain status.
+
 - **Point-in-time history and restore are part of the deletion
   story, not outside it.** D1 Time Travel is always enabled,
   retains up to 30 days of history, and restoring overwrites the
@@ -4094,7 +3891,7 @@ visible backpressure, never silent dropping.
   history for up to 30 days (unreadable except by restoring), and a
   careless restore would resurrect erased credentials, nonce
   records, report rows, and delivery attempts - and would equally
-  roll back later admin revocations, unsubscribes, report
+  roll back later token revocations, unsubscribes, report
   revocations, and webhook rotations, reactivating authority and
   links their owners already killed. Three rules close this.
   First, **the control store is a safety journal with a real
@@ -4106,9 +3903,7 @@ visible backpressure, never silent dropping.
   mechanism as the
   persistence inventory, so a qualifying transition nobody
   journaled is a failing check, not a quiet omission - and
-  enumerates: admin grants and revocations; the recovery lifecycle
-  (request, ack, cancellation, completion); credential
-  revocations; site disconnect; provider-connection revocation;
+  enumerates: credential revocations; site disconnect; provider-connection revocation;
   destination suppression, policy-bit sets, unsubscribes, and
   association switches; notification-settings changes that reduce
   or redirect egress (mutes, severity floors, cadence changes);
@@ -4148,11 +3943,6 @@ visible backpressure, never silent dropping.
 
   | Journal member                          | Class    | Prepared caught by restore                                                                                                                                                                                                                                                      |
   | --------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | Admin grant                             | adding   | Abort; grantor re-grants                                                                                                                                                                                                                                                        |
-  | Admin revocation                        | removing | Replay                                                                                                                                                                                                                                                                          |
-  | Recovery request / ack                  | adding   | Abort; neither arms a clock it did not provably arm                                                                                                                                                                                                                             |
-  | Recovery cancellation                   | removing | Replay                                                                                                                                                                                                                                                                          |
-  | Recovery completion                     | adding   | Abort; the CAS re-evaluates on the live predicate                                                                                                                                                                                                                               |
   | Credential revocation                   | removing | Replay                                                                                                                                                                                                                                                                          |
   | Site disconnect                         | removing | Replay                                                                                                                                                                                                                                                                          |
   | Provider-connection revocation          | removing | Replay                                                                                                                                                                                                                                                                          |
@@ -4565,8 +4355,9 @@ shared engine vocabulary and one canonical payload builder.
    hosted, or CI evidence can produce `verified_fixed`. Re-observation becomes
    a regression only after evidence had proved absence.
 4. **Ordering and offline intent.** Desktop producers allocate durable,
-   installation-scoped submission sequences and capture the event watermark at
-   scan start. Revision-guarded lifecycle decisions enter a transactional
+   local submission sequences and capture the event watermark at
+   scan start. Connect keys submissions by the sending credential's actor,
+   `user:<subject>` or `token:<token_id>`. Revision-guarded lifecycle decisions enter a transactional
    outbox with their original basis and idempotency key. Pulling newer state
    never silently rebases an offline decision.
 5. **Canonical payload and inspectors.** The database builds the wire payload
@@ -4574,10 +4365,10 @@ shared engine vocabulary and one canonical payload builder.
    bootstrap tombstones. The desktop inspector and the standalone CLI
    `connected --dry-run` render that exact serialization without allocating a
    sequence or sending it. CI code-gate submissions use the same builder.
-6. **Credential custody and transfer.** Installation tokens and project
-   fingerprint keys live in the OS credential store, not SQLite. Encrypted
+6. **Credential custody and transfer.** Personal tokens and project
+   fingerprint keys belong in the OS credential store, not SQLite. Encrypted
    connection exports carry site metadata and the fingerprint key but never the
-   installation token. Key rotation keeps a pending key until the completing
+   personal token. Key rotation keeps a pending key until the completing
    snapshot commits.
 7. **Bootstrap derivation.** Bootstrap is the union of current canonical groups
    and stored lifecycle overrides. Last-known occurrences come from the most
@@ -4625,8 +4416,8 @@ The implementation contract rests on these decisions:
    or regressed, and records new occurrences inside active groups.
 4. **Client clocks are never a concurrency authority, and ephemeral
    producers carry no counters.** Desktops order themselves with a
-   persisted `submission_sequence` keyed to stable installation
-   identity (credential rotation continues the counter); CI orders
+   persisted `submission_sequence` keyed to `user:<subject>` or
+   `token:<token_id>` (a new personal token has a new namespace); CI orders
    through deployment identity plus idempotency; server receipt is the
    only cross-producer order; idempotency replay is evaluated before
    every other guard.
@@ -4660,7 +4451,7 @@ The implementation contract rests on these decisions:
 8. **Line numbers are excluded from code identity**; `instance_count`
    preserves multiplicity.
 9. **The server never holds the fingerprint key.** Manual provisioning
-   to CI, local export for second desktops, installation assignment as
+   to CI, local export for second desktops, account access as
    separate authorization, rotation as a server-coordinated epoch with
    one-way commitments, completion gated behind complete project
    coverage, and pending claims ending only by completion, abort, or
@@ -4697,13 +4488,13 @@ The implementation contract rests on these decisions:
     retry is the same principle carried through consistently: the
     status token is minted once and never replaced, and erasure keeps
     no `Idempotency-Key` record to replay. After deletion, a retried
-    account erase answers with the completion fact, matched by the
-    receipt's account binding, and a retried site erase answers `404`
+    account erase no longer reaches the deleted account; its original
+    status token reads the receipt. A retried site erase answers `404`
     because the site is gone.
-16. **Correlation pairs are keyed by stable installation identity** and
-    merged as a validated union: independent submission counters are
-    never compared, and credential rotation cannot orphan or clobber
-    another installation's pairs.
+16. **Correlation pairs are keyed by the credential's actor**, either
+    `user:<subject>` or `token:<token_id>`, and merged as a validated union.
+    Independent submission counters are never compared. Clients sharing
+    that actor also share its pair set.
 17. **Route identity does not merge what it cannot prove equal**: final
     URL after redirects, trailing slashes preserved, query-dependent
     routes flagged and excluded from comparable verification.
@@ -4746,14 +4537,11 @@ The implementation contract rests on these decisions:
     Identical redelivery converges as success; CI submissions embed
     their deployment with create-or-match semantics.
 19. **One environment per site in v1**, fixed to `production`.
-20. **Connected credentials reuse the activation worker and entitlement
-    store**, and erasure survives credential revocation through a
-    status token carried in the `Authorization` header (never a URL),
-    with a receipt whose every field is named: job id, status-token
-    hash, erasure scope (`scope_kind` plus opaque scope id, one
-    schema for site and account jobs), non-reversible account
-    binding, deletion time (recorded after send quiescence, so it
-    doubles as the attested no-initiation cutoff).
+20. **Accounts use WorkOS AuthKit organizations and subscription entitlement.**
+    The dashboard holds sessions; direct clients use personal tokens.
+    Erasure status survives account deletion through a `sitecmd_ers_`
+    bearer in the `Authorization` header, never a URL. A deleted account
+    cannot reissue a lost status token.
 21. **Durable records have a per-site bound with disclosed compaction**
     (250,000 records; the snapshot is staged and its own prospective
     coverage counts toward retirements before the bound is judged, so
@@ -4764,10 +4552,9 @@ The implementation contract rests on these decisions:
     without aging only under `claimed_fixed` and `verified_fixed`;
     exhaustion is visible `422 record_capacity` backpressure, never
     silent dropping).
-22. **Suspended subscriptions get a distinct 403** while invalid
-    credentials stay uniform 401, diverging from the catalog's
-    uniform-401 posture only where the caller has already proven
-    possession of a real credential.
+22. **Entitlement and credential validity are separate.** Operations that
+    require watching, dispatch, or adding sites check `subscriptions`;
+    invalid credentials receive uniform `401` responses.
 23. **Provider connections are a first-class resource** with
     server-side code exchange, recorded scopes, exclusive project
     binding, visible webhook provisioning state, and two-way
@@ -4786,19 +4573,13 @@ The implementation contract rests on these decisions:
     day one** (`site_id` partitions within the account): chunk
     inserts guard on phase and erasure epoch with cascading deletes
     so erasure races cannot resurrect tenant data, and the shard atom
-    is the account because alert ordering, allowances, protected
-    sites, and account erasure are genuinely account-global - moving
+    is the account because alert ordering, allowances, personal
+    tokens, and account erasure are account-global - moving
     a hot account later is routing, not migration.
 26. **Allowance slots are leased, not toggled**: disconnect releases
-    a slot only after a cooldown, the over-plan set is the complement
-    of a deterministic active winner set (protected list, then
-    connection recency, then stable id tie-break - defined so no
-    reading can suspend a protected site first), reconnect is an
-    explicit evented transition covering credentials, webhooks,
-    leases, and the retention clock, and restoration is automatic -
-    so the billable quantity cannot be rotated through unlimited
-    sites, and a downgrade never silently chooses which client loses
-    its guardian.
+    a slot only after a cooldown. Subscription status controls watching,
+    dispatch, and adding sites separately. Site limits apply at admission;
+    existing sites are not ranked or suspended by an allowance change.
 27. **The public surface is a closed inventory.** Every route
     reachable without a bearer token exists in one normative table
     with its authentication, single-use, TTL, and rate-limit
