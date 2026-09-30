@@ -498,6 +498,7 @@ fn parse_gate_args(mut args: impl Iterator<Item = String>) -> Result<GateArgs, S
     let mut project_path = None;
     let mut threshold = "high".to_string();
     let mut strict = false;
+    let mut outputs = None;
 
     while let Some(token) = args.next() {
         match token.as_str() {
@@ -536,6 +537,9 @@ fn parse_gate_args(mut args: impl Iterator<Item = String>) -> Result<GateArgs, S
             "--db" => {
                 db_path = Some(next_value(&mut args, "--db")?.into());
             }
+            "--outputs" => {
+                outputs = Some(next_value(&mut args, "--outputs")?.into());
+            }
             t if t.starts_with('-') => return Err(format!("Unknown option: {}", t)),
             t => return Err(format!("Unexpected argument: {}", t)),
         }
@@ -549,6 +553,7 @@ fn parse_gate_args(mut args: impl Iterator<Item = String>) -> Result<GateArgs, S
         strict,
         threshold,
         token_env,
+        outputs,
     })
 }
 

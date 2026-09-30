@@ -60,7 +60,7 @@ pub(super) fn parse_error(status: StatusCode, bytes: &[u8]) -> ConnectedServiceE
             code: problem.code,
             message: problem.detail,
             request_id: problem.request_id,
-            details: value,
+            details: value.map(Box::new),
             retry_after: None,
         },
         None => ConnectedServiceError {

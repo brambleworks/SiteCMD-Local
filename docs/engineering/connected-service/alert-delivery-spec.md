@@ -79,9 +79,8 @@ and an outcome event - a provider response, a bounce, a webhook
 result - updates the cell **only when its
 `(attempt_id, delivery_generation)` equals the cell's current pair
 or carries a newer `delivery_generation`**; a late response or
-bounce from an old attempt lands
-in the delivery logs and never overwrites the replacement
-generation's cell. **Within the same generation the outcome moves
+bounce from an old attempt is logged and never overwrites the
+replacement generation's cell. **Within the same generation the outcome moves
 along a declared transition table, never by arrival order**,
 because provider events are not ordered: `queued` may move to any
 outcome; `sent` may move only to `bounced` (a bounce is later
@@ -602,7 +601,7 @@ a general read:
 - **Logging**: alert ids and hashed nonces only; destination
   addresses appear in operational storage because delivery needs
   them, but logs carry them masked, and the privacy projection's
-  no-content rule applies to every delivery log line.
+  no-content rule applies to every log line about a delivery.
 - **Ops alerts are a separate lane**: admission exhaustion, delivery
   backlog, suppression spikes, and webhook auto-disables page the
   operator through internal channels and never ride the tenant alert
@@ -611,13 +610,10 @@ a general read:
 ## Retention, export, and erasure
 
 Additions to the protocol's retention table, same authority rules:
-content-bearing `delivery_attempt` rows follow the protocol's rule
-exactly (encrypted body purged at terminal outcome, row deleted 7
-days later - never 90); content-free operational **delivery logs**
-90 days, with the retained fields enumerated and closed: attempt
-id, class, site and account references, destination id (never the
-address), outcome with its timestamps, and the provider message
-id - no subject, no body, no capability, no address;
+`delivery_attempt` rows follow the protocol's rule exactly
+(encrypted body purged at terminal outcome, row deleted 7 days
+later), and they are the only delivery record Connect keeps: it
+stores no separate delivery log;
 redemption nonces 7 days past expiry, hashes only; destinations and
 their verification, suppression, and policy state for the life of
 the **account** (they are account-level resources and survive

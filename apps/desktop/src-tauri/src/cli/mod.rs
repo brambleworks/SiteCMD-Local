@@ -13,11 +13,125 @@ pub mod init;
 pub mod scan;
 pub mod watch;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::connected_service::{
+    inactive_output, is_account_inactive, ConnectedServiceError, ACCOUNT_INACTIVE_GATE_NOTICE,
+    ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE,
+};
+
 pub use audit_suppressions::{CodeScanConfig, CodeScanSuppression, CodeScanSuppressionMatch};
+
+/// Why a command that reaches Connect stopped before its answer.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ConnectStop {
+    /// Connect said the account is inactive. `notice` is the sentence that is
+    /// true of the door that said so, and `earlier` is what the command had
+    /// already done, printed ahead of it when there is any.
+    AccountInactive {
+        notice: &'static str,
+        earlier: String,
+    },
+    /// Anything else, in the words the command reports it with.
+    Failed(String),
+}
+
+impl ConnectStop {
+    /// A Connect refusal, read for an inactive account before `describe`
+    /// turns it into the command's failure.
+    pub(crate) fn refused(
+        error: &ConnectedServiceError,
+        describe: impl FnOnce(&ConnectedServiceError) -> String,
+    ) -> Self {
+        if is_account_inactive(error) {
+            // A first door, which sent nothing of the person's, unless the
+            // caller says otherwise.
+            Self::AccountInactive {
+                notice: ACCOUNT_INACTIVE_NOTICE,
+                earlier: String::new(),
+            }
+        } else {
+            Self::Failed(describe(error))
+        }
+    }
+
+    /// A fix-job door's refusal, reported as `<door> refused: <code> (<detail>)`.
+    pub(crate) fn refused_as(error: &ConnectedServiceError, door: &str) -> Self {
+        Self::refused(error, |error| {
+            format!("{door} refused: {} ({})", error.code, error.message)
+        })
+    }
+
+    /// The stop at a door whose request carries the person's data, or that
+    /// runs after a step that changed state: an inactive account there says
+    /// the result was not recorded, after `earlier`, what the command had
+    /// already done, rather than saying nothing was sent.
+    pub(crate) fn unrecorded(self, earlier: impl Into<String>) -> Self {
+        match self {
+            Self::AccountInactive { .. } => Self::AccountInactive {
+                notice: ACCOUNT_INACTIVE_RESULT_NOTICE,
+                earlier: earlier.into(),
+            },
+            failed => failed,
+        }
+    }
+
+    /// The gate's stop. The gate records nothing even for an active account,
+    /// so an inactive one is told the gate graded nothing.
+    pub(crate) fn ungraded(self) -> Self {
+        match self {
+            Self::AccountInactive { .. } => Self::AccountInactive {
+                notice: ACCOUNT_INACTIVE_GATE_NOTICE,
+                earlier: String::new(),
+            },
+            failed => failed,
+        }
+    }
+}
+
+impl From<String> for ConnectStop {
+    fn from(error: String) -> Self {
+        Self::Failed(error)
+    }
+}
+
+impl From<&str> for ConnectStop {
+    fn from(error: &str) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
+
+/// End a command that reaches Connect. An inactive account ends it as a
+/// success, so the person's CI stays green, answering with the inactive
+/// output shaped by `answer` into the command's own.
+pub(crate) fn settle<T>(
+    outcome: Result<T, ConnectStop>,
+    answer: impl FnOnce(String) -> T,
+) -> Result<T, String> {
+    settle_in(outcome, answer, |name| std::env::var(name).ok())
+}
+
+/// `settle` reading the environment through `get_env`, where
+/// `GITHUB_ACTIONS` decides whether the output carries the notice annotation.
+pub(crate) fn settle_in<T>(
+    outcome: Result<T, ConnectStop>,
+    answer: impl FnOnce(String) -> T,
+    get_env: impl Fn(&str) -> Option<String>,
+) -> Result<T, String> {
+    match outcome {
+        Ok(done) => Ok(done),
+        Err(ConnectStop::AccountInactive { notice, earlier }) => {
+            let github_actions = get_env("GITHUB_ACTIONS").as_deref() == Some("true");
+            Ok(answer(inactive_output(&earlier, notice, github_actions)))
+        }
+        Err(ConnectStop::Failed(error)) => Err(error),
+    }
+}
 
 /// Version of the `.sitecmd/config.json` schema.
 const CONFIG_VERSION: u32 = 1;
@@ -328,8 +442,77 @@ mod tests {
         build_import_deep_link_url, import_project_artifacts, read_config,
         validate_deep_link_launch_status, write_config, CliConfig, CodeScanConfig,
     };
+    use crate::connected_service::{ConnectedServiceError, ACCOUNT_INACTIVE_NOTICE};
     use crate::db::test_helpers::temp_db;
     use std::path::Path;
+
+    fn error(code: &str, message: &str) -> ConnectedServiceError {
+        ConnectedServiceError {
+            status: 409,
+            code: code.into(),
+            message: message.into(),
+            request_id: Some("req_9f2".into()),
+            details: None,
+            retry_after: None,
+        }
+    }
+
+    #[test]
+    fn the_inactive_notice_is_annotated_only_when_github_actions_is_true() {
+        // The variable is injected rather than set, so no test changes what a
+        // parallel test reads from the process environment.
+        let answer = |get_env: &dyn Fn(&str) -> Option<String>| {
+            crate::cli::settle_in(
+                Err::<String, _>(crate::cli::ConnectStop::refused(
+                    &error("account_inactive", "This account is inactive."),
+                    ToString::to_string,
+                )),
+                |notice| notice,
+                get_env,
+            )
+            .expect("an inactive account is not a failure")
+        };
+        let github_actions = |value: &'static str| {
+            move |name: &str| (name == "GITHUB_ACTIONS").then(|| value.to_string())
+        };
+
+        assert_eq!(
+            answer(&github_actions("true")),
+            format!("{ACCOUNT_INACTIVE_NOTICE}\n::notice title=SiteCMD::{ACCOUNT_INACTIVE_NOTICE}")
+        );
+        for value in ["false", "1", "TRUE", ""] {
+            assert_eq!(
+                answer(&github_actions(value)),
+                ACCOUNT_INACTIVE_NOTICE,
+                "{value:?}"
+            );
+        }
+        assert_eq!(answer(&|_| None), ACCOUNT_INACTIVE_NOTICE);
+        // Only this variable counts.
+        assert_eq!(
+            answer(&|name| (name != "GITHUB_ACTIONS").then(|| "true".to_string())),
+            ACCOUNT_INACTIVE_NOTICE
+        );
+    }
+
+    #[test]
+    fn settle_reads_github_actions_from_the_process_environment() {
+        // Read here, never written: the answer must match whatever this process
+        // was started with, which under GitHub Actions is `true`.
+        let github_actions = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+        let answer = crate::cli::settle(
+            Err::<String, _>(crate::cli::ConnectStop::refused(
+                &error("account_inactive", "This account is inactive."),
+                ToString::to_string,
+            )),
+            |notice| notice,
+        )
+        .expect("an inactive account is not a failure");
+        assert_eq!(
+            answer,
+            crate::connected_service::inactive_output("", ACCOUNT_INACTIVE_NOTICE, github_actions)
+        );
+    }
 
     #[test]
     fn read_config_rejects_oversized_files_before_json_parsing() {

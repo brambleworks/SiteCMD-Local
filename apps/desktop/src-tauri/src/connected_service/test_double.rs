@@ -5,6 +5,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
+/// What every machine door answers a read-only account.
+pub(crate) const ACCOUNT_INACTIVE_PROBLEM: &str = r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"This account is inactive.","code":"account_inactive","request_id":"req_0123456789abcdef"}"#;
+
+/// What a CI door answers a subscription that cannot watch its sites.
+pub(crate) const ENTITLEMENT_SUSPENDED_PROBLEM: &str = r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"This subscription cannot watch its sites.","code":"entitlement_suspended","request_id":"req_0123456789abcdef"}"#;
+
 /// Answer one connection with `body` under `status`, returning the origin to
 /// point a client at and the request that arrived.
 pub(crate) async fn respond_once(
@@ -48,6 +54,11 @@ pub(crate) async fn respond_in_sequence(
         requests
     });
     (format!("http://{address}"), captured)
+}
+
+/// The method, path and version a captured request opened with.
+pub(crate) fn request_line(request: &str) -> &str {
+    request.lines().next().unwrap_or_default()
 }
 
 /// A flow that short-circuits must fail the test rather than hang it, so a

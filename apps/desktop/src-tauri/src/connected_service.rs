@@ -121,7 +121,9 @@ pub struct ConnectedServiceError {
     pub code: String,
     pub message: String,
     pub request_id: Option<String>,
-    pub details: Option<Value>,
+    /// The whole problem object. Boxed because few refusals carry one and
+    /// the error rides in every `Result` the client returns.
+    pub details: Option<Box<Value>>,
     /// The seconds a refusal's `Retry-After` header names, such as the lease
     /// left on a `request_in_progress` key.
     pub retry_after: Option<u64>,
@@ -182,6 +184,42 @@ impl std::fmt::Display for ConnectedServiceError {
 }
 
 impl std::error::Error for ConnectedServiceError {}
+
+/// What a CI command answers when Connect says the account is inactive. It
+/// names no origin, so a self-hosted Connect's users read the same sentence.
+pub(crate) const ACCOUNT_INACTIVE_NOTICE: &str = "SiteCMD Connect says this account is inactive, so nothing was sent. Renew it from the SiteCMD dashboard to resume.";
+
+/// The same answer at a door whose request carried the person's data or that
+/// followed a step that changed state, where something was sent.
+pub(crate) const ACCOUNT_INACTIVE_RESULT_NOTICE: &str = "SiteCMD Connect says this account is inactive, so this result was not recorded. Renew it from the SiteCMD dashboard to resume.";
+
+/// The gate's answer. The gate records nothing even for an active account,
+/// so its sentence names what did not happen, as the gate action's summary
+/// does.
+pub(crate) const ACCOUNT_INACTIVE_GATE_NOTICE: &str = "SiteCMD Connect says this account is inactive, so the gate graded nothing. Renew it from the SiteCMD dashboard to resume.";
+
+/// Connect answers every machine door of a read-only account with
+/// `account_inactive`. A CI command stops on it with a notice and exit 0, so
+/// the person's pipeline stays green.
+pub(crate) fn is_account_inactive(error: &ConnectedServiceError) -> bool {
+    error.code == "account_inactive"
+}
+
+/// What a CI command answers when Connect says the account is inactive:
+/// `earlier`, what the command had already done, then `notice`, the sentence
+/// true of the door that said so. Under GitHub Actions the sentence is also a
+/// notice annotation, in the `::notice title=` form `sitecmd audit` uses.
+pub(crate) fn inactive_output(earlier: &str, notice: &str, github_actions: bool) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    if !earlier.is_empty() {
+        lines.push(earlier.to_string());
+    }
+    lines.push(notice.to_string());
+    if github_actions {
+        lines.push(format!("::notice title=SiteCMD::{notice}"));
+    }
+    lines.join("\n")
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GroupMutationEntry {

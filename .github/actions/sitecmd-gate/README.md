@@ -82,6 +82,15 @@ Two conditions warn instead of failing, and both are deliberate:
 
 ## Exit codes
 
-`0` passes, `1` blocks the merge, and anything else means the gate could not
-run at all. The third case is not reported as a pass, because a gate that
-cannot reach the service is not evidence that a branch is clean.
+`0` passes, or, on an inactive account, grades nothing; `1` blocks the merge;
+and anything else means the gate could not run at all. The third case is not
+reported as a pass, because a gate that cannot reach the service is not
+evidence that a branch is clean.
+
+When SiteCMD Connect answers `account_inactive`, the account is inactive and
+the gate grades nothing. It exits `0`, so pull requests are not blocked, but it
+is not reported as a pass either: the `verdict` output is `inactive`, `new` is
+`0`, and the step summary says the gate graded nothing.
+
+The action reads `verdict` and `new` from a file the CLI writes
+(`sitecmd gate --outputs <FILE>`), never from the summary it prints.

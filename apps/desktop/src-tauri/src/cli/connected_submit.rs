@@ -10,6 +10,7 @@ use crate::connected_service::{CiDeploymentHead, ConnectedServiceClient, Connect
 use crate::db::Database;
 
 use super::connected::{build_candidate_snapshot, read_connection_export, scan_this_checkout};
+use super::{settle, ConnectStop};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubmitArgs {
@@ -73,7 +74,23 @@ fn open_database(db_path: Option<PathBuf>) -> Result<Database, String> {
 
 /// Audit and submit this checkout rather than stale desktop state.
 /// Dry runs omit credential-derived publish ordering and print only local data.
-pub async fn run_submit(mut args: SubmitArgs) -> Result<String, String> {
+pub async fn run_submit(args: SubmitArgs) -> Result<String, String> {
+    run_submit_with(args, ConnectedServiceClient::configured).await
+}
+
+/// `run_submit` through the client `connect` builds from the CI token, which
+/// is what lets the wire tests point it at a local double.
+async fn run_submit_with(
+    args: SubmitArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<String, String> {
+    settle(submit(args, connect).await, |notice| notice)
+}
+
+async fn submit(
+    mut args: SubmitArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<String, ConnectStop> {
     args.deployment.validate()?;
     // Fail on a missing send credential before running the project audit.
     let token = if args.dry_run {
@@ -87,14 +104,14 @@ pub async fn run_submit(mut args: SubmitArgs) -> Result<String, String> {
     let connection = open_connection(&args.connection_export, &args.passphrase_env)?;
     let client = token
         .as_ref()
-        .map(|token| ConnectedServiceClient::configured(token.trim()))
+        .map(|token| connect(token.trim()))
         .transpose()?;
     let head = if let Some(client) = &client {
         Some(
             client
                 .ci_deployment_head(&connection.site_id)
                 .await
-                .map_err(|error| refusal(&error, "submission capability read", &args.token_env))?,
+                .map_err(|error| stop(&error, "submission capability read", &args.token_env))?,
         )
     } else {
         None
@@ -137,7 +154,7 @@ pub async fn run_submit(mut args: SubmitArgs) -> Result<String, String> {
             oidc_token.as_ref().map(|token| token.as_str()),
         )
         .await
-        .map_err(|error| refusal(&error, "submission", &args.token_env))?;
+        .map_err(|error| stop(&error, "submission", &args.token_env).unrecorded(""))?;
 
     let deployment = if receipt.created_deployment() {
         "recorded"
@@ -181,7 +198,23 @@ fn publish_ordering_preview_notice(deployment: &DeploymentFacts) -> Option<&'sta
 }
 
 /// Tell the service a deployment happened, with no scan attached.
-pub async fn run_deploy(mut args: DeployArgs) -> Result<String, String> {
+pub async fn run_deploy(args: DeployArgs) -> Result<String, String> {
+    run_deploy_with(args, ConnectedServiceClient::configured).await
+}
+
+/// `run_deploy` through the client `connect` builds from the CI token, which
+/// is what lets the wire tests point it at a local double.
+async fn run_deploy_with(
+    args: DeployArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<String, String> {
+    settle(deploy(args, connect).await, |notice| notice)
+}
+
+async fn deploy(
+    mut args: DeployArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<String, ConnectStop> {
     args.deployment.validate()?;
     let site_id = match (&args.site_id, &args.connection_export) {
         (Some(site_id), _) => site_id.clone(),
@@ -196,14 +229,14 @@ pub async fn run_deploy(mut args: DeployArgs) -> Result<String, String> {
     };
     let token = read_secret(&args.token_env, "the CI token minted for this site")?;
 
-    let client = ConnectedServiceClient::configured(token.trim())?;
+    let client = connect(token.trim())?;
     apply_current_publish_ordering(&client, &site_id, &mut args.deployment, &args.token_env)
         .await?;
     args.deployment.validate()?;
     let receipt = client
         .record_ci_deployment(&site_id, &args.deployment)
         .await
-        .map_err(|error| refusal(&error, "deployment", &args.token_env))?;
+        .map_err(|error| stop(&error, "deployment", &args.token_env).unrecorded(""))?;
 
     let outcome = if receipt.created {
         "Recorded"
@@ -241,15 +274,15 @@ async fn apply_current_publish_ordering(
     site_id: &str,
     deployment: &mut DeploymentFacts,
     token_env: &str,
-) -> Result<(), String> {
+) -> Result<(), ConnectStop> {
     if deployment.published || deployment.ordering.is_some() {
         return Ok(());
     }
     let head = client
         .ci_deployment_head(site_id)
         .await
-        .map_err(|error| refusal(&error, "deployment ordering read", token_env))?;
-    apply_publish_ordering_from_head(&head, deployment)
+        .map_err(|error| stop(&error, "deployment ordering read", token_env))?;
+    Ok(apply_publish_ordering_from_head(&head, deployment)?)
 }
 
 fn apply_publish_ordering_from_head(
@@ -321,6 +354,12 @@ fn basis_label(kind: sitecmd_engine::sync::CodeBasisKind) -> &'static str {
         CodeBasisKind::Stale => "older than the deployed commit",
         CodeBasisKind::Unknown => "no known relationship to the deployed commit",
     }
+}
+
+/// A refusal as the command's stop. An inactive account is read before the
+/// refusal is described, so it never reaches `next_action`.
+fn stop(error: &ConnectedServiceError, door: &str, token_env: &str) -> ConnectStop {
+    ConnectStop::refused(error, |error| refusal(error, door, token_env))
 }
 
 /// Format a refusal without exposing tenant-bearing `details`.

@@ -3,14 +3,18 @@
 
 use super::*;
 
+use crate::cli::test_support::{clean_checkout, exported_site, through, CI_TOKEN, ENVIRONMENT_URL};
 use crate::connected_service::deployment_ordering::CiSubmissionAttestation;
-use crate::connected_service::ConnectedOrderingAuthority;
+use crate::connected_service::test_double::{
+    request_line, respond_in_sequence, ACCOUNT_INACTIVE_PROBLEM, ENTITLEMENT_SUSPENDED_PROBLEM,
+};
+use crate::connected_service::{
+    ConnectedOrderingAuthority, ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE,
+};
 use crate::db::{ConnectedSubmissionRequest, Database};
 use sitecmd_engine::sync::ProjectFingerprintKey;
 
-const ENVIRONMENT_URL: &str = "https://example.com";
 const SITE_ID: &str = "site_cli_submit";
-const CI_TOKEN: &str = "sitecmd_ci_0123456789abcdef0123456789abcdef";
 
 // A variable this suite never sets, so "the send stopped at the missing
 // credential" is a fact about the code path rather than about the machine.
@@ -94,13 +98,13 @@ fn a_refusal_carries_neither_the_token_nor_the_tenant_content_it_was_handed() {
         message: "This provider deployment identity already exists with different immutable facts."
             .into(),
         request_id: Some("req_9f2".into()),
-        details: Some(serde_json::json!({
+        details: Some(Box::new(serde_json::json!({
             "existing": {
                 "commit_sha": "deadbeefcafe",
                 "ref": "refs/heads/customer-secret-branch",
                 "target": "customer-production"
             }
-        })),
+        }))),
         retry_after: None,
     };
 
@@ -178,10 +182,10 @@ fn a_throttled_refusal_names_the_wait_its_retry_after_gave() {
 #[test]
 fn an_already_issued_secret_says_where_to_revoke_it_and_names_it() {
     let mut issued = error("secret_already_issued", "refused");
-    issued.details = Some(serde_json::json!({
+    issued.details = Some(Box::new(serde_json::json!({
         "code": "secret_already_issued",
         "issued": { "kind": "ci_token", "id": "cit_0123456789abcdef" }
-    }));
+    })));
     let action = next_action(&issued, "SITECMD_CI_TOKEN").expect("a next action");
     assert!(action.contains("desktop app"), "{action}");
     assert!(action.contains("cit_0123456789abcdef"), "{action}");
@@ -224,7 +228,7 @@ fn an_oidc_pin_refusal_tells_the_operator_what_to_check() {
         "provenance_rejected",
         "The presented OIDC token does not establish the pinned provenance.",
     );
-    ref_mismatch.details = Some(serde_json::json!({ "reason": "ref_mismatch" }));
+    ref_mismatch.details = Some(Box::new(serde_json::json!({ "reason": "ref_mismatch" })));
     let rendered = refusal(&ref_mismatch, "submission", "SITECMD_CI_TOKEN");
     assert!(rendered.contains("trusted ref"), "{rendered}");
 }
@@ -489,56 +493,6 @@ fn a_candidate_is_built_without_a_producer_sequence_at_all() {
     assert!(snapshot.is_none());
 }
 
-fn clean_checkout() -> (tempfile::TempDir, tempfile::TempDir, PathBuf, String) {
-    let home_root = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .expect("HOME must be set for tests");
-    let repo = tempfile::tempdir_in(&home_root).expect("repo tempdir");
-    // Outside the working tree: an isolated HOME inside it would leave the
-    // checkout dirty, and a dirty tree is never an exact basis.
-    let home = tempfile::tempdir().expect("home tempdir");
-    let root = repo.path().to_path_buf();
-    std::fs::write(
-        root.join("package.json"),
-        "{\"name\": \"cli-submit-fixture\", \"version\": \"1.0.0\"}\n",
-    )
-    .expect("project marker");
-    std::fs::write(
-        root.join("app.js"),
-        "export function render(input) {\n  return eval(input);\n}\n",
-    )
-    .expect("source file");
-
-    let environment = [
-        ("HOME", home.path().to_string_lossy().to_string()),
-        ("GIT_CONFIG_GLOBAL", "/dev/null".to_string()),
-        ("GIT_CONFIG_SYSTEM", "/dev/null".to_string()),
-    ];
-    let git = |args: &[&str]| {
-        std::process::Command::new("git")
-            .args(args)
-            .current_dir(&root)
-            .envs(
-                environment
-                    .iter()
-                    .map(|(key, value)| (*key, value.as_str())),
-            )
-            .output()
-            .expect("git command");
-    };
-    git(&["init", "-q", "-b", "main"]);
-    git(&["config", "user.email", "test@example.com"]);
-    git(&["config", "user.name", "Test User"]);
-    git(&["config", "commit.gpgsign", "false"]);
-    git(&["add", "-A"]);
-    git(&["commit", "-q", "-m", "one commit"]);
-
-    let status = crate::core::git::get_git_status(&root.to_string_lossy(), 1);
-    assert!(status.is_git_repo && !status.has_uncommitted, "{status:?}");
-    let head = status.commits[0].hash.clone();
-    (repo, home, root, head)
-}
-
 #[test]
 fn an_audited_checkout_renders_as_the_ci_submission_the_service_reads() {
     let (_repo, _home, root, head) = clean_checkout();
@@ -670,4 +624,218 @@ fn the_send_demands_the_credential_before_it_audits_anything() {
     .expect_err("missing token");
     assert!(error.contains(UNSET_TOKEN_ENV), "{error}");
     assert!(!error.contains(MISSING_EXPORT), "{error}");
+}
+
+// A head that names no ordering authority, so a send claims no publish order
+// and asks GitHub for no witness.
+const UNATTESTED_HEAD: &str = r#"{"current_deployment_id":null,"submission_attestation":"unattested","ordering_authority":null}"#;
+
+fn live_submit_args(
+    workspace: &std::path::Path,
+    variable_prefix: &str,
+    project_path: Option<PathBuf>,
+    commit_sha: &str,
+) -> SubmitArgs {
+    let (connection_export, passphrase_env, token_env) =
+        exported_site(workspace, SITE_ID, variable_prefix);
+    SubmitArgs {
+        connection_export,
+        passphrase_env,
+        token_env,
+        db_path: Some(workspace.join("sitecmd.db")),
+        project_path,
+        deployment: DeploymentFacts {
+            commit_sha: commit_sha.into(),
+            ..facts()
+        },
+        dry_run: false,
+    }
+}
+
+fn deploy_args(variable_prefix: &str) -> DeployArgs {
+    let token_env = format!("{variable_prefix}_TOKEN");
+    std::env::set_var(&token_env, CI_TOKEN);
+    DeployArgs {
+        site_id: Some(SITE_ID.into()),
+        connection_export: None,
+        passphrase_env: "SITECMD_CONNECTION_PASSPHRASE".into(),
+        token_env,
+        deployment: facts(),
+    }
+}
+
+#[tokio::test]
+async fn a_submission_for_an_inactive_account_exits_zero_with_the_notice() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let args = live_submit_args(
+        workspace.path(),
+        "SITECMD_TEST_SUBMIT_INACTIVE",
+        None,
+        "c0ffee1",
+    );
+    let (origin, captured) =
+        respond_in_sequence(vec![(ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden")]).await;
+
+    let output = run_submit_with(args, through(&origin))
+        .await
+        .expect("an inactive account is not a failure");
+
+    assert!(output.contains(ACCOUNT_INACTIVE_NOTICE), "{output}");
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(
+        request_line(&requests[0]),
+        "GET /v1/sites/site_cli_submit/deployment-head HTTP/1.1"
+    );
+}
+
+#[tokio::test]
+async fn evidence_refused_as_inactive_says_the_result_was_not_recorded() {
+    let (_repo, _home, root, head) = clean_checkout();
+    let workspace = tempfile::tempdir().expect("workspace");
+    let args = live_submit_args(
+        workspace.path(),
+        "SITECMD_TEST_EVIDENCE_INACTIVE",
+        Some(root),
+        &head,
+    );
+    let (origin, captured) = respond_in_sequence(vec![
+        (UNATTESTED_HEAD.into(), "200 OK"),
+        (ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden"),
+    ])
+    .await;
+
+    let output = run_submit_with(args, through(&origin))
+        .await
+        .expect("an inactive account is not a failure");
+
+    // The refused request carried the evidence, so "nothing was sent" would
+    // be untrue.
+    assert!(
+        output.starts_with(ACCOUNT_INACTIVE_RESULT_NOTICE),
+        "{output}"
+    );
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(
+        request_line(&requests[1]),
+        "POST /v1/sites/site_cli_submit/sync/ci HTTP/1.1"
+    );
+}
+
+#[tokio::test]
+async fn a_suspended_subscription_still_fails_the_submission() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let args = live_submit_args(
+        workspace.path(),
+        "SITECMD_TEST_SUBMIT_SUSPENDED",
+        None,
+        "c0ffee1",
+    );
+    let (origin, _captured) = respond_in_sequence(vec![(
+        ENTITLEMENT_SUSPENDED_PROBLEM.into(),
+        "403 Forbidden",
+    )])
+    .await;
+
+    let error = run_submit_with(args, through(&origin))
+        .await
+        .expect_err("a suspended subscription still fails the step");
+
+    assert!(error.contains("(entitlement_suspended)"), "{error}");
+    assert!(error.contains("This subscription is suspended"), "{error}");
+    assert!(!error.contains(ACCOUNT_INACTIVE_NOTICE), "{error}");
+}
+
+#[tokio::test]
+async fn a_deployment_for_an_inactive_account_exits_zero_with_the_notice() {
+    let (origin, captured) =
+        respond_in_sequence(vec![(ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden")]).await;
+
+    let output = run_deploy_with(
+        deploy_args("SITECMD_TEST_DEPLOY_INACTIVE"),
+        through(&origin),
+    )
+    .await
+    .expect("an inactive account is not a failure");
+
+    assert!(output.contains(ACCOUNT_INACTIVE_NOTICE), "{output}");
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(
+        request_line(&requests[0]),
+        "GET /v1/sites/site_cli_submit/deployment-head HTTP/1.1"
+    );
+}
+
+#[tokio::test]
+async fn a_deployment_record_refused_as_inactive_says_it_was_not_recorded() {
+    let (origin, captured) = respond_in_sequence(vec![
+        (UNATTESTED_HEAD.into(), "200 OK"),
+        (ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden"),
+    ])
+    .await;
+
+    let output = run_deploy_with(
+        deploy_args("SITECMD_TEST_RECORD_INACTIVE"),
+        through(&origin),
+    )
+    .await
+    .expect("an inactive account is not a failure");
+
+    assert!(
+        output.starts_with(ACCOUNT_INACTIVE_RESULT_NOTICE),
+        "{output}"
+    );
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(
+        request_line(&requests[1]),
+        "POST /v1/sites/site_cli_submit/deployments HTTP/1.1"
+    );
+}
+
+#[tokio::test]
+async fn a_published_deployment_refused_at_its_only_door_says_it_was_not_recorded() {
+    // Explicit ordering skips the head read, so the record, which carries the
+    // deployment, is the first and only door.
+    let mut args = deploy_args("SITECMD_TEST_PUBLISHED_INACTIVE");
+    apply_publish_ordering_from_head(&deployment_head(None), &mut args.deployment)
+        .expect("publish ordering");
+    let (origin, captured) =
+        respond_in_sequence(vec![(ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden")]).await;
+
+    let output = run_deploy_with(args, through(&origin))
+        .await
+        .expect("an inactive account is not a failure");
+
+    assert!(
+        output.starts_with(ACCOUNT_INACTIVE_RESULT_NOTICE),
+        "{output}"
+    );
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(
+        request_line(&requests[0]),
+        "POST /v1/sites/site_cli_submit/deployments HTTP/1.1"
+    );
+}
+
+#[tokio::test]
+async fn a_suspended_subscription_still_fails_the_deployment() {
+    let (origin, _captured) = respond_in_sequence(vec![(
+        ENTITLEMENT_SUSPENDED_PROBLEM.into(),
+        "403 Forbidden",
+    )])
+    .await;
+
+    let error = run_deploy_with(
+        deploy_args("SITECMD_TEST_DEPLOY_SUSPENDED"),
+        through(&origin),
+    )
+    .await
+    .expect_err("a suspended subscription still fails the step");
+
+    assert!(error.contains("(entitlement_suspended)"), "{error}");
+    assert!(error.contains("This subscription is suspended"), "{error}");
 }

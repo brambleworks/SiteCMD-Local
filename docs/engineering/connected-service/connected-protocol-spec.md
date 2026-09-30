@@ -1540,7 +1540,8 @@ there is no such thing as an unlisted way in.
 - **CI token.** Minted by a signed-in person through the dashboard, bound to exactly one site, shown
   once, and stored hash-only. Every CI request checks the site's
   subscription admission and answers `403 entitlement_suspended` when
-  watching is refused. Repository identity is recorded as both the canonical
+  watching is refused, or `403 account_inactive` when the account is
+  inactive. Repository identity is recorded as both the canonical
   `owner/repo` and GitHub's immutable decimal repository id when a trusted
   workflow is pinned. The shipped desktop resolves both directly from
   GitHub, but minting requires a dashboard session. No implemented handoff
@@ -1650,7 +1651,12 @@ names all four. `sitecmd gate` builds its candidate
 through the same payload builder desktop sync uses, so the gate cannot
 disagree with sync about what a finding is, and the composite action at
 `.github/actions/sitecmd-gate` installs the published CLI and reports a
-blocked merge as exit 1 and an unreachable service as neither.
+blocked merge as exit 1 and an unreachable service as neither. An inactive
+account's CI doors and fix-job doors answer `403 account_inactive`, and on
+that code `sitecmd gate`, `sitecmd deploy`, `sitecmd connected --submit`
+and the fix job's `sitecmd autofix run-job` and `publish-job` print a notice
+and exit 0, so the account's pipelines stay green. The gate action reports
+that run's verdict as `inactive`, never as a pass.
 
 The detector-change rule is decided per check. The baseline instrument's
 check inventory is stored beside its manifest digest (`site_code_checks`,
@@ -1844,9 +1850,9 @@ nothing else, which is the honest answer.
   for accepted asynchronous work (erase); `204` for completed idempotent
   deletions and disconnections; `400` malformed request; `401` unknown or
   revoked credential, uniform; `403` valid credential refused
-  (`entitlement_suspended`, `unverified_site`, `signed_in_required`,
-  `insufficient_scope`, `token_site_limited`, `account_required`,
-  `account_creation_refused`); `404`
+  (`entitlement_suspended`, `account_inactive`, `unverified_site`,
+  `signed_in_required`, `insufficient_scope`, `token_site_limited`,
+  `account_required`, `account_creation_refused`); `404`
   unknown resource within the caller's scope; `409` conflicts
   (`stale_revision`, `stale_submission`, `stale_key_version`,
   `key_commitment_mismatch`, `request_in_progress` with `Retry-After`,
@@ -3456,12 +3462,8 @@ itself is part of this registry:
   for the account's lifetime and is erased with it; an unfinished creation
   stays until completion or seven days after it began, when the daily
   sweep deletes its provider organization and then its creation record.
-  Other operational data includes raw per-channel delivery logs (90 days;
-  their outcomes are
-  already summarized on the exportable alert record),
-  `Idempotency-Key` records (24 hours; the key itself is stored only
-  as its SHA-256), rate-limit counters (transient),
-  redemption-nonce records (hashes only, TTL plus 7 days), the
+  Other operational data includes `Idempotency-Key` records (24 hours;
+  the key itself is stored only as its SHA-256), the
   coalescing-generation watermark (a counter, no tenant content;
   survives disconnect so a reconnected site continues its sequence,
   resets only with erasure - scan idempotency is keyed by erasure
@@ -3801,10 +3803,13 @@ itself is part of this registry:
   stage: between creation, claim, and provider invocation.
   Rationale:
   they describe the service's behavior, they contain no tenant
-  content beyond what the exportable records carry, and exporting raw
-  delivery logs would mostly re-export destination addresses.
+  content beyond what the exportable records carry, and exporting
+  delivery attempts would mostly re-export destination addresses.
 - **Security** artifacts are excluded because exporting them would
-  weaken what they protect: the erasure receipt-ledger records,
+  weaken what they protect: the alert redemption-nonce and
+  unsubscribe-token records (hashes only, TTL plus 7 days; exporting
+  them would hand over live capability material for the public
+  fallback and unsubscribe doors), the erasure receipt-ledger records,
   the control-store safety journal, and the R2 archive (retained
   per the exact control-store retention table - receipts a year,
   journal by its restore horizon; they are the proof of deletion
@@ -3845,19 +3850,20 @@ itself is part of this registry:
 
 - **Secret** material is never exportable by design: provider
   credentials, MAC and signing keys, token secrets, the
-  hash-stored single-use capability records (confirmation,
-  unsubscribe, and OAuth state tokens) while they live, and the
-  frozen-body ciphertext of nonterminal `delivery_attempt` rows
-  (the row's metadata is operational; the ciphertext embeds live
-  capabilities and is Secret until purged at terminal outcome).
+  single-use confirmation and OAuth state token hashes (columns on
+  their destination and provider-connection rows) while they live,
+  and the frozen-body ciphertext of nonterminal `delivery_attempt`
+  rows (the row's metadata is operational; the ciphertext embeds
+  live capabilities and is Secret until purged at terminal outcome).
 
 **The classification check covers Postgres tables.** Connect's
 `src/export.test.ts` reads the current schema's base tables from
 `information_schema`, applies the registry's `classifiable` filter, and
 checks that every remaining table has exactly one entry in
 `src/lib/export-registry.ts`. It also rejects entries for absent tables.
-That test does not classify Durable Object storage, Queue payloads, or R2
-objects. Those stores exist outside its coverage:
+That test does not classify Durable Object storage, Queue payloads, R2
+objects, KV values, or rate-limit counters. Those stores exist outside its
+coverage:
 
 - The scan Worker's `ScanCoordinator` persists per-site scan records and
   an alarm schedule. Records contain routes, progress, sanitized partial
@@ -3882,6 +3888,11 @@ objects. Those stores exist outside its coverage:
 - Connect's `MANIFEST_REGISTRY` R2 bucket stores engine-manifest documents
   by digest. Publication reads or creates an object and indexes it in
   Postgres; the manifest implementation has no deletion or expiry path.
+- Connect's `PUBLISHED_KEYS` KV namespace holds only WorkOS's and GitHub's
+  published public keys, which Connect checks signatures against.
+- Connect's rate limits are Workers rate-limit bindings
+  (`CONNECT_IP_RATE_LIMIT` and `CONNECT_TOKEN_RATE_LIMIT`). Their counters
+  are transient and kept by Cloudflare, not in Postgres.
 
 The delivery write coordinator and control archive described in the
 unimplemented storage contract are distinct from the scan Worker's

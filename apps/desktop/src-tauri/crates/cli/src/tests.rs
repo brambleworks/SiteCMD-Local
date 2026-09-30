@@ -80,6 +80,30 @@ fn check_accepts_fail_under_and_its_deprecated_threshold_alias() {
 }
 
 #[test]
+fn gate_names_the_file_its_verdict_is_written_to() {
+    let args = parse_gate_args(
+        [
+            "--connection-export",
+            "c.sitecmd",
+            "--outputs",
+            "gate-outputs.txt",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    )
+    .expect("outputs");
+    assert_eq!(args.outputs, Some("gate-outputs.txt".into()));
+
+    let bare = parse_gate_args(
+        ["--connection-export", "c.sitecmd"]
+            .into_iter()
+            .map(str::to_string),
+    )
+    .expect("no outputs");
+    assert_eq!(bare.outputs, None);
+}
+
+#[test]
 fn gate_accepts_fail_on_and_its_deprecated_threshold_alias() {
     let new = parse_gate_args(
         ["--connection-export", "c.sitecmd", "--fail-on", "medium"]

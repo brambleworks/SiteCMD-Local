@@ -10,6 +10,7 @@ use super::artifact::{read_artifact, Manifest};
 use super::github_api::GitHubApi;
 use super::redact;
 use super::repo;
+use crate::cli::{settle, ConnectStop};
 use crate::connected_service::deployment_ordering::CiSubmissionAttestation;
 use crate::connected_service::{
     ClaimedJob, ConnectedServiceClient, FindingOutcomeReport, PullRequestReport, ResultReport,
@@ -263,7 +264,7 @@ async fn publish_patch(
     claimed: &ClaimedJob,
     manifest: &Manifest,
     job_client: &ConnectedServiceClient,
-) -> Result<(u8, ResultReport), String> {
+) -> Result<(u8, ResultReport), ConnectStop> {
     let patch_path = args.artifact_dir.join("patch.diff");
     let declined = |code: &str, summary: String| {
         (
@@ -324,7 +325,7 @@ async fn publish_patch(
     let minted = job_client
         .publish_token(&claimed.job_id)
         .await
-        .map_err(|error| format!("publish token refused: {} ({})", error.code, error.message))?;
+        .map_err(|error| ConnectStop::refused_as(&error, "publish token").unrecorded(""))?;
     let transport = HttpsTransport::for_token(&minted.token);
     let api = GitHubApi::new();
     let remote = format!("https://github.com/{}.git", claimed.repository);
@@ -409,7 +410,7 @@ async fn publish_artifact(
     manifest: &Manifest,
     patch: &str,
     job_client: &ConnectedServiceClient,
-) -> Result<(u8, ResultReport), String> {
+) -> Result<(u8, ResultReport), ConnectStop> {
     let rejected = |summary: String| {
         (
             1_u8,
@@ -478,6 +479,17 @@ pub(crate) async fn run_with_witness(
     witness: &str,
     allow_http_loopback: bool,
 ) -> Result<(u8, String), String> {
+    settle(
+        publish(args, witness, allow_http_loopback).await,
+        |notice| (0, notice),
+    )
+}
+
+async fn publish(
+    args: &PublishJobArgs,
+    witness: &str,
+    allow_http_loopback: bool,
+) -> Result<(u8, String), ConnectStop> {
     let root = checkout_root(args)?;
     refuse_an_artifact_inside_the_checkout(&root, &args.artifact_dir)?;
     let claim_client =
@@ -485,7 +497,7 @@ pub(crate) async fn run_with_witness(
     let claimed = claim_client
         .claim_job(&args.job_id, "publish", witness)
         .await
-        .map_err(|error| format!("publish claim refused: {} ({})", error.code, error.message))?;
+        .map_err(|error| ConnectStop::refused_as(&error, "publish claim"))?;
     // The runner writes only what it can see, and it can only see its own
     // checkout, so a checkout that is not the commit the claim names is
     // refused before the artifact is even read.
@@ -494,7 +506,8 @@ pub(crate) async fn run_with_witness(
         return Err(format!(
             "refusing to publish: checkout is at {head}, the claim names {}",
             claimed.base_sha
-        ));
+        )
+        .into());
     }
     let job_client = ConnectedServiceClient::for_endpoint(
         &args.connect_origin,
@@ -524,7 +537,9 @@ pub(crate) async fn run_with_witness(
     let receipt = job_client
         .report_job_result(&claimed.job_id, &result)
         .await
-        .map_err(|error| format!("result refused: {} ({})", error.code, error.message))?;
+        .map_err(|error| {
+            ConnectStop::refused_as(&error, "result").unrecorded(result.summary.clone())
+        })?;
     Ok((
         code,
         format!(

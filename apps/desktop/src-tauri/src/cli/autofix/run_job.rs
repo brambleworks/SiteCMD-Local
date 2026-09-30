@@ -15,6 +15,7 @@ use super::brief::{brief_artifact, code_slug, locate_findings};
 use super::redact;
 use super::repo;
 use super::secrets::{read_env_secret, read_export, ExportSource};
+use crate::cli::{settle, ConnectStop};
 use crate::connected_export::decrypt_site_connection;
 use crate::connected_service::deployment_ordering::CiSubmissionAttestation;
 use crate::connected_service::{
@@ -424,7 +425,7 @@ async fn report_result(
     claimed: &ClaimedJob,
     result: &ResultReport,
     allow_http_loopback: bool,
-) -> Result<String, String> {
+) -> Result<String, ConnectStop> {
     let job_client = ConnectedServiceClient::for_endpoint(
         &args.connect_origin,
         Some(&claimed.job_token),
@@ -434,7 +435,7 @@ async fn report_result(
         .report_job_result(&claimed.job_id, result)
         .await
         .map(|receipt| receipt.state)
-        .map_err(|error| format!("result refused: {} ({})", error.code, error.message))
+        .map_err(|error| ConnectStop::refused_as(&error, "result"))
 }
 
 /// `publish=false` for the workflow, whenever the step was asked for it.
@@ -467,6 +468,20 @@ pub(crate) async fn run_with_witness(
     witness: &str,
     allow_http_loopback: bool,
 ) -> Result<(u8, String), String> {
+    let outcome = attempt(args, witness, allow_http_loopback).await;
+    if matches!(outcome, Err(ConnectStop::AccountInactive { .. })) {
+        // The workflow reads `publish` whatever happens, and an inactive
+        // account leaves nothing to publish.
+        refuse_publish(args)?;
+    }
+    settle(outcome, |notice| (0, notice))
+}
+
+async fn attempt(
+    args: &RunJobArgs,
+    witness: &str,
+    allow_http_loopback: bool,
+) -> Result<(u8, String), ConnectStop> {
     let root = checkout_root(args)?;
     let claim_client =
         ConnectedServiceClient::for_endpoint(&args.connect_origin, None, allow_http_loopback)?;
@@ -487,7 +502,7 @@ pub(crate) async fn run_with_witness(
                 ),
             ));
         }
-        Err(error) => return Err(format!("claim refused: {} ({})", error.code, error.message)),
+        Err(error) => return Err(ConnectStop::refused_as(&error, "claim")),
     };
 
     let key = match site_fingerprint_key(args) {
@@ -501,10 +516,13 @@ pub(crate) async fn run_with_witness(
                 "secrets_missing",
                 MISSING_SECRETS_SUMMARY.to_string(),
             );
-            report_result(args, &claimed, &result, allow_http_loopback).await?;
             // SiteCMD is told the fixed sentence; the Actions log, which only
             // the repository's own people can read, is told which secret.
-            return Ok((1, format!("{MISSING_SECRETS_SUMMARY}\n{reason}")));
+            let summary = format!("{MISSING_SECRETS_SUMMARY}\n{reason}");
+            report_result(args, &claimed, &result, allow_http_loopback)
+                .await
+                .map_err(|stop| stop.unrecorded(summary.clone()))?;
+            return Ok((1, summary));
         }
     };
 
@@ -522,7 +540,9 @@ pub(crate) async fn run_with_witness(
     let mut summary = execution.manifest.summary.clone();
     let mut code = 0_u8;
     if let Some(result) = &execution.result {
-        let state = report_result(args, &claimed, result, allow_http_loopback).await?;
+        let state = report_result(args, &claimed, result, allow_http_loopback)
+            .await
+            .map_err(|stop| stop.unrecorded(summary.clone()))?;
         summary.push_str(&format!(
             "\nreported {} for {}; job is {state}",
             result.outcome_code, claimed.job_id

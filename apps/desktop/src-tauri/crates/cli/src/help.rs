@@ -193,10 +193,13 @@ Options:\n  \
   --strict                Also fail on findings the service cannot rule out\n                          as a detector or corpus change\n  \
   --path <PATH>           Project root to audit (default: working directory)\n  \
   --db <PATH>             Desktop database (or SITECMD_DB_PATH/default path)\n  \
+  --outputs <FILE>        Write verdict=pass, fail or inactive and new=<N>\n                          for a workflow to read\n  \
   --help, -h              Show this help\n\n\
 Audits the checkout, then asks the service which findings are new against the\n\
 baseline. Exit code 1 means the merge is blocked, 2 means the gate could not\n\
-run. The candidate is evaluated and discarded: gating never changes the\n\
-baseline, so this is safe on every branch of every pull request."
+run. An inactive SiteCMD Connect account grades nothing: the gate prints a\n\
+notice, names the verdict inactive and exits 0. The candidate is evaluated\n\
+and discarded: gating never changes the baseline, so this is safe on every\n\
+branch of every pull request."
     );
 }

@@ -49,10 +49,14 @@ inputs:
 
 outputs:
   verdict:
-    description: pass or fail.
+    description: >-
+      pass, fail, or inactive when SiteCMD Connect says the account is
+      inactive and the gate graded nothing.
     value: ${{ steps.gate.outputs.verdict }}
   new:
-    description: How many findings were new against the baseline.
+    description: >-
+      How many findings were new against the baseline, 0 when the verdict is
+      inactive.
     value: ${{ steps.gate.outputs.new }}
 
 runs:
@@ -87,10 +91,12 @@ runs:
         mkdir -p "${RUNNER_TEMP}/sitecmd-gate"
         chmod 700 "${RUNNER_TEMP}/sitecmd-gate"
         export_path="${RUNNER_TEMP}/sitecmd-gate/connection.json"
+        verdict_path="${RUNNER_TEMP}/sitecmd-gate/verdict.txt"
         # The export carries a fingerprint key, so restrict it and always remove it.
         umask 077
         printf '%s' "$SITECMD_CONNECTION_EXPORT" > "$export_path"
         trap 'rm -f "$export_path"' EXIT
+        rm -f "$verdict_path"
 
         strict_flag=()
         if [ "$SITECMD_STRICT" = "true" ]; then strict_flag=(--strict); fi
@@ -99,25 +105,34 @@ runs:
         summary=$(sitecmd gate \
           --connection-export "$export_path" \
           --fail-on "$SITECMD_FAIL_ON" \
-          "${strict_flag[@]}")
+          --outputs "$verdict_path" \
+          ${strict_flag[@]+"${strict_flag[@]}"})
         status=$?
         set -e
         echo "$summary"
 
         # Exit 1 blocks; exit 2 means the gate failed to produce a verdict.
         case "$status" in
-          0) verdict=pass ;;
-          1) verdict=fail ;;
+          0 | 1) ;;
           *) echo "::error::The SiteCMD gate could not run (exit $status)."; exit "$status" ;;
         esac
-        echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
-        echo "new=$(printf '%s' "$summary" | head -n 1 | sed -n 's/.*: \([0-9]*\) new.*/\1/p')" \
-          >> "$GITHUB_OUTPUT"
+        # The CLI writes its verdict to this file, so nothing here parses the
+        # summary it prints for people.
+        verdict=$(sed -n 's/^verdict=//p' "$verdict_path" 2>/dev/null || true)
+        case "$verdict" in
+          pass | fail | inactive) ;;
+          *) echo "::error::The SiteCMD gate named no verdict."; exit 2 ;;
+        esac
+        cat "$verdict_path" >> "$GITHUB_OUTPUT"
         {
           echo "### SiteCMD gate: $verdict"
           echo
-          echo '```'
-          echo "$summary"
-          echo '```'
+          if [ "$verdict" = "inactive" ]; then
+            echo "SiteCMD Connect says this account is inactive, so the gate graded nothing."
+          else
+            echo '```'
+            echo "$summary"
+            echo '```'
+          fi
         } >> "$GITHUB_STEP_SUMMARY"
         exit "$status"

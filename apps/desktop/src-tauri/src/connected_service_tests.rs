@@ -88,6 +88,72 @@ fn the_retired_error_envelope_reads_as_an_unstructured_refusal() {
     assert!(error.details.is_none());
 }
 
+#[test]
+fn an_inactive_account_is_read_from_the_problem_code() {
+    let inactive = parse_response::<Value>(
+        StatusCode::FORBIDDEN,
+        test_double::ACCOUNT_INACTIVE_PROBLEM.as_bytes(),
+    )
+    .expect_err("refused");
+    assert!(is_account_inactive(&inactive));
+
+    let suspended = parse_response::<Value>(
+        StatusCode::FORBIDDEN,
+        test_double::ENTITLEMENT_SUSPENDED_PROBLEM.as_bytes(),
+    )
+    .expect_err("refused");
+    assert!(!is_account_inactive(&suspended));
+    // A refusal that carried no problem details names no account state.
+    let bare = parse_response::<Value>(StatusCode::FORBIDDEN, b"").expect_err("refused");
+    assert!(!is_account_inactive(&bare));
+}
+
+const NOTICE: &str = "SiteCMD Connect says this account is inactive, so nothing was sent. Renew it from the SiteCMD dashboard to resume.";
+const RESULT_NOTICE: &str = "SiteCMD Connect says this account is inactive, so this result was not recorded. Renew it from the SiteCMD dashboard to resume.";
+const GATE_NOTICE: &str = "SiteCMD Connect says this account is inactive, so the gate graded nothing. Renew it from the SiteCMD dashboard to resume.";
+
+#[test]
+fn the_inactive_notices_are_verbatim_and_name_no_origin() {
+    assert_eq!(ACCOUNT_INACTIVE_NOTICE, NOTICE);
+    assert_eq!(ACCOUNT_INACTIVE_RESULT_NOTICE, RESULT_NOTICE);
+    assert_eq!(ACCOUNT_INACTIVE_GATE_NOTICE, GATE_NOTICE);
+    for notice in [
+        ACCOUNT_INACTIVE_NOTICE,
+        ACCOUNT_INACTIVE_RESULT_NOTICE,
+        ACCOUNT_INACTIVE_GATE_NOTICE,
+    ] {
+        assert!(!notice.contains("://"), "{notice}");
+        assert!(!notice.contains("sitecmd.com"), "{notice}");
+    }
+}
+
+#[test]
+fn the_notice_is_annotated_only_under_github_actions() {
+    assert_eq!(inactive_output("", NOTICE, false), NOTICE);
+    assert_eq!(
+        inactive_output("", NOTICE, true),
+        format!("{NOTICE}\n::notice title=SiteCMD::{NOTICE}")
+    );
+    assert_eq!(
+        inactive_output("", GATE_NOTICE, true),
+        format!("{GATE_NOTICE}\n::notice title=SiteCMD::{GATE_NOTICE}")
+    );
+}
+
+#[test]
+fn what_the_command_already_did_comes_before_the_notice() {
+    assert_eq!(
+        inactive_output("opened pull request #12", RESULT_NOTICE, false),
+        format!("opened pull request #12\n{RESULT_NOTICE}")
+    );
+    assert_eq!(
+        inactive_output("opened pull request #12", RESULT_NOTICE, true),
+        format!(
+            "opened pull request #12\n{RESULT_NOTICE}\n::notice title=SiteCMD::{RESULT_NOTICE}"
+        )
+    );
+}
+
 const IN_PROGRESS_PROBLEM: &str = r#"{"type":"about:blank","title":"Conflict","status":409,"detail":"A request under this Idempotency-Key is still being processed.","code":"request_in_progress","request_id":"req_0123456789abcdef"}"#;
 
 #[tokio::test]
@@ -157,13 +223,13 @@ fn stale_revision_details_support_batch_and_single_shapes() {
         code: "stale_revision".into(),
         message: "changed".into(),
         request_id: None,
-        details: Some(serde_json::json!({
+        details: Some(Box::new(serde_json::json!({
             "stale_groups": [{
                 "check": "security.csp",
                 "current_state": "active",
                 "current_state_revision": 43
             }]
-        })),
+        }))),
         retry_after: None,
     };
     assert_eq!(
@@ -175,10 +241,10 @@ fn stale_revision_details_support_batch_and_single_shapes() {
         }]
     );
     let single = ConnectedServiceError {
-        details: Some(serde_json::json!({
+        details: Some(Box::new(serde_json::json!({
             "current_state": "dismissed",
             "current_state_revision": 9
-        })),
+        }))),
         ..batch
     };
     assert_eq!(single.stale_groups("seo.title")[0].check, "seo.title");

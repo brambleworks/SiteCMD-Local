@@ -9,9 +9,12 @@ use zeroize::Zeroizing;
 use crate::connected_export::{
     decrypt_site_connection, ImportedSiteConnection, MAX_CONNECTION_EXPORT_BYTES,
 };
+use crate::connected_service::ConnectedServiceClient;
 use crate::connected_workflow::proposed_submission_sequence;
 use crate::core::code_provenance::CodeCheckoutProvenance;
 use crate::db::{ConnectedSubmissionRequest, Database};
+
+use super::{settle, ConnectStop};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectedArgs {
@@ -106,6 +109,9 @@ pub struct GateArgs {
     pub project_path: Option<PathBuf>,
     pub threshold: String,
     pub strict: bool,
+    /// Where to write `verdict=` and `new=` lines for a workflow to read, so
+    /// it never parses the printed summary.
+    pub outputs: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -128,6 +134,47 @@ impl CheckoutAuditSummary {
 
 /// Evaluate a desktop-shaped candidate without mutating connected site state.
 pub async fn run_gate(args: GateArgs) -> Result<(u8, String), String> {
+    run_gate_with(args, ConnectedServiceClient::configured).await
+}
+
+/// `run_gate` through the client `connect` builds from the CI token, which is
+/// what lets the wire tests point it at a local double.
+pub(super) async fn run_gate_with(
+    args: GateArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<(u8, String), String> {
+    let outputs = args.outputs.clone();
+    let outcome = gate(args, connect).await;
+    if let Some(outputs) = &outputs {
+        // The workflow reads the verdict here rather than from the summary
+        // printed for people, and a gate that could not run names none.
+        let signal = match &outcome {
+            Ok(graded) => Some((if graded.failed { "fail" } else { "pass" }, graded.new)),
+            Err(ConnectStop::AccountInactive { .. }) => Some(("inactive", 0)),
+            Err(ConnectStop::Failed(_)) => None,
+        };
+        if let Some((verdict, new)) = signal {
+            std::fs::write(outputs, format!("verdict={verdict}\nnew={new}\n"))
+                .map_err(|error| format!("{} could not be written: {error}", outputs.display()))?;
+        }
+    }
+    settle(
+        outcome.map(|graded| (u8::from(graded.failed), graded.summary)),
+        |notice| (0, notice),
+    )
+}
+
+/// The verdict the gate door gave, as the command reports it.
+struct Graded {
+    failed: bool,
+    new: u32,
+    summary: String,
+}
+
+async fn gate(
+    args: GateArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<Graded, ConnectStop> {
     let serialized = read_connection_export(&args.connection_export)?;
     let passphrase = Zeroizing::new(std::env::var(&args.passphrase_env).map_err(|_| {
         format!(
@@ -142,7 +189,7 @@ pub async fn run_gate(args: GateArgs) -> Result<(u8, String), String> {
         )
     })?);
     if token.trim().is_empty() {
-        return Err(format!("{} is empty", args.token_env));
+        return Err(format!("{} is empty", args.token_env).into());
     }
     let connection = decrypt_site_connection(&serialized, &passphrase)?;
     let db_path = args
@@ -160,8 +207,7 @@ pub async fn run_gate(args: GateArgs) -> Result<(u8, String), String> {
     // deployment. The basis is therefore unknown, which resolves nothing - and
     // the gate resolves nothing anyway.
     let snapshot = build_candidate_snapshot(&db, &connection, None)?;
-    let client = crate::connected_service::ConnectedServiceClient::configured(token.trim())
-        .map_err(|error| error.to_string())?;
+    let client = connect(token.trim())?;
     let verdict = client
         .gate(
             &connection.site_id,
@@ -176,14 +222,17 @@ pub async fn run_gate(args: GateArgs) -> Result<(u8, String), String> {
             },
         )
         .await
-        .map_err(|error| error.to_string())?;
-    let failed = verdict.failed();
-    let mut rendered = render_verdict(&verdict);
+        .map_err(|error| ConnectStop::refused(&error, ToString::to_string).ungraded())?;
+    let mut summary = render_verdict(&verdict);
     if let Some(notice) = audit_summary.notice() {
-        rendered.push('\n');
-        rendered.push_str(&notice);
+        summary.push('\n');
+        summary.push_str(&notice);
     }
-    Ok((u8::from(failed), rendered))
+    Ok(Graded {
+        failed: verdict.failed(),
+        new: verdict.counts.new,
+        summary,
+    })
 }
 
 /// Audit the working tree against the environment named by the connection.
@@ -355,9 +404,14 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+    use crate::cli::test_support::{clean_checkout, exported_site, through, ENVIRONMENT_URL};
+    use crate::connected_service::test_double::{
+        request_line, respond_in_sequence, ACCOUNT_INACTIVE_PROBLEM, ENTITLEMENT_SUSPENDED_PROBLEM,
+    };
+    use crate::connected_service::ACCOUNT_INACTIVE_GATE_NOTICE;
 
-    const ENVIRONMENT_URL: &str = "https://example.com";
     const SITE_ID: &str = "site_cli_preview";
+    const GATE_SITE_ID: &str = "site_cli_gate";
 
     fn fixture() -> (tempfile::TempDir, Database, i64, ImportedSiteConnection) {
         let directory = tempfile::tempdir().expect("tempdir");
@@ -432,5 +486,118 @@ mod tests {
         let error = build_dry_run_payload(&db, &connection).expect_err("site mismatch");
 
         assert!(error.contains("different connected site"), "{error}");
+    }
+
+    fn gate_args(
+        workspace: &std::path::Path,
+        variable_prefix: &str,
+        project_path: PathBuf,
+    ) -> GateArgs {
+        let (connection_export, passphrase_env, token_env) =
+            exported_site(workspace, GATE_SITE_ID, variable_prefix);
+        GateArgs {
+            connection_export,
+            passphrase_env,
+            token_env,
+            db_path: Some(workspace.join("sitecmd.db")),
+            project_path: Some(project_path),
+            threshold: "high".into(),
+            strict: false,
+            outputs: Some(workspace.join("outputs.txt")),
+        }
+    }
+
+    /// A verdict as the gate door answers one, naming its new findings.
+    fn gate_verdict(verdict: &str, new: u32) -> String {
+        serde_json::json!({
+            "verdict": verdict,
+            "threshold": "high",
+            "counts": { "new": new, "failing": if verdict == "fail" { new } else { 0 }, "warned": 0 },
+            "new_findings": [],
+            "warnings": [],
+        })
+        .to_string()
+    }
+
+    fn written_outputs(workspace: &std::path::Path) -> Option<String> {
+        std::fs::read_to_string(workspace.join("outputs.txt")).ok()
+    }
+
+    #[tokio::test]
+    async fn a_graded_gate_writes_its_verdict_and_new_count_for_the_workflow() {
+        let (_repo, _home, root, _head) = clean_checkout();
+        for (verdict, new, code) in [("fail", 2, 1), ("pass", 0, 0)] {
+            let workspace = tempfile::tempdir().expect("workspace");
+            let args = gate_args(
+                workspace.path(),
+                &format!("SITECMD_TEST_GATE_{}", verdict.to_uppercase()),
+                root.clone(),
+            );
+            let (origin, _captured) =
+                respond_in_sequence(vec![(gate_verdict(verdict, new), "200 OK")]).await;
+
+            let (exit, _summary) = run_gate_with(args, through(&origin))
+                .await
+                .expect("a graded gate");
+
+            assert_eq!(exit, code, "{verdict}");
+            assert_eq!(
+                written_outputs(workspace.path()).as_deref(),
+                Some(format!("verdict={verdict}\nnew={new}\n").as_str())
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_gate_for_an_inactive_account_exits_zero_saying_nothing_was_graded() {
+        let (_repo, _home, root, _head) = clean_checkout();
+        let workspace = tempfile::tempdir().expect("workspace");
+        let args = gate_args(workspace.path(), "SITECMD_TEST_GATE_INACTIVE", root);
+        let (origin, captured) =
+            respond_in_sequence(vec![(ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden")]).await;
+
+        let (code, output) = run_gate_with(args, through(&origin))
+            .await
+            .expect("an inactive account is not a failure");
+
+        assert_eq!(code, 0);
+        // The gate records nothing even for an active account, so its
+        // sentence says what did not happen: grading.
+        assert!(output.starts_with(ACCOUNT_INACTIVE_GATE_NOTICE), "{output}");
+        // Its own verdict, so a workflow never reads a gate that did not run
+        // as a pass; nothing was graded, so nothing was new.
+        assert_eq!(
+            written_outputs(workspace.path()).as_deref(),
+            Some("verdict=inactive\nnew=0\n")
+        );
+        let requests = captured.await.expect("capture");
+        assert_eq!(requests.len(), 1, "{requests:?}");
+        assert_eq!(
+            request_line(&requests[0]),
+            "POST /v1/sites/site_cli_gate/gate HTTP/1.1"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_suspended_subscription_still_fails_the_gate() {
+        let (_repo, _home, root, _head) = clean_checkout();
+        let workspace = tempfile::tempdir().expect("workspace");
+        let args = gate_args(workspace.path(), "SITECMD_TEST_GATE_SUSPENDED", root);
+        let (origin, _captured) = respond_in_sequence(vec![(
+            ENTITLEMENT_SUSPENDED_PROBLEM.into(),
+            "403 Forbidden",
+        )])
+        .await;
+
+        let error = run_gate_with(args, through(&origin))
+            .await
+            .expect_err("a suspended subscription still fails the gate");
+
+        assert!(
+            error.starts_with("connected service entitlement_suspended:"),
+            "{error}"
+        );
+        // A gate that could not run leaves no verdict for the workflow to read.
+        assert_eq!(written_outputs(workspace.path()), None);
     }
 }
