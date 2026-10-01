@@ -27,6 +27,8 @@ use crate::manifest::{
     RuntimeFact,
 };
 use crate::page::PageContext;
+use crate::severity_policy::WebSeverityInput;
+use crate::stack::{detect_stack, DetectedStack};
 use crate::vocab::CheckResult;
 
 /// Cached because hosted evaluation reuses this digest on every route.
@@ -193,14 +195,19 @@ pub struct EvaluationResponse {
     pub facts_present: Vec<RuntimeFact>,
     /// Every check whose facts were present and whose runner executed.
     pub planned: Vec<PlannedCheck>,
-    /// Runner-ordered verdict rows; skipped rows remain coverage exceptions.
+    /// Runner-ordered verdicts; skipped results remain coverage exceptions.
     pub results: Vec<CheckResult>,
+    /// Severity inputs aligned with `results`, so consumers apply the policy
+    /// without reading a verdict's raw data.
+    pub severity_inputs: Vec<WebSeverityInput>,
     /// Measurement-class observations. These never imply a lifecycle verdict,
     /// even though the same engine may also grade the value for a local UI.
     #[serde(default)]
     pub measurement_samples: Vec<EvaluationMeasurement>,
     /// Every other manifest entry, with the reason it produced nothing.
     pub not_evaluated: Vec<NotEvaluated>,
+    /// The stack this document shows, from the detector the desktop runs.
+    pub stack: DetectedStack,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -438,14 +445,17 @@ pub fn evaluate(request: &EvaluationRequest) -> Result<EvaluationResponse, Evalu
         }
     }
 
+    let severity_inputs = results.iter().map(WebSeverityInput::of).collect();
     Ok(EvaluationResponse {
         manifest_digest: MANIFEST.digest().to_string(),
         external_fact_plan: external_fact_plan(&page),
         facts_present: facts,
         planned,
         results,
+        severity_inputs,
         measurement_samples: browser_measurement_samples(request.browser_facts.as_ref()),
         not_evaluated,
+        stack: detect_stack(&page.response_headers, &page.body, page.body_lower()),
     })
 }
 

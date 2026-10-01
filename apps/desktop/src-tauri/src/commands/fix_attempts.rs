@@ -220,7 +220,7 @@ pub(crate) fn create_fix_attempt_inner(
         now,
     )?;
     let input = FixBriefInput {
-        attempt_id: id,
+        attempt_id: id.to_string(),
         check_id,
         title: title.clone(),
         severity,

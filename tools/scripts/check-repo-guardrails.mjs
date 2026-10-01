@@ -86,6 +86,7 @@ import { engineStampFailures } from "./lib/guardrail-engine-stamp-rules.mjs";
 import { coverageFailures } from "./lib/guardrail-coverage-rules.mjs";
 import { inlineDurationFailures } from "./lib/guardrail-inline-duration-rules.mjs";
 import { severityPolicyChokepointFailures } from "./lib/guardrail-severity-policy-rules.mjs";
+import { enginePortFailures } from "./lib/guardrail-engine-port-rules.mjs";
 import { displayImplLogReentrancyFailures } from "./lib/guardrail-rust-display-log-rules.mjs";
 import { invokeAclFailures } from "./lib/guardrail-invoke-acl-rules.mjs";
 import { guardrailScriptLineBudgets } from "./lib/guardrail-script-budgets.mjs";
@@ -249,6 +250,7 @@ export function repoGuardrailFailures({ root, read, readJson, exists, listFiles 
     ["Telemetry privacy", telemetrySafetyFailures(read, exists, listFiles)],
     ["Telemetry disclosure", telemetryDisclosureFailures(read, exists)],
     ["Desktop scanner bodies", desktopScannerBodySafetyFailures(read, listFiles)],
+    ["Engine-port", enginePortFailures(read, listFiles)],
     ["Code Scan inventory", codeScanInventoryFailures(read)],
     ["Scanner copy + naming", polishCopySafetyFailures(read, exists, listFiles)],
     ["Onboarding nav copy", onboardingCopyFailures(read)],
@@ -381,7 +383,7 @@ export function repoGuardrailFailures({ root, read, readJson, exists, listFiles 
 
   const sourceSizeBudgets = [
     { file: "apps/desktop/src-tauri/src/lib.rs", maxLines: 600 },
-    { file: "apps/desktop/src-tauri/src/core/severity_policy.rs", maxLines: 500 },
+    { file: "apps/desktop/src-tauri/src/core/severity_policy.rs", maxLines: 80 },
   ];
   const oversizedSourceFiles = sourceSizeBudgets
     .map(({ file, maxLines }) => ({ file, maxLines, lineCount: countLines(read(file)) }))

@@ -1,0 +1,380 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "code": [],
+        "web": [
+          "low",
+          "low"
+        ]
+      },
+      "name": "pass_and_skipped_rows_are_low",
+      "request": {
+        "code": [],
+        "web": [
+          {
+            "check_id": "security.ssl.expiry",
+            "severity": "critical",
+            "status": "pass"
+          },
+          {
+            "check_id": "seo.title",
+            "severity": "high",
+            "status": "skipped"
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "code": [],
+        "web": [
+          "critical",
+          "high",
+          "critical"
+        ]
+      },
+      "name": "critical_survives_only_where_the_policy_allows_it",
+      "request": {
+        "code": [],
+        "web": [
+          {
+            "check_id": "security.ssl.expiry",
+            "severity": "critical",
+            "status": "fail"
+          },
+          {
+            "check_id": "security.env_leak",
+            "severity": "critical",
+            "status": "fail"
+          },
+          {
+            "check_id": "security.exposed_files.dotenv",
+            "severity": "critical",
+            "status": "fail"
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "code": [],
+        "web": [
+          "medium",
+          "high"
+        ]
+      },
+      "name": "a_warn_never_carries_critical",
+      "request": {
+        "code": [],
+        "web": [
+          {
+            "check_id": "security.insecure_form",
+            "severity": "critical",
+            "status": "warn"
+          },
+          {
+            "check_id": "security.https_enforcement",
+            "severity": "critical",
+            "status": "warn"
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "code": [],
+        "web": [
+          "high",
+          "medium",
+          "medium"
+        ]
+      },
+      "name": "broken_links_escalate_at_three",
+      "request": {
+        "code": [],
+        "web": [
+          {
+            "broken_count": 3,
+            "check_id": "seo.broken_links",
+            "severity": "medium",
+            "status": "fail"
+          },
+          {
+            "broken_count": 2,
+            "check_id": "seo.broken_links",
+            "severity": "medium",
+            "status": "fail"
+          },
+          {
+            "check_id": "seo.broken_links",
+            "severity": "medium",
+            "status": "fail"
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "code": [],
+        "web": [
+          "medium",
+          "medium",
+          "low",
+          "high"
+        ]
+      },
+      "name": "polish_and_axe_signals_take_their_own_grades",
+      "request": {
+        "code": [],
+        "web": [
+          {
+            "check_id": "polish.js-errors",
+            "severity": "high",
+            "status": "fail"
+          },
+          {
+            "check_id": "polish.missing-og-tags",
+            "severity": "medium",
+            "status": "fail"
+          },
+          {
+            "check_id": "polish.default-favicon",
+            "severity": "high",
+            "status": "fail"
+          },
+          {
+            "check_id": "accessibility.axe.color-contrast",
+            "severity": "critical",
+            "status": "fail"
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "code": [],
+        "web": [
+          "medium",
+          "low",
+          "low",
+          "medium"
+        ]
+      },
+      "name": "fixed_grades_replace_the_emitted_one",
+      "request": {
+        "code": [],
+        "web": [
+          {
+            "check_id": "accessibility.lang",
+            "severity": "low",
+            "status": "fail"
+          },
+          {
+            "check_id": "config.dev_dependencies",
+            "severity": "high",
+            "status": "fail"
+          },
+          {
+            "check_id": "performance.dom_size",
+            "severity": "high",
+            "status": "warn"
+          },
+          {
+            "check_id": "seo.canonical_mismatch",
+            "severity": "high",
+            "status": "fail"
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "code": [],
+        "web": [
+          "high",
+          "high"
+        ]
+      },
+      "name": "an_unknown_web_check_keeps_its_grade_below_critical",
+      "request": {
+        "code": [],
+        "web": [
+          {
+            "check_id": "security.not_a_check",
+            "severity": "high",
+            "status": "fail"
+          },
+          {
+            "check_id": "security.not_a_check",
+            "severity": "critical",
+            "status": "fail"
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "code": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "medium"
+        ],
+        "web": []
+      },
+      "name": "code_rules_take_their_registered_policy",
+      "request": {
+        "code": [
+          {
+            "rule": "js-command-injection",
+            "severity": "high"
+          },
+          {
+            "rule": "hardcoded-secret",
+            "severity": "critical"
+          },
+          {
+            "rule": "ai-timeout",
+            "severity": "low"
+          },
+          {
+            "rule": "jsx-inline-style-density",
+            "severity": "high"
+          },
+          {
+            "rule": "god-route",
+            "severity": "high"
+          }
+        ],
+        "web": []
+      }
+    },
+    {
+      "expected": {
+        "code": [
+          "high",
+          "medium",
+          "critical"
+        ],
+        "web": []
+      },
+      "name": "an_unregistered_code_rule_passes_through_below_critical",
+      "request": {
+        "code": [
+          {
+            "rule": "dependency-advisory",
+            "severity": "critical"
+          },
+          {
+            "rule": "dependency-advisory",
+            "severity": "medium"
+          },
+          {
+            "rule": "js-command-injection:app/api/run/route.ts",
+            "severity": "high"
+          }
+        ],
+        "web": []
+      }
+    },
+    {
+      "expected": {
+        "code": [],
+        "web": [
+          "high",
+          "medium"
+        ]
+      },
+      "name": "meta_conflicts_keep_high_and_raise_low_to_medium",
+      "request": {
+        "code": [],
+        "web": [
+          {
+            "check_id": "seo.meta_conflicts",
+            "severity": "high",
+            "status": "fail"
+          },
+          {
+            "check_id": "seo.meta_conflicts",
+            "severity": "low",
+            "status": "fail"
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "code": [],
+        "web": [
+          "medium",
+          "low"
+        ]
+      },
+      "name": "axe_findings_keep_medium_and_low",
+      "request": {
+        "code": [],
+        "web": [
+          {
+            "check_id": "accessibility.axe.color-contrast",
+            "severity": "medium",
+            "status": "fail"
+          },
+          {
+            "check_id": "accessibility.axe.color-contrast",
+            "severity": "low",
+            "status": "fail"
+          }
+        ]
+      }
+    },
+    {
+      "expected": {
+        "code": [
+          "high",
+          "medium",
+          "low"
+        ],
+        "web": []
+      },
+      "name": "risk_rules_without_a_fixed_grade_keep_the_emitted_severity_below_critical",
+      "request": {
+        "code": [
+          {
+            "rule": "upload-validation",
+            "severity": "critical"
+          },
+          {
+            "rule": "upload-validation",
+            "severity": "medium"
+          },
+          {
+            "rule": "upload-validation",
+            "severity": "low"
+          }
+        ],
+        "web": []
+      }
+    },
+    {
+      "expected": {
+        "code": [
+          "high"
+        ],
+        "web": []
+      },
+      "name": "a_stored_code_id_is_not_a_registered_producer_rule",
+      "request": {
+        "code": [
+          {
+            "rule": "code_scan.js-command-injection",
+            "severity": "critical"
+          }
+        ],
+        "web": []
+      }
+    }
+  ],
+  "comment": "Cross-runtime severity policy fixtures. The engine's golden_severity test pins every case natively and Connect replays the same bytes through the scorer artifact's severity_apply export. Expected blocks are written only by the ignored regenerate test."
+}

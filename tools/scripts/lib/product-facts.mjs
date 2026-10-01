@@ -113,7 +113,7 @@ export function deriveCheckCounts(read, _listFiles) {
   const polishBody = polishSource.slice(start, polishSource.indexOf("\n}", start));
   const polish = [...polishBody.matchAll(/^\s+[a-z_]+::[a-z_]+\(ctx\),/gm)].length;
 
-  const registry = read("apps/desktop/src-tauri/src/core/code_scan/registry.rs");
+  const registry = read("apps/desktop/src-tauri/crates/engine/src/code_rules.rs");
   const codeScan = [...registry.matchAll(/^\s*d\("[a-z0-9-]+"/gm)].length;
 
   return {

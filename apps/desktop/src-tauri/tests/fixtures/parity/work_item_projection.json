@@ -1,0 +1,372 @@
+{
+  "canonical": [
+    {
+      "expected": "security.ssl.expiry",
+      "name": "web_scan_security_ssl_expiry_keeps_its_exact_identity",
+      "signal": "security.ssl.expiry",
+      "source": "web_scan"
+    },
+    {
+      "expected": "code_scan.open-redirect",
+      "name": "code_scan_open_redirect_gets_the_code_prefix",
+      "signal": "open-redirect",
+      "source": "code_scan"
+    },
+    {
+      "expected": "unknown.check",
+      "name": "web_scan_unknown_check_keeps_its_exact_identity",
+      "signal": "unknown.check",
+      "source": "web_scan"
+    },
+    {
+      "expected": "code_scan.unknown-check",
+      "name": "code_scan_unknown_check_gets_the_code_prefix",
+      "signal": "unknown-check",
+      "source": "code_scan"
+    },
+    {
+      "expected": "code_scan.security.headers.csp",
+      "name": "code_scan_security_headers_csp_gets_the_code_prefix",
+      "signal": "security.headers.csp",
+      "source": "code_scan"
+    },
+    {
+      "expected": "security_headers",
+      "name": "web_scan_security_headers_keeps_its_exact_identity",
+      "signal": "security_headers",
+      "source": "web_scan"
+    },
+    {
+      "expected": "Security.headers.csp",
+      "name": "a_capitalized_web_signal_keeps_its_exact_identity",
+      "signal": "Security.headers.csp",
+      "source": "web_scan"
+    },
+    {
+      "expected": "security.headers.csp ",
+      "name": "a_web_signal_with_a_trailing_space_keeps_its_exact_identity",
+      "signal": "security.headers.csp ",
+      "source": "web_scan"
+    },
+    {
+      "expected": "code_scan.Security_headers",
+      "name": "a_capitalized_code_signal_gets_the_code_prefix",
+      "signal": "Security_headers",
+      "source": "code_scan"
+    },
+    {
+      "expected": "seo.canonical.missing",
+      "name": "code_scan_canonical_missing_uses_its_canonical_alias",
+      "signal": "canonical_missing",
+      "source": "code_scan"
+    },
+    {
+      "expected": "security.cookie-flags",
+      "name": "code_scan_cookie_flags_uses_its_canonical_alias",
+      "signal": "cookie_flags",
+      "source": "code_scan"
+    },
+    {
+      "expected": "security.cors",
+      "name": "code_scan_cors_wildcard_uses_its_canonical_alias",
+      "signal": "cors_wildcard",
+      "source": "code_scan"
+    },
+    {
+      "expected": "security.exposed-env",
+      "name": "code_scan_env_exposure_uses_its_canonical_alias",
+      "signal": "env_exposure",
+      "source": "code_scan"
+    },
+    {
+      "expected": "security.hsts",
+      "name": "code_scan_hsts_missing_uses_its_canonical_alias",
+      "signal": "hsts_missing",
+      "source": "code_scan"
+    },
+    {
+      "expected": "security.https",
+      "name": "code_scan_https_redirect_uses_its_canonical_alias",
+      "signal": "https_redirect",
+      "source": "code_scan"
+    },
+    {
+      "expected": "security.mixed_content",
+      "name": "code_scan_mixed_content_uses_its_canonical_alias",
+      "signal": "mixed_content",
+      "source": "code_scan"
+    },
+    {
+      "expected": "seo.robots",
+      "name": "code_scan_robots_config_uses_its_canonical_alias",
+      "signal": "robots_config",
+      "source": "code_scan"
+    },
+    {
+      "expected": "security.csp",
+      "name": "code_scan_security_headers_uses_its_canonical_alias",
+      "signal": "security_headers",
+      "source": "code_scan"
+    },
+    {
+      "expected": "seo.sitemap.missing",
+      "name": "code_scan_sitemap_missing_uses_its_canonical_alias",
+      "signal": "sitemap_missing",
+      "source": "code_scan"
+    },
+    {
+      "expected": "config.console_logs",
+      "name": "web_scan_polish_console_log_production_uses_its_canonical_alias",
+      "signal": "polish.console-log-production",
+      "source": "web_scan"
+    },
+    {
+      "expected": "config.favicon",
+      "name": "web_scan_polish_default_favicon_uses_its_canonical_alias",
+      "signal": "polish.default-favicon",
+      "source": "web_scan"
+    },
+    {
+      "expected": "seo.title",
+      "name": "web_scan_polish_default_page_title_uses_its_canonical_alias",
+      "signal": "polish.default-page-title",
+      "source": "web_scan"
+    },
+    {
+      "expected": "accessibility.form_labels",
+      "name": "web_scan_polish_form_accessibility_uses_its_canonical_alias",
+      "signal": "polish.form-accessibility",
+      "source": "web_scan"
+    },
+    {
+      "expected": "accessibility.headings",
+      "name": "web_scan_polish_heading_hierarchy_uses_its_canonical_alias",
+      "signal": "polish.heading-hierarchy",
+      "source": "web_scan"
+    },
+    {
+      "expected": "accessibility.lang",
+      "name": "web_scan_polish_missing_lang_uses_its_canonical_alias",
+      "signal": "polish.missing-lang",
+      "source": "web_scan"
+    },
+    {
+      "expected": "seo.open_graph",
+      "name": "web_scan_polish_missing_og_tags_uses_its_canonical_alias",
+      "signal": "polish.missing-og-tags",
+      "source": "web_scan"
+    },
+    {
+      "expected": "seo.canonical",
+      "name": "web_scan_polish_no_sitemap_robots_uses_its_canonical_alias",
+      "signal": "polish.no-sitemap-robots",
+      "source": "web_scan"
+    },
+    {
+      "expected": "security.source_maps",
+      "name": "web_scan_polish_source_maps_production_uses_its_canonical_alias",
+      "signal": "polish.source-maps-production",
+      "source": "web_scan"
+    },
+    {
+      "expected": "security.csp",
+      "name": "web_scan_security_headers_csp_uses_its_canonical_alias",
+      "signal": "security.headers.csp",
+      "source": "web_scan"
+    },
+    {
+      "expected": "security.hsts",
+      "name": "web_scan_security_headers_hsts_uses_its_canonical_alias",
+      "signal": "security.headers.hsts",
+      "source": "web_scan"
+    },
+    {
+      "expected": "security.permissions_policy",
+      "name": "web_scan_security_headers_permissions_policy_uses_its_canonical_alias",
+      "signal": "security.headers.permissions_policy",
+      "source": "web_scan"
+    },
+    {
+      "expected": "security.referrer_policy",
+      "name": "web_scan_security_headers_referrer_policy_uses_its_canonical_alias",
+      "signal": "security.headers.referrer_policy",
+      "source": "web_scan"
+    },
+    {
+      "expected": "security.x_content_type_options",
+      "name": "web_scan_security_headers_x_content_type_options_uses_its_canonical_alias",
+      "signal": "security.headers.x_content_type_options",
+      "source": "web_scan"
+    },
+    {
+      "expected": "security.x_frame_options",
+      "name": "web_scan_security_headers_x_frame_options_uses_its_canonical_alias",
+      "signal": "security.headers.x_frame_options",
+      "source": "web_scan"
+    },
+    {
+      "expected": "security.https",
+      "name": "web_scan_security_https_enforcement_uses_its_canonical_alias",
+      "signal": "security.https_enforcement",
+      "source": "web_scan"
+    },
+    {
+      "expected": "accessibility.headings",
+      "name": "web_scan_seo_headings_h1_uses_its_canonical_alias",
+      "signal": "seo.headings.h1",
+      "source": "web_scan"
+    },
+    {
+      "expected": "accessibility.headings",
+      "name": "web_scan_seo_headings_hierarchy_uses_its_canonical_alias",
+      "signal": "seo.headings.hierarchy",
+      "source": "web_scan"
+    },
+    {
+      "expected": "accessibility.image_alt",
+      "name": "web_scan_seo_image_alt_uses_its_canonical_alias",
+      "signal": "seo.image_alt",
+      "source": "web_scan"
+    },
+    {
+      "expected": "code_scan.code_scan.open-redirect",
+      "name": "a_prefixed_code_signal_is_prefixed_again",
+      "signal": "code_scan.open-redirect",
+      "source": "code_scan"
+    },
+    {
+      "expected": "code_scan.code_scan.security_headers",
+      "name": "a_prefixed_alias_signal_is_prefixed_again",
+      "signal": "code_scan.security_headers",
+      "source": "code_scan"
+    },
+    {
+      "expected": "code_scan.open-redirect",
+      "name": "a_code_prefixed_web_signal_keeps_its_identity",
+      "signal": "code_scan.open-redirect",
+      "source": "web_scan"
+    },
+    {
+      "expected": "constructor",
+      "name": "a_constructor_web_signal_keeps_its_identity",
+      "signal": "constructor",
+      "source": "web_scan"
+    },
+    {
+      "expected": "__proto__",
+      "name": "a_prototype_web_signal_keeps_its_identity",
+      "signal": "__proto__",
+      "source": "web_scan"
+    },
+    {
+      "expected": "code_scan.toString",
+      "name": "a_to_string_code_signal_gets_the_code_prefix",
+      "signal": "toString",
+      "source": "code_scan"
+    },
+    {
+      "expected": "hasOwnProperty",
+      "name": "a_has_own_property_web_signal_keeps_its_identity",
+      "signal": "hasOwnProperty",
+      "source": "web_scan"
+    }
+  ],
+  "code_issue_ids": [
+    {
+      "expected": "code_scan.open-redirect",
+      "issue_id": "open-redirect:app/api/signin/route.ts",
+      "name": "open_redirect_app_api_signin_route_ts_gets_the_code_prefix"
+    },
+    {
+      "expected": "security.csp",
+      "issue_id": "security_headers:next.config.js",
+      "name": "security_headers_next_config_js_uses_its_canonical_alias"
+    },
+    {
+      "expected": "code_scan.hardcoded-secret",
+      "issue_id": "hardcoded-secret",
+      "name": "hardcoded_secret_gets_the_code_prefix"
+    },
+    {
+      "expected": "security.csp",
+      "issue_id": "security_headers:src/a.ts:42",
+      "name": "security_headers_src_a_ts_42_uses_its_canonical_alias"
+    },
+    {
+      "expected": "security.csp",
+      "issue_id": "security_headers:src/b.ts",
+      "name": "security_headers_src_b_ts_uses_its_canonical_alias"
+    },
+    {
+      "expected": "code_scan.unknown-rule",
+      "issue_id": "unknown-rule:src/a.ts:42",
+      "name": "unknown_rule_src_a_ts_42_gets_the_code_prefix"
+    },
+    {
+      "expected": "code_scan.hardcoded-secret",
+      "issue_id": "hardcoded-secret:src/a.ts",
+      "name": "hardcoded_secret_src_a_ts_gets_the_code_prefix"
+    },
+    {
+      "expected": "code_scan.code_scan.security_headers",
+      "issue_id": "code_scan.security_headers:src/a.ts",
+      "name": "a_prefixed_code_issue_rule_is_prefixed_again_without_its_location"
+    },
+    {
+      "expected": "code_scan.",
+      "issue_id": ":src/a.ts",
+      "name": "an_empty_code_issue_rule_gets_only_the_code_prefix"
+    }
+  ],
+  "comment": "Cross-runtime parity for work-item regressions and canonical check ids. Expected blocks, and every alias case appended to canonical, are written only by the ignored regenerate test in src/core/work_item_projection_parity_tests.rs.",
+  "regressions": [
+    {
+      "current": {"security.csp":"high","seo.title":"low"},
+      "expected": {"regressed":["security.csp"]},
+      "name": "a_worse_severity_regresses",
+      "prior": {"security.csp":"medium","seo.title":"low"}
+    },
+    {
+      "current": {"seo.title":"low"},
+      "expected": {"regressed":["seo.title"]},
+      "name": "a_new_check_regresses",
+      "prior": {}
+    },
+    {
+      "current": {"seo.title":"low"},
+      "expected": {"regressed":null},
+      "name": "an_unchanged_or_better_check_does_not",
+      "prior": {"seo.title":"medium"}
+    },
+    {
+      "current": {"seo.title":"low"},
+      "expected": {"regressed":["seo.title"]},
+      "name": "an_unknown_prior_label_counts_as_absent",
+      "prior": {"seo.title":"severe"}
+    },
+    {
+      "current": {},
+      "expected": {"regressed":null},
+      "name": "nothing_current_is_nothing_regressed",
+      "prior": {"seo.title":"high"}
+    },
+    {
+      "current": {"M.check":"high","a.check":"high","z.check":"high","\u00FF.check":"high","\uFFFD.check":"high","\uD83D\uDE00.check":"high"},
+      "expected": {"regressed":["M.check","a.check","z.check","\u00FF.check","\uFFFD.check","\uD83D\uDE00.check"]},
+      "name": "regressions_sort_by_scalar_value",
+      "prior": {}
+    }
+  ],
+  "severities": [
+    {
+      "expected": {"seo.title":"medium"},
+      "name": "passing_and_skipped_rows_are_not_findings",
+      "rows": [{"check_id":"security.headers.csp","severity":"high","status":"pass"},{"check_id":"seo.title","severity":"medium","status":"skipped"},{"check_id":"seo.title","severity":"medium","status":"fail"}]
+    },
+    {
+      "expected": {"accessibility.lang":"medium","security.csp":"high"},
+      "name": "aliases_collapse_to_the_highest_failing_severity",
+      "rows": [{"check_id":"security.headers.csp","severity":"medium","status":"fail"},{"check_id":"security.headers.csp","severity":"high","status":"warn"},{"check_id":"polish.missing-lang","severity":"low","status":"fail"},{"check_id":"accessibility.lang","severity":"medium","status":"fail"}]
+    }
+  ]
+}

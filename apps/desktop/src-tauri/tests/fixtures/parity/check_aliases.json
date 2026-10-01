@@ -1,0 +1,35 @@
+{
+  "code_scan": {
+    "canonical_missing": "seo.canonical.missing",
+    "cookie_flags": "security.cookie-flags",
+    "cors_wildcard": "security.cors",
+    "env_exposure": "security.exposed-env",
+    "hsts_missing": "security.hsts",
+    "https_redirect": "security.https",
+    "mixed_content": "security.mixed_content",
+    "robots_config": "seo.robots",
+    "security_headers": "security.csp",
+    "sitemap_missing": "seo.sitemap.missing"
+  },
+  "web_scan": {
+    "polish.console-log-production": "config.console_logs",
+    "polish.default-favicon": "config.favicon",
+    "polish.default-page-title": "seo.title",
+    "polish.form-accessibility": "accessibility.form_labels",
+    "polish.heading-hierarchy": "accessibility.headings",
+    "polish.missing-lang": "accessibility.lang",
+    "polish.missing-og-tags": "seo.open_graph",
+    "polish.no-sitemap-robots": "seo.canonical",
+    "polish.source-maps-production": "security.source_maps",
+    "security.headers.csp": "security.csp",
+    "security.headers.hsts": "security.hsts",
+    "security.headers.permissions_policy": "security.permissions_policy",
+    "security.headers.referrer_policy": "security.referrer_policy",
+    "security.headers.x_content_type_options": "security.x_content_type_options",
+    "security.headers.x_frame_options": "security.x_frame_options",
+    "security.https_enforcement": "security.https",
+    "seo.headings.h1": "accessibility.headings",
+    "seo.headings.hierarchy": "accessibility.headings",
+    "seo.image_alt": "accessibility.image_alt"
+  }
+}

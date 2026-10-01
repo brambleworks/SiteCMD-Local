@@ -19,16 +19,25 @@ import {
 } from "./lib/wasm-vendor.mjs";
 
 const corpusPath = path.join(cargoRoot, "crates", "engine", "fixtures", "score", "golden.json");
+const severityCorpusPath = path.join(
+  cargoRoot,
+  "crates",
+  "engine",
+  "fixtures",
+  "severity",
+  "golden.json",
+);
 
 const args = process.argv.slice(2);
 const allowDirty = args.includes("--allow-dirty");
-const outDir = outDirFrom(args, ["SiteCMD-Web", "apps", "sitecmd-connect", "src", "scorer"]);
+const outDir = outDirFrom(args, ["SiteCMD-Connect", "apps", "sitecmd-connect", "src", "scorer"]);
 
-const dirtySuffix = engineTreeSuffix(allowDirty);
+const dirtySuffix = engineTreeSuffix(allowDirty, ["apps/desktop/src-tauri", "tools/scripts"]);
 const artifactPath = buildWasmArtifact();
 
 const artifact = readFileSync(artifactPath);
 const corpus = readFileSync(corpusPath);
+const severityCorpus = readFileSync(severityCorpusPath);
 
 // Generate categories from the same source revision as the scorer artifact.
 const readRepo = (file) => readFileSync(path.join(repoRoot, file), "utf8");
@@ -53,6 +62,7 @@ const provenance = {
   profile: WASM_PROFILE,
   artifact_sha256: sha256(artifact),
   corpus_sha256: sha256(corpus),
+  severity_corpus_sha256: sha256(severityCorpus),
   categories_sha256: sha256(categories),
 };
 
@@ -61,6 +71,7 @@ vendorSet({
   files: [
     { name: "scorer.wasm", bytes: artifact },
     { name: "golden.json", bytes: corpus },
+    { name: "severity-golden.json", bytes: severityCorpus },
     { name: "check-categories.json", bytes: categories },
   ],
   record: provenance,

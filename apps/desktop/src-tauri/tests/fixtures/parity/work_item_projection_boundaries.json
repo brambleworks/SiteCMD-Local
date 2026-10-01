@@ -1,0 +1,97 @@
+{
+  "canonical": [],
+  "code_issue_ids": [],
+  "comment": "Cross-runtime parity for work-item regression and severity boundaries in work_item_projection_boundaries.json. Expected blocks are written only by the ignored regenerate test in src/core/work_item_projection_parity_tests.rs.",
+  "regressions": [
+    {
+      "current": {"critical.critical":"critical","critical.high":"critical","critical.low":"critical","critical.medium":"critical","high.critical":"high","high.high":"high","high.low":"high","high.medium":"high","low.critical":"low","low.high":"low","low.low":"low","low.medium":"low","medium.critical":"medium","medium.high":"medium","medium.low":"medium","medium.medium":"medium"},
+      "expected": {"regressed":["critical.high","critical.low","critical.medium","high.low","high.medium","medium.low"]},
+      "name": "only_a_strictly_worse_rank_regresses",
+      "prior": {"critical.critical":"critical","critical.high":"high","critical.low":"low","critical.medium":"medium","high.critical":"critical","high.high":"high","high.low":"low","high.medium":"medium","low.critical":"critical","low.high":"high","low.low":"low","low.medium":"medium","medium.critical":"critical","medium.high":"high","medium.low":"low","medium.medium":"medium"}
+    },
+    {
+      "current": {"critical":"critical","high":"high","low":"low","medium":"medium"},
+      "expected": {"regressed":["critical","high","low","medium"]},
+      "name": "every_known_severity_regresses_without_a_prior",
+      "prior": {}
+    },
+    {
+      "current": {"":"low"," low":"low","Critical":"low","HIGH":"low","medium ":"low","severe":"low"},
+      "expected": {"regressed":[""," low","Critical","HIGH","medium ","severe"]},
+      "name": "unknown_prior_labels_count_zero_without_normalization",
+      "prior": {"":""," low":" low","Critical":"Critical","HIGH":"HIGH","medium ":"medium ","severe":"severe"}
+    },
+    {
+      "current": {"equal":"high"},
+      "expected": {"regressed":null},
+      "name": "prior_only_checks_do_not_regress",
+      "prior": {"equal":"high","removed":"critical"}
+    },
+    {
+      "current": {"security.csp":"low"},
+      "expected": {"regressed":["security.csp"]},
+      "name": "prior_keys_are_compared_without_alias_resolution",
+      "prior": {"security.headers.csp":"critical"}
+    },
+    {
+      "current": {"10.check":"low","2.check":"low","A.check":"low","a.check":"low","space\u00A0.check":"low","zero\u200B.check":"low","\uD7FF.check":"low","\uE000.check":"low","\uFFFD.check":"low","\uD800\uDC00.check":"low","\uD83D\uDE00.check":"low"},
+      "expected": {"regressed":["10.check","2.check","A.check","a.check","space\u00A0.check","zero\u200B.check","\uD7FF.check","\uE000.check","\uFFFD.check","\uD800\uDC00.check","\uD83D\uDE00.check"]},
+      "name": "numeric_and_unicode_ids_sort_lexically_by_scalar_value",
+      "prior": {}
+    },
+    {
+      "current": {"1":"low","10":"low","2":"low"},
+      "expected": {"regressed":["1","10","2"]},
+      "name": "integer_like_ids_sort_lexically",
+      "prior": {}
+    },
+    {
+      "current": {"seo.title":"low"},
+      "expected": {"regressed":["seo.title"]},
+      "name": "a_constructor_prior_label_counts_as_absent",
+      "prior": {"seo.title":"constructor"}
+    }
+  ],
+  "severities": [
+    {
+      "expected": {},
+      "name": "no_findings_produces_an_empty_map",
+      "rows": []
+    },
+    {
+      "expected": {"accessibility.lang":"medium","security.csp":"low"},
+      "name": "pass_and_skipped_cannot_raise_failing_aliases",
+      "rows": [{"check_id":"security.headers.csp","severity":"low","status":"fail"},{"check_id":"security.csp","severity":"critical","status":"pass"},{"check_id":"polish.missing-lang","severity":"medium","status":"warn"},{"check_id":"accessibility.lang","severity":"critical","status":"skipped"}]
+    },
+    {
+      "expected": {"fail.critical":"critical","fail.high":"high","fail.low":"low","fail.medium":"medium","warn.critical":"critical","warn.high":"high","warn.low":"low","warn.medium":"medium"},
+      "name": "warn_and_fail_preserve_every_severity",
+      "rows": [{"check_id":"fail.low","severity":"low","status":"fail"},{"check_id":"fail.medium","severity":"medium","status":"fail"},{"check_id":"fail.high","severity":"high","status":"fail"},{"check_id":"fail.critical","severity":"critical","status":"fail"},{"check_id":"warn.low","severity":"low","status":"warn"},{"check_id":"warn.medium","severity":"medium","status":"warn"},{"check_id":"warn.high","severity":"high","status":"warn"},{"check_id":"warn.critical","severity":"critical","status":"warn"}]
+    },
+    {
+      "expected": {"high.critical.ascending":"critical","high.critical.descending":"critical","low.medium.ascending":"medium","low.medium.descending":"medium","medium.high.ascending":"high","medium.high.descending":"high"},
+      "name": "highest_severity_survives_either_duplicate_order",
+      "rows": [{"check_id":"low.medium.ascending","severity":"low","status":"fail"},{"check_id":"low.medium.ascending","severity":"medium","status":"fail"},{"check_id":"low.medium.descending","severity":"medium","status":"fail"},{"check_id":"low.medium.descending","severity":"low","status":"fail"},{"check_id":"medium.high.ascending","severity":"medium","status":"fail"},{"check_id":"medium.high.ascending","severity":"high","status":"fail"},{"check_id":"medium.high.descending","severity":"high","status":"fail"},{"check_id":"medium.high.descending","severity":"medium","status":"fail"},{"check_id":"high.critical.ascending","severity":"high","status":"fail"},{"check_id":"high.critical.ascending","severity":"critical","status":"fail"},{"check_id":"high.critical.descending","severity":"critical","status":"fail"},{"check_id":"high.critical.descending","severity":"high","status":"fail"}]
+    },
+    {
+      "expected": {"security.csp":"high"},
+      "name": "equal_duplicates_and_aliases_produce_one_key",
+      "rows": [{"check_id":"security.headers.csp","severity":"high","status":"warn"},{"check_id":"security.csp","severity":"high","status":"fail"},{"check_id":"security.headers.csp","severity":"high","status":"fail"}]
+    },
+    {
+      "expected": {"Security.headers.csp":"low","security.headers.csp ":"medium","security_headers":"high"},
+      "name": "unknown_web_signals_keep_exact_identity",
+      "rows": [{"check_id":"security_headers","severity":"high","status":"fail"},{"check_id":"Security.headers.csp","severity":"low","status":"warn"},{"check_id":"security.headers.csp ","severity":"medium","status":"fail"}]
+    },
+    {
+      "expected": {"accessibility.lang":"high"},
+      "name": "descending_aliases_keep_the_highest_severity",
+      "rows": [{"check_id":"accessibility.lang","severity":"high","status":"fail"},{"check_id":"polish.missing-lang","severity":"low","status":"fail"}]
+    },
+    {
+      "expected": {"__proto__":"high"},
+      "name": "a_prototype_key_keeps_its_failing_severity",
+      "rows": [{"check_id":"__proto__","severity":"high","status":"fail"}]
+    }
+  ]
+}

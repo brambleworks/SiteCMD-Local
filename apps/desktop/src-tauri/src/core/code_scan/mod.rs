@@ -47,9 +47,8 @@ mod issue_utils;
 use issue_utils::*;
 mod issue_rationale;
 use issue_rationale::code_issue_rationale;
-// Enumerable registry of every code-scan check. Owns the code half of
-// severity_policy (policy_severity / allows_critical), the authoritative
-// domain classification (code_issue_domain), and the honest check count.
+// The engine's code_rules owns the code-scan rule table and policy metadata.
+// This registry re-exports it and provides canonical ids and check counts.
 mod package_inventory;
 pub mod registry;
 use package_inventory::*;

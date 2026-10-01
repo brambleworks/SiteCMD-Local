@@ -495,7 +495,7 @@ fn a_candidate_is_built_without_a_producer_sequence_at_all() {
 
 #[test]
 fn an_audited_checkout_renders_as_the_ci_submission_the_service_reads() {
-    let (_repo, _home, root, head) = clean_checkout();
+    let (_repo, root, head) = clean_checkout();
     let database = tempfile::tempdir().expect("db tempdir");
     let db = Database::open(database.path().join("sitecmd.db")).expect("database");
     let connection = ImportedSiteConnection {
@@ -533,7 +533,7 @@ fn an_audited_checkout_renders_as_the_ci_submission_the_service_reads() {
 fn a_gate_candidate_claims_no_relationship_to_a_deployment() {
     // The same checkout without a deployment to compare against: a branch is
     // not a deployment, so the basis is unknown and resolves nothing.
-    let (_repo, _home, root, _head) = clean_checkout();
+    let (_repo, root, _head) = clean_checkout();
     let database = tempfile::tempdir().expect("db tempdir");
     let db = Database::open(database.path().join("sitecmd.db")).expect("database");
     let connection = ImportedSiteConnection {
@@ -553,7 +553,7 @@ fn a_gate_candidate_claims_no_relationship_to_a_deployment() {
 
 #[test]
 fn connected_snapshots_exclude_findings_acknowledged_by_project_policy() {
-    let (_repo, _home, root, _head) = clean_checkout();
+    let (_repo, root, _head) = clean_checkout();
     let route = root.join("app/api/evaluate/route.ts");
     std::fs::create_dir_all(route.parent().expect("route parent")).expect("route directory");
     std::fs::write(
@@ -691,7 +691,7 @@ async fn a_submission_for_an_inactive_account_exits_zero_with_the_notice() {
 
 #[tokio::test]
 async fn evidence_refused_as_inactive_says_the_result_was_not_recorded() {
-    let (_repo, _home, root, head) = clean_checkout();
+    let (_repo, root, head) = clean_checkout();
     let workspace = tempfile::tempdir().expect("workspace");
     let args = live_submit_args(
         workspace.path(),

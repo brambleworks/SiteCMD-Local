@@ -7,6 +7,7 @@ pub mod agent;
 pub mod browser;
 pub mod cap;
 pub mod checks;
+pub mod code_rules;
 pub mod coverage;
 pub mod dns;
 pub mod evaluation;
@@ -21,6 +22,8 @@ pub mod release;
 pub mod route;
 pub mod scope;
 pub mod scoring;
+pub mod severity_policy;
+pub mod stack;
 pub mod sync;
 pub mod vocab;
 

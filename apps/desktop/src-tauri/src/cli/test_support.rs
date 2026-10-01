@@ -44,16 +44,12 @@ pub(crate) fn exported_site(
 }
 
 /// A one-commit git checkout with a finding for the audit to report, clean so
-/// its basis can be exact. Answers the checkout and isolated HOME guards, the
-/// checkout root and its head commit.
-pub(crate) fn clean_checkout() -> (tempfile::TempDir, tempfile::TempDir, PathBuf, String) {
+/// its basis can be exact. Answers the checkout guard, root and head commit.
+pub(crate) fn clean_checkout() -> (tempfile::TempDir, PathBuf, String) {
     let home_root = std::env::var_os("HOME")
         .map(PathBuf::from)
         .expect("HOME must be set for tests");
     let repo = tempfile::tempdir_in(&home_root).expect("repo tempdir");
-    // Outside the working tree: an isolated HOME inside it would leave the
-    // checkout dirty, and a dirty tree is never an exact basis.
-    let home = tempfile::tempdir().expect("home tempdir");
     let root = repo.path().to_path_buf();
     std::fs::write(
         root.join("package.json"),
@@ -66,22 +62,15 @@ pub(crate) fn clean_checkout() -> (tempfile::TempDir, tempfile::TempDir, PathBuf
     )
     .expect("source file");
 
-    let environment = [
-        ("HOME", home.path().to_string_lossy().to_string()),
-        ("GIT_CONFIG_GLOBAL", "/dev/null".to_string()),
-        ("GIT_CONFIG_SYSTEM", "/dev/null".to_string()),
-    ];
     let git = |args: &[&str]| {
-        std::process::Command::new("git")
-            .args(args)
-            .current_dir(&root)
-            .envs(
-                environment
-                    .iter()
-                    .map(|(key, value)| (*key, value.as_str())),
-            )
-            .output()
-            .expect("git command");
+        let run = crate::core::git::run_git_command(
+            &root,
+            args,
+            crate::constants::AUTOFIX_GIT_TIMEOUT,
+            None,
+        )
+        .expect("git command");
+        assert!(run.ok(), "git {args:?}: {}", run.stderr);
     };
     git(&["init", "-q", "-b", "main"]);
     git(&["config", "user.email", "test@example.com"]);
@@ -93,5 +82,5 @@ pub(crate) fn clean_checkout() -> (tempfile::TempDir, tempfile::TempDir, PathBuf
     let status = crate::core::git::get_git_status(&root.to_string_lossy(), 1);
     assert!(status.is_git_repo && !status.has_uncommitted, "{status:?}");
     let head = status.commits[0].hash.clone();
-    (repo, home, root, head)
+    (repo, root, head)
 }

@@ -1,0 +1,225 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "cms": "WordPress",
+        "framework": "PHP",
+        "other": [
+          "jQuery"
+        ]
+      },
+      "name": "wordpress_paths",
+      "page": {
+        "body": "<html><body><link rel=\"stylesheet\" href=\"/wp-content/themes/theme/style.css\"><script src=\"/wp-includes/js/jquery.js\"></script></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "framework": "Next.js",
+        "js_framework": "React"
+      },
+      "name": "next_js_header_and_markers",
+      "page": {
+        "body": "<html><body><div id=\"__next\"></div><script src=\"/_next/static/chunks/main.js\"></script></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [
+          [
+            "x-powered-by",
+            "Next.js"
+          ]
+        ],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "cdn": "Vercel",
+        "framework": "Next.js (likely)",
+        "server": "Vercel"
+      },
+      "name": "vercel_headers",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [
+          [
+            "x-vercel-id",
+            "iad1::abc123"
+          ],
+          [
+            "server",
+            "Vercel"
+          ]
+        ],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "css_framework": "Tailwind CSS"
+      },
+      "name": "tailwind_classes",
+      "page": {
+        "body": "<html><body><div class=\"flex items-center px-4 py-2 mt-4 text-sm bg-white\"><span class=\"mb-2\">Hello</span></div></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {},
+      "name": "brand_words_are_not_a_cms",
+      "page": {
+        "body": "<html><body><p>Built for Drupal, WordPress, and Shopify teams.</p></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "cms": "Drupal",
+        "framework": "PHP"
+      },
+      "name": "drupal_settings_json",
+      "page": {
+        "body": "<html><body><script type=\"application/json\" data-drupal-selector=\"drupal-settings-json\">{}</script></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "cms": "Webflow"
+      },
+      "name": "webflow_attributes",
+      "page": {
+        "body": "<html data-wf-page=\"abc\" data-wf-site=\"def\"><body></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "cms": "Shopify"
+      },
+      "name": "shopify_cdn_asset",
+      "page": {
+        "body": "<html><body><img src=\"https://cdn.shopify.com/s/files/1/0000/hero.png\"></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {},
+      "name": "app_names_ending_in_ng_app_are_not_angular",
+      "page": {
+        "body": "<html><head><meta name=\"govuk:publishing-app\" content=\"frontend\"></head><body></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "js_framework": "Angular"
+      },
+      "name": "angular_version_attribute",
+      "page": {
+        "body": "<html><body><app-root ng-version=\"17.0.2\"></app-root></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "cdn": "GitHub",
+        "server": "github.com"
+      },
+      "name": "github_server_header",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [
+          [
+            "server",
+            "github.com"
+          ],
+          [
+            "x-github-request-id",
+            "DFF7:79BB9:1557076"
+          ]
+        ],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "cms": "WordPress"
+      },
+      "name": "generator_after_unicode_case_expansion",
+      "page": {
+        "body": "<html><head>İİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİ<meta name=\"generator\" content=\"WordPress 6.9\"></head></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "cdn": "Cloudflare"
+      },
+      "name": "a_cloudflare_ray_alone_names_the_host",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [
+          [
+            "cf-ray",
+            "8a1b2c3d4e5f6071-IAD"
+          ]
+        ],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {
+        "server": "Kestrel"
+      },
+      "name": "an_unknown_server_keeps_its_product_name",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [
+          [
+            "server",
+            "Kestrel/2.1"
+          ]
+        ],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    }
+  ],
+  "comment": "Cross-runtime stack-detection fixtures. golden_stack pins detect_stack natively; the scan runner replays each page through the checks artifact's engine_evaluate and compares its stack. Expected blocks are written only by the ignored regenerate test."
+}

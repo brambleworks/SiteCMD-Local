@@ -1,4 +1,4 @@
-//! Minimal C ABI for the portable scorer and optional check evaluator.
+//! Minimal C ABI for the portable scorer, the severity policy and the optional check evaluator.
 //!
 //! Entry points consume UTF-8 JSON buffers and return length-prefixed JSON.
 //! Malformed input returns an error frame; internal panics trap.
@@ -12,7 +12,7 @@ struct ScoreRequest {
     now_ms: i64,
 }
 
-/// The one refusal shape both calls answer with, so a caller has a single
+/// The one refusal shape all calls answer with, so a caller has a single
 /// "is this an error frame?" test rather than one per entry point.
 #[derive(serde::Serialize)]
 struct AbiError {
@@ -29,21 +29,22 @@ fn leak_framed(payload: Vec<u8>) -> *const u8 {
 }
 
 /// Allocate `len` zeroed bytes inside the instance's memory for the caller to
-/// fill. Ownership passes back to the module through `scorer_score` (which
-/// consumes request buffers) or `scorer_free` (which releases result frames).
+/// fill. Ownership passes back through `scorer_score` or `severity_apply`
+/// (which consume request buffers) or `scorer_free` (which releases buffers).
 #[no_mangle]
 pub extern "C" fn scorer_alloc(len: u32) -> *mut u8 {
     Box::into_raw(vec![0u8; len as usize].into_boxed_slice()) as *mut u8
 }
 
-/// Release a buffer this module handed out: a `scorer_score` result frame
-/// (`len` = 4 + payload length) or an unused `scorer_alloc` buffer.
+/// Release a buffer this module handed out: a `scorer_score` or
+/// `severity_apply` result frame (`len` = 4 + payload length), or an unused
+/// `scorer_alloc` buffer.
 ///
 /// # Safety
 ///
 /// `ptr` must be a pointer previously returned by `scorer_alloc` or
-/// `scorer_score` with exactly the allocation's full length, not yet
-/// consumed or freed.
+/// `scorer_score` or `severity_apply` with exactly the allocation's full
+/// length, not yet consumed or freed.
 #[no_mangle]
 pub unsafe extern "C" fn scorer_free(ptr: *mut u8, len: u32) {
     drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(
@@ -71,6 +72,28 @@ pub unsafe extern "C" fn scorer_score(ptr: *mut u8, len: u32) -> *const u8 {
                 .and_then(|value| serde_json::to_vec(&value))
                 .unwrap_or_else(|error| error_payload(&error))
         }
+        Err(error) => error_payload(&error),
+    };
+    leak_framed(payload)
+}
+
+/// Apply the severity policy to a request buffer and return a framed JSON
+/// answer. Consumes the request buffer. The default build includes this export
+/// because Connect normalizes hosted verdicts with it.
+///
+/// # Safety
+///
+/// `ptr` must be an unfreed `scorer_alloc` buffer of exactly `len` bytes.
+/// This call consumes the buffer.
+#[no_mangle]
+pub unsafe extern "C" fn severity_apply(ptr: *mut u8, len: u32) -> *const u8 {
+    use sitecmd_engine::severity_policy::{apply, SeverityRequest};
+
+    let request = Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len as usize));
+    let payload = match serde_json::from_slice::<SeverityRequest>(&request) {
+        Ok(parsed) => serde_json::to_value(apply(&parsed))
+            .and_then(|value| serde_json::to_vec(&value))
+            .unwrap_or_else(|error| error_payload(&error)),
         Err(error) => error_payload(&error),
     };
     leak_framed(payload)

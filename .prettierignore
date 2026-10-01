@@ -55,6 +55,10 @@ apps/mcp-server/test/fixtures/tools-list.snapshot.json
 apps/desktop/src-tauri/tests/fixtures/fix_templates/
 
 # Generated / vendored
+# Written by the ignored regenerate tests; vendored copies are pinned by digest.
+apps/desktop/src-tauri/crates/engine/fixtures/severity/
+apps/desktop/src-tauri/crates/engine/fixtures/stack/
+apps/desktop/src-tauri/tests/fixtures/parity/
 apps/mcp-server/dist-bundle/
 apps/desktop/src-tauri/capabilities/schemas/
 # Vendored minified axe-core bundle every runtime injects; prettier 3.9

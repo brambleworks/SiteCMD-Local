@@ -25,6 +25,7 @@ const config: KnipConfig = {
         // Manual hosted-runner WASM vendor entry points.
         "tools/scripts/build-scorer-wasm.mjs",
         "tools/scripts/build-checks-wasm.mjs",
+        "tools/scripts/vendor-ported-fixtures.mjs",
         // Bare command paths invoked by verify-push.mjs.
         "tools/scripts/cli-smoke.mjs",
         "tools/scripts/audit/check-rust-toolchain.mjs",

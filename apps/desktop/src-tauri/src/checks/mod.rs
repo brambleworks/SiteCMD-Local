@@ -10,7 +10,7 @@ pub mod performance;
 pub mod polish;
 pub use sitecmd_engine::checks::predeploy;
 pub mod security;
-pub(crate) use sitecmd_engine::checks::{ceil_char_boundary, floor_char_boundary};
+pub(crate) use sitecmd_engine::checks::floor_char_boundary;
 mod probe_adapter;
 pub(crate) use probe_adapter::{probe, probe_get, probe_with_timeout};
 mod probes;

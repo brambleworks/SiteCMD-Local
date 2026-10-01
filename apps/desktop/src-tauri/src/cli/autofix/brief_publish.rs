@@ -207,7 +207,7 @@ pub fn render_issue(
         })
         .collect();
     let input = FixBriefInput {
-        attempt_id: i64::from(claimed.attempt),
+        attempt_id: claimed.attempt.to_string(),
         check_id: first.check_id.clone(),
         description: first.issue.description.clone(),
         detected_stack: stack,

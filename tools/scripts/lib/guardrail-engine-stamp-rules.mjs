@@ -158,17 +158,52 @@ export function engineStampFailures(read) {
     }
   }
   const emit = functionBody(blame, "emit_regression_blame");
+  const decide = functionBody(blame, "decide_blame");
+  const appearing = functionBody(blame, "appearing_issues");
+  const withheld = functionBody(blame, "withheld_check_count");
+  if ((blame.match(/!input\.active_check_ids\.contains\(/g) ?? []).length !== 1) {
+    failures.push(`${BLAME} must define the appearing predicate exactly once.`);
+  }
+  if (
+    !appearing?.includes("dedup_by_check_id(") ||
+    !/filter\(\|issue\| !input\.active_check_ids\.contains\(&issue\.check_id\)\)/.test(appearing) ||
+    !decide?.includes("appearing_issues(input)") ||
+    !withheld?.includes("appearing_issues(input)")
+  ) {
+    failures.push(
+      `${BLAME} must share appearing_issues between the decision and withheld count, with one deduplicated set of inactive checks.`,
+    );
+  }
   if (emit && !emit.includes("Attribution::between(")) {
     failures.push(
       `${BLAME} emit_regression_blame must resolve both runs' provenance before it accuses a commit.`,
     );
   }
-  if (emit && !/partition\(\|issue\| attribution\.attributable/.test(emit)) {
+  if (!decide) {
+    failures.push(
+      `${BLAME} must define decide_blame: the decision is what the hosted port replays, so it lives apart from git and the database.`,
+    );
+  }
+  const emittedCode = emit?.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (
+    emit &&
+    !/^[ \t]*let\s+\w+\s*=\s*decide_blame\([^;]*&attribution\s*,?\s*\)/m.test(emittedCode)
+  ) {
+    failures.push(
+      `${BLAME} emit_regression_blame must decide through decide_blame, the one decision both runtimes pin.`,
+    );
+  }
+  if (decide && /\b(?:now\s*\(|env\s*::|Database\b|get_commits_between\b)/.test(decide)) {
+    failures.push(
+      `${BLAME} decide_blame must stay pure: clock, environment, database and git access belong in the caller.`,
+    );
+  }
+  if (decide && !/partition\(\|issue\| attribution\.attributable/.test(decide)) {
     failures.push(
       `${BLAME} must split appearing findings on attribution before counting them, or the headline count blames commits for checks this release added.`,
     );
   }
-  if (emit && !/filter\(\|check_id\| attribution\.attributable/.test(emit)) {
+  if (decide && !/filter\(\|check_id\| attribution\.attributable/.test(decide)) {
     failures.push(
       `${BLAME} must filter the fixed set on attribution too. A retired check stops reporting, and counting that as fixed credits a deploy for work nobody did.`,
     );

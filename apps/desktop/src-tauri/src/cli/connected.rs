@@ -525,7 +525,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_graded_gate_writes_its_verdict_and_new_count_for_the_workflow() {
-        let (_repo, _home, root, _head) = clean_checkout();
+        let (_repo, root, _head) = clean_checkout();
         for (verdict, new, code) in [("fail", 2, 1), ("pass", 0, 0)] {
             let workspace = tempfile::tempdir().expect("workspace");
             let args = gate_args(
@@ -550,7 +550,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_gate_for_an_inactive_account_exits_zero_saying_nothing_was_graded() {
-        let (_repo, _home, root, _head) = clean_checkout();
+        let (_repo, root, _head) = clean_checkout();
         let workspace = tempfile::tempdir().expect("workspace");
         let args = gate_args(workspace.path(), "SITECMD_TEST_GATE_INACTIVE", root);
         let (origin, captured) =
@@ -580,7 +580,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_suspended_subscription_still_fails_the_gate() {
-        let (_repo, _home, root, _head) = clean_checkout();
+        let (_repo, root, _head) = clean_checkout();
         let workspace = tempfile::tempdir().expect("workspace");
         let args = gate_args(workspace.path(), "SITECMD_TEST_GATE_SUSPENDED", root);
         let (origin, _captured) = respond_in_sequence(vec![(

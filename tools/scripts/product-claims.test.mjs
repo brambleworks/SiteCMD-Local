@@ -98,7 +98,7 @@ describe("check-id extraction", () => {
       }),
       "apps/desktop/src-tauri/src/checks/polish/mod.rs":
         "pub fn run_all_signals(ctx: &Ctx) -> Vec<Signal> {\n    vec![\n        signals::one(ctx),\n    ]\n}",
-      "apps/desktop/src-tauri/src/core/code_scan/registry.rs": '    d("example-rule"),',
+      "apps/desktop/src-tauri/crates/engine/src/code_rules.rs": '    d("example-rule"),',
     };
     const fakeRead = (file) => sources[file] ?? "";
     const fakeList = (dir) =>

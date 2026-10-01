@@ -26,12 +26,12 @@ export function sha256(bytes) {
 }
 
 /** Refuse dirty engine trees unless provenance is explicitly marked dirty. */
-export function engineTreeSuffix(allowDirty) {
-  const dirty = run("git", ["status", "--porcelain", "--", "apps/desktop/src-tauri/crates"], {
-    cwd: repoRoot,
-  });
+export function engineTreeSuffix(allowDirty, paths = ["apps/desktop/src-tauri/crates"]) {
+  const dirty = run("git", ["status", "--porcelain", "--", ...paths], { cwd: repoRoot });
   if (dirty && !allowDirty) {
-    console.error("crates/ has uncommitted changes; commit first or pass --allow-dirty:");
+    console.error(
+      `${paths.join(", ")} has uncommitted changes; commit first or pass --allow-dirty:`,
+    );
     console.error(dirty);
     process.exit(1);
   }

@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   attributeBlock,
   claimedChecks,
@@ -170,18 +172,58 @@ export function engineArtifactFailures(read) {
     );
   }
 
-  const embedded = /include_str!\("([^"]+)"\)/.exec(read(GOLDEN_TEST));
-  if (embedded === null) {
-    failures.push(`${GOLDEN_TEST} no longer embeds a corpus with include_str!`);
-  } else {
-    // Normalize Rust include paths before matching JavaScript path segments.
-    const wanted = embedded[1].split("/").filter((segment) => segment !== "..");
-    const corpusLine = /const corpusPath = ([^;]*);/.exec(checksScript);
-    const joined = corpusLine === null ? "" : corpusLine[1];
-    const missing = wanted.filter((segment) => !joined.includes(`"${segment}"`));
-    if (missing.length > 0) {
+  for (const [test, script, source, variable] of [
+    [GOLDEN_TEST, CHECKS_SCRIPT, checksScript, "corpusPath"],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/golden_score.rs",
+      SCORER_SCRIPT,
+      scorerScript,
+      "corpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine-wasm/tests/abi.rs",
+      SCORER_SCRIPT,
+      scorerScript,
+      "corpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/golden_severity.rs",
+      SCORER_SCRIPT,
+      scorerScript,
+      "severityCorpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine-wasm/tests/severity_abi.rs",
+      SCORER_SCRIPT,
+      scorerScript,
+      "severityCorpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/evaluation_policy_facts.rs",
+      CHECKS_SCRIPT,
+      checksScript,
+      "stackCorpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/golden_stack.rs",
+      CHECKS_SCRIPT,
+      checksScript,
+      "stackCorpusPath",
+    ],
+  ]) {
+    const embedded = /include_str!\("([^"]+)"\)/.exec(read(test));
+    if (embedded === null) {
+      failures.push(`${test} no longer embeds a corpus with include_str!`);
+      continue;
+    }
+    const declaration = new RegExp(`const ${variable} = ([^;]*);`).exec(source);
+    const joined = declaration === null ? "" : declaration[1];
+    const segments = [...joined.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    const vendored = path.posix.join("apps/desktop/src-tauri", ...segments);
+    const wanted = path.posix.join(path.posix.dirname(test), embedded[1]);
+    if (!/path\.join\(\s*cargoRoot\s*,/.test(joined) || vendored !== wanted) {
       failures.push(
-        `${CHECKS_SCRIPT} does not vendor the corpus ${GOLDEN_TEST} embeds (${embedded[1]}); two ` +
+        `${script} does not vendor the corpus ${test} embeds (${embedded[1]}); two ` +
           `corpora means the hosted parity test and the native one are testing different things`,
       );
     }
@@ -233,13 +275,6 @@ export function engineArtifactFailures(read) {
           `only thing between a reviewer and a wasm blob of unknown origin`,
       );
     }
-  }
-
-  if (!checksScript.includes("engineTreeSuffix(")) {
-    failures.push(
-      `${CHECKS_SCRIPT} no longer refuses a dirty engine tree; vendoring from an edited working ` +
-        `tree records a commit the artifact does not match`,
-    );
   }
 
   const registered = REGISTRATION_SOURCES.map((file) => read(file)).join("\n");

@@ -1607,6 +1607,38 @@ describe.concurrent(
       );
     });
 
+    it("reports a local stack detector with the engine-port guardrails", () => {
+      expectGuardrailFailure(
+        repoGuardrailFailures,
+        (fixtureRoot) => {
+          const detectorPath = "apps/desktop/src-tauri/src/core/detector.rs";
+          const detector = readFixtureFile(fixtureRoot, detectorPath);
+          writeFixtureFile(fixtureRoot, detectorPath, `${detector}\nfn detect_cms() {}\n`);
+        },
+        "Engine-port guardrails failed:",
+      );
+    });
+
+    it("fails when stack generator Unicode coverage is renamed", () => {
+      expectGuardrailFailure(
+        desktopScannerBodySafetyFailures,
+        (fixtureRoot) => {
+          const stackTestsPath = "apps/desktop/src-tauri/crates/engine/src/stack_tests.rs";
+          const stackTests = readFixtureFile(fixtureRoot, stackTestsPath);
+          writeFixtureFile(
+            fixtureRoot,
+            stackTestsPath,
+            mustMutate(
+              stackTests,
+              "generator_detection_preserves_offsets_after_unicode_case_expansion",
+              "generator_detection_without_unicode_regression",
+            ),
+          );
+        },
+        "HTML offset parsing must preserve UTF-8 byte positions and keep Unicode regression coverage",
+      );
+    });
+
     it("fails when the process-wide DNS cache loses its capacity bound", () => {
       expectGuardrailFailure(
         codeScanSecurityFailures,

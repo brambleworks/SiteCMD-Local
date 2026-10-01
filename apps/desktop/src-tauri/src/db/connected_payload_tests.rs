@@ -31,6 +31,38 @@ fn ttfb_without_provenance_is_not_guessed_into_the_transport_series() {
     assert_eq!(connected_measurement(&row), None);
 }
 
+#[test]
+fn a_stored_stack_without_other_labels_still_names_its_framework() {
+    let run = RunMaterial {
+        run_kind: ScanRunKind::Single,
+        started_at: 0,
+        coverage: ScanCoverageManifest {
+            kind: ScanCoverageKind::Site,
+            successful: true,
+            page_urls: Vec::new(),
+            checks: Vec::new(),
+            exceptions: Vec::new(),
+        },
+        diagnostics: NormalizedRunDiagnostics {
+            detected_stack: Some(r#"{"framework":"Next.js"}"#.into()),
+            ..NormalizedRunDiagnostics::default()
+        },
+        stamp: sitecmd_engine::release::ReleaseStamp::current(
+            "1.5.0",
+            sitecmd_engine::release::ExecutionProfile::default(),
+        ),
+        measurements: Vec::new(),
+        web_occurrence_keys: BTreeSet::new(),
+    };
+    assert_eq!(
+        stack_facts(&[&run]),
+        Some(StackFacts {
+            framework: Some("Next.js".into()),
+            framework_version: None
+        })
+    );
+}
+
 // The full SHA a clean checkout observes, and the abbreviations a pipeline
 // legitimately states for it.
 const OBSERVED_SHA: &str = "c0ffee1deadbeef0123456789abcdef012345678";

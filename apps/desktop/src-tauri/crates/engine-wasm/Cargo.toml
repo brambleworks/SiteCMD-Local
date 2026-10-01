@@ -1,7 +1,7 @@
 [package]
 name = "sitecmd-engine-wasm"
 version = "0.1.0"
-description = "C-ABI wasm artifact over the portable SiteCMD scorer: the hosted runner's second runtime for scoring::calculator, so hosted reports and hosted scans score through the same compiled code as the desktop instead of a forbidden TypeScript reimplementation"
+description = "C-ABI wasm artifact for the portable SiteCMD scorer and severity policy, with optional check evaluation for hosted scans"
 authors = ["Kyle Piontek (Brambleworks LLC)"]
 license = "Apache-2.0"
 publish = false
@@ -13,7 +13,7 @@ rust-version = "1.89.0"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-# The default artifact contains only the scorer and is byte-pinned downstream.
+# The default artifact contains the scorer and severity policy and is byte-pinned downstream.
 default = []
 # Include the check tree and evaluation ABI for the scan worker artifact.
 checks = []

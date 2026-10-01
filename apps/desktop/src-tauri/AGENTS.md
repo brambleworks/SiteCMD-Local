@@ -46,10 +46,18 @@ Domain methods belong in `db/{domain}.rs` as `impl Database` blocks. Keep
 - shared vocabularies, issue identity, coverage, scope, profiles, and release
   stamps;
 - the SiteCMD Score model and golden score corpus;
+- the code-scan rule table, the severity policy and stack detection, which the
+  hosted artifacts and Connect run through WASM;
 - all pure synchronous checks;
 - probe plans, typed outcomes, and pure verdict functions;
 - browser payload and fact schemas;
 - connected submission types and capability manifest.
+
+Logic Connect ports to TypeScript (event correlation, the regression-blame
+decision, work-item regressions and the fix brief) keeps a parity corpus under
+`tests/fixtures/parity/`, written only by each module's ignored `regenerate` test
+and vendored with `tools/scripts/vendor-ported-fixtures.mjs`; change the Rust and
+its corpus together, then re-vendor.
 
 The engine has no clock, filesystem, network, environment, or Tauri dependency.
 Callers inject evaluation time and runtime facts. The wasm push gates enforce

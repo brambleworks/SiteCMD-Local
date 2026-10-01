@@ -111,7 +111,10 @@ function collectWebIssueIds(): string[] {
 }
 
 function collectCodeIssueSlugs(): string[] {
-  const registry = readFileSync(path.join(RUST_SRC, "core/code_scan/registry.rs"), "utf8");
+  const registry = readFileSync(
+    path.resolve(HERE, "../../src-tauri/crates/engine/src/code_rules.rs"),
+    "utf8",
+  );
   return Array.from(new Set(collectMatches(registry, /\bd\(\s*"([a-z0-9-]+)"/g))).sort();
 }
 
