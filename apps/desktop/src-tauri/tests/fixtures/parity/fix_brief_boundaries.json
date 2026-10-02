@@ -1,0 +1,93 @@
+{
+  "cases": [
+    {
+      "expected": "# SiteCMD Fix Brief: Title `tick`\r\n## Title heading\rTitle tail\n\nAttempt: 42 | Check: `check`id\nsecond line` | Severity: high | Site: https://example.com\n\n## What is wrong\n\nDescription `tick`\r\n## Description heading\rDescription tail\n\n## Where to look\n\n- `z-last.ts:7` (Label `tick`\nsecond line) - Reason `tick`\nsecond line\n- `\uD800\uDC00-astral.ts:7` (astral) - Second supplied location\n- `\uE000-bmp.ts:7` (bmp) - Third supplied location\n- `a-first.ts:7` (alpha) - Fourth supplied location\n\n## Previous attempt\n\nAn earlier fix attempt for this issue did not pass verification. Do not repeat it; address the remaining gap:\n\nFailure `tick`\nsecond line\n\n## Acceptance criteria\n\nAfter you finish, SiteCMD will re-run the `check`id\nsecond line` check against https://example.com. The fix is only accepted if that check passes. Make the smallest change that satisfies it.\n\n## When you are done\n\nOpen a pull request from your branch against the repository's default branch whose description references this issue with `Fixes #<issue number>`. SiteCMD verifies the fix from that pull request; do not close this issue yourself.\n",
+      "input": {
+        "attempt_id": "42",
+        "check_id": "check`id\nsecond line",
+        "description": "Description `tick`\r\n## Description heading\rDescription tail",
+        "detected_stack": {
+          "framework": "Next.js"
+        },
+        "manual_fix": null,
+        "occurrence_target": null,
+        "previous_failure": "Failure `tick`\nsecond line",
+        "severity": "high",
+        "title": "Title `tick`\r\n## Title heading\rTitle tail",
+        "url": "https://example.com",
+        "why_it_matters": null
+      },
+      "locations": [{"label":"Label `tick`\nsecond line","line":7,"path":"z-last.ts","reason":"Reason `tick`\nsecond line"},{"label":"astral","line":7,"path":"\uD800\uDC00-astral.ts","reason":"Second supplied location"},{"label":"bmp","line":7,"path":"\uE000-bmp.ts","reason":"Third supplied location"},{"label":"alpha","line":7,"path":"a-first.ts","reason":"Fourth supplied location"}],
+      "mode": {"kind":"hosted"},
+      "name": "literal_text_and_location_order_survive_without_a_framework_hint"
+    },
+    {
+      "expected": "# SiteCMD Fix Brief: Example finding\n\nAttempt: 42 | Check: `code_scan.example` | Severity: high | Site: https://example.com\n\n## What is wrong\n\nExample description\n\n## Where to look\n\n- `z-last.ts:7` (last) - First supplied location\n- `\uD800\uDC00-astral.ts:7` (astral) - Second supplied location\n- `\uE000-bmp.ts:7` (bmp) - Third supplied location\n- `a-first.ts:7` (alpha) - Fourth supplied location\n\n## Acceptance criteria\n\nAfter you finish, SiteCMD will re-run the `code_scan.example` check against https://example.com. The fix is only accepted if that check passes. Make the smallest change that satisfies it.\n\n## When you are done\n\nOpen a pull request from your branch against the repository's default branch whose description references this issue with `Fixes #<issue number>`. SiteCMD verifies the fix from that pull request; do not close this issue yourself.\n",
+      "input": {
+        "attempt_id": "42",
+        "check_id": "code_scan.example",
+        "description": "Example description",
+        "detected_stack": null,
+        "manual_fix": null,
+        "occurrence_target": null,
+        "previous_failure": null,
+        "severity": "high",
+        "title": "Example finding",
+        "url": "https://example.com",
+        "why_it_matters": null
+      },
+      "locations": [{"label":"last","line":7,"path":"z-last.ts","reason":"First supplied location"},{"label":"astral","line":7,"path":"\uD800\uDC00-astral.ts","reason":"Second supplied location"},{"label":"bmp","line":7,"path":"\uE000-bmp.ts","reason":"Third supplied location"},{"label":"alpha","line":7,"path":"a-first.ts","reason":"Fourth supplied location"}],
+      "mode": {"kind":"hosted"},
+      "name": "location_bullets_keep_supplied_order_across_astral_and_bmp_paths"
+    },
+    {
+      "expected": "# SiteCMD Fix Brief: Example finding\n\nAttempt: 42 | Check: `code_scan.example` | Severity: high | Site: https://example.com\n\n## What is wrong\n\nExample description\n\n## Where to look\n\nSiteCMD has no exact file mapping for this issue. Search the repository for where this behavior is configured and apply the fix there.\n\n## Acceptance criteria\n\nSiteCMD accepts the fix when an authenticated code submission bound to this attempt, from your CI or the SiteCMD CLI, no longer reports the `code_scan.example` finding. SiteCMD records the result as self-attested. Make the smallest change that fixes the reported risk.\n\n## When you are done\n\nCommit the fix first. SiteCMD then verifies it from an authenticated code submission bound to this attempt, from your CI or the SiteCMD CLI, and records the result as self-attested. Call the SiteCMD MCP tool `request_verification` with attempt_id=42 when that is done. Do not mark the issue fixed yourself.\n",
+      "input": {
+        "attempt_id": "42",
+        "check_id": "code_scan.example",
+        "description": "Example description",
+        "detected_stack": null,
+        "manual_fix": null,
+        "occurrence_target": {
+          "label": "target",
+          "line": 7,
+          "path": "src/target.ts",
+          "reason": "Reported occurrence"
+        },
+        "previous_failure": null,
+        "severity": "high",
+        "title": "Example finding",
+        "url": "https://example.com",
+        "why_it_matters": null
+      },
+      "locations": [],
+      "mode": {"kind":"remote_mcp","verification":"submission"},
+      "name": "submission_with_an_occurrence_target_keeps_submission_acceptance"
+    },
+    {
+      "expected": "# SiteCMD Fix Brief: Example finding\n\nAttempt: 42 | Check: `code_scan.example` | Severity: high | Site: https://example.com\n\n## What is wrong\n\nExample description\n\n## Where to look\n\nSiteCMD has no exact file mapping for this issue. Search the repository for where this behavior is configured and apply the fix there.\n\n## Acceptance criteria\n\nSiteCMD accepts the fix only once visitors' page loads under a build of the commit that carries the fix no longer raise the `code_scan.example` finding. A clean audit does not count. Make the smallest change that fixes the reported risk.\n\n## When you are done\n\nShip the fix to production first. SiteCMD then verifies it only by watching visitors' page loads under a build of the commit that carries the fix, never from a clean audit. Call the SiteCMD MCP tool `request_verification` with attempt_id=42 when that is done. Do not mark the issue fixed yourself.\n",
+      "input": {
+        "attempt_id": "42",
+        "check_id": "code_scan.example",
+        "description": "Example description",
+        "detected_stack": null,
+        "manual_fix": null,
+        "occurrence_target": {
+          "label": "target",
+          "line": 7,
+          "path": "src/target.ts",
+          "reason": "Reported occurrence"
+        },
+        "previous_failure": null,
+        "severity": "high",
+        "title": "Example finding",
+        "url": "https://example.com",
+        "why_it_matters": null
+      },
+      "locations": [],
+      "mode": {"kind":"remote_mcp","verification":"observation"},
+      "name": "observation_with_an_occurrence_target_keeps_observation_acceptance"
+    }
+  ],
+  "comment": "Expected strings are written only by src/core/fix_brief_parity_tests.rs through its ignored regenerate test. fix_brief_boundaries.json holds literal text, location order and acceptance cases, with inputs written from src/core/fix_brief_parity_cases_tests.rs."
+}

@@ -313,6 +313,78 @@
       "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
     },
     {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704106800000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T11:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.0000005Z"}],
+      "name": "a_drop_two_hours_and_five_hundred_nanoseconds_is_medium",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0000005Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027600000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_drop_twenty_four_hours_and_five_hundred_nanoseconds_does_not_correlate",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0000005Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":2,"occurred_at_ms":1704160800000,"severity":"warning","title":"Traffic anomaly"}],
+      "expected": [{"confidence":"medium","correlationType":"scan_to_traffic","description":"Score dropped 20 pts (90 \u2192 70) near a traffic anomaly: Traffic anomaly","sourceEventId":2,"sourceTimestamp":"2024-01-01T13:00:00.0000005Z","targetEventId":null,"targetTimestamp":"2024-01-02T02:00:00+00:00"}],
+      "name": "an_anomaly_five_hundred_nanoseconds_before_thirteen_hours_is_medium",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0000005Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 30 point score drop (90 \u2192 60)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.0000009Z"}],
+      "name": "submillisecond_scan_times_choose_the_newer_scan_over_the_lower_id",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0000001Z","url":"https://example.com"},{"id":9,"overall_score":60,"timestamp":"2024-01-01T13:00:00.0000009Z","url":"https://other.example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"},{"id":8,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://other.example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T11:00:00\u221202:00"}],
+      "name": "a_unicode_minus_offset_is_read_as_thirteen_hundred_utc",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T11:00:00\u221202:00","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027600050,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"low","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2023-12-31T13:00:00.050+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.0123456789Z"}],
+      "name": "a_leading_zero_fraction_past_nine_digits_inside_twenty_four_hours_is_low",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0123456789Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704106800000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 20 point score improvement (70 -> 90)","sourceEventId":1,"sourceTimestamp":"2024-01-01T11:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_resolution_exactly_two_hours_is_high",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704106800000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 20 point score improvement (70 -> 90)","sourceEventId":1,"sourceTimestamp":"2024-01-01T11:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.001Z"}],
+      "name": "a_resolution_two_hours_and_a_millisecond_is_medium",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00.001Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027600000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"low","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 20 point score improvement (70 -> 90)","sourceEventId":1,"sourceTimestamp":"2023-12-31T13:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_resolution_exactly_twenty_four_hours_is_low",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027600000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_resolution_twenty_four_hours_and_a_millisecond_does_not_correlate",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00.001Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704114000000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 20 point score improvement (70 -> 90)","sourceEventId":1,"sourceTimestamp":"2024-01-01T13:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_resolution_at_the_deploy_instant_is_high",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704114000000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_resolution_before_the_deploy_does_not_correlate",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T12:59:59.999Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
       "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
       "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.123456789Z"}],
       "name": "a_scan_with_extra_fraction_digits_correlates",

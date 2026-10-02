@@ -85,6 +85,42 @@
       "scans": []
     },
     {
+      "events": [{"event_type":"analytics","id":2,"occurred_at_ms":1704096000000,"severity":"warning","title":"Traffic anomaly"}],
+      "expected": [{"confidence":"medium","correlationType":"scan_to_traffic","description":"Score dropped 20 pts (90 \u2192 70) near a traffic anomaly: Traffic anomaly","sourceEventId":2,"sourceTimestamp":"2024-01-01T13:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-01T08:00:00+00:00"}],
+      "name": "an_anomaly_five_hours_before_a_regression_is_medium",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":2,"occurred_at_ms":1704067200000,"severity":"warning","title":"Traffic anomaly"}],
+      "expected": [{"confidence":"low","correlationType":"scan_to_traffic","description":"Score dropped 20 pts (90 \u2192 70) near a traffic anomaly: Traffic anomaly","sourceEventId":2,"sourceTimestamp":"2024-01-01T13:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-01T00:00:00+00:00"}],
+      "name": "an_anomaly_thirteen_hours_before_a_regression_is_low",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":2,"occurred_at_ms":1703937600000,"severity":"warning","title":"Traffic anomaly"}],
+      "expected": [],
+      "name": "an_anomaly_forty_nine_hours_before_a_regression_does_not_correlate",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":2,"occurred_at_ms":1704117600000,"severity":"warning","title":"Traffic anomaly"}],
+      "expected": [],
+      "name": "an_anomaly_beside_a_twenty_point_improvement_does_not_correlate",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":2,"occurred_at_ms":1704117600000,"severity":"warning","title":"Traffic anomaly"}],
+      "expected": [{"confidence":"medium","correlationType":"scan_to_traffic","description":"Score dropped 30 pts (80 \u2192 50) near a traffic anomaly: Traffic anomaly","sourceEventId":2,"sourceTimestamp":"2024-01-01T20:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-01T14:00:00+00:00"}],
+      "name": "one_anomaly_keeps_the_newer_regressions_thirty_point_description",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"},{"id":4,"overall_score":50,"timestamp":"2024-01-01T20:00:00Z","url":"https://other.example.com"},{"id":3,"overall_score":80,"timestamp":"2024-01-01T18:00:00Z","url":"https://other.example.com"}]
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"Site is up"},{"event_type":"analytics","id":2,"occurred_at_ms":1704114000000,"severity":"warning","title":"Traffic drop"}],
+      "expected": [],
+      "name": "info_uptime_does_not_explain_a_traffic_drop",
+      "scans": []
+    },
+    {
       "events": [{"event_type":"uptime","id":1,"occurred_at_ms":8210266876799999,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":8210266876799999,"severity":"warning","title":"Traffic drop detected"},{"event_type":"uptime","id":3,"occurred_at_ms":-8334601228800000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":4,"occurred_at_ms":-8334601228800000,"severity":"warning","title":"Traffic drop detected"}],
       "expected": [{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":1,"sourceTimestamp":"+262142-12-31T23:59:59.999+00:00","targetEventId":2,"targetTimestamp":"+262142-12-31T23:59:59.999+00:00"},{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":3,"sourceTimestamp":"-262143-01-01T00:00:00+00:00","targetEventId":4,"targetTimestamp":"-262143-01-01T00:00:00+00:00"}],
       "name": "events_at_the_edges_of_chronos_range_keep_their_years",

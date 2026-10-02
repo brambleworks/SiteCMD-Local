@@ -1,5 +1,95 @@
 //! Shared formatting and replay assertions for Rust-written parity corpora.
 
+pub(super) fn insert_inputs(value: &mut serde_json::Value, inputs: Vec<serde_json::Value>) {
+    let cases = value["cases"].as_array_mut().expect("cases array");
+    let mut inserted = Vec::new();
+    for input in inputs {
+        assert!(
+            input.get("expected").is_none(),
+            "inputs carry no expected value"
+        );
+        if let Some(position) = cases.iter().position(|case| case["name"] == input["name"]) {
+            let existing = cases.remove(position);
+            let mut actual_input = existing.clone();
+            actual_input
+                .as_object_mut()
+                .expect("case object")
+                .remove("expected");
+            assert_eq!(actual_input, input, "{} input changed", input["name"]);
+            inserted.push(existing);
+        } else {
+            inserted.push(input);
+        }
+    }
+    // Insert in Rust order before the final original case so its closing delimiter stays unchanged.
+    let insertion = cases.len().saturating_sub(1);
+    cases.splice(insertion..insertion, inserted);
+}
+
+pub(super) fn reset_inputs(value: &mut serde_json::Value, inputs: Vec<serde_json::Value>) {
+    value["cases"]
+        .as_array_mut()
+        .expect("cases array")
+        .retain(|case| !inputs.iter().any(|input| case["name"] == input["name"]));
+    insert_inputs(value, inputs);
+}
+
+pub(super) fn assert_inputs_match_corpus(source: &str, inputs: Vec<serde_json::Value>) {
+    let value: serde_json::Value = serde_json::from_str(source).expect("corpus parses");
+    let mut with_inputs = value.clone();
+    insert_inputs(&mut with_inputs, inputs);
+    assert_eq!(with_inputs, value, "Rust inputs must be regenerated");
+}
+
+#[test]
+#[should_panic(expected = "inputs carry no expected value")]
+fn insertion_rejects_a_hand_written_expected_value() {
+    insert_inputs(
+        &mut serde_json::json!({"cases": []}),
+        vec![serde_json::json!({"name": "new", "expected": null})],
+    );
+}
+
+#[test]
+#[should_panic(expected = "input changed")]
+fn insertion_refuses_a_changed_input() {
+    insert_inputs(
+        &mut serde_json::json!({"cases": [{"name": "new", "input": 1}]}),
+        vec![serde_json::json!({"name": "new", "input": 2})],
+    );
+}
+
+#[test]
+fn insertion_uses_rust_order_before_the_final_original_case() {
+    let first = serde_json::json!({"name": "first"});
+    let last = serde_json::json!({"name": "last"});
+    let a = serde_json::json!({"name": "a", "input": 1});
+    let b = serde_json::json!({"name": "b", "input": 2});
+    let c = serde_json::json!({"name": "c", "input": 3});
+    let mut value = serde_json::json!({"cases": [first, b, a, last]});
+    value["cases"][1]["expected"] = serde_json::json!("kept");
+    let expected_b = value["cases"][1].clone();
+    insert_inputs(&mut value, vec![a.clone(), b, c.clone()]);
+    assert_eq!(
+        value,
+        serde_json::json!({"cases": [first, a, expected_b, c, last]})
+    );
+}
+
+#[test]
+fn insertion_is_idempotent_without_original_cases() {
+    let inputs = vec![
+        serde_json::json!({"name": "a"}),
+        serde_json::json!({"name": "b"}),
+    ];
+    let mut value = serde_json::json!({"cases": []});
+    insert_inputs(&mut value, inputs.clone());
+    let inserted = value.clone();
+    insert_inputs(&mut value, inputs.clone());
+    assert_eq!(value, inserted);
+    assert_eq!(value["cases"], serde_json::json!(inputs));
+}
+
 pub(super) fn compact_fields(
     rendered: &mut String,
     value: &serde_json::Value,

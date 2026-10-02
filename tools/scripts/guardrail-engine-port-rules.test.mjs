@@ -209,9 +209,11 @@ describe("ported corpus vendoring", () => {
     "event_correlations.json",
     "event_correlations_boundaries.json",
     "regression_blame.json",
+    "regression_blame_boundaries.json",
     "work_item_projection.json",
     "work_item_projection_boundaries.json",
     "fix_brief.json",
+    "fix_brief_boundaries.json",
     "check_aliases.json",
   ])("requires the included corpus %s", (corpus) => {
     const source = read(PORTED_SCRIPT).replace(

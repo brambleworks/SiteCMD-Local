@@ -8,15 +8,30 @@ use serde::Deserialize;
 
 use super::{build_fix_brief_with_mode, BriefLocation, BriefMode, FixBriefInput, VerificationPath};
 use crate::checks::Severity;
-use crate::core::parity_corpus_tests::{assert_printable_corpus, compact_fields, visible_json};
+use crate::core::parity_corpus_tests::{
+    assert_inputs_match_corpus, assert_printable_corpus, compact_fields, reset_inputs, visible_json,
+};
+
+#[path = "fix_brief_parity_cases_tests.rs"]
+mod inputs;
 
 const CORPUS: &str = include_str!("../../tests/fixtures/parity/fix_brief.json");
 const CORPUS_PATH: &str = concat!(
     env!("SITECMD_SOURCE_ROOT"),
     "/tests/fixtures/parity/fix_brief.json"
 );
+const BOUNDARIES: &str = include_str!("../../tests/fixtures/parity/fix_brief_boundaries.json");
+const BOUNDARIES_PATH: &str = concat!(
+    env!("SITECMD_SOURCE_ROOT"),
+    "/tests/fixtures/parity/fix_brief_boundaries.json"
+);
+const BOUNDARIES_COMMENT: &str = concat!(
+    "Expected strings are written only by src/core/fix_brief_parity_tests.rs through its ignored regenerate test.",
+    " fix_brief_boundaries.json holds literal text, location order and acceptance cases, with inputs written from src/core/fix_brief_parity_cases_tests.rs."
+);
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Corpus {
     #[allow(dead_code)]
     comment: String,
@@ -24,6 +39,7 @@ struct Corpus {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Case {
     name: String,
     mode: CaseMode,
@@ -33,9 +49,9 @@ struct Case {
 }
 
 #[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum CaseMode {
-    Hosted,
+    Hosted {},
     RemoteMcp { verification: VerificationPath },
 }
 
@@ -55,10 +71,6 @@ struct CaseInput {
     occurrence_target: Option<BriefLocation>,
 }
 
-fn corpus() -> Corpus {
-    serde_json::from_str(CORPUS).expect("fix_brief.json parses")
-}
-
 fn render(case: &Case) -> String {
     let input = FixBriefInput {
         attempt_id: case.input.attempt_id.clone(),
@@ -76,7 +88,7 @@ fn render(case: &Case) -> String {
         occurrence_target: case.input.occurrence_target.clone(),
     };
     let mode = match &case.mode {
-        CaseMode::Hosted => BriefMode::Hosted,
+        CaseMode::Hosted {} => BriefMode::Hosted,
         CaseMode::RemoteMcp { verification } => BriefMode::RemoteMcp(*verification),
     };
     build_fix_brief_with_mode(&input, &case.locations, mode)
@@ -84,22 +96,36 @@ fn render(case: &Case) -> String {
 
 #[test]
 fn golden_briefs_reproduce_their_text() {
-    let corpus = corpus();
-    assert!(!corpus.cases.is_empty(), "corpus has cases");
-    for case in &corpus.cases {
-        let expected = case.expected.as_deref().unwrap_or_else(|| {
-            panic!(
-                "case '{}' has no expected brief; run the ignored `regenerate` test",
+    for source in [CORPUS, BOUNDARIES] {
+        let value: serde_json::Value = serde_json::from_str(source).expect("corpus parses");
+        let corpus: Corpus = serde_json::from_value(value.clone()).expect("corpus parses");
+        assert!(!corpus.cases.is_empty(), "corpus has cases");
+        for (case, slot) in corpus
+            .cases
+            .iter()
+            .zip(value["cases"].as_array().expect("cases array"))
+        {
+            case.expected.as_ref().unwrap_or_else(|| {
+                panic!(
+                    "case '{}' has no expected brief; run the ignored `regenerate` test",
+                    case.name
+                )
+            });
+            assert_eq!(
+                serde_json::json!(render(case)),
+                slot["expected"],
+                "{}",
                 case.name
-            )
-        });
-        assert_eq!(render(case), expected, "{}", case.name);
+            );
+        }
     }
 }
 
 #[test]
 fn remote_acceptance_criteria_match_the_verification_path() {
-    for case in &corpus().cases {
+    let corpora = [CORPUS, BOUNDARIES]
+        .map(|source| serde_json::from_str::<Corpus>(source).expect("corpus parses"));
+    for case in corpora.iter().flat_map(|corpus| &corpus.cases) {
         let CaseMode::RemoteMcp { verification } = case.mode else {
             continue;
         };
@@ -159,32 +185,85 @@ fn invisible_excerpt_characters_are_visible_in_the_corpus() {
 }
 
 #[test]
-fn corpus_stays_escaped_and_within_its_file_budget() {
-    assert_printable_corpus("fix_brief.json", CORPUS);
-    assert!(
-        CORPUS.lines().count() < 400,
-        "{} lines",
-        CORPUS.lines().count()
-    );
+fn corpora_stay_escaped_and_within_their_file_budgets() {
+    for (name, source) in [
+        ("fix_brief.json", CORPUS),
+        ("fix_brief_boundaries.json", BOUNDARIES),
+    ] {
+        assert_printable_corpus(name, source);
+        assert!(
+            source.lines().count() < 400,
+            "{} lines",
+            source.lines().count()
+        );
+    }
+}
+
+#[test]
+fn misspelled_keys_fail_to_load() {
+    for source in [CORPUS, BOUNDARIES] {
+        for (pointer, key) in [
+            ("", "commment"),
+            ("/cases/0", "loactions"),
+            ("/cases/0/input", "checkid"),
+            ("/cases/0/mode", "verification"),
+        ] {
+            let mut value: serde_json::Value = serde_json::from_str(source).expect("corpus parses");
+            value.pointer_mut(pointer).expect("object exists")[key] = serde_json::Value::Null;
+            let error = match serde_json::from_value::<Corpus>(value) {
+                Ok(_) => panic!("{key} must be rejected"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("unknown field"), "{error}");
+        }
+        let value: serde_json::Value = serde_json::from_str(source).expect("corpus parses");
+        for mut case in value["cases"]
+            .as_array()
+            .expect("cases array")
+            .iter()
+            .cloned()
+        {
+            case["mode"]["verificaton"] = serde_json::Value::Null;
+            let error = match serde_json::from_value::<Case>(case) {
+                Ok(_) => panic!("verificaton must be rejected"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("unknown field"), "{error}");
+        }
+    }
+}
+
+#[test]
+fn rust_inputs_match_their_corpora() {
+    assert_inputs_match_corpus(CORPUS, Vec::new());
+    assert_inputs_match_corpus(BOUNDARIES, inputs::cases());
 }
 
 #[test]
 #[ignore]
 fn regenerate() {
-    let mut value: serde_json::Value = serde_json::from_str(CORPUS).expect("fix_brief.json parses");
-    let corpus = corpus();
-    let slots = value["cases"].as_array_mut().expect("cases array");
-    for (slot, case) in slots.iter_mut().zip(&corpus.cases) {
-        slot["expected"] = serde_json::Value::String(render(case));
+    for (source, path, inputs) in [
+        (CORPUS, CORPUS_PATH, Vec::new()),
+        (BOUNDARIES, BOUNDARIES_PATH, inputs::cases()),
+    ] {
+        let mut value: serde_json::Value = serde_json::from_str(source).expect("corpus parses");
+        reset_inputs(&mut value, inputs);
+        if path == BOUNDARIES_PATH {
+            value["comment"] = serde_json::json!(BOUNDARIES_COMMENT);
+        }
+        let corpus: Corpus = serde_json::from_value(value.clone()).expect("corpus parses");
+        let slots = value["cases"].as_array_mut().expect("cases array");
+        for (slot, case) in slots.iter_mut().zip(&corpus.cases) {
+            slot["expected"] = serde_json::Value::String(render(case));
+        }
+        let mut rendered = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&value).expect("corpus serializes")
+        );
+        // Pretty inputs and compact metadata keep the corpus within its file budget.
+        for slot in value["cases"].as_array().expect("cases array") {
+            compact_fields(&mut rendered, slot, &["mode", "locations"], 6);
+        }
+        std::fs::write(path, visible_json(&rendered)).expect("write brief corpus");
     }
-    let rendered = format!(
-        "{}\n",
-        serde_json::to_string_pretty(&value).expect("corpus serializes")
-    );
-    let mut rendered = rendered;
-    // Pretty inputs and compact metadata keep the corpus within its file budget.
-    for slot in value["cases"].as_array().expect("cases array") {
-        compact_fields(&mut rendered, slot, &["mode", "locations"], 6);
-    }
-    std::fs::write(CORPUS_PATH, visible_json(&rendered)).expect("write fix_brief.json");
 }

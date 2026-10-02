@@ -27,12 +27,17 @@ const PORTED = [
     name: "event-correlations-boundaries-golden.json",
   },
   { source: "regression_blame.json", name: "regression-blame-golden.json" },
+  {
+    source: "regression_blame_boundaries.json",
+    name: "regression-blame-boundaries-golden.json",
+  },
   { source: "work_item_projection.json", name: "work-item-projection-golden.json" },
   {
     source: "work_item_projection_boundaries.json",
     name: "work-item-projection-boundaries-golden.json",
   },
   { source: "fix_brief.json", name: "fix-brief-golden.json" },
+  { source: "fix_brief_boundaries.json", name: "fix-brief-boundaries-golden.json" },
   { source: "check_aliases.json", name: "check-aliases.json" },
 ];
 

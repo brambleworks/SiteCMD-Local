@@ -8,12 +8,27 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use super::{decide_blame, BlameAttribution, BlameDecision, BlameInput};
-use crate::core::parity_corpus_tests::{assert_printable_corpus, compact_fields, visible_json};
+use crate::core::parity_corpus_tests::{
+    assert_inputs_match_corpus, assert_printable_corpus, compact_fields, reset_inputs, visible_json,
+};
+
+#[path = "regression_blame_parity_cases_tests.rs"]
+mod inputs;
 
 const CORPUS: &str = include_str!("../../tests/fixtures/parity/regression_blame.json");
 const CORPUS_PATH: &str = concat!(
     env!("SITECMD_SOURCE_ROOT"),
     "/tests/fixtures/parity/regression_blame.json"
+);
+const BOUNDARIES: &str =
+    include_str!("../../tests/fixtures/parity/regression_blame_boundaries.json");
+const BOUNDARIES_PATH: &str = concat!(
+    env!("SITECMD_SOURCE_ROOT"),
+    "/tests/fixtures/parity/regression_blame_boundaries.json"
+);
+const BOUNDARIES_COMMENT: &str = concat!(
+    "Expected blocks are written only by src/core/regression_blame_parity_tests.rs through its ignored regenerate test.",
+    " regression_blame_boundaries.json holds check identity, active findings and held-back counts, with inputs written from src/core/regression_blame_parity_cases_tests.rs."
 );
 
 #[derive(Deserialize)]
@@ -48,10 +63,6 @@ impl BlameAttribution for Withheld<'_> {
     }
 }
 
-fn corpus() -> Corpus {
-    serde_json::from_str(CORPUS).expect("regression_blame.json parses")
-}
-
 fn decide(case: &Case) -> Expected {
     Expected {
         decision: decide_blame(&case.input, &Withheld(&case.unattributable)),
@@ -79,7 +90,9 @@ fn replay(value: serde_json::Value) {
 
 #[test]
 fn golden_decisions_reproduce() {
-    replay(serde_json::from_str(CORPUS).unwrap());
+    for source in [CORPUS, BOUNDARIES] {
+        replay(serde_json::from_str(source).unwrap());
+    }
 }
 
 #[test]
@@ -104,13 +117,18 @@ fn unusual_check_ids_stay_escaped() {
 }
 
 #[test]
-fn corpus_stays_escaped_and_within_its_file_budget() {
-    assert_printable_corpus("regression_blame.json", CORPUS);
-    assert!(
-        CORPUS.lines().count() < 400,
-        "{} lines",
-        CORPUS.lines().count()
-    );
+fn corpora_stay_escaped_and_within_their_file_budgets() {
+    for (name, source) in [
+        ("regression_blame.json", CORPUS),
+        ("regression_blame_boundaries.json", BOUNDARIES),
+    ] {
+        assert_printable_corpus(name, source);
+        assert!(
+            source.lines().count() < 400,
+            "{} lines",
+            source.lines().count()
+        );
+    }
 }
 
 #[test]
@@ -133,31 +151,45 @@ fn misspelled_keys_fail_to_load() {
 }
 
 #[test]
+fn rust_inputs_match_their_corpora() {
+    assert_inputs_match_corpus(CORPUS, Vec::new());
+    assert_inputs_match_corpus(BOUNDARIES, inputs::cases());
+}
+
+#[test]
 #[ignore]
 fn regenerate() {
-    let mut value: serde_json::Value =
-        serde_json::from_str(CORPUS).expect("regression_blame.json parses");
-    let corpus = corpus();
-    let slots = value["cases"].as_array_mut().expect("cases array");
-    for (slot, case) in slots.iter_mut().zip(&corpus.cases) {
-        slot["expected"] = serde_json::to_value(decide(case)).expect("decision serializes");
-    }
-    let mut rendered = format!(
-        "{}\n",
-        serde_json::to_string_pretty(&value).expect("corpus serializes")
-    );
-    // Compact inputs and finding entries keep the corpus within its file budget.
-    for slot in value["cases"].as_array().expect("cases array") {
-        compact_fields(&mut rendered, slot, &["input", "unattributable"], 6);
-        let decision = &slot["expected"]["decision"];
-        if !decision.is_null() {
-            compact_fields(
-                &mut rendered,
-                decision,
-                &["new_issues", "fixed_check_ids"],
-                10,
-            );
+    for (source, path, inputs) in [
+        (CORPUS, CORPUS_PATH, Vec::new()),
+        (BOUNDARIES, BOUNDARIES_PATH, inputs::cases()),
+    ] {
+        let mut value: serde_json::Value = serde_json::from_str(source).expect("corpus parses");
+        reset_inputs(&mut value, inputs);
+        if path == BOUNDARIES_PATH {
+            value["comment"] = serde_json::json!(BOUNDARIES_COMMENT);
         }
+        let corpus: Corpus = serde_json::from_value(value.clone()).expect("corpus parses");
+        let slots = value["cases"].as_array_mut().expect("cases array");
+        for (slot, case) in slots.iter_mut().zip(&corpus.cases) {
+            slot["expected"] = serde_json::to_value(decide(case)).expect("decision serializes");
+        }
+        let mut rendered = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&value).expect("corpus serializes")
+        );
+        // Compact inputs and finding entries keep the corpus within its file budget.
+        for slot in value["cases"].as_array().expect("cases array") {
+            compact_fields(&mut rendered, slot, &["input", "unattributable"], 6);
+            let decision = &slot["expected"]["decision"];
+            if !decision.is_null() {
+                compact_fields(
+                    &mut rendered,
+                    decision,
+                    &["new_issues", "fixed_check_ids"],
+                    10,
+                );
+            }
+        }
+        std::fs::write(path, visible_json(&rendered)).expect("write blame corpus");
     }
-    std::fs::write(CORPUS_PATH, visible_json(&rendered)).expect("write regression_blame.json");
 }

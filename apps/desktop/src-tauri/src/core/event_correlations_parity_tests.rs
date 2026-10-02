@@ -7,10 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use super::find_correlations;
 use crate::core::parity_corpus_tests::{
-    assert_printable_corpus, assert_replay_panics_for_case, compact_fields, visible_json,
+    assert_inputs_match_corpus, assert_printable_corpus, assert_replay_panics_for_case,
+    compact_fields, reset_inputs, visible_json,
 };
 use crate::core::scanner::ScanType;
 use crate::db::{EventSeverity, EventSource, EventType, ScanSummary, SiteEvent};
+
+#[path = "event_correlations_parity_cases_tests.rs"]
+mod inputs;
 
 const CORPUS: &str = include_str!("../../tests/fixtures/parity/event_correlations.json");
 const BOUNDARIES: &str =
@@ -205,10 +209,20 @@ fn corpora_stay_escaped_and_within_their_file_budgets() {
 }
 
 #[test]
+fn rust_inputs_match_their_corpora() {
+    assert_inputs_match_corpus(CORPUS, inputs::main_cases());
+    assert_inputs_match_corpus(BOUNDARIES, inputs::boundaries());
+}
+
+#[test]
 #[ignore]
 fn regenerate() {
-    for (source, path) in [(CORPUS, CORPUS_PATH), (BOUNDARIES, BOUNDARIES_PATH)] {
+    for (source, path, inputs) in [
+        (CORPUS, CORPUS_PATH, inputs::main_cases()),
+        (BOUNDARIES, BOUNDARIES_PATH, inputs::boundaries()),
+    ] {
         let mut value: serde_json::Value = serde_json::from_str(source).expect("corpus parses");
+        reset_inputs(&mut value, inputs);
         let corpus: Corpus = serde_json::from_value(value.clone()).expect("corpus parses");
         let slots = value["cases"].as_array_mut().expect("cases array");
         for (slot, case) in slots.iter_mut().zip(&corpus.cases) {
