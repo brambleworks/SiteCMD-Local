@@ -4,6 +4,9 @@
 
 use serde::{Deserialize, Serialize};
 
+#[path = "stack_labels.rs"]
+mod labels;
+
 /// Technology stack detected from headers and HTML.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -140,15 +143,15 @@ fn detect_from_headers(headers: &http::HeaderMap, stack: &mut DetectedStack) {
     if let Some(powered) = headers.get("x-powered-by").and_then(|v| v.to_str().ok()) {
         let p = powered.to_lowercase();
         if p.contains("next.js") {
-            stack.framework = Some("Next.js".into());
+            stack.framework = Some(labels::NEXT_JS.into());
         } else if p.contains("express") {
-            stack.framework = Some("Express.js".into());
+            stack.framework = Some(labels::EXPRESS_JS.into());
         } else if p.contains("php") {
-            stack.framework = Some("PHP".into());
+            stack.framework = Some(labels::PHP.into());
         } else if p.contains("asp.net") {
-            stack.framework = Some("ASP.NET".into());
+            stack.framework = Some(labels::ASP_NET.into());
         } else if p.contains("nuxt") {
-            stack.framework = Some("Nuxt.js".into());
+            stack.framework = Some(labels::NUXT_JS.into());
         }
     }
 
@@ -160,30 +163,30 @@ fn detect_from_headers(headers: &http::HeaderMap, stack: &mut DetectedStack) {
             .map(|s| s.contains("Vercel"))
             .unwrap_or(false)
     {
-        stack.cdn = Some("Vercel".into());
+        stack.cdn = Some(labels::VERCEL.into());
         if stack.framework.is_none() {
-            stack.framework = Some("Next.js (likely)".into());
+            stack.framework = Some(labels::NEXT_JS_LIKELY.into());
         }
     }
     if headers.contains_key("x-nf-request-id") || headers.contains_key("x-netlify-request-id") {
-        stack.cdn = Some("Netlify".into());
+        stack.cdn = Some(labels::NETLIFY.into());
     }
     if let Some(via) = headers.get("via").and_then(|v| v.to_str().ok()) {
         let v = via.to_lowercase();
         if v.contains("cloudfront") {
-            stack.cdn = Some("CloudFront".into());
+            stack.cdn = Some(labels::CLOUDFRONT.into());
         }
         if v.contains("fastly") {
-            stack.cdn = Some("Fastly".into());
+            stack.cdn = Some(labels::FASTLY.into());
         }
         if v.contains("akamai") {
-            stack.cdn = Some("Akamai".into());
+            stack.cdn = Some(labels::AKAMAI.into());
         }
     }
     if (headers.contains_key("cf-ray") || headers.contains_key("cf-cache-status"))
         && stack.cdn.is_none()
     {
-        stack.cdn = Some("Cloudflare".into());
+        stack.cdn = Some(labels::CLOUDFLARE.into());
     }
     // `Server: GitHub.com` is sent by github.com itself as well as by Pages,
     // so the observable fact is GitHub, not the Pages product.
@@ -194,12 +197,12 @@ fn detect_from_headers(headers: &http::HeaderMap, stack: &mut DetectedStack) {
             .map(|s| s.to_ascii_lowercase().contains("github"))
             .unwrap_or(false)
     {
-        stack.cdn = Some("GitHub".into());
+        stack.cdn = Some(labels::GITHUB.into());
     }
     if (headers.contains_key("x-amz-cf-id") || headers.contains_key("x-amz-request-id"))
         && stack.cdn.is_none()
     {
-        stack.cdn = Some("AWS".into());
+        stack.cdn = Some(labels::AWS.into());
     }
 
     // X-Generator
@@ -216,34 +219,34 @@ fn detect_cms(lower: &str, stack: &mut DetectedStack) {
     // Structural markers only: a brand word in copy, a customer logo, or a
     // link to a vendor is not evidence that this site runs on it.
     if lower.contains("wp-content/") || lower.contains("wp-includes/") {
-        stack.cms = Some("WordPress".into());
+        stack.cms = Some(labels::WORDPRESS.into());
         if stack.framework.is_none() {
-            stack.framework = Some("PHP".into());
+            stack.framework = Some(labels::PHP.into());
         }
     } else if lower.contains("/sites/default/files")
         || lower.contains("drupal-settings-json")
         || lower.contains("data-drupal")
         || lower.contains("/core/misc/")
     {
-        stack.cms = Some("Drupal".into());
+        stack.cms = Some(labels::DRUPAL.into());
         if stack.framework.is_none() {
-            stack.framework = Some("PHP".into());
+            stack.framework = Some(labels::PHP.into());
         }
     } else if lower.contains("cdn.shopify.com") || lower.contains("shopifycdn.com") {
-        stack.cms = Some("Shopify".into());
+        stack.cms = Some(labels::SHOPIFY.into());
     } else if lower.contains("squarespace") || lower.contains("sqsp.") {
-        stack.cms = Some("Squarespace".into());
+        stack.cms = Some(labels::SQUARESPACE.into());
     } else if lower.contains("wix.com") || lower.contains("wixsite") {
-        stack.cms = Some("Wix".into());
+        stack.cms = Some(labels::WIX.into());
     } else if lower.contains("ghost.org") || lower.contains("ghost.io") {
-        stack.cms = Some("Ghost".into());
+        stack.cms = Some(labels::GHOST.into());
     } else if lower.contains("data-wf-page")
         || lower.contains("data-wf-site")
         || lower.contains("website-files.com")
     {
-        stack.cms = Some("Webflow".into());
+        stack.cms = Some(labels::WEBFLOW.into());
     } else if lower.contains("ctfassets.net") || lower.contains("cdn.contentful.com") {
-        stack.cms = Some("Contentful".into());
+        stack.cms = Some(labels::CONTENTFUL.into());
     }
 }
 
@@ -254,35 +257,35 @@ fn detect_js_framework(lower: &str, stack: &mut DetectedStack) {
 
     // Order matters - more specific first
     if lower.contains("__next") || lower.contains("_next/static") || lower.contains("/_next/") {
-        stack.js_framework = Some("React".into());
+        stack.js_framework = Some(labels::REACT.into());
         if stack.framework.is_none() {
-            stack.framework = Some("Next.js".into());
+            stack.framework = Some(labels::NEXT_JS.into());
         }
     } else if lower.contains("__nuxt") || lower.contains("/_nuxt/") {
-        stack.js_framework = Some("Vue.js".into());
+        stack.js_framework = Some(labels::VUE_JS.into());
         if stack.framework.is_none() {
-            stack.framework = Some("Nuxt.js".into());
+            stack.framework = Some(labels::NUXT_JS.into());
         }
     } else if lower.contains("__svelte") || lower.contains("__sveltekit") {
-        stack.js_framework = Some("Svelte".into());
+        stack.js_framework = Some(labels::SVELTE.into());
         if stack.framework.is_none() {
-            stack.framework = Some("SvelteKit".into());
+            stack.framework = Some(labels::SVELTE_KIT.into());
         }
     } else if ANGULAR_ATTRIBUTE_RE.is_match(lower) {
-        stack.js_framework = Some("Angular".into());
+        stack.js_framework = Some(labels::ANGULAR.into());
     } else if lower.contains("data-reactroot")
         || lower.contains("data-react")
         || lower.contains("_reactlistening")
     {
-        stack.js_framework = Some("React".into());
+        stack.js_framework = Some(labels::REACT.into());
     } else if lower.contains("data-v-") || lower.contains("vue.js") || lower.contains("__vue") {
-        stack.js_framework = Some("Vue.js".into());
+        stack.js_framework = Some(labels::VUE_JS.into());
     } else if lower.contains("data-astro") || lower.contains("astro-") {
-        stack.js_framework = Some("Astro".into());
+        stack.js_framework = Some(labels::ASTRO.into());
     } else if lower.contains("x-data") || lower.contains("alpine") {
-        stack.js_framework = Some("Alpine.js".into());
+        stack.js_framework = Some(labels::ALPINE_JS.into());
     } else if lower.contains("hx-get") || lower.contains("hx-post") || lower.contains("htmx") {
-        stack.js_framework = Some("htmx".into());
+        stack.js_framework = Some(labels::HTMX.into());
     }
 }
 
@@ -293,15 +296,15 @@ fn detect_css_framework(lower: &str, stack: &mut DetectedStack) {
 
     // Check class names and common patterns
     if lower.contains("tailwind") || has_tailwind_classes(lower) {
-        stack.css_framework = Some("Tailwind CSS".into());
+        stack.css_framework = Some(labels::TAILWIND_CSS.into());
     } else if lower.contains("bootstrap") || lower.contains("class=\"container") {
-        stack.css_framework = Some("Bootstrap".into());
+        stack.css_framework = Some(labels::BOOTSTRAP.into());
     } else if lower.contains("bulma") {
-        stack.css_framework = Some("Bulma".into());
+        stack.css_framework = Some(labels::BULMA.into());
     } else if lower.contains("foundation") && lower.contains("zurb") {
-        stack.css_framework = Some("Foundation".into());
+        stack.css_framework = Some(labels::FOUNDATION.into());
     } else if lower.contains("chakra") {
-        stack.css_framework = Some("Chakra UI".into());
+        stack.css_framework = Some(labels::CHAKRA_UI.into());
     } else if lower.contains("material-ui") || lower.contains("muibox") || lower.contains("css-") {
         // MUI uses css-* class prefixes but too many false positives - skip
     }
@@ -328,24 +331,24 @@ fn has_tailwind_classes(lower: &str) -> bool {
 
 fn detect_other(lower: &str, stack: &mut DetectedStack) {
     if lower.contains("jquery") || lower.contains("jquery.min.js") {
-        stack.other.push("jQuery".into());
+        stack.other.push(labels::JQUERY.into());
     }
     if lower.contains("gatsby") || lower.contains("___gatsby") {
         if stack.framework.is_none() {
-            stack.framework = Some("Gatsby".into());
+            stack.framework = Some(labels::GATSBY.into());
         }
         if stack.js_framework.is_none() {
-            stack.js_framework = Some("React".into());
+            stack.js_framework = Some(labels::REACT.into());
         }
     }
     if lower.contains("remix") && lower.contains("__remix") && stack.framework.is_none() {
-        stack.framework = Some("Remix".into());
+        stack.framework = Some(labels::REMIX.into());
         if stack.js_framework.is_none() {
-            stack.js_framework = Some("React".into());
+            stack.js_framework = Some(labels::REACT.into());
         }
     }
     if (lower.contains("eleventy") || lower.contains("11ty")) && stack.framework.is_none() {
-        stack.framework = Some("Eleventy".into());
+        stack.framework = Some(labels::ELEVENTY.into());
     }
 }
 
@@ -369,23 +372,23 @@ fn detect_meta_generator(body: &str, lower: &str, stack: &mut DetectedStack) {
 fn parse_generator(value: &str, stack: &mut DetectedStack) {
     let v = value.to_lowercase();
     if v.contains("wordpress") {
-        stack.cms = Some("WordPress".into());
+        stack.cms = Some(labels::WORDPRESS.into());
     } else if v.contains("drupal") {
-        stack.cms = Some("Drupal".into());
+        stack.cms = Some(labels::DRUPAL.into());
     } else if v.contains("joomla") {
-        stack.cms = Some("Joomla".into());
+        stack.cms = Some(labels::JOOMLA.into());
     } else if v.contains("hugo") {
-        stack.framework = Some("Hugo".into());
+        stack.framework = Some(labels::HUGO.into());
     } else if v.contains("jekyll") {
-        stack.framework = Some("Jekyll".into());
+        stack.framework = Some(labels::JEKYLL.into());
     } else if v.contains("gatsby") {
-        stack.framework = Some("Gatsby".into());
+        stack.framework = Some(labels::GATSBY.into());
     } else if v.contains("ghost") {
-        stack.cms = Some("Ghost".into());
+        stack.cms = Some(labels::GHOST.into());
     } else if v.contains("hexo") {
-        stack.framework = Some("Hexo".into());
+        stack.framework = Some(labels::HEXO.into());
     } else if v.contains("pelican") {
-        stack.framework = Some("Pelican".into());
+        stack.framework = Some(labels::PELICAN.into());
     }
 }
 

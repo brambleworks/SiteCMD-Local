@@ -1,6 +1,50 @@
 use super::*;
 use http::{HeaderMap, HeaderValue};
 
+// The hosted service's scan runner and database refuse any label outside this shape.
+const HOSTED_STACK_LABEL_PATTERN: &str = r"^[A-Za-z0-9][A-Za-z0-9 .+()-]{0,39}$";
+
+#[test]
+fn every_stack_label_fits_the_hosted_shape() {
+    let pattern = regex::Regex::new(HOSTED_STACK_LABEL_PATTERN).unwrap();
+    for label in labels::ALL {
+        assert!(
+            pattern.is_match(label),
+            "{label:?} does not fit {HOSTED_STACK_LABEL_PATTERN}"
+        );
+    }
+}
+
+// Non-Server Some assignments and other.push calls must use labels::NAME.into().
+#[test]
+fn detector_label_writes_use_the_label_table() {
+    let source = include_str!("stack.rs");
+    let writes = regex::Regex::new(
+        r"(?x)
+        \bstack\s*\.\s*
+        (?:
+            (?:framework|cms|js_framework|css_framework|cdn)\s*=\s*Some\s*\(
+            |other\s*\.\s*push\s*\(
+        )\s*",
+    )
+    .unwrap();
+    let table_reference =
+        regex::Regex::new(r"\A\s*labels\s*::\s*[A-Z][A-Z0-9_]*\s*\.\s*into\s*\(\s*\)\s*\)\s*;")
+            .unwrap();
+
+    assert!(
+        writes.is_match(source),
+        "No detector label writes were found"
+    );
+    for write in writes.find_iter(source) {
+        assert!(
+            table_reference.is_match(&source[write.end()..]),
+            "Detector label write must use labels::NAME.into(): {}",
+            source[write.start()..].lines().next().unwrap()
+        );
+    }
+}
+
 #[test]
 fn test_detect_wordpress() {
     let headers = HeaderMap::new();
