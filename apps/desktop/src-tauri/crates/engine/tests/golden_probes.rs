@@ -1288,12 +1288,10 @@ fn headline_verdicts_match_the_documented_checks() {
         status("discovery_token_block_warns_for_review"),
         CheckStatus::Warn
     );
-    for name in [
-        "path_scoped_ai_rules_produce_no_rows",
-        "wildcard_root_block_is_left_to_the_primary_robots_check",
-    ] {
-        assert!(rows_of(name).is_empty(), "{name} must emit no rows");
-    }
+    let wildcard = rows_of("wildcard_root_block_is_left_to_the_primary_robots_check");
+    assert!(wildcard.is_empty(), "the wildcard block emits no rows");
+    let path_scoped = "path_scoped_ai_rules_block_no_crawler_at_the_root";
+    assert_eq!(status(path_scoped), CheckStatus::Pass, "{path_scoped}");
 
     assert_eq!(
         status("nonempty_llms_text_passes_with_bounded_claims"),

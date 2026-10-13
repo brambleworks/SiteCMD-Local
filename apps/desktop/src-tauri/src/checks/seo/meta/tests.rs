@@ -1,23 +1,9 @@
 use super::*;
-use crate::checks::{Check, CheckContext, CheckStatus};
+use crate::checks::{Check, CheckContext, CheckStatus, Severity};
 use reqwest::header::{HeaderMap, HeaderValue};
 
 fn ctx(body: &str) -> CheckContext {
-    CheckContext {
-        page: crate::checks::PageContext {
-            evaluation_time: chrono::Utc::now(),
-            url: url::Url::parse("https://example.com").unwrap(),
-            response_headers: HeaderMap::new(),
-            status_code: 200,
-            body: body.to_string(),
-            is_localhost: false,
-            is_strict_localhost: false,
-            http_version: Some("HTTP/2.0".to_string()),
-            body_lower_cache: std::sync::OnceLock::new(),
-        },
-        client: crate::http_client::for_url(false).clone(),
-        probe_cache: Default::default(),
-    }
+    ctx_with_headers(body, HeaderMap::new())
 }
 
 fn ctx_with_headers(body: &str, headers: HeaderMap) -> CheckContext {
@@ -673,7 +659,11 @@ fn test_no_duplicates_pass() {
     let html = r#"<html><head><title>Only One</title><meta name="description" content="Single"></head></html>"#;
     let check = DuplicateMetaCheck;
     let results = check.run(&ctx(html));
-    assert_eq!(results[0].status, CheckStatus::Pass);
+    let umbrella = results
+        .iter()
+        .find(|r| r.check_id == "seo.duplicate_meta")
+        .expect("duplicate meta verdict");
+    assert_eq!(umbrella.status, CheckStatus::Pass);
 }
 
 #[test]
@@ -685,7 +675,9 @@ fn titles_in_comments_and_scripts_are_not_duplicates() {
     </head></html>"#;
     let results = DuplicateMetaCheck.run(&ctx(html));
     assert!(
-        results.iter().all(|r| r.check_id != "seo.duplicate_title"),
+        results
+            .iter()
+            .all(|r| r.check_id != "seo.duplicate_title" || r.status == CheckStatus::Pass),
         "non-content titles must not count as duplicates"
     );
 }
@@ -701,7 +693,7 @@ fn form_field_named_description_is_not_a_meta_description() {
     assert!(
         results
             .iter()
-            .all(|r| r.check_id != "seo.duplicate_description"),
+            .all(|r| r.check_id != "seo.duplicate_description" || r.status == CheckStatus::Pass),
         "form fields must not count as meta descriptions"
     );
 }
@@ -728,7 +720,9 @@ fn svg_title_element_is_not_a_duplicate_document_title() {
     let html = r#"<html><head><title>Home Page</title></head><body><a href="/"><svg viewBox="0 0 1 1"><title>Home icon</title></svg></a></body></html>"#;
     let results = DuplicateMetaCheck.run(&ctx(html));
     assert!(
-        results.iter().all(|r| r.check_id != "seo.duplicate_title"),
+        results
+            .iter()
+            .all(|r| r.check_id != "seo.duplicate_title" || r.status == CheckStatus::Pass),
         "an svg <title> must not be reported as a duplicate document title"
     );
 }

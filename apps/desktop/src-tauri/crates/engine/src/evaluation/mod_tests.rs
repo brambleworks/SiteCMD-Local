@@ -205,14 +205,14 @@ fn reason_for<'a>(response: &'a EvaluationResponse, check: &str) -> &'a NotEvalu
 fn every_artifact_lane_entry_is_claimed_once_or_excluded() {
     let manifest = capability_manifest();
     let excluded: Vec<&str> = EXCLUDED_ARTIFACT_CHECKS.iter().map(|(id, _)| *id).collect();
-    let claimed: Vec<&str> = RUNNERS
-        .iter()
+    let claimed: Vec<&str> = artifact_runners()
         .flat_map(|runner| runner.covers.iter().copied())
         .collect();
 
     let mut unclaimed = Vec::new();
     for entry in &manifest.entries {
-        if entry.hosted != HostedLane::Artifact {
+        // The cross-page analysis produces session verdicts, once per scan.
+        if entry.hosted != HostedLane::Artifact || entry.scope == CheckScope::Session {
             continue;
         }
         let is_claimed = claimed.contains(&entry.check.as_str());
@@ -236,12 +236,11 @@ fn every_artifact_lane_entry_is_claimed_once_or_excluded() {
     }
 }
 
-// Every id either table claims, in dispatch order. One list because
-// `runner_index` is one map: an id in both tables would resolve to whichever
+// Every id RUNNERS, SEO_RUNNERS or PROBE_CHECKS claims, in dispatch order. One list because
+// `runner_index` is one map: an id in multiple tables would resolve to whichever
 // was inserted last and silently retire the other producer.
 fn all_claimed_ids() -> Vec<&'static str> {
-    RUNNERS
-        .iter()
+    artifact_runners()
         .flat_map(|runner| runner.covers.iter().copied())
         .chain(
             PROBE_CHECKS
@@ -258,7 +257,7 @@ fn no_manifest_id_is_claimed_by_two_runners() {
     for check in all_claimed_ids() {
         assert!(
             !seen.contains(&check),
-            "'{check}' is claimed twice across the runner and probe tables; its rows would be emitted twice"
+            "'{check}' is claimed twice across the RUNNERS, SEO_RUNNERS and PROBE_CHECKS tables; its rows would be emitted twice"
         );
         seen.push(check);
     }
@@ -359,30 +358,28 @@ fn the_partition_reports_each_entry_scope_from_the_manifest() {
 // a consumer unable to tell it from a check that passed.
 #[test]
 fn unsupported_checks_are_named_rather_than_omitted() {
+    let unsupported = crate::manifest::Entry::new("seo.title")
+        .unsupported()
+        .resolve();
+    let named = partition(&unsupported, &[RuntimeFact::PageArtifact], &runner_index())
+        .expect_err("an unsupported entry is never planned");
+    assert_eq!(named.reason, NotEvaluatedReason::UnsupportedLane);
+    // No producing layer, because there is no producer.
+    assert_eq!(named.layer, None);
     let response = evaluate(&request("<html></html>")).expect("request evaluates");
-    assert_eq!(
-        reason_for(&response, "seo.title"),
-        &NotEvaluatedReason::UnsupportedLane
-    );
-    let unsupported = response
+    let reported = response
         .not_evaluated
         .iter()
         .filter(|entry| entry.reason == NotEvaluatedReason::UnsupportedLane)
         .count();
     assert_eq!(
-        unsupported,
+        reported,
         capability_manifest()
             .entries
             .iter()
             .filter(|entry| entry.hosted == HostedLane::Unsupported)
             .count()
     );
-    // No producing layer, because there is no producer.
-    assert!(response
-        .not_evaluated
-        .iter()
-        .filter(|entry| entry.reason == NotEvaluatedReason::UnsupportedLane)
-        .all(|entry| entry.layer.is_none()));
 }
 
 // A fact the caller could not gather is named BY FACT, so the consumer can
@@ -642,26 +639,4 @@ fn the_response_names_the_manifest_it_planned_against() {
     let response = evaluate(&request("<html></html>")).expect("request evaluates");
     assert_eq!(response.manifest_digest, capability_manifest().digest());
     assert!(!response.manifest_digest.is_empty());
-}
-
-// Session checks remain planned so consumers can apply route-set exceptions.
-#[test]
-fn session_scoped_checks_are_not_dropped_from_the_partition() {
-    let manifest = capability_manifest();
-    let session: Vec<&str> = manifest
-        .entries
-        .iter()
-        .filter(|entry| entry.scope == CheckScope::Session)
-        .map(|entry| entry.check.as_str())
-        .collect();
-    assert!(
-        !session.is_empty(),
-        "the manifest has session-scoped checks"
-    );
-    let response = evaluate(&request("<html></html>")).expect("request evaluates");
-    for check in session {
-        let named = response.planned.iter().any(|row| row.check == check)
-            || response.not_evaluated.iter().any(|row| row.check == check);
-        assert!(named, "session-scoped '{check}' is named in the response");
-    }
 }

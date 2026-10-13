@@ -8,9 +8,11 @@ import {
   WASM_LIB,
   WASM_MANIFEST,
   RUNNERS,
+  RUNNERS_SEO,
   PROBE_CHECKS,
   PROBE_SCHEMA,
   SCHEMA,
+  SESSION,
   MANIFEST,
   CHECKS_SCRIPT,
   SCORER_SCRIPT,
@@ -19,6 +21,7 @@ import {
   WASM_MANIFEST_BASE,
   SCHEMA_BASE,
   RUNNERS_BASE,
+  RUNNERS_SEO_BASE,
   PROBE_CHECKS_BASE,
   PROBE_SCHEMA_BASE,
   REGISTRATION,
@@ -33,6 +36,21 @@ const flags = (failures, fragment) => failures.some((failure) => failure.include
 describe("engineArtifactFailures", () => {
   it("accepts a tree where every rule holds", () => {
     expect(run()).toEqual([]);
+  });
+
+  it.each(["&[]", '&["seo.orphan_pages", "seo.unlisted"]', ""])(
+    "rejects an inconsistent session list %s",
+    (ids) => {
+      const failures = run({ [SESSION]: `pub const SESSION_CHECK_IDS: &[&str] = ${ids};` });
+      expect(failures.join("\n")).toContain(ids ? "session checks disagree" : "no longer declares");
+    },
+  );
+
+  it("rejects a missing session export", () => {
+    const failures = run({
+      [WASM_LIB]: WASM_LIB_BASE.replace(gated("engine_session_evaluate"), ""),
+    });
+    expect(flags(failures, "no longer exports `engine_session_evaluate`")).toBe(true);
   });
 
   it("rejects a renamed scorer ABI symbol the connect worker resolves by name", () => {
@@ -106,7 +124,7 @@ describe("engineArtifactFailures", () => {
 
   it("rejects an exclusion with no reason", () => {
     const failures = run({
-      [RUNNERS]: RUNNERS_BASE.replace(
+      [RUNNERS_SEO]: RUNNERS_SEO_BASE.replace(
         '("seo.headings.h1", "HeadingCheck is unregistered on the desktop")',
         '("seo.headings.h1", "")',
       ),
@@ -116,7 +134,14 @@ describe("engineArtifactFailures", () => {
 
   it("flags the rules as stale when the runner table is renamed away", () => {
     const failures = run({ [RUNNERS]: "pub const TABLE: &[Runner] = &[];" });
-    expect(flags(failures, "update these rules with it")).toBe(true);
+    expect(flags(failures, "update these rules with them")).toBe(true);
+  });
+
+  it("flags the rules as stale when the SEO runner table is renamed away", () => {
+    const failures = run({
+      [RUNNERS_SEO]: RUNNERS_SEO_BASE.replace("pub const SEO_RUNNERS", "pub const OTHER"),
+    });
+    expect(flags(failures, "`SEO_RUNNERS`")).toBe(true);
   });
 
   it("rejects vendoring a corpus other than the one the golden test embeds", () => {
@@ -160,12 +185,15 @@ describe("engineArtifactFailures", () => {
     expect(flags(failures, "does not vendor through")).toBe(true);
   });
 
-  it("rejects a provenance record missing a digest", () => {
-    const failures = run({
-      [CHECKS_SCRIPT]: CHECKS_SCRIPT_BASE.replace("  corpus_sha256: sha256(corpus),\n", ""),
-    });
-    expect(flags(failures, "corpus_sha256")).toBe(true);
-  });
+  it.each(["corpus_sha256", "session_corpus_sha256"])(
+    "rejects a provenance record missing %s",
+    (field) => {
+      const failures = run({
+        [CHECKS_SCRIPT]: CHECKS_SCRIPT_BASE.replace(new RegExp(`^  ${field}:.*\\n`, "m"), ""),
+      });
+      expect(flags(failures, field)).toBe(true);
+    },
+  );
 
   it("rejects a hosted runner for a check no desktop scan registers", () => {
     const failures = run({ [REGISTRATION]: "pub fn sync_checks() { vec![] }" });
@@ -184,6 +212,14 @@ describe("engineArtifactFailures", () => {
     expect(flags(failures, "MixedContentCheck")).toBe(false);
   });
 
+  it("rejects an SEO hosted runner whose desktop registration was deleted", () => {
+    const failures = run({
+      [REGISTRATION]: REGISTRATION_BASE.replace("        Box::new(meta::ViewportCheck),\n", ""),
+    });
+    expect(flags(failures, "not registered in any desktop")).toBe(true);
+    expect(flags(failures, "ViewportCheck")).toBe(true);
+  });
+
   it("rejects a runner formatting the extraction cannot read rather than exempting it", () => {
     const failures = run({
       [RUNNERS]: RUNNERS_BASE.replace(
@@ -191,7 +227,7 @@ describe("engineArtifactFailures", () => {
         ["        run: |inputs|", "            MixedContentCheck.run(inputs.page),"].join("\n"),
       ),
     });
-    expect(flags(failures, "reads 1 of the 2 check invocations")).toBe(true);
+    expect(flags(failures, "reads 2 of the 3 check invocations")).toBe(true);
   });
 
   it("does not read a covers list below the table terminator as a claim", () => {
@@ -353,6 +389,8 @@ describe("vendored native corpora", () => {
   it.each([
     ["apps/desktop/src-tauri/crates/engine-wasm/tests/severity_abi.rs", "severity", "score"],
     ["apps/desktop/src-tauri/crates/engine/tests/evaluation_policy_facts.rs", "stack", "checks"],
+    ["apps/desktop/src-tauri/crates/engine/tests/golden_session.rs", "session", "checks"],
+    ["apps/desktop/src-tauri/crates/engine-wasm/tests/session_abi.rs", "session", "checks"],
   ])("rejects a different corpus in %s", (file, corpus, other) => {
     expect(failuresFor(file, `fixtures/${corpus}/`, `fixtures/${other}/`)).toEqual([
       expect.stringContaining(`${file} embeds`),

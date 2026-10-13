@@ -1,3 +1,4 @@
+import { deriveHostedCheckCounts } from "./hosted-check-counts.mjs";
 import { PRODUCT_SURFACE_STATUS } from "./product-surfaces.mjs";
 
 const TELEMETRY_WRAPPER = "apps/desktop/src/lib/telemetry.ts";
@@ -11,6 +12,8 @@ const PROBE = "apps/desktop/src-tauri/crates/engine/src/probe.rs";
 const EXPOSED_FILES = "apps/desktop/src-tauri/crates/engine/src/checks/security/exposed_files.rs";
 const CONSTANTS = "apps/desktop/src-tauri/src/constants.rs";
 const CSS_FETCH = "apps/desktop/src-tauri/src/checks/polish/css_fetch.rs";
+const SITEMAP = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap.rs";
+const SITEMAP_DOCUMENT = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap_document.rs";
 
 const SUBRESOURCE_DISCLAIMER = "Tauri does not expose external subresource interception";
 const WEBRTC_LOCKDOWN = "apps/desktop/src-tauri/src/webview/webrtc_lockdown.js";
@@ -194,6 +197,22 @@ function rustNumber(source, name, file) {
   return factors.reduce((product, factor) => product * factor, 1);
 }
 
+/** Reads the sitemap declaration bound and conventional candidate paths. */
+function sitemapWalk(read) {
+  const declaredLimit = rustNumber(read(SITEMAP), "SITEMAP_DECLARATION_PROBE_LIMIT", SITEMAP);
+  const block = extract(
+    read(SITEMAP_DOCUMENT),
+    /SITEMAP_CANDIDATE_PATHS: \[&str; \d+\] = \[([\s\S]*?)\];/,
+    "SITEMAP_CANDIDATE_PATHS",
+    SITEMAP_DOCUMENT,
+  );
+  const candidatePaths = [...block.matchAll(/"(\/[^"]+)"/g)].map(([, path]) => path);
+  if (candidatePaths.length === 0) {
+    throw new Error(`product-facts: no SITEMAP_CANDIDATE_PATHS found in ${SITEMAP_DOCUMENT}`);
+  }
+  return { declaredLimit, candidatePaths };
+}
+
 function scannerIdentity(read) {
   const agentSource = read(AGENT);
   const docsUrl = extract(
@@ -245,11 +264,13 @@ function scannerIdentity(read) {
     userAgentFormat,
     methods,
     sensitivePaths,
+    sitemapWalk: sitemapWalk(read),
     limits: {
       redirectHops: rustNumber(constants, "MAX_REDIRECT_HOPS", CONSTANTS),
       checkTimeoutSeconds: rustNumber(constants, "CHECK_TIMEOUT", CONSTANTS),
       pageBodyMaxBytes: rustNumber(constants, "MAX_BODY_SIZE", CONSTANTS),
       probeBodyMaxBytes: rustNumber(constants, "MAX_PROBE_BODY_SIZE", CONSTANTS),
+      sitemapBodyMaxBytes: rustNumber(constants, "MAX_SITEMAP_SIZE", CONSTANTS),
       assetSampleLimit: rustNumber(constants, "ASSET_SAMPLE_LIMIT", CONSTANTS),
       stylesheetMaxCount: rustNumber(read(CSS_FETCH), "MAX_CSS_FILES", CSS_FETCH),
     },
@@ -273,6 +294,7 @@ export function productFacts(read, listFiles) {
     commercialModel: JSON.parse(read(COMMERCIAL_MODEL)),
     productSurfaceStatus: PRODUCT_SURFACE_STATUS,
     checkCounts: deriveCheckCounts(read, listFiles),
+    hostedCheckCounts: deriveHostedCheckCounts(read, AXE_WCAG_A_AA_RULES),
     polishSignals: JSON.parse(read(POLISH_SIGNALS)).signals,
     telemetryEnvelopeTierIsPlaceholder: /tier:\s*"unknown"/.test(
       read(TELEMETRY_WRAPPER).slice(read(TELEMETRY_WRAPPER).indexOf("function buildEnvelope")),

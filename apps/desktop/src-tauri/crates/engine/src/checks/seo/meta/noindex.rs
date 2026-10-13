@@ -107,10 +107,7 @@ fn is_valued_robots_directive(name: &str) -> bool {
     )
 }
 
-fn collect_header_robots_directives(
-    headers: &reqwest::header::HeaderMap,
-    state: &mut RobotsDirectiveState,
-) {
+fn collect_header_robots_directives(headers: &http::HeaderMap, state: &mut RobotsDirectiveState) {
     for value in headers
         .get_all("x-robots-tag")
         .iter()

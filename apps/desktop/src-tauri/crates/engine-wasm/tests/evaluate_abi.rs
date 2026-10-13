@@ -5,7 +5,7 @@
 use sitecmd_engine::evaluation::{
     evaluate, EvaluationRequest, EvaluationResponse, NotEvaluatedReason, PageArtifact,
 };
-use sitecmd_engine::manifest::{capability_manifest, HostedLane, RuntimeFact};
+use sitecmd_engine::manifest::{capability_manifest, CheckScope, RuntimeFact};
 use sitecmd_engine::{Check, CheckResult};
 use sitecmd_engine_wasm::{engine_evaluate, scorer_alloc, scorer_free};
 
@@ -74,6 +74,17 @@ fn check_by_id(id: &str) -> Box<dyn Check> {
         "security.email_exposure" => Box::new(c::security::email_exposure::EmailExposureCheck),
         "security.vibe.csrf" => Box::new(c::security::csrf::CsrfCheck),
         "security.vibe.exposed_keys" => Box::new(c::security::exposed_keys::ExposedApiKeysCheck),
+        "seo.title" => Box::new(c::seo::meta::TitleTagCheck),
+        "seo.meta_description" => Box::new(c::seo::meta::MetaDescriptionCheck),
+        "seo.canonical" => Box::new(c::seo::meta::CanonicalCheck),
+        "seo.viewport" => Box::new(c::seo::meta::ViewportCheck),
+        "seo.open_graph" => Box::new(c::seo::meta::OpenGraphCheck),
+        "seo.og_image_relative" => Box::new(c::seo::meta::OgImageAbsoluteCheck),
+        "seo.charset" => Box::new(c::seo::meta::MetaCharsetCheck),
+        "seo.twitter_cards" => Box::new(c::seo::meta::TwitterCardCheck),
+        "seo.noindex" => Box::new(c::seo::meta::NoindexCheck),
+        "seo.hreflang" => Box::new(c::seo::meta::HreflangCheck),
+        "seo.duplicate_meta" => Box::new(c::seo::meta::DuplicateMetaCheck),
         other => panic!("no engine check registered for corpus id '{other}'"),
     }
 }
@@ -195,7 +206,7 @@ fn every_response_partitions_the_whole_manifest() {
         );
         assert_eq!(response.facts_present, vec![RuntimeFact::PageArtifact]);
         for entry in &manifest.entries {
-            if entry.hosted != HostedLane::Unsupported {
+            if entry.scope != CheckScope::Session {
                 continue;
             }
             let named = response
@@ -203,7 +214,11 @@ fn every_response_partitions_the_whole_manifest() {
                 .iter()
                 .find(|row| row.check == entry.check)
                 .unwrap_or_else(|| panic!("{}: '{}' is named", case.name, entry.check));
-            assert_eq!(named.reason, NotEvaluatedReason::UnsupportedLane);
+            assert_eq!(named.reason, NotEvaluatedReason::SessionScope);
+            assert_eq!(
+                serde_json::to_value(&named.reason).expect("reason")["reason"],
+                "session_scope"
+            );
         }
     }
 }

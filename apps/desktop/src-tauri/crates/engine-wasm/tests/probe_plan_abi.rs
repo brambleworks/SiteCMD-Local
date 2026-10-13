@@ -10,6 +10,10 @@ use sitecmd_engine::manifest::{capability_manifest, HostedLane, RuntimeFact};
 use sitecmd_engine::probe::{ProbeOutcome, ProbeResponse};
 use sitecmd_engine_wasm::{engine_evaluate, engine_probe_plan, scorer_alloc, scorer_free};
 
+// These two state nothing until robots.txt answers with a body or the walk
+// finds a sitemap, as on the desktop.
+const SILENT_WITHOUT_INPUT: [&str; 2] = ["seo.ai_crawler_blocking", "seo.sitemap_freshness"];
+
 fn call_through_abi(
     entry: unsafe extern "C" fn(*mut u8, u32) -> *const u8,
     request: &[u8],
@@ -174,6 +178,9 @@ fn executing_the_framed_plan_produces_framed_verdicts() {
                         }
                     )
                 ));
+                continue;
+            }
+            if SILENT_WITHOUT_INPUT.contains(id) {
                 continue;
             }
             assert!(

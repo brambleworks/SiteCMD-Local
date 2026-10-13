@@ -6,11 +6,10 @@
 //! time, and a request that failed at the connection level before any
 //! response arrived is retried once inside its own timeout budget.
 //!
-//! Six checks still call `reqwest` directly instead of building a
+//! Five checks still call `reqwest` directly instead of building a
 //! `ProbeRequest`, and `guardrail-probe-seam.test.mjs` holds the list to those
-//! six so the next check cannot quietly add a seventh. None of them can
-//! reproduce the burst this seam exists to prevent: `probes.rs` walks its
-//! sitemap candidates one await at a time; `performance/compression.rs`,
+//! five so the next check cannot quietly add a sixth. None of them can
+//! reproduce the burst this seam exists to prevent: `performance/compression.rs`,
 //! `performance/assets/measure.rs` and `polish/css_fetch.rs` read the bodies
 //! they ask for, which is what returns the HTTP/2 frame budget the burst
 //! exhausted; `performance/timing.rs` measures TTFB and must not have seam
@@ -23,8 +22,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use sitecmd_engine::probe::{
-    decode_probe_body, BodyPolicy, ProbeFailure, ProbeFailureClass, ProbeMethod, ProbeOutcome,
-    ProbeRequest, ProbeResponse, RedirectPolicy,
+    decode_probe_body, BodyLimit, BodyPolicy, ProbeFailure, ProbeFailureClass, ProbeMethod,
+    ProbeOutcome, ProbeRequest, ProbeResponse, RedirectPolicy,
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -104,9 +103,13 @@ pub(crate) async fn probe_with_timeout(
         });
     }
 
+    let body_cap = match request.limit {
+        BodyLimit::Probe => crate::constants::MAX_PROBE_BODY_SIZE,
+        BodyLimit::Sitemap => crate::constants::MAX_SITEMAP_SIZE,
+    };
     match crate::http_client::read_body_limited(
         response,
-        crate::constants::MAX_PROBE_BODY_SIZE,
+        body_cap,
         crate::constants::CHECK_PROBE_TIMEOUT,
     )
     .await

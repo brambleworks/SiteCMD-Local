@@ -2493,11 +2493,24 @@
     },
     {
       "check": "seo.ai_crawler_blocking",
-      "expected": [],
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.ai_crawler_blocking",
+          "confidence": "high",
+          "description": "robots.txt has no root-wide rule blocking any AI discovery, fetch, or model crawler token SiteCMD recognizes. Path-scoped rules, CDN or WAF behavior, and tokens SiteCMD does not recognize were not evaluated.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": null,
+          "severity": "low",
+          "status": "pass",
+          "title": "AI discovery or fetch crawler policy"
+        }
+      ],
       "input": {
         "body": "User-agent: GPTBot\nDisallow: /private/\n"
       },
-      "name": "path_scoped_ai_rules_produce_no_rows"
+      "name": "path_scoped_ai_rules_block_no_crawler_at_the_root"
     },
     {
       "check": "seo.ai_crawler_blocking",

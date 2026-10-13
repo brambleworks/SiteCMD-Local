@@ -1,3 +1,5 @@
+import { constList } from "./guardrail-engine-lane-parsing.mjs";
+
 import {
   productionHalf,
   webCheckIdPrefixes,
@@ -8,7 +10,7 @@ import {
 const MANIFEST = "apps/desktop/src-tauri/crates/engine/manifest/capability_manifest.json";
 const REGISTRY = "apps/desktop/src-tauri/crates/engine/src/manifest/registry/mod.rs";
 // Cross-page verdicts are manifest entries but not public check-count inputs.
-const SESSION_CHECKS = "apps/desktop/src-tauri/src/core/session_analysis.rs";
+const SESSION_CHECKS = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
 
 // Runner ids emit dynamic families rather than their own result rows.
 function runnerIds(read) {
@@ -43,15 +45,12 @@ export function capabilityManifestFailures(read, listFiles) {
   const byId = new Map(manifest.entries.map((entry) => [entry.check, entry]));
   const runners = runnerIds(read);
   const emitted = webCheckIdSources(read, listFiles);
-  const sessionSource = read(SESSION_CHECKS);
-  const sessionList = sessionSource.slice(
-    sessionSource.indexOf("SESSION_CHECK_IDS: &[&str] = &["),
-    sessionSource.indexOf("];", sessionSource.indexOf("SESSION_CHECK_IDS")),
-  );
-  for (const [, id] of sessionList.matchAll(/"([^"]+)"/g)) {
+  const sessionIds = constList(read(SESSION_CHECKS), "SESSION_CHECK_IDS") ?? [];
+  for (const id of sessionIds) {
     emitted.set(id, [...(emitted.get(id) ?? []), SESSION_CHECKS]);
   }
   const engineIds = new Set(webCheckIdSources(read, listFiles, [WEB_CHECK_TREES.engine]).keys());
+  for (const id of sessionIds) engineIds.add(id);
   const enginePrefixes = new Set(
     webCheckIdPrefixes(read, listFiles, [WEB_CHECK_TREES.engine]).keys(),
   );

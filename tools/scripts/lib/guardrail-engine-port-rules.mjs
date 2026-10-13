@@ -34,11 +34,15 @@ function artifactFailures(read) {
     failures.push(`${SCORER_SCRIPT} must vendor the severity corpus and record its digest.`);
   }
   const checks = read(CHECKS_SCRIPT);
-  if (
-    !/^\s*\{ name: "stack-golden\.json", bytes: stackCorpus \},?$/m.test(checks) ||
-    !/^\s*stack_corpus_sha256: sha256\(stackCorpus\),?$/m.test(checks)
-  ) {
-    failures.push(`${CHECKS_SCRIPT} must vendor the stack corpus and record its digest.`);
+  for (const kind of ["stack", "session"]) {
+    if (
+      !new RegExp(`^\\s*\\{ name: "${kind}-golden\\.json", bytes: ${kind}Corpus \\},?$`, "m").test(
+        checks,
+      ) ||
+      !new RegExp(`^\\s*${kind}_corpus_sha256: sha256\\(${kind}Corpus\\),?$`, "m").test(checks)
+    ) {
+      failures.push(`${CHECKS_SCRIPT} must vendor the ${kind} corpus and record its digest.`);
+    }
   }
   for (const [file, source] of [
     [SCORER_SCRIPT, scorer],

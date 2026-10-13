@@ -1,7 +1,8 @@
 //! Registry mapping compiled verdicts to manifest IDs.
 //!
-//! Every artifact-lane entry has exactly one runner or an explicit exclusion,
-//! and no runner may claim an unpublished ID.
+//! Every page- and origin-scoped artifact-lane entry has exactly
+//! one runner, here or in `runners_seo.rs`, or an explicit exclusion
+//! there, and no runner may claim an unpublished ID.
 
 use crate::checks::security::tls::TlsFacts;
 use crate::checks::Check;
@@ -26,17 +27,6 @@ pub struct Runner {
     /// same artifact differ.
     pub run: fn(&EvaluationInputs) -> Vec<CheckResult>,
 }
-
-/// Artifact-lane manifest entries intentionally excluded from runner coverage,
-/// paired with the required reason.
-pub const EXCLUDED_ARTIFACT_CHECKS: &[(&str, &str)] = &[
-    // Heading-order review stays with accessibility.headings; the H1 count
-    // runs separately as the SEO-owned seo.headings.h1.
-    (
-        "seo.headings.hierarchy",
-        "HeadingCheck is unregistered on the desktop; accessibility.headings owns heading order",
-    ),
-];
 
 /// Runner table in deterministic response order.
 pub const RUNNERS: &[Runner] = &[

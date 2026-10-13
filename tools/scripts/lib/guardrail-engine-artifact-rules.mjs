@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   attributeBlock,
   claimedChecks,
+  constList,
   excludedChecks,
   isFetchPlannable,
   laneCoverageFailures,
@@ -12,8 +13,10 @@ import {
 const WASM_LIB = "apps/desktop/src-tauri/crates/engine-wasm/src/lib.rs";
 const WASM_MANIFEST = "apps/desktop/src-tauri/crates/engine-wasm/Cargo.toml";
 const RUNNERS = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners.rs";
+const RUNNERS_SEO = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners_seo.rs";
 const PROBE_CHECKS = "apps/desktop/src-tauri/crates/engine/src/evaluation/probe_checks.rs";
 const PROBE_SCHEMA = "apps/desktop/src-tauri/crates/engine/src/evaluation/probes.rs";
+const SESSION = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
 const SCHEMA = "apps/desktop/src-tauri/crates/engine/src/evaluation/mod.rs";
 const GOLDEN_TEST = "apps/desktop/src-tauri/crates/engine/tests/golden_checks.rs";
 const MANIFEST = "apps/desktop/src-tauri/crates/engine/manifest/capability_manifest.json";
@@ -41,6 +44,7 @@ const REQUIRED_PROVENANCE = [
   "profile",
   "artifact_sha256",
   "corpus_sha256",
+  "session_corpus_sha256",
   "browser_assets_sha256",
   "manifest_digest",
 ];
@@ -50,6 +54,7 @@ export function engineArtifactFailures(read) {
   const wasmLib = read(WASM_LIB);
   const wasmManifest = read(WASM_MANIFEST);
   const runners = read(RUNNERS);
+  const runnersSeo = read(RUNNERS_SEO);
   const probeChecks = read(PROBE_CHECKS);
   const probeSchema = read(PROBE_SCHEMA);
   const schema = read(SCHEMA);
@@ -65,7 +70,12 @@ export function engineArtifactFailures(read) {
     }
   }
 
-  for (const symbol of ["engine_evaluate", "engine_probe_plan"]) {
+  for (const symbol of [
+    "engine_evaluate",
+    "engine_probe_plan",
+    "engine_session_page",
+    "engine_session_evaluate",
+  ]) {
     const exportedAt = wasmLib.indexOf(`extern "C" fn ${symbol}(`);
     if (exportedAt === -1) {
       failures.push(`${WASM_LIB} no longer exports \`${symbol}\`; the scan worker calls it`);
@@ -122,13 +132,16 @@ export function engineArtifactFailures(read) {
     }
   }
 
-  const claimed = claimedChecks(runners, "pub const RUNNERS");
-  const excluded = excludedChecks(runners, "pub const EXCLUDED_ARTIFACT_CHECKS");
+  const sharedClaims = claimedChecks(runners, "pub const RUNNERS");
+  const seoClaims = claimedChecks(runnersSeo, "pub const SEO_RUNNERS");
+  const claimed =
+    sharedClaims === null || seoClaims === null ? null : [...sharedClaims, ...seoClaims];
+  const excluded = excludedChecks(runnersSeo, "pub const EXCLUDED_ARTIFACT_CHECKS");
   const planned = claimedChecks(probeChecks, "pub const PROBE_CHECKS");
   const probeExcluded = excludedChecks(probeSchema, "pub const EXCLUDED_PROBE_CHECKS");
   if (claimed === null || excluded === null) {
     failures.push(
-      `${RUNNERS} no longer declares \`RUNNERS\` and \`EXCLUDED_ARTIFACT_CHECKS\`; update these rules with it`,
+      `${RUNNERS} or ${RUNNERS_SEO} no longer declares \`RUNNERS\`, \`SEO_RUNNERS\` or \`EXCLUDED_ARTIFACT_CHECKS\`; update these rules with them`,
     );
   }
   if (planned === null || probeExcluded === null) {
@@ -149,10 +162,12 @@ export function engineArtifactFailures(read) {
     failures.push(
       ...laneCoverageFailures({
         lane: "artifact",
-        entries: entries.filter((entry) => entry.hosted === "artifact"),
+        entries: entries.filter(
+          (entry) => entry.hosted === "artifact" && entry.scope !== "session",
+        ),
         claimed,
         excluded,
-        table: RUNNERS,
+        table: `${RUNNERS} and ${RUNNERS_SEO}`,
         subject: "runner",
       }),
     );
@@ -172,8 +187,42 @@ export function engineArtifactFailures(read) {
     );
   }
 
+  // The cross-page checks are produced once per scan by the engine's analysis,
+  // so the analysis's own list and the manifest's session checks must agree.
+  const analyzed = constList(read(SESSION), "SESSION_CHECK_IDS");
+  if (analyzed === null) {
+    failures.push(
+      `${SESSION} no longer declares \`SESSION_CHECK_IDS\`; update these rules with it`,
+    );
+  } else {
+    const sessionChecks = entries
+      .filter((entry) => entry.scope === "session")
+      .map((entry) => entry.check);
+    const unproduced = sessionChecks.filter((check) => !analyzed.includes(check));
+    const unlisted = analyzed.filter((check) => !sessionChecks.includes(check));
+    if (unproduced.length > 0 || unlisted.length > 0) {
+      failures.push(
+        `${SESSION}'s SESSION_CHECK_IDS and the manifest's session checks disagree (` +
+          `${[...unproduced, ...unlisted].sort().join(", ")}); a session check nothing produces is a ` +
+          `check a hosted scan claims and never grades`,
+      );
+    }
+  }
+
   for (const [test, script, source, variable] of [
     [GOLDEN_TEST, CHECKS_SCRIPT, checksScript, "corpusPath"],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/golden_session.rs",
+      CHECKS_SCRIPT,
+      checksScript,
+      "sessionCorpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine-wasm/tests/session_abi.rs",
+      CHECKS_SCRIPT,
+      checksScript,
+      "sessionCorpusPath",
+    ],
     [
       "apps/desktop/src-tauri/crates/engine/tests/golden_score.rs",
       SCORER_SCRIPT,
@@ -269,7 +318,7 @@ export function engineArtifactFailures(read) {
   }
 
   for (const field of REQUIRED_PROVENANCE) {
-    if (!checksScript.includes(`${field}:`)) {
+    if (!new RegExp(`\\b${field}:`).test(checksScript)) {
       failures.push(
         `${CHECKS_SCRIPT}: the vendored record no longer carries \`${field}\`; the record is the ` +
           `only thing between a reviewer and a wasm blob of unknown origin`,
@@ -278,12 +327,21 @@ export function engineArtifactFailures(read) {
   }
 
   const registered = REGISTRATION_SOURCES.map((file) => read(file)).join("\n");
-  const dispatches = runnerDispatches(runners, "pub const RUNNERS");
+  const tables = [
+    runnerDispatches(runners, "pub const RUNNERS"),
+    runnerDispatches(runnersSeo, "pub const SEO_RUNNERS"),
+  ];
+  const dispatches = tables.includes(null)
+    ? null
+    : {
+        types: tables.flatMap((table) => table.types),
+        invocations: tables.reduce((total, table) => total + table.invocations, 0),
+      };
   if (dispatches !== null) {
     if (dispatches.types.length !== dispatches.invocations) {
       failures.push(
-        `${RUNNERS}: the runner-extraction pattern reads ${dispatches.types.length} of the ` +
-          `${dispatches.invocations} check invocations in \`RUNNERS\`, so the rows it cannot read ` +
+        `${RUNNERS} and ${RUNNERS_SEO}: the runner-extraction pattern reads ${dispatches.types.length} of the ` +
+          `${dispatches.invocations} check invocations in \`RUNNERS\` and \`SEO_RUNNERS\`, so the rows it cannot read ` +
           `are exempt from the desktop-registration parity check; teach the pattern the new ` +
           `formatting rather than leaving those runners unchecked`,
       );
@@ -293,7 +351,7 @@ export function engineArtifactFailures(read) {
     ].filter((type) => !new RegExp(`Box::new\\([\\w:]*::${type}\\)`).test(registered));
     if (unregistered.length > 0) {
       failures.push(
-        `${RUNNERS}: these checks run in the hosted artifact but are not registered in any desktop ` +
+        `${RUNNERS} and ${RUNNERS_SEO}: these checks run in the hosted artifact but are not registered in any desktop ` +
           `scan (${unregistered.sort().join(", ")}); a hosted-only check produces findings no ` +
           `desktop scan can reproduce, which is a parity break the manifest cannot express`,
       );

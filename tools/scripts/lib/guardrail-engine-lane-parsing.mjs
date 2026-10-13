@@ -92,3 +92,14 @@ export function laneCoverageFailures({ lane, entries, claimed, excluded, table, 
   }
   return failures;
 }
+
+// Read string entries from a Rust `= &[...]` constant.
+export function constList(source, name) {
+  const start = source.indexOf(name);
+  if (start === -1) return null;
+  // Start after the type annotation's own brackets.
+  const open = source.indexOf("= &[", start);
+  const close = source.indexOf("]", open);
+  if (open === -1 || close === -1) return null;
+  return [...source.slice(open, close).matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+}

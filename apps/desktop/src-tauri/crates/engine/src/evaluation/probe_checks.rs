@@ -6,6 +6,7 @@
 use url::Url;
 
 use super::probes::ProbeContext;
+use super::{origin_reads, probe_dns};
 use crate::checks::compliance::legal_documents::{
     evaluate_privacy_policy, evaluate_terms, has_terms_link, legal_path_request,
     page_links_privacy_policy, LegalPathSweep, LegalPathWalk, PRIVACY_PATHS, TERMS_PATHS,
@@ -29,8 +30,7 @@ use crate::checks::security::cors::{
     evaluate_reflection, reflection_localhost_skip_result, reflection_probe_request,
 };
 use crate::checks::security::dns_email::{
-    dangling_cname, dkim, dmarc, domain_expiry, records, registrable_domain_for_url,
-    skipped_dns_failure, skipped_local_result, spf, DomainTarget,
+    domain_expiry, registrable_domain_for_url, skipped_local_result, DomainTarget,
 };
 use crate::checks::security::https_enforcement::{
     evaluate_http_downgrade, evaluate_https_availability, origin_root_request,
@@ -42,6 +42,9 @@ use crate::checks::security::open_redirect::{
 use crate::checks::security::vulnerable_libraries::{
     detect_libraries, evaluate_vulnerable_libraries,
 };
+use crate::checks::seo::geo::{
+    ai_crawlers::evaluate_ai_crawler_blocking, sitemap_freshness::evaluate_sitemap_freshness,
+};
 use crate::checks::seo::links::{
     head_needs_get, link_get_request, link_head_request, link_probe_result, no_link_targets_result,
     observe_link, resolve_link_targets, summarize_link_probes, LinkScope, LinkTargets,
@@ -50,6 +53,9 @@ use crate::checks::seo::links::{
 use crate::checks::seo::redirects::{
     evaluate_temporary_redirect, temporary_redirect_unrecorded_start,
 };
+use crate::checks::seo::robots::{evaluate_robots_txt, RobotsTxtFetch};
+use crate::checks::seo::robots_directives::evaluate_sitemap_in_robots;
+use crate::checks::seo::sitemap::{evaluate_sitemap, SitemapProbe};
 use crate::page::origin_with_port;
 use crate::probe::ProbeRequest;
 use crate::vocab::{CheckResult, Severity};
@@ -121,6 +127,11 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
         },
     },
     ProbeCheck {
+        covers: &["config.sitemap_in_robots"],
+        plan: |ctx| vec![origin_reads::robots_request(ctx)],
+        grade: |ctx| evaluate_sitemap_in_robots(&origin_reads::robots_fetch(ctx)),
+    },
+    ProbeCheck {
         covers: &["config.web_manifest"],
         plan: |ctx| match plan_web_manifest(&ctx.page.body, &ctx.page.url) {
             WebManifestStep::Done(_) => Vec::new(),
@@ -174,7 +185,7 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
             "security.dns.spf",
         ],
         plan: |_| Vec::new(),
-        grade: resolver_grade,
+        grade: probe_dns::resolver_grade,
     },
     ProbeCheck {
         covers: &["security.domain_expiry"],
@@ -249,6 +260,16 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
     },
     // Literal ids keep the registry test independent from their constants.
     ProbeCheck {
+        covers: &["seo.ai_crawler_blocking"],
+        plan: |ctx| vec![origin_reads::robots_request(ctx)],
+        // The desktop's own rule: a crawler policy is read only from a
+        // robots.txt that answered with one, and anything else states nothing.
+        grade: |ctx| match origin_reads::robots_fetch(ctx) {
+            RobotsTxtFetch::Found { body } => evaluate_ai_crawler_blocking(&body),
+            _ => Vec::new(),
+        },
+    },
+    ProbeCheck {
         covers: &["seo.broken_external_links"],
         plan: |ctx| links_plan(ctx, LinkScope::External),
         grade: |ctx| {
@@ -266,6 +287,42 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
         grade: |ctx| links_grade(ctx, LinkScope::Internal, INTERNAL_CHECK_ID, Severity::High),
     },
     ProbeCheck {
+        covers: &["seo.llms_txt"],
+        plan: |ctx| vec![origin_reads::llms_request(ctx)],
+        grade: origin_reads::llms_grade,
+    },
+    ProbeCheck {
+        covers: &["seo.og_image_status"],
+        plan: origin_reads::og_image_plan,
+        grade: origin_reads::og_image_grade,
+    },
+    ProbeCheck {
+        covers: &["seo.robots_txt"],
+        plan: |ctx| vec![origin_reads::robots_request(ctx)],
+        grade: |ctx| evaluate_robots_txt(&origin_reads::robots_fetch(ctx)),
+    },
+    ProbeCheck {
+        covers: &["seo.sitemap"],
+        plan: origin_reads::sitemap_plan,
+        grade: |ctx| {
+            let robots = origin_reads::robots_fetch(ctx);
+            evaluate_sitemap(
+                ctx.page,
+                &robots,
+                &origin_reads::sitemap_probe(ctx, &robots),
+            )
+        },
+    },
+    ProbeCheck {
+        covers: &["seo.sitemap_freshness"],
+        plan: origin_reads::sitemap_plan,
+        // As on the desktop: freshness is read only from a sitemap the walk found.
+        grade: |ctx| match origin_reads::sitemap_probe(ctx, &origin_reads::robots_fetch(ctx)) {
+            SitemapProbe::Found(found) => evaluate_sitemap_freshness(&found),
+            _ => Vec::new(),
+        },
+    },
+    ProbeCheck {
         covers: &["seo.temporary_redirect"],
         // The same walk `performance.redirect_chain` counts, read for its
         // statuses instead of its length. Both rows plan it identically, so
@@ -277,115 +334,6 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
         },
     },
 ];
-
-fn resolver_grade(ctx: &ProbeContext) -> Vec<CheckResult> {
-    let Some(facts) = ctx.resolver_facts else {
-        return Vec::new();
-    };
-    let domain = match registrable_domain_for_url(&ctx.page.url) {
-        DomainTarget::LocalOrIp => return local_dns_results(),
-        DomainTarget::Registrable(domain) => domain,
-    };
-    if facts.domain != domain {
-        return failed_dns_results(
-            &domain,
-            "the resolver facts belonged to a different registrable domain",
-        );
-    }
-
-    let mut results = records::evaluate_caa(&domain, facts.caa.clone());
-
-    results.extend(
-        match dangling_cname::evaluate_www_cname(&domain, facts.www_cname.clone()) {
-            dangling_cname::WwwAliasStep::Done(results) => results,
-            dangling_cname::WwwAliasStep::LookupTarget(probe) => {
-                let addresses = facts
-                    .www_target_addresses
-                    .as_ref()
-                    .filter(|answer| answer.target.eq_ignore_ascii_case(probe.target()))
-                    .map(|answer| answer.addresses.clone())
-                    .unwrap_or_else(|| {
-                        crate::dns::DnsOutcome::Failed(
-                            "the CNAME target address fact was not gathered".into(),
-                        )
-                    });
-                probe.evaluate(addresses)
-            }
-        },
-    );
-
-    results.extend(
-        match dkim::evaluate_dkim_gate(&domain, &facts.apex_mx, &facts.apex_txt) {
-            dkim::DkimStep::Done(results) => results,
-            dkim::DkimStep::Sweep(sweep) => {
-                let outcomes = sweep
-                    .probe_names()
-                    .into_iter()
-                    .map(|(selector, _)| {
-                        let txt = facts
-                            .dkim_txt
-                            .iter()
-                            .find(|answer| answer.selector.eq_ignore_ascii_case(selector))
-                            .map(|answer| answer.txt.clone())
-                            .unwrap_or_else(|| {
-                                crate::dns::DnsOutcome::Failed(
-                                    "the selector TXT fact was not gathered".into(),
-                                )
-                            });
-                        (selector.to_string(), txt)
-                    })
-                    .collect::<Vec<_>>();
-                sweep.evaluate(&outcomes)
-            }
-        },
-    );
-
-    results.extend(
-        match dmarc::evaluate_dmarc_txt(&domain, facts.dmarc_txt.clone()) {
-            dmarc::DmarcStep::Done(results) => results,
-            dmarc::DmarcStep::NeedsMx(pending) => pending.evaluate(&facts.apex_mx),
-        },
-    );
-    results.extend(records::evaluate_dnssec(&domain, facts.dnskey.clone()));
-    results.extend(records::evaluate_mx(&domain, facts.apex_mx.clone()));
-    results.extend(
-        match spf::evaluate_spf_txt(&domain, facts.apex_txt.clone()) {
-            spf::SpfStep::Done(results) => results,
-            spf::SpfStep::NeedsMx(pending) => pending.evaluate(&facts.apex_mx),
-        },
-    );
-    results
-}
-
-fn local_dns_results() -> Vec<CheckResult> {
-    [
-        (records::CAA_CHECK_ID, records::CAA_TITLE),
-        (dangling_cname::CHECK_ID, dangling_cname::TITLE),
-        (dkim::CHECK_ID, dkim::TITLE),
-        (dmarc::CHECK_ID, dmarc::TITLE),
-        (records::DNSSEC_CHECK_ID, records::DNSSEC_TITLE),
-        (records::MX_CHECK_ID, records::MX_TITLE),
-        (spf::CHECK_ID, spf::TITLE),
-    ]
-    .into_iter()
-    .map(|(id, title)| skipped_local_result(id, title))
-    .collect()
-}
-
-fn failed_dns_results(domain: &str, detail: &str) -> Vec<CheckResult> {
-    [
-        (records::CAA_CHECK_ID, records::CAA_TITLE),
-        (dangling_cname::CHECK_ID, dangling_cname::TITLE),
-        (dkim::CHECK_ID, dkim::TITLE),
-        (dmarc::CHECK_ID, dmarc::TITLE),
-        (records::DNSSEC_CHECK_ID, records::DNSSEC_TITLE),
-        (records::MX_CHECK_ID, records::MX_TITLE),
-        (spf::CHECK_ID, spf::TITLE),
-    ]
-    .into_iter()
-    .map(|(id, title)| skipped_dns_failure(id, title, domain, detail))
-    .collect()
-}
 
 /// State of the ordered, short-circuiting legal-path sweep.
 enum LegalStep {

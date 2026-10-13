@@ -5,7 +5,7 @@ const MANIFEST = "apps/desktop/src-tauri/crates/engine/manifest/capability_manif
 const REGISTRY = "apps/desktop/src-tauri/crates/engine/src/manifest/registry/mod.rs";
 const DESKTOP = "apps/desktop/src-tauri/src/checks";
 const ENGINE = "apps/desktop/src-tauri/crates/engine/src/checks";
-const SESSION = "apps/desktop/src-tauri/src/core/session_analysis.rs";
+const SESSION = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
 
 function entry(check, overrides = {}) {
   return {
@@ -107,7 +107,7 @@ describe("completeness", () => {
       failures({
         entries: [
           entry("seo.title"),
-          entry("seo.orphan_pages", { scope: "session", hosted: "unsupported" }),
+          entry("seo.orphan_pages", { scope: "session", hosted: "artifact" }),
         ],
         engine: { "seo/meta.rs": emits("seo.title") },
         session: ["seo.orphan_pages"],
@@ -154,6 +154,16 @@ describe("completeness", () => {
 });
 
 describe("lane truth", () => {
+  it("backs a session check's hosted lane only while the engine declares it", () => {
+    const fixture = {
+      entries: [entry("seo.orphan_pages", { scope: "session" })],
+      desktop: { "seo/session.rs": emits("seo.orphan_pages") },
+      session: ["seo.orphan_pages"],
+    };
+    expect(failures(fixture)).toEqual([]);
+    expect(failures({ ...fixture, session: [] }).join("\n")).toContain("claims artifact");
+  });
+
   it("fails when a desktop-only check claims a hosted lane", () => {
     const found = failures({
       entries: [entry("seo.title", { hosted: "artifact" })],

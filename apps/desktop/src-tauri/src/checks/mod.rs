@@ -1,4 +1,4 @@
-//! Desktop scan-check traits, shared types, and UTF-8 slicing utilities.
+//! Desktop scan-check traits and shared types.
 //! `Check` reads fetched data; `AsyncCheck` performs network probes.
 
 pub mod accessibility;
@@ -9,9 +9,8 @@ pub mod inventory;
 pub mod performance;
 pub mod polish;
 pub use sitecmd_engine::checks::predeploy;
-pub mod security;
-pub(crate) use sitecmd_engine::checks::floor_char_boundary;
 mod probe_adapter;
+pub mod security;
 pub(crate) use probe_adapter::{probe, probe_get, probe_with_timeout};
 mod probes;
 pub use probes::ProbeCache;

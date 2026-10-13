@@ -25,6 +25,12 @@
     "dependencyEcosystems": 8,
     "total": 420
   },
+  "hostedCheckCounts": {
+    "web": 147,
+    "crossPage": 7,
+    "axe": 55,
+    "total": 202
+  },
   "polishSignals": [
     {
       "category": "css_architecture",
@@ -268,11 +274,23 @@
         "severity": "critical"
       }
     ],
+    "sitemapWalk": {
+      "declaredLimit": 20,
+      "candidatePaths": [
+        "/sitemap.xml",
+        "/sitemap-index.xml",
+        "/sitemap_index.xml",
+        "/wp-sitemap.xml",
+        "/sitemap.php",
+        "/sitemap.txt"
+      ]
+    },
     "limits": {
       "redirectHops": 10,
       "checkTimeoutSeconds": 15,
       "pageBodyMaxBytes": 10485760,
       "probeBodyMaxBytes": 524288,
+      "sitemapBodyMaxBytes": 5242880,
       "assetSampleLimit": 30,
       "stylesheetMaxCount": 8
     }

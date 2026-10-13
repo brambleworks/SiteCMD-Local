@@ -26,6 +26,10 @@ pub struct ProbeRequest {
     pub method: ProbeMethod,
     pub body: BodyPolicy,
     pub redirects: RedirectPolicy,
+    /// The size cap the body reads under. Omitted on the wire for the probe
+    /// cap, so every other request keeps its bytes and its key.
+    #[serde(default, skip_serializing_if = "BodyLimit::is_probe")]
+    pub limit: BodyLimit,
     /// Extra request headers (name, value) the plan requires, e.g. a foreign
     /// `Origin` for the CORS reflection probe.
     #[serde(default)]
@@ -51,6 +55,7 @@ impl ProbeRequest {
             method: ProbeMethod::Get,
             body: BodyPolicy::SuccessOnly,
             redirects: RedirectPolicy::Follow,
+            limit: BodyLimit::Probe,
             headers: Vec::new(),
         }
     }
@@ -62,12 +67,18 @@ impl ProbeRequest {
             method: ProbeMethod::Head,
             body: BodyPolicy::None,
             redirects: RedirectPolicy::Follow,
+            limit: BodyLimit::Probe,
             headers: Vec::new(),
         }
     }
 
     pub fn body(mut self, body: BodyPolicy) -> Self {
         self.body = body;
+        self
+    }
+
+    pub fn limit(mut self, limit: BodyLimit) -> Self {
+        self.limit = limit;
         self
     }
 
@@ -98,6 +109,25 @@ pub enum RedirectPolicy {
     Follow,
     /// Classify the first response as-is; a 3xx is the answer, not a hop.
     None,
+}
+
+/// Which size cap the runtime reads a body under. Every probe reads under the
+/// probe cap except a sitemap candidate, which can list thousands of pages and
+/// reads under the sitemap cap. Each runtime holds its own byte values (the
+/// desktop's `MAX_SITEMAP_SIZE`, the hosted transport's sitemap budget), and the
+/// published facts hold the two to one number.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BodyLimit {
+    #[default]
+    Probe,
+    Sitemap,
+}
+
+impl BodyLimit {
+    fn is_probe(&self) -> bool {
+        matches!(self, Self::Probe)
+    }
 }
 
 /// Outcome of one probe request, as classified by a transport adapter.

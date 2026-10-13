@@ -6,10 +6,12 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CODE_FIX_GUIDE_IDS, getCodeFixGuide } from "./code-fix-guides";
 import { FIX_GUIDE_ALIASES, FIX_GUIDE_IDS, LEGACY_FIX_GUIDE_IDS, getFixGuide } from "./fix-guides";
+import { constList } from "../../../../tools/scripts/lib/guardrail-engine-lane-parsing.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const RUST_SRC = path.resolve(HERE, "../../src-tauri/src");
 const ENGINE_CHECKS = path.resolve(HERE, "../../src-tauri/crates/engine/src/checks");
+const ENGINE_SESSION = path.resolve(HERE, "../../src-tauri/crates/engine/src/session");
 
 function walkRustFiles(dir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -57,6 +59,14 @@ function productionHalf(source: string): string {
     : withoutExternalTestModules;
 }
 
+/** The production half of every file of the engine's cross-page analysis. */
+function sessionSources(): string {
+  return walkRustFiles(ENGINE_SESSION)
+    .filter((file) => !isTestOnlyRustFile(file))
+    .map((file) => productionHalf(readFileSync(file, "utf8")))
+    .join("\n");
+}
+
 function collectWebIssueIds(): string[] {
   const ids = new Set<string>();
   for (const file of [
@@ -95,9 +105,8 @@ function collectWebIssueIds(): string[] {
 
   // Multi-page/session findings are also outside checks/. Their IDs are either
   // supplied to duplicate_field or passed directly to base_result.
-  const sessionAnalysis = productionHalf(
-    readFileSync(path.join(RUST_SRC, "core/session_analysis.rs"), "utf8"),
-  );
+  // They live in the engine's session module.
+  const sessionAnalysis = sessionSources();
   // Match the first string literal in the call rather than a fixed argument
   // list: the leading arguments have changed shape before (`pages` became
   // `comparable, &compared`), and when they did this collector silently
@@ -130,6 +139,13 @@ function collectIssueGuidanceFiles(): string[] {
 }
 
 describe("issue fix guide coverage", () => {
+  it("collects every cross-page id the engine's session analysis declares", () => {
+    const declared = constList(sessionSources(), "SESSION_CHECK_IDS") ?? [];
+    expect(declared.length).toBeGreaterThan(0);
+    const collected = collectWebIssueIds();
+    expect(declared.filter((id) => !collected.includes(id))).toEqual([]);
+  });
+
   it("resolves every emitted Web Scan and polish issue ID to a baseline", () => {
     const ids = collectWebIssueIds();
     const missing = ids.filter((id) => !getFixGuide(id));
@@ -200,7 +216,7 @@ describe("baselines are directions, not teasers", () => {
   });
 
   it("keeps baseline and Rust finding copy free of stale or overconfident advice", () => {
-    // The same list guards the deep corpus in SiteCMD-Web (corpus.test.ts).
+    // The same list guards the deep corpus in the maintained catalog (corpus.test.ts).
     // Update both when adding a pattern.
     const banned = [
       {

@@ -27,6 +27,14 @@ const stackCorpusPath = path.join(
   "stack",
   "golden.json",
 );
+const sessionCorpusPath = path.join(
+  cargoRoot,
+  "crates",
+  "engine",
+  "fixtures",
+  "session",
+  "golden.json",
+);
 const manifestPath = path.join(
   cargoRoot,
   "crates",
@@ -49,6 +57,7 @@ const artifactPath = buildWasmArtifact({ features: ["checks"] });
 const artifact = readFileSync(artifactPath);
 const corpus = readFileSync(corpusPath);
 const stackCorpus = readFileSync(stackCorpusPath);
+const sessionCorpus = readFileSync(sessionCorpusPath);
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const axeCore = readFileSync(path.join(browserPath, "axe.min.js"), "utf8");
 const cwvObserver = readFileSync(path.join(browserPath, "cwv_observer.js"), "utf8");
@@ -88,6 +97,7 @@ const provenance = {
   artifact_sha256: sha256(artifact),
   corpus_sha256: sha256(corpus),
   stack_corpus_sha256: sha256(stackCorpus),
+  session_corpus_sha256: sha256(sessionCorpus),
   browser_assets_sha256: sha256(browserAssets),
   manifest_digest: manifest.manifest_digest,
 };
@@ -98,6 +108,7 @@ vendorSet({
     { name: "checks.wasm", bytes: artifact },
     { name: "golden.json", bytes: corpus },
     { name: "stack-golden.json", bytes: stackCorpus },
+    { name: "session-golden.json", bytes: sessionCorpus },
     { name: "browser-assets.json", bytes: browserAssets },
   ],
   record: provenance,

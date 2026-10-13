@@ -208,7 +208,7 @@ pub fn web_policy_severity(input: &WebSeverityInput) -> Option<Severity> {
         // Emitted severity varies: invalid JSON is Medium, recommended-only
         // property gaps are Low.
         "seo.structured_data.invalid" | "seo.structured_data.incomplete" => input.severity,
-        // Cross-page (session-level) findings from core::session_analysis.
+        // Cross-page (session-level) findings from the engine's session module.
         "seo.canonical_loop" | "seo.noindex_in_sitemap" => Severity::Medium,
         "seo.duplicate_h1" | "seo.hreflang_reciprocity" | "seo.orphan_pages" => Severity::Low,
         "seo.citation_meta"

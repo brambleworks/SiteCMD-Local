@@ -31,8 +31,9 @@ fn root_blocked_for_agent(groups: &[RobotsGroup], token: &str) -> bool {
 }
 
 /// Grade the `seo.ai_crawler_blocking` outcome from a fetched robots.txt
-/// body. Returns no rows when nothing is blocked or when the block is the
-/// primary robots check's root-wide wildcard finding.
+/// body. Returns a passing row when no recognized crawler is blocked at the
+/// root, and no row when the block is the primary robots check's root-wide
+/// wildcard finding.
 pub fn evaluate_ai_crawler_blocking(body: &str) -> Vec<CheckResult> {
     // Purpose labels are intentionally separated: vendor documentation
     // distinguishes search indexing, user-triggered retrieval, model
@@ -148,7 +149,20 @@ pub fn evaluate_ai_crawler_blocking(body: &str) -> Vec<CheckResult> {
         .filter(|crawler| root_blocked_for_agent(&groups, crawler.token))
         .collect();
     if blocked.is_empty() {
-        return vec![];
+        return vec![CheckResult {
+            check_id: "seo.ai_crawler_blocking".into(),
+            category: ScanCategory::Seo,
+            title: "AI discovery or fetch crawler policy".into(),
+            description: "robots.txt has no root-wide rule blocking any AI discovery, fetch, or model crawler token SiteCMD recognizes. Path-scoped rules, CDN or WAF behavior, and tokens SiteCMD does not recognize were not evaluated.".into(),
+            status: CheckStatus::Pass,
+            severity: Severity::Low,
+            fix_prompt: None,
+            manual_fix: None,
+            raw_data: None,
+            confidence: IssueConfidence::High,
+            confidence_reason: None,
+            why_it_matters: None,
+        }];
     }
 
     let affected: Vec<_> = blocked
@@ -290,7 +304,9 @@ mod tests {
         // Only a root Disallow counts; a path-scoped rule must not be
         // reported as blocking the crawler.
         let robots = "User-agent: GPTBot\nDisallow: /private/\n";
-        assert!(evaluate_ai_crawler_blocking(robots).is_empty());
+        let results = evaluate_ai_crawler_blocking(robots);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, CheckStatus::Pass);
     }
 
     #[test]

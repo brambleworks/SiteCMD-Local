@@ -147,6 +147,7 @@ describe("enginePortFailures", () => {
   it.each([
     [SCORER_SCRIPT, "severity-golden.json", "severity"],
     [CHECKS_SCRIPT, "stack-golden.json", "stack"],
+    [CHECKS_SCRIPT, "session-golden.json", "session"],
   ])("requires %s to vendor its corpus", (file, name, kind) => {
     const source = read(file).replaceAll(name, "other-golden.json");
     expect(failures({ [file]: source })).toEqual([
@@ -157,6 +158,7 @@ describe("enginePortFailures", () => {
   it.each([
     [SCORER_SCRIPT, "severity"],
     [CHECKS_SCRIPT, "stack"],
+    [CHECKS_SCRIPT, "session"],
   ])("requires %s to record its corpus digest", (file, kind) => {
     const source = read(file).replace(`${kind}_corpus_sha256:`, "other_corpus_sha256:");
     expect(failures({ [file]: source })).toEqual([
@@ -167,6 +169,7 @@ describe("enginePortFailures", () => {
   it.each([
     [SCORER_SCRIPT, "severity-golden.json", "severity"],
     [CHECKS_SCRIPT, "stack-golden.json", "stack"],
+    [CHECKS_SCRIPT, "session-golden.json", "session"],
   ])("rejects a commented-out corpus in %s", (file, name, kind) => {
     const source = read(file).replace(
       new RegExp(`^\\s*\\{ name: "${name.replace(".", "\\.")}".*$`, "m"),
@@ -180,6 +183,7 @@ describe("enginePortFailures", () => {
   it.each([
     [SCORER_SCRIPT, "severity"],
     [CHECKS_SCRIPT, "stack"],
+    [CHECKS_SCRIPT, "session"],
   ])("rejects a commented-out corpus digest in %s", (file, kind) => {
     const source = read(file).replace(
       new RegExp(`^\\s*${kind}_corpus_sha256:.*$`, "m"),

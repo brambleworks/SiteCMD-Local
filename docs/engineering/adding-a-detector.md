@@ -70,8 +70,8 @@ Do not make an accuracy assertion depend only on a regenerated snapshot.
    for each result, or the supported dynamic family. Choose the truthful scope
    and hosted lane; increment its revision when changing existing semantics.
    When the check supports hosted page evaluation, also register its runner in
-   `crates/engine/src/evaluation/runners.rs`; a manifest entry alone does not
-   execute the detector.
+   `crates/engine/src/evaluation/runners.rs` (or `runners_seo.rs` for an SEO page
+   check); a manifest entry alone does not execute the detector.
 4. Add the local guide under `apps/desktop/src/lib/fix-guides/`: a short
    explanation, bounded baseline steps, and an effort consistent with the
    existing guide types. Code Scan uses `lib/code-fix-guides/` instead.

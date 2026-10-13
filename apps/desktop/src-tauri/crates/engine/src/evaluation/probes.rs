@@ -15,8 +15,8 @@ use super::{
 use crate::manifest::{HostedLane, RuntimeFact};
 use crate::page::PageContext;
 use crate::probe::{
-    BodyPolicy, ProbeFailure, ProbeFailureClass, ProbeMethod, ProbeOutcome, ProbeRequest,
-    RedirectPolicy,
+    BodyLimit, BodyPolicy, ProbeFailure, ProbeFailureClass, ProbeMethod, ProbeOutcome,
+    ProbeRequest, RedirectPolicy,
 };
 
 /// Non-printable separator for collision-resistant probe keys whose fields may
@@ -78,6 +78,10 @@ pub fn probe_key(request: &ProbeRequest) -> String {
     for field in [request.url.as_str(), body, redirects] {
         key.push(KEY_SEPARATOR);
         key.push_str(field);
+    }
+    if request.limit == BodyLimit::Sitemap {
+        key.push(KEY_SEPARATOR);
+        key.push_str("limit=sitemap");
     }
     for (name, value) in &request.headers {
         key.push(KEY_SEPARATOR);
@@ -146,10 +150,6 @@ pub struct ProbeContext<'a> {
 /// Probe entries not yet planned by this crate, paired with the required reason.
 pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[
     (
-        "config.sitemap_in_robots",
-        "the robots.txt fetch is still planned by the desktop's per-scan probe cache",
-    ),
-    (
         "performance.asset_caching",
         "the subresource collection and fetch loop are still in the desktop shell",
     ),
@@ -192,30 +192,6 @@ pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[
     (
         "security.security_txt",
         "the well-known path sweep is still planned by the desktop shell",
-    ),
-    (
-        "seo.ai_crawler_blocking",
-        "the robots.txt fetch is still planned by the desktop's per-scan probe cache",
-    ),
-    (
-        "seo.llms_txt",
-        "the well-known path sweep is still planned by the desktop shell",
-    ),
-    (
-        "seo.og_image_status",
-        "the og:image target fetch is still planned by the desktop shell",
-    ),
-    (
-        "seo.robots_txt",
-        "the robots.txt fetch is still planned by the desktop's per-scan probe cache",
-    ),
-    (
-        "seo.sitemap",
-        "the bounded sitemap candidate walk is still planned by the desktop shell",
-    ),
-    (
-        "seo.sitemap_freshness",
-        "the bounded sitemap candidate walk is still planned by the desktop shell",
     ),
 ];
 

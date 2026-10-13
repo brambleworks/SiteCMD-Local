@@ -154,6 +154,52 @@ pub unsafe extern "C" fn engine_probe_plan(ptr: *mut u8, len: u32) -> *const u8 
     leak_framed(payload)
 }
 
+/// Return one page's comparison facts as framed JSON, `null` for a page whose
+/// own address cannot be named without query material or credentials.
+///
+/// # Safety
+///
+/// `ptr` must be an unfreed `scorer_alloc` buffer of exactly `len` bytes.
+/// This call consumes the buffer.
+#[cfg(feature = "checks")]
+#[no_mangle]
+pub unsafe extern "C" fn engine_session_page(ptr: *mut u8, len: u32) -> *const u8 {
+    use sitecmd_engine::evaluation::{session_page, SessionPageRequest};
+
+    let request = Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len as usize));
+    let payload = match serde_json::from_slice::<SessionPageRequest>(&request) {
+        Ok(parsed) => match session_page(&parsed) {
+            Ok(facts) => serde_json::to_value(&facts)
+                .and_then(|value| serde_json::to_vec(&value))
+                .unwrap_or_else(|error| error_payload(&error)),
+            Err(error) => error_payload(&error),
+        },
+        Err(error) => error_payload(&error),
+    };
+    leak_framed(payload)
+}
+
+/// Compare one scan's pages and return its cross-page verdicts as framed JSON.
+///
+/// # Safety
+///
+/// `ptr` must be an unfreed `scorer_alloc` buffer of exactly `len` bytes.
+/// This call consumes the buffer.
+#[cfg(feature = "checks")]
+#[no_mangle]
+pub unsafe extern "C" fn engine_session_evaluate(ptr: *mut u8, len: u32) -> *const u8 {
+    use sitecmd_engine::evaluation::{evaluate_session, SessionRequest};
+
+    let request = Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len as usize));
+    let payload = match serde_json::from_slice::<SessionRequest>(&request) {
+        Ok(parsed) => serde_json::to_value(evaluate_session(&parsed))
+            .and_then(|value| serde_json::to_vec(&value))
+            .unwrap_or_else(|error| error_payload(&error)),
+        Err(error) => error_payload(&error),
+    };
+    leak_framed(payload)
+}
+
 fn error_payload(error: &dyn core::fmt::Display) -> Vec<u8> {
     serde_json::to_vec(&AbiError {
         error: error.to_string(),

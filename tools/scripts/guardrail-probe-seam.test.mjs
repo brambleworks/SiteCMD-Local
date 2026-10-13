@@ -22,7 +22,6 @@ const BUILDER_SEND = /\.send\(\s*\)/;
 // reason it cannot reproduce the burst; a new check does not, and belongs on
 // the seam instead of on this list.
 const DIRECT_SEND_EXEMPTIONS = new Map([
-  ["probes.rs", "walks its sitemap candidates one await at a time"],
   ["performance/compression.rs", "reads the bodies it asks for"],
   ["performance/assets/measure.rs", "reads the bodies it asks for"],
   ["polish/css_fetch.rs", "reads the bodies it asks for"],
