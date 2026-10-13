@@ -78,8 +78,9 @@ tier names the artifact that proves agreement:
    classification, size-limit behavior, header casing), so the
    conformance corpus pins them: shared fixtures assert that both
    adapters classify the same transport situations identically
-   (final-URL recording, the 10-redirect limit, body-cap overrun as
-   scan-fatal, timeout as `Skipped`, HEAD-then-GET link probing).
+   (final-URL recording, the 10-redirect limit, timeout as `Skipped`,
+   HEAD-then-GET link probing); past its page cap, the hosted lane excepts
+   the route while the desktop fails that page's read.
    Special transports: the seven DNS checks resolve over DNS-over-HTTPS
    hosted (Cloudflare's resolver) while the desktop keeps its
    system-resolver-only posture; record projection and verdicts
@@ -724,9 +725,9 @@ prices, replaced by the pricing pass's decided values at graduation:
   `422`s already name their limits), so the beta cohort always sees
   the numbers that are actually in force.
 
-## Crawl profile, version 1
+## Crawl profile, version 2
 
-`crawl_profile: 1`, the envelope field the protocol spec reserved,
+`crawl_profile: 2`, the envelope field the protocol spec reserved,
 pins:
 
 - **Route set: the scan-scope resource, entirely.** The scan record
@@ -753,13 +754,20 @@ pins:
 - **Identity rules** by reference to the protocol spec's canonicalizer:
   final URL after redirects, preserved trailing slashes, stripped query
   with `query_dependent` flagging.
-- **Transport constants**, identical to the desktop's:
+- **Transport constants**, identical to the desktop's except for the
+  page body and sitemap caps:
   10-redirect limit with per-hop validation, 30 s page fetch timeout,
-  15 s per-check timeout with timeout-as-`Skipped`, 10 MiB page body
-  cap (overrun is scan-fatal, as on desktop), 512 KiB probe cap, 5 MiB
+  15 s per-check timeout with timeout-as-`Skipped`, 1 MiB page body
+  cap (overrun excepts only that route as `page_too_large` while the scan
+  continues), 512 KiB probe cap, 2 MiB
   sitemap cap, 2 MiB stylesheet cap with at most 8 stylesheets,
   30-asset sample with `Range: bytes=0-0`, link-probe samples of
-  100 internal and 30 external.
+  100 internal and 30 external. One route's evaluation must fit the
+  Workers isolate's 128 MB, which every Durable Object it hosts shares
+  with the Worker's code, and at the desktop's 10 MiB page cap that
+  route's engine memory alone exceeded the limit. Version 1 differed
+  only in those two caps (10 MiB for pages, with overrun scan-fatal as
+  on desktop; 5 MiB for sitemaps) and ran for no customer.
 - **Browser interception constants and timing semantics:** at most 400
   requests, 64 distinct hosts, 8 MiB of decoded body data for any one
   response, and 25 MiB across the session. The per-response cap is
