@@ -92,10 +92,7 @@ fn run_to_fixpoint() -> (Vec<ExecutedProbe>, usize) {
             return (gathered, call);
         }
         for planned in &plan.probes {
-            let executed = ExecutedProbe {
-                key: planned.key.clone(),
-                outcome: execute(planned),
-            };
+            let executed = ExecutedProbe::new(planned.key.clone(), execute(planned));
             gathered.push(executed.clone());
             fresh.push(executed);
         }

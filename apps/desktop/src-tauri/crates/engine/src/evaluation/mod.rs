@@ -251,20 +251,6 @@ fn external_fact_plan(page: &PageContext) -> ExternalFactPlan {
     }
 }
 
-fn browser_measurement_samples(facts: Option<&BrowserFacts>) -> Vec<EvaluationMeasurement> {
-    let Some(facts) = facts else {
-        return Vec::new();
-    };
-    crate::measurement::from_browser_vitals(&facts.core_web_vitals)
-        .into_iter()
-        .map(|sample| EvaluationMeasurement {
-            check: sample.check.to_string(),
-            value: sample.value,
-            unit: sample.unit,
-        })
-        .collect()
-}
-
 /// Evaluate one route from its whole request: a route session opened on its
 /// page, with every outcome recorded at once.
 pub fn evaluate(request: &EvaluationRequest) -> Result<EvaluationResponse, EvaluationError> {

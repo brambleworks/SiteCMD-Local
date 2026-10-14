@@ -3,15 +3,6 @@
 use crate::checks::{AsyncCheck, CheckContext, CheckResult, ScanCategory};
 use sitecmd_engine::checks::performance::ttfb;
 
-/// How many times the origin is asked before the fastest response is graded.
-/// One request carries whatever the network and the origin's accept queue did
-/// to it, so a single sample is an upper bound on server time rather than a
-/// measurement of it. Two requests are enough to separate a cold connection
-/// from a consistently slow origin without turning a scan into a load test.
-/// Module-intrinsic: this is the shape of the measurement, not a tuning knob
-/// shared with other checks.
-const TTFB_SAMPLE_COUNT: usize = 2;
-
 /// Whether another request fits in the budget this check shares with the
 /// scanner's per-check timeout.
 ///
@@ -60,11 +51,11 @@ impl AsyncCheck for TimingCheck {
     /// sample measures the origin rather than the scanner's own request burst
     /// competing for the same accept queue. See `core::scanner::SOLO_PHASE_CHECK_IDS`.
     async fn run(&self, ctx: &CheckContext) -> Vec<CheckResult> {
-        let mut samples: Vec<u64> = Vec::with_capacity(TTFB_SAMPLE_COUNT);
+        let mut samples: Vec<u64> = Vec::with_capacity(usize::from(ttfb::TTFB_SAMPLE_COUNT));
         let mut last_error: Option<String> = None;
         let phase_started = std::time::Instant::now();
 
-        for attempt in 0..TTFB_SAMPLE_COUNT {
+        for attempt in 0..usize::from(ttfb::TTFB_SAMPLE_COUNT) {
             if !another_sample_fits(attempt, phase_started.elapsed()) {
                 break;
             }
@@ -96,7 +87,7 @@ impl AsyncCheck for TimingCheck {
         }
 
         match (samples.is_empty(), last_error) {
-            (false, _) => ttfb::evaluate_ttfb_samples(&samples, "http_probe"),
+            (false, _) => ttfb::evaluate_ttfb_samples(&samples, ttfb::HTTP_PROBE_SOURCE),
             (true, Some(error)) => ttfb::ttfb_unavailable(&error),
             (true, None) => ttfb::ttfb_unavailable("no timing sample was taken"),
         }

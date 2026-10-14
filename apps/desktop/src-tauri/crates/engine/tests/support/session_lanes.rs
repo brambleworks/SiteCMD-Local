@@ -132,9 +132,9 @@ pub(super) fn hosted(scan: &Scan) -> Verdicts {
 fn walked(scan: &Scan) -> Vec<ExecutedProbe> {
     let answer =
         |url: &str, status: u16, content_type: &str, body: Option<&str>, request: ProbeRequest| {
-            ExecutedProbe {
-                key: probe_key(&request),
-                outcome: ProbeOutcome::Response(ProbeResponse {
+            ExecutedProbe::new(
+                probe_key(&request),
+                ProbeOutcome::Response(ProbeResponse {
                     status,
                     final_url: url.into(),
                     content_type: Some(content_type.into()),
@@ -142,7 +142,7 @@ fn walked(scan: &Scan) -> Vec<ExecutedProbe> {
                     headers: Vec::new(),
                     body: body.map(|text| decode_probe_body(text.as_bytes().to_vec())),
                 }),
-            }
+            )
         };
     let robots = "https://example.com/robots.txt";
     let mut outcomes = vec![answer(

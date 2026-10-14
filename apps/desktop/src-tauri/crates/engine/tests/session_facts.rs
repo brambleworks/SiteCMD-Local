@@ -241,28 +241,25 @@ fn the_cross_page_checks_are_named_session_scope_by_one_route() {
 }
 
 fn response(url: &str, status: u16, body: &str, sitemap: bool) -> ExecutedProbe {
-    ExecutedProbe {
-        key: probe_key(&if sitemap {
+    ExecutedProbe::new(
+        probe_key(&if sitemap {
             sitemap_request(url)
         } else {
             ProbeRequest::get(url)
         }),
-        outcome: ProbeOutcome::Response(ProbeResponse {
+        ProbeOutcome::Response(ProbeResponse {
             status,
             final_url: url.into(),
-            content_type: Some(
-                if sitemap {
-                    "application/xml"
-                } else {
-                    "text/plain"
-                }
-                .into(),
-            ),
+            content_type: Some(if sitemap {
+                "application/xml".into()
+            } else {
+                "text/plain".into()
+            }),
             content_length: None,
             headers: Vec::new(),
             body: Some(decode_probe_body(body.as_bytes().to_vec())),
         }),
-    }
+    )
 }
 
 #[test]

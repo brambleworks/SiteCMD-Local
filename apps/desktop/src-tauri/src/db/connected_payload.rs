@@ -5,10 +5,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 
 use rusqlite::OptionalExtension;
+use sitecmd_engine::checks::performance::{browser_vitals, ttfb};
 use sitecmd_engine::coverage::{CoverageExceptionReason, ScanCoverageKind, ScanCoverageManifest};
 use sitecmd_engine::manifest::{
     capability_manifest, CapabilityManifest, CheckClass, HostedLane, MeasurementUnit,
 };
+use sitecmd_engine::measurement::from_result_raw_data;
 use sitecmd_engine::route::{canonical_route, CanonicalRoute};
 use sitecmd_engine::sync::{
     ClientGroupState, CodeBasis, CodeBasisKind, CodeOccurrence, CodeProvenance, CodeSnapshot,
@@ -113,27 +115,25 @@ fn connected_measurement(row: &MeasurementRow) -> Option<(f64, MeasurementUnit)>
         if row.check_id == "performance.ttfb" {
             return None;
         }
-        return sitecmd_engine::measurement::from_result_raw_data(&row.check_id, &row.raw_data);
+        return from_result_raw_data(&row.check_id, &row.raw_data);
     };
-    if source == "browser_navigation" && row.check_id == "performance.ttfb" {
+    if source == browser_vitals::BROWSER_NAVIGATION_SOURCE && row.check_id == "performance.ttfb" {
         if entry.hosted != HostedLane::ProbeAdapter {
             return None;
         }
         let transport_ttfb = row.raw_data.get("transport_ttfb_ms")?;
-        return sitecmd_engine::measurement::from_result_raw_data(
-            &row.check_id,
-            &serde_json::json!({ "ttfb_ms": transport_ttfb }),
-        );
+        let raw = serde_json::json!({ "ttfb_ms": transport_ttfb });
+        return from_result_raw_data(&row.check_id, &raw);
     }
     let producing_lane = match source {
-        "http_probe" => HostedLane::ProbeAdapter,
-        "browser_navigation" => HostedLane::Browser,
+        ttfb::HTTP_PROBE_SOURCE => HostedLane::ProbeAdapter,
+        browser_vitals::BROWSER_NAVIGATION_SOURCE => HostedLane::Browser,
         _ => return None,
     };
     if entry.hosted != producing_lane {
         return None;
     }
-    sitecmd_engine::measurement::from_result_raw_data(&row.check_id, &row.raw_data)
+    from_result_raw_data(&row.check_id, &row.raw_data)
 }
 
 fn finding_source(source: ScanEvidenceSource) -> FindingSource {

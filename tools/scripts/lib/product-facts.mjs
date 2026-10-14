@@ -11,6 +11,7 @@ const AGENT = "apps/desktop/src-tauri/crates/engine/src/agent.rs";
 const PROBE = "apps/desktop/src-tauri/crates/engine/src/probe.rs";
 const EXPOSED_FILES = "apps/desktop/src-tauri/crates/engine/src/checks/security/exposed_files.rs";
 const CONSTANTS = "apps/desktop/src-tauri/src/constants.rs";
+const ASSETS = "apps/desktop/src-tauri/crates/engine/src/checks/performance/assets/mod.rs";
 const CSS_FETCH = "apps/desktop/src-tauri/src/checks/polish/css_fetch.rs";
 const SITEMAP = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap.rs";
 const SITEMAP_DOCUMENT = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap_document.rs";
@@ -271,7 +272,7 @@ function scannerIdentity(read) {
       pageBodyMaxBytes: rustNumber(constants, "MAX_BODY_SIZE", CONSTANTS),
       probeBodyMaxBytes: rustNumber(constants, "MAX_PROBE_BODY_SIZE", CONSTANTS),
       sitemapBodyMaxBytes: rustNumber(constants, "MAX_SITEMAP_SIZE", CONSTANTS),
-      assetSampleLimit: rustNumber(constants, "ASSET_SAMPLE_LIMIT", CONSTANTS),
+      assetSampleLimit: rustNumber(read(ASSETS), "ASSET_SAMPLE_LIMIT", ASSETS),
       stylesheetMaxCount: rustNumber(read(CSS_FETCH), "MAX_CSS_FILES", CSS_FETCH),
     },
   };

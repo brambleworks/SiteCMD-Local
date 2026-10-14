@@ -17,8 +17,8 @@ use crate::checks::seo::links::LinkTargets;
 use crate::manifest::{HostedLane, RuntimeFact};
 use crate::page::PageContext;
 use crate::probe::{
-    BodyLimit, BodyPolicy, ProbeFailure, ProbeFailureClass, ProbeMethod, ProbeOutcome,
-    ProbeRequest, RedirectPolicy,
+    BodyLimit, BodyPolicy, ContentCoding, ProbeFailure, ProbeFailureClass, ProbeMeasure,
+    ProbeMethod, ProbeOutcome, ProbeRequest, RedirectPolicy,
 };
 
 /// Non-printable separator for collision-resistant probe keys whose fields may
@@ -38,11 +38,25 @@ pub struct PlannedProbe {
     pub checks: Vec<String>,
 }
 
-/// One executed probe, keyed back to the plan that asked for it.
+/// One executed probe, keyed back to the plan that asked for it, with what the
+/// runtime measured executing it when the request asked for a measurement.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutedProbe {
     pub key: String,
     pub outcome: ProbeOutcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measure: Option<ProbeMeasure>,
+}
+
+impl ExecutedProbe {
+    /// An executed probe that measured nothing beyond its outcome.
+    pub fn new(key: String, outcome: ProbeOutcome) -> Self {
+        Self {
+            key,
+            outcome,
+            measure: None,
+        }
+    }
 }
 
 /// One route's probe plan: what to fetch, which checks that unlocks, and
@@ -70,6 +84,7 @@ pub fn probe_key(request: &ProbeRequest) -> String {
         BodyPolicy::SuccessOnly => "body=success_only",
         BodyPolicy::Always => "body=always",
         BodyPolicy::None => "body=none",
+        BodyPolicy::Count => "body=count",
     };
     let redirects = match request.redirects {
         RedirectPolicy::Follow => "redirects=follow",
@@ -84,6 +99,14 @@ pub fn probe_key(request: &ProbeRequest) -> String {
     if request.limit == BodyLimit::Sitemap {
         key.push(KEY_SEPARATOR);
         key.push_str("limit=sitemap");
+    }
+    if request.coding == ContentCoding::Raw {
+        key.push(KEY_SEPARATOR);
+        key.push_str("coding=raw");
+    }
+    if let Some(sample) = request.timed {
+        key.push(KEY_SEPARATOR);
+        key.push_str(&format!("timed={sample}"));
     }
     for (name, value) in &request.headers {
         key.push(KEY_SEPARATOR);
@@ -104,7 +127,7 @@ pub fn unexecuted_probe() -> ProbeOutcome {
 
 /// The executed probes, indexed for lookup by request.
 pub struct ProbeOutcomes<'a> {
-    by_key: HashMap<&'a str, &'a ProbeOutcome>,
+    by_key: HashMap<&'a str, &'a ExecutedProbe>,
 }
 
 impl<'a> ProbeOutcomes<'a> {
@@ -112,14 +135,17 @@ impl<'a> ProbeOutcomes<'a> {
     pub fn index(executed: &'a [ExecutedProbe]) -> Self {
         let mut by_key = HashMap::with_capacity(executed.len());
         for entry in executed {
-            by_key.insert(entry.key.as_str(), &entry.outcome);
+            by_key.insert(entry.key.as_str(), entry);
         }
         Self { by_key }
     }
 
     /// The outcome for one planned request, or `None` when it was not run.
     pub fn get(&self, request: &ProbeRequest) -> Option<&'a ProbeOutcome> {
-        self.by_key.get(probe_key(request).as_str()).copied()
+        self.by_key
+            .get(probe_key(request).as_str())
+            .copied()
+            .map(|entry| &entry.outcome)
     }
 
     /// Whether a key already has an answer. The plan's own short-circuit:
@@ -134,10 +160,18 @@ impl<'a> ProbeOutcomes<'a> {
     pub fn owned(&self, request: &ProbeRequest) -> ProbeOutcome {
         self.get(request).cloned().unwrap_or_else(unexecuted_probe)
     }
+
+    /// What the runtime measured executing one planned request, if anything.
+    pub fn measure(&self, request: &ProbeRequest) -> Option<ProbeMeasure> {
+        self.by_key
+            .get(probe_key(request).as_str())
+            .and_then(|entry| entry.measure)
+    }
 }
 
 /// Everything a probe-lane plan or verdict may read: the document, the answers gathered so far,
-/// what the caller recorded asking for, and the kept anchor resolution. No client, no clock.
+/// what the caller recorded asking for, and the kept anchor resolution and asset sample.
+/// No client, no clock.
 pub struct ProbeContext<'a> {
     pub page: &'a PageContext,
     pub outcomes: &'a ProbeOutcomes<'a>,
@@ -149,34 +183,13 @@ pub struct ProbeContext<'a> {
     /// The page's anchor destinations, resolved by the first link planner or
     /// verdict that asks.
     pub link_targets: &'a OnceLock<LinkTargets>,
+    /// The asset sample's addresses, resolved by the first asset planner that
+    /// asks.
+    pub asset_sample: &'a OnceLock<Vec<url::Url>>,
 }
 
 /// Probe entries not yet planned by this crate, paired with the required reason.
 pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[
-    (
-        "performance.asset_caching",
-        "the subresource collection and fetch loop are still in the desktop shell",
-    ),
-    (
-        "performance.asset_weight",
-        "the subresource collection and fetch loop are still in the desktop shell",
-    ),
-    (
-        "performance.broken_images",
-        "the image collection and fetch loop are still in the desktop shell",
-    ),
-    (
-        "performance.compression",
-        "needs a raw Content-Encoding observation the probe vocabulary does not carry yet",
-    ),
-    (
-        "performance.images.heavy",
-        "the image collection and fetch loop are still in the desktop shell",
-    ),
-    (
-        "performance.ttfb",
-        "a measured timing, not a document; the probe vocabulary carries no timing",
-    ),
     (
         "security.directory_listing",
         "the candidate-path sweep is still planned by the desktop shell",

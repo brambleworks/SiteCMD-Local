@@ -15,7 +15,7 @@ const PAGE: &str = concat!(
     "<html><head>",
     "<link rel=\"icon\" href=\"/icon.png\">",
     "<link rel=\"manifest\" href=\"/app.webmanifest\">",
-    "</head><body>",
+    "</head><body><img src=\"/hero.png\" alt=\"Hero\">",
     "<a href=\"privacy\">Notice</a>",
     "<a href=\"https://elsewhere.example/doc\">Doc</a>",
     "</body></html>"
@@ -132,10 +132,7 @@ fn drive_to_fixpoint(
             return (evaluation, round);
         }
         for planned in &plan.probes {
-            gathered.push(ExecutedProbe {
-                key: planned.key.clone(),
-                outcome: transport(planned),
-            });
+            gathered.push(ExecutedProbe::new(planned.key.clone(), transport(planned)));
         }
     }
     panic!("the plan never reached a fixpoint; a probe is being planned after it was answered");

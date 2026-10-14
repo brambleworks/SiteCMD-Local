@@ -10,9 +10,8 @@ use super::artifact::facts_in_order;
 use super::probes::{plan_probes, ExecutedProbe, ProbeContext, ProbeOutcomes, ProbePlan};
 use super::session_facts::{page_facts, SessionPageFacts};
 use super::{
-    artifact_runners, browser_measurement_samples, external_fact_plan, partition, runner_index,
-    BrowserFacts, EvaluationError, EvaluationInputs, EvaluationResponse, ExternalFactPlan,
-    PageArtifact, MANIFEST, PROBE_CHECKS,
+    artifact_runners, external_fact_plan, partition, runner_index, BrowserFacts, EvaluationError,
+    EvaluationInputs, EvaluationResponse, ExternalFactPlan, PageArtifact, MANIFEST, PROBE_CHECKS,
 };
 use crate::checks::security::tls::TlsFacts;
 use crate::checks::security::vulnerable_libraries::AdvisoryLookup;
@@ -91,6 +90,9 @@ pub struct RouteSession {
     /// The page's anchor destinations, resolved by the first link planner or
     /// verdict that asks and read by every later call.
     link_targets: OnceLock<LinkTargets>,
+    /// The asset sample's addresses, resolved by the first asset planner that
+    /// asks and read by every later call.
+    asset_sample: OnceLock<Vec<url::Url>>,
 }
 
 impl RouteSession {
@@ -113,6 +115,7 @@ impl RouteSession {
             fetched: false,
             external_fact_plan,
             link_targets: OnceLock::new(),
+            asset_sample: OnceLock::new(),
         })
     }
 
@@ -194,12 +197,20 @@ impl RouteSession {
                 results.extend((runner.run)(&inputs));
             }
         }
+        let probe_rows = results.len();
         for (check, executed) in PROBE_CHECKS.iter().zip(&ran[artifact_count..]) {
             if *executed {
                 results.extend((check.grade)(&probe_context));
             }
         }
 
+        let measurement_samples = crate::measurement::route_samples(
+            facts
+                .browser_facts
+                .as_ref()
+                .map(|browser| &browser.core_web_vitals),
+            &results[probe_rows..],
+        );
         let severity_inputs = results.iter().map(WebSeverityInput::of).collect();
         EvaluationResponse {
             manifest_digest: MANIFEST.digest().to_string(),
@@ -208,7 +219,7 @@ impl RouteSession {
             planned,
             results,
             severity_inputs,
-            measurement_samples: browser_measurement_samples(facts.browser_facts.as_ref()),
+            measurement_samples,
             not_evaluated,
             stack: detect_stack(
                 &self.page.response_headers,
@@ -245,6 +256,7 @@ impl RouteSession {
             resolver_facts: facts.resolver_facts.as_ref(),
             vulnerability_facts: facts.vulnerability_facts.as_ref(),
             link_targets: &self.link_targets,
+            asset_sample: &self.asset_sample,
         }
     }
 }
@@ -321,5 +333,25 @@ mod tests {
         route.plan();
         route.evaluate(&RouteFacts::default());
         assert_eq!(route.link_targets.get().map(std::ptr::from_ref), first);
+    }
+
+    #[test]
+    fn every_call_reads_one_resolution_of_the_asset_sample() {
+        let page: PageArtifact = serde_json::from_value(serde_json::json!({
+            "url": "https://example.com/",
+            "status_code": 200,
+            "headers": [],
+            "body": "<img src=\"/hero.png\" alt=\"Hero\"><script src=\"/app.js\"></script>",
+            "evaluation_time": "2026-08-05T00:00:00Z"
+        }))
+        .expect("a page");
+        let mut route = RouteSession::open(page).expect("opens");
+        route.record(Some(Vec::new()));
+        route.plan();
+        let first = route.asset_sample.get().map(std::ptr::from_ref);
+        assert!(first.is_some(), "the asset planner resolved the sample");
+        route.plan();
+        route.evaluate(&RouteFacts::default());
+        assert_eq!(route.asset_sample.get().map(std::ptr::from_ref), first);
     }
 }

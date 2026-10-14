@@ -9783,6 +9783,242 @@
       "name": "asset_sample_refused_target_marks_coverage_incomplete"
     },
     {
+      "check": "performance.asset_weight",
+      "expected": [
+        {
+          "category": "performance",
+          "checkId": "performance.asset_weight",
+          "confidence": "high",
+          "description": "2 sampled asset requests went unanswered, so no asset bytes were measured.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "reason": "sample_unanswered",
+            "unanswered": 2
+          },
+          "severity": "low",
+          "status": "skipped",
+          "title": "Sampled asset byte sum not measured"
+        },
+        {
+          "category": "performance",
+          "checkId": "performance.broken_images",
+          "confidence": "needs_review",
+          "confidenceReason": "The sampled response outcomes are direct evidence, but one or more probes were inconclusive, returned non-image content, or represented a srcset candidate that may not be selected by the browser.",
+          "description": "All 1 sampled image candidate had an inconclusive network or redirect outcome, so availability was not graded.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "http_error_count": 0,
+            "http_errors": [],
+            "image_assets_sampled": 1,
+            "inconclusive_count": 1,
+            "non_image_content_type_count": 0,
+            "non_image_content_types": [],
+            "responded_2xx": 0
+          },
+          "severity": "low",
+          "status": "skipped",
+          "title": "Sampled image availability was inconclusive"
+        },
+        {
+          "category": "performance",
+          "checkId": "performance.images.heavy",
+          "confidence": "high",
+          "description": "1 sampled image request went unanswered, so no image size was measured.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "reason": "sample_unanswered",
+            "unanswered": 1
+          },
+          "severity": "low",
+          "status": "skipped",
+          "title": "Sampled image transfer size not measured"
+        },
+        {
+          "category": "performance",
+          "checkId": "performance.asset_caching",
+          "confidence": "high",
+          "description": "2 sampled asset requests went unanswered, so no cache header was read.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "reason": "sample_unanswered",
+            "unanswered": 2
+          },
+          "severity": "low",
+          "status": "skipped",
+          "title": "Static asset caching not assessed"
+        }
+      ],
+      "input": {
+        "measured": [
+          {
+            "bytes": null,
+            "cache_control": null,
+            "content_type": null,
+            "group": 0,
+            "has_srcset": false,
+            "kind": "image",
+            "measured_floor": false,
+            "status_code": 0,
+            "url": "https://example.com/hero.png"
+          },
+          {
+            "bytes": null,
+            "cache_control": null,
+            "content_type": null,
+            "group": 1,
+            "has_srcset": false,
+            "kind": "script",
+            "measured_floor": false,
+            "status_code": 0,
+            "url": "https://example.com/app.js"
+          }
+        ],
+        "page_body": "<img src=\"/hero.png\" alt=\"hero\"><script src=\"/app.js\"></script>"
+      },
+      "name": "asset_sample_unanswered_sample_states_nothing"
+    },
+    {
+      "check": "performance.asset_weight",
+      "expected": [
+        {
+          "category": "performance",
+          "checkId": "performance.asset_weight",
+          "confidence": "needs_review",
+          "confidenceReason": "The sampled response sizes are direct evidence, but coverage is incomplete and this is not a navigation transfer measurement; capped/skipped assets, compression, responsive selection, and cache/lazy/media behavior can change the result.",
+          "description": "2 asset responses measured (sampled from 3 references): 3 KB sampled byte sum including the 78 B HTML document. This is not observed navigation transfer: text sizes are decoded/uncompressed, responsive groups use the largest measured candidate, and caching, lazy loading, media conditions, or browser selection can change what transfers. Measurement coverage is incomplete because one or more assets were capped, skipped, unavailable, or truncated.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "assets": [
+              {
+                "bytes": 1000,
+                "content_type": "image/png",
+                "kind": "image",
+                "measured_floor": false,
+                "status_code": 206,
+                "url": "https://example.com/a.png"
+              },
+              {
+                "bytes": 2000,
+                "content_type": "image/png",
+                "kind": "image",
+                "measured_floor": false,
+                "status_code": 206,
+                "url": "https://example.com/b.png"
+              }
+            ],
+            "by_kind": {
+              "image": 3000
+            },
+            "data_uri_bytes": 0,
+            "data_uri_count": 0,
+            "fetchable_found": 3,
+            "found": 3,
+            "html_bytes": 78,
+            "measured": 2,
+            "measured_asset_bytes": 3000,
+            "measurement_incomplete": true,
+            "measurement_kind": "sampled_decoded_byte_sum_not_navigation_transfer",
+            "sampled": 2,
+            "skipped_unsupported": 0,
+            "total_bytes": 3078,
+            "truncated_reads": 0,
+            "unmeasured": 0
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "Sampled asset byte sum"
+        },
+        {
+          "category": "performance",
+          "checkId": "performance.broken_images",
+          "confidence": "high",
+          "description": "2 of 2 sampled image candidates returned a 2xx response. This HTTP availability probe does not prove which responsive candidate the browser selected, that the response decoded as an image, or that every page image was sampled.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "http_error_count": 0,
+            "http_errors": [],
+            "image_assets_sampled": 2,
+            "inconclusive_count": 0,
+            "non_image_content_type_count": 0,
+            "non_image_content_types": [],
+            "responded_2xx": 2
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "Sampled image HTTP availability"
+        },
+        {
+          "category": "performance",
+          "checkId": "performance.images.heavy",
+          "confidence": "high",
+          "description": "None of the 2 sampled images measure over 300 KB.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "heavy": [],
+            "images_sampled": 2,
+            "threshold_bytes": 300000
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "Sampled image transfer size"
+        },
+        {
+          "category": "performance",
+          "checkId": "performance.asset_caching",
+          "confidence": "high",
+          "description": "No sampled static-asset filename matched this check's fingerprint-like token pattern.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "fingerprinted_sampled": 0,
+            "min_durable_secs": 604800,
+            "third_party_sampled": 0,
+            "weak": [],
+            "weak_count": 0
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "Static asset caching"
+        }
+      ],
+      "input": {
+        "measured": [
+          {
+            "bytes": 1000,
+            "cache_control": "max-age=60",
+            "content_type": "image/png",
+            "group": 0,
+            "has_srcset": false,
+            "kind": "image",
+            "measured_floor": false,
+            "status_code": 206,
+            "url": "https://example.com/a.png"
+          },
+          {
+            "bytes": 2000,
+            "cache_control": "max-age=60",
+            "content_type": "image/png",
+            "group": 1,
+            "has_srcset": false,
+            "kind": "image",
+            "measured_floor": false,
+            "status_code": 206,
+            "url": "https://example.com/b.png"
+          }
+        ],
+        "page_body": "<img src=\"/a.png\" alt=\"a\"><img src=\"/b.png\" alt=\"b\"><img src=\"/c.png\" alt=\"c\">",
+        "sample_limit": 2
+      },
+      "name": "asset_sample_counts_assets_past_the_sample"
+    },
+    {
       "check": "security.open_redirect",
       "expected": [
         {

@@ -61,10 +61,10 @@ async fn oversized_robots_declarations_leave_both_sitemap_comparisons_complete()
         ProbeRequest::get(format!("{origin}/robots.txt")),
         sitemap_request(&format!("{origin}/sitemap.xml")),
     ] {
-        outcomes.push(ExecutedProbe {
-            key: probe_key(&request),
-            outcome: crate::checks::probe(client, request).await,
-        });
+        outcomes.push(ExecutedProbe::new(
+            probe_key(&request),
+            crate::checks::probe(client, request).await,
+        ));
     }
     server.abort();
     assert!(matches!(

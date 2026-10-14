@@ -64,7 +64,7 @@
             }
           ],
           "compared": [0],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": []
         }
       },
@@ -165,7 +165,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -323,7 +323,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -481,7 +481,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -639,7 +639,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.canonical_loop",
@@ -811,7 +811,7 @@
             }
           ],
           "compared": [0, 1, 2],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.canonical_loop",
@@ -983,7 +983,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.hreflang_reciprocity",
@@ -1141,7 +1141,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -1286,7 +1286,7 @@
             }
           ],
           "compared": [0],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": []
         }
       },
@@ -1415,7 +1415,7 @@
             }
           ],
           "compared": [0, 2],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -1629,7 +1629,7 @@
             }
           ],
           "compared": [0, 1, 2, 3, 4],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.orphan_pages",
@@ -1839,7 +1839,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.noindex_in_sitemap",
@@ -2035,7 +2035,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -2251,7 +2251,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -2451,7 +2451,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -7652,7 +7652,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -7843,7 +7843,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -8001,7 +8001,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -8159,7 +8159,7 @@
             }
           ],
           "compared": [0],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
@@ -8321,7 +8321,7 @@
             }
           ],
           "compared": [1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.noindex_in_sitemap",
@@ -13517,7 +13517,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.noindex_in_sitemap",
@@ -13712,7 +13712,7 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "5b177d4d1dcdebaf",
+          "manifest_digest": "ca2b345491c03c0f",
           "verdicts": [
             {
               "check_id": "seo.noindex_in_sitemap",

@@ -10,8 +10,9 @@ pub mod performance;
 pub mod polish;
 pub use sitecmd_engine::checks::predeploy;
 mod probe_adapter;
+mod probe_slots;
 pub mod security;
-pub(crate) use probe_adapter::{probe, probe_get, probe_with_timeout};
+pub(crate) use probe_adapter::{probe, probe_get, probe_raw, probe_with_timeout};
 mod probes;
 pub use probes::ProbeCache;
 

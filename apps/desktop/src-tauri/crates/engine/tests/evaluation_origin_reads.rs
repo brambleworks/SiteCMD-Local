@@ -73,10 +73,7 @@ fn drive(
                 .collect(),
         );
         for probe in plan.probes {
-            outcomes.push(ExecutedProbe {
-                outcome: answer(&probe.request),
-                key: probe.key,
-            });
+            outcomes.push(ExecutedProbe::new(probe.key, answer(&probe.request)));
         }
     }
     panic!("the evaluation never reached a fixpoint");

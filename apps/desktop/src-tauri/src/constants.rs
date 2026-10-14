@@ -394,11 +394,6 @@ pub const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(4);
 /// the registry response).
 pub const RDAP_LOOKUP_TIMEOUT: Duration = Duration::from_secs(8);
 
-/// How many page assets (images, scripts, stylesheets) the asset sampler
-/// fetches to measure real transfer sizes. Bounded so a media-heavy page
-/// cannot turn one scan into hundreds of requests.
-pub const ASSET_SAMPLE_LIMIT: usize = 30;
-
 /// Concurrent asset-sampler fetches (mirrors the broken-links semaphore).
 pub const ASSET_FETCH_CONCURRENCY: usize = 10;
 

@@ -30,6 +30,15 @@ pub struct ProbeRequest {
     /// cap, so every other request keeps its bytes and its key.
     #[serde(default, skip_serializing_if = "BodyLimit::is_probe")]
     pub limit: BodyLimit,
+    /// Omitted on the wire for a decoded read, so every other request keeps
+    /// its bytes and its key.
+    #[serde(default, skip_serializing_if = "ContentCoding::is_decoded")]
+    pub coding: ContentCoding,
+    /// Set on a timing request: the runtime records how long the response
+    /// head took to arrive in the executed probe's measure. The number tells
+    /// repeated samples of one URL apart, so each keeps its own key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timed: Option<u8>,
     /// Extra request headers (name, value) the plan requires, e.g. a foreign
     /// `Origin` for the CORS reflection probe.
     #[serde(default)]
@@ -56,6 +65,8 @@ impl ProbeRequest {
             body: BodyPolicy::SuccessOnly,
             redirects: RedirectPolicy::Follow,
             limit: BodyLimit::Probe,
+            coding: ContentCoding::Decoded,
+            timed: None,
             headers: Vec::new(),
         }
     }
@@ -68,6 +79,8 @@ impl ProbeRequest {
             body: BodyPolicy::None,
             redirects: RedirectPolicy::Follow,
             limit: BodyLimit::Probe,
+            coding: ContentCoding::Decoded,
+            timed: None,
             headers: Vec::new(),
         }
     }
@@ -79,6 +92,18 @@ impl ProbeRequest {
 
     pub fn limit(mut self, limit: BodyLimit) -> Self {
         self.limit = limit;
+        self
+    }
+
+    pub fn coding(mut self, coding: ContentCoding) -> Self {
+        self.coding = coding;
+        self
+    }
+
+    /// A timing request, `sample` telling it apart from the other samples of
+    /// the same URL.
+    pub fn timed(mut self, sample: u8) -> Self {
+        self.timed = Some(sample);
         self
     }
 
@@ -94,13 +119,19 @@ impl ProbeRequest {
 }
 
 /// Response body policy. `SuccessOnly` requires 2xx evidence, `Always` keeps
-/// status-only results when body reads fail, and `None` skips the body.
+/// status-only results when body reads fail, `None` skips the body, and
+/// `Count` reads a body only to count it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BodyPolicy {
     SuccessOnly,
     Always,
     None,
+    /// Read a body only to count it, and only when nothing else sizes the
+    /// response: a status below 400 that is not a 206 and declares no
+    /// Content-Length. The bytes are counted under the probe cap and never
+    /// kept; the count comes back in the executed probe's measure.
+    Count,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,6 +140,26 @@ pub enum RedirectPolicy {
     Follow,
     /// Classify the first response as-is; a 3xx is the answer, not a hop.
     None,
+}
+
+/// Whether the runtime may decode a content-coded response before a verdict
+/// reads it. Every probe reads as a visitor's client would, decoded, except one
+/// that measures the coding itself or the size the server sent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentCoding {
+    #[default]
+    Decoded,
+    /// The response as the server sent it: its coding headers stay in
+    /// evidence, and a counted body is counted before any decoding. A runtime
+    /// that can read a coded body only decoded leaves such a body uncounted.
+    Raw,
+}
+
+impl ContentCoding {
+    fn is_decoded(&self) -> bool {
+        matches!(self, Self::Decoded)
+    }
 }
 
 /// Which size cap the runtime reads a body under. Every probe reads under the
@@ -148,7 +199,8 @@ pub struct ProbeResponse {
     /// Parsed declared length; the bounded body remains the observed truth.
     #[serde(default)]
     pub content_length: Option<u64>,
-    /// Every response header as (lowercase name, value), UTF-8 values only.
+    /// Every response header as (lowercase name, value), non-UTF-8 bytes
+    /// decoded lossily.
     /// `content_type`/`content_length` stay as parsed conveniences.
     #[serde(default)]
     pub headers: Vec<(String, String)>,
@@ -195,6 +247,43 @@ pub enum ProbeFailureClass {
     Transport,
 }
 
+/// What the runtime measured while it executed one probe, beyond the answer
+/// itself. Present only for a request that asked for a measurement.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProbeMeasure {
+    /// A timed request: milliseconds from sending it to its response head,
+    /// over every redirect it followed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_byte_ms: Option<u64>,
+    /// A `BodyPolicy::Count` read: the body's bytes, counted and discarded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counted_bytes: Option<u64>,
+    /// The count stopped at the probe cap, so `counted_bytes` is a floor.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub count_capped: bool,
+}
+
+impl ProbeMeasure {
+    pub fn timed(first_byte_ms: u64) -> Self {
+        Self {
+            first_byte_ms: Some(first_byte_ms),
+            ..Self::default()
+        }
+    }
+
+    pub fn counted(bytes: u64, capped: bool) -> Self {
+        Self {
+            counted_bytes: Some(bytes),
+            count_capped: capped,
+            ..Self::default()
+        }
+    }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 /// Detect SPA catch-all HTML returned for well-known-file probes.
 pub fn looks_like_html_shell(content_type: &str, body: &str) -> bool {
     if content_type.contains("text/html") {
@@ -224,37 +313,5 @@ pub fn decode_probe_body(bytes: Vec<u8>) -> ProbeBody {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn valid_utf8_decodes_verbatim() {
-        let body = decode_probe_body("Contact: mailto:security@example.com\n".into());
-        assert!(body.utf8_valid);
-        assert_eq!(body.bytes, 37);
-        assert!(body.text.starts_with("Contact:"));
-    }
-
-    #[test]
-    fn invalid_utf8_decodes_lossily_and_keeps_the_raw_length() {
-        let body = decode_probe_body(vec![0x43, 0xFF, 0x44]);
-        assert!(!body.utf8_valid);
-        assert_eq!(body.bytes, 3);
-        assert_eq!(body.text, "C\u{FFFD}D");
-    }
-
-    #[test]
-    fn html_shell_detected_by_content_type_or_markup() {
-        assert!(looks_like_html_shell("text/html; charset=utf-8", ""));
-        assert!(looks_like_html_shell(
-            "text/plain",
-            "  <!DOCTYPE html><html><head></head></html>"
-        ));
-        assert!(looks_like_html_shell("", "<html lang=\"en\"><body>"));
-        assert!(!looks_like_html_shell(
-            "text/plain",
-            "User-agent: *\nDisallow:\n"
-        ));
-        assert!(!looks_like_html_shell("", ""));
-    }
-}
+#[path = "probe_tests.rs"]
+mod tests;

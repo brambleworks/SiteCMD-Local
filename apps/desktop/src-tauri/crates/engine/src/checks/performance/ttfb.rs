@@ -1,9 +1,53 @@
 //! Shared TTFB grading for runtime-supplied, vantage-dependent samples.
 
 use crate::checks::{CheckResult, CheckStatus, IssueConfidence, ScanCategory, Severity};
+use crate::probe::{BodyPolicy, ProbeMeasure, ProbeOutcome, ProbeRequest};
 
 pub const CHECK_ID: &str = "performance.ttfb";
 pub const TITLE: &str = "Time to First Byte (TTFB)";
+
+/// How many times the origin is asked before the fastest response is graded.
+/// One request carries whatever the network and the origin's accept queue did
+/// to it, so a single sample is an upper bound on server time rather than a
+/// measurement of it. Two requests are enough to separate a cold connection
+/// from a consistently slow origin without turning a scan into a load test.
+pub const TTFB_SAMPLE_COUNT: u8 = 2;
+
+/// The vantage label a timing taken from an HTTP request's own response head
+/// records, on any runtime.
+pub const HTTP_PROBE_SOURCE: &str = "http_probe";
+
+/// The timing requests: the page, read again without its body, once per sample.
+pub fn timing_requests(page_url: &url::Url) -> Vec<ProbeRequest> {
+    (1..=TTFB_SAMPLE_COUNT)
+        .map(|sample| {
+            ProbeRequest::get(page_url.as_str())
+                .body(BodyPolicy::None)
+                .timed(sample)
+        })
+        .collect()
+}
+
+/// Grade the timing samples a runtime answered the way the desktop's timing
+/// shell grades its own: any timed response, whatever its status, is a sample,
+/// the fastest is graded, and with no sample the last failure says why.
+pub fn evaluate_timing_answers(
+    answers: &[(ProbeOutcome, Option<ProbeMeasure>)],
+) -> Vec<CheckResult> {
+    let mut samples = Vec::with_capacity(answers.len());
+    let mut last_failure = None;
+    for (outcome, measure) in answers {
+        match (outcome, measure.and_then(|measure| measure.first_byte_ms)) {
+            (ProbeOutcome::Response(_), Some(first_byte_ms)) => samples.push(first_byte_ms),
+            (ProbeOutcome::Failure(failure), _) => last_failure = Some(failure.detail.as_str()),
+            (ProbeOutcome::Response(_), None) => {}
+        }
+    }
+    if samples.is_empty() {
+        return ttfb_unavailable(last_failure.unwrap_or("no timing sample was taken"));
+    }
+    evaluate_ttfb_samples(&samples, HTTP_PROBE_SOURCE)
+}
 
 /// web.dev-aligned thresholds for one graded TTFB value, which is the fastest
 /// of however many samples the vantage took.
@@ -147,6 +191,9 @@ pub fn ttfb_unavailable(detail: &str) -> Vec<CheckResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::probe::{
+        ProbeFailure, ProbeFailureClass, ProbeMethod, ProbeResponse, RedirectPolicy,
+    };
 
     #[test]
     fn thresholds_follow_web_dev_guidance() {
@@ -240,5 +287,86 @@ mod tests {
         let results = ttfb_unavailable("connection reset by peer");
         assert_eq!(results[0].status, CheckStatus::Skipped);
         assert!(results[0].description.contains("Could not measure TTFB"));
+    }
+
+    fn answered(status: u16) -> ProbeOutcome {
+        ProbeOutcome::Response(ProbeResponse {
+            status,
+            final_url: String::new(),
+            content_type: None,
+            content_length: None,
+            headers: Vec::new(),
+            body: None,
+        })
+    }
+
+    fn failed(detail: &str) -> ProbeOutcome {
+        ProbeOutcome::Failure(ProbeFailure {
+            class: ProbeFailureClass::Timeout,
+            detail: detail.into(),
+        })
+    }
+
+    #[test]
+    fn the_timing_requests_read_the_page_without_its_body_once_per_sample() {
+        // A HEAD or disabled redirects would time a different request than the
+        // desktop GET.
+        let requests =
+            timing_requests(&url::Url::parse("https://example.com/blog/post?id=7").expect("url"));
+        assert_eq!(requests.len(), usize::from(TTFB_SAMPLE_COUNT));
+        for (index, request) in requests.iter().enumerate() {
+            assert_eq!(request.url, "https://example.com/blog/post?id=7");
+            assert_eq!(request.method, ProbeMethod::Get);
+            assert_eq!(request.redirects, RedirectPolicy::Follow);
+            assert_eq!(request.body, BodyPolicy::None);
+            assert_eq!(request.timed, Some(index as u8 + 1));
+        }
+    }
+
+    #[test]
+    fn the_fastest_answered_sample_is_graded_whatever_its_status() {
+        // The label is stored with each timing row, so a changed value strands
+        // the rows already recorded.
+        let results = evaluate_timing_answers(&[
+            (answered(200), Some(ProbeMeasure::timed(900))),
+            (answered(500), Some(ProbeMeasure::timed(150))),
+        ]);
+        assert_eq!(results[0].status, CheckStatus::Pass);
+        let raw = results[0].raw_data.as_ref().expect("raw data");
+        assert_eq!(raw["ttfb_ms"], 150);
+        assert_eq!(raw["samples_ms"], serde_json::json!([900, 150]));
+        assert_eq!(raw["measurement_source"], "http_probe");
+    }
+
+    #[test]
+    fn one_answered_sample_of_two_is_enough() {
+        let results = evaluate_timing_answers(&[
+            (failed("timeout"), None),
+            (answered(200), Some(ProbeMeasure::timed(2_400))),
+        ]);
+        assert_eq!(results[0].status, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn with_no_timing_the_last_failure_says_why() {
+        // Naming the first failure loses the final request's error.
+        let results = evaluate_timing_answers(&[
+            (failed("connect timeout"), None),
+            (failed("connection reset"), None),
+        ]);
+        assert_eq!(results[0].status, CheckStatus::Skipped);
+        assert_eq!(
+            results[0].description,
+            "Could not measure TTFB: connection reset"
+        );
+    }
+
+    #[test]
+    fn a_response_that_carried_no_timing_is_no_sample() {
+        let results = evaluate_timing_answers(&[(answered(200), None)]);
+        assert_eq!(results[0].status, CheckStatus::Skipped);
+        assert!(results[0]
+            .description
+            .contains("no timing sample was taken"));
     }
 }

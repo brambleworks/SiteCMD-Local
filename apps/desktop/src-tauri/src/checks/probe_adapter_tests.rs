@@ -233,25 +233,16 @@ async fn a_probe_cancelled_while_queued_gives_its_claim_back() {
     );
 }
 
-#[test]
-fn origin_keys_share_a_connection_target_not_a_path() {
-    assert_eq!(
-        origin_key("https://Example.com/a?x=1"),
-        origin_key("https://example.com/b")
-    );
-    assert_eq!(
-        origin_key("https://example.com/"),
-        "https://example.com:443"
-    );
-    assert_eq!(
-        origin_key("http://example.com:8080/"),
-        "http://example.com:8080"
-    );
-    assert_ne!(
-        origin_key("http://example.com/"),
-        origin_key("https://example.com/")
-    );
-    assert_eq!(origin_key("not a url"), "not a url");
+#[tokio::test]
+async fn a_raw_request_through_the_decoding_seam_is_refused_unsent() {
+    let origin = testing::CountingOrigin::serve(NO_CONTENT, 1).await;
+    let request = ProbeRequest::head(&origin.url).coding(ContentCoding::Raw);
+    let outcome = probe(crate::http_client::for_url(true), request).await;
+    assert!(matches!(
+        outcome,
+        ProbeOutcome::Failure(ref failure) if failure.class == ProbeFailureClass::Transport
+    ));
+    assert_eq!(origin.answered(), 0, "nothing was sent");
 }
 
 /// What a [`ResettingOrigin`] does with a connection once it is past the

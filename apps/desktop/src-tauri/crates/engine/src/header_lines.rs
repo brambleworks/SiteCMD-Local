@@ -30,10 +30,11 @@ pub enum FieldReading {
     /// comma only inside a quoted string or a parenthesized comment, so a
     /// joined value splits back into its lines.
     FirstLine,
-    /// Read as every line combined with ", " ([`field_value`]): RFC 9110
-    /// section 5.3 lets a recipient combine a field's lines that way without
-    /// changing its meaning, so this is the same text however the lines
-    /// arrived, for a list field and for free text with no grammar to split.
+    /// Read as every line combined with ", " ([`field_value`], or
+    /// [`probe_field_value`] for a probe response): RFC 9110 section 5.3 lets
+    /// a recipient combine a field's lines that way without changing its
+    /// meaning, so this is the same text however the lines arrived, for a list
+    /// field and for free text with no grammar to split.
     EveryLine,
     /// Read only for whether it is present.
     Presence,
@@ -57,6 +58,7 @@ pub const FIELD_READINGS: &[(&str, FieldReading)] = &[
     ("cf-cache-status", FieldReading::Presence),
     ("cf-ray", FieldReading::Presence),
     ("content-encoding", FieldReading::EveryLine),
+    ("content-range", FieldReading::FirstLine),
     ("content-security-policy", FieldReading::EveryLine),
     (
         "content-security-policy-report-only",
@@ -134,11 +136,30 @@ pub fn lines_of<'a>(name: &str, value: &'a str) -> Vec<&'a str> {
 /// or `None` when the field is absent. An unreadable line spoils only its own
 /// items, alike on both lanes, as RFC 9110 section 5.3 combines the lines.
 pub fn field_value(headers: &http::HeaderMap, name: &str) -> Option<String> {
-    let lines: Vec<String> = headers
-        .get_all(name)
-        .iter()
-        .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned())
-        .collect();
+    combined(
+        headers
+            .get_all(name)
+            .iter()
+            .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned()),
+    )
+}
+
+/// A probe response's `EveryLine` field, read by lowercase name. Like
+/// [`field_value`] for a page, every line it carried is combined in arrival
+/// order with ", ".
+pub fn probe_field_value(response: &ProbeResponse, name: &str) -> Option<String> {
+    combined(
+        response
+            .headers
+            .iter()
+            .filter(|(field, _)| field == name)
+            .map(|(_, value)| value.clone()),
+    )
+}
+
+/// The one way the engine combines a field's lines: in order, with ", ".
+fn combined(lines: impl Iterator<Item = String>) -> Option<String> {
+    let lines: Vec<String> = lines.collect();
     (!lines.is_empty()).then(|| lines.join(", "))
 }
 
@@ -164,6 +185,27 @@ pub fn split_probe_lines(response: &mut ProbeResponse) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_probe_responses_list_field_reads_every_line_combined() {
+        // Reading only the first Vary line hides the Accept-Encoding on the second.
+        let response = ProbeResponse {
+            status: 200,
+            final_url: String::new(),
+            content_type: None,
+            content_length: None,
+            headers: vec![
+                ("vary".into(), "Cookie".into()),
+                ("vary".into(), "Accept-Encoding".into()),
+            ],
+            body: None,
+        };
+        assert_eq!(
+            probe_field_value(&response, "vary").as_deref(),
+            Some("Cookie, Accept-Encoding")
+        );
+        assert_eq!(probe_field_value(&response, "content-encoding"), None);
+    }
 
     #[test]
     fn a_joined_value_splits_at_commas_outside_quotes_and_comments() {

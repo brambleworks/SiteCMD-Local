@@ -6,8 +6,9 @@
 use crate::manifest::{CompareDimension, Entry, MeasurementUnit};
 
 pub const ENTRIES: &[Entry] = &[
-    Entry::new("performance.asset_caching").probe(),
-    Entry::new("performance.asset_weight").probe(),
+    // Revision 2 declines to grade a sample nobody answered.
+    Entry::new("performance.asset_caching").probe().revision(2),
+    Entry::new("performance.asset_weight").probe().revision(2),
     Entry::new("performance.broken_images").probe(),
     Entry::new("performance.cache"),
     Entry::new("performance.cls")
@@ -25,7 +26,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry::new("performance.images"),
     Entry::new("performance.images.dimensions"),
     Entry::new("performance.images.format"),
-    Entry::new("performance.images.heavy").probe(),
+    Entry::new("performance.images.heavy").probe().revision(2),
     Entry::new("performance.images.lazy"),
     Entry::new("performance.inline_css"),
     Entry::new("performance.lcp")

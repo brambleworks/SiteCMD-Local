@@ -26,10 +26,10 @@
     "total": 420
   },
   "hostedCheckCounts": {
-    "web": 147,
+    "web": 153,
     "crossPage": 7,
     "axe": 55,
-    "total": 202
+    "total": 208
   },
   "polishSignals": [
     {

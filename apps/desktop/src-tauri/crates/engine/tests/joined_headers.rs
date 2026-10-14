@@ -328,10 +328,8 @@ fn probe_answer(
         .find(|(name, _)| name.eq_ignore_ascii_case("origin"))
         .map(|(_, value)| value.clone())
         .unwrap_or_default();
-    route.record(Some(vec![ExecutedProbe {
-        key: probe.key.clone(),
-        outcome: ProbeOutcome::Response(respond(&origin)),
-    }]));
+    let outcome = ProbeOutcome::Response(respond(&origin));
+    route.record(Some(vec![ExecutedProbe::new(probe.key.clone(), outcome)]));
     let rows = serde_json::to_value(route.evaluate(&RouteFacts::default()).results).expect("rows");
     rows.as_array()
         .expect("rows")

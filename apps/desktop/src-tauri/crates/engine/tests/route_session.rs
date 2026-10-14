@@ -114,10 +114,7 @@ fn every_call_answers_what_the_whole_request_answers_over_the_same_outcomes() {
                 break;
             }
             for planned in &plan.probes {
-                let executed = ExecutedProbe {
-                    key: planned.key.clone(),
-                    outcome: answer(planned),
-                };
+                let executed = ExecutedProbe::new(planned.key.clone(), answer(planned));
                 gathered.push(executed.clone());
                 fresh.push(executed);
             }
@@ -173,10 +170,7 @@ fn opening_answers_the_external_fact_plan_the_evaluation_reads() {
             .plan()
             .probes
             .iter()
-            .map(|planned| ExecutedProbe {
-                key: planned.key.clone(),
-                outcome: answer(planned),
-            })
+            .map(|planned| ExecutedProbe::new(planned.key.clone(), answer(planned)))
             .collect();
         route.record(Some(outcomes));
         let evaluated = route.evaluate(&RouteFacts::default());
