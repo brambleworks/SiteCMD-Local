@@ -12,8 +12,8 @@ use std::collections::{HashMap, HashSet};
 /// Group pages by a normalized text field and report groups sharing a value.
 ///
 /// An unknown page joins its value's group but is never kept. Two established
-/// kept pages make a duplicate whatever unknown members say. Otherwise a
-/// group with an unknown member declines when no other group is a duplicate.
+/// kept pages make a duplicate whatever unknown members say. A
+/// group with an unknown member declines alongside any duplicate.
 /// This can decline a group that no unknown page could complete, or a group
 /// that is duplicated in every reading because a known page canonicalizes
 /// to an unknown member and different pages compete in its two readings.
@@ -68,27 +68,26 @@ pub(super) fn duplicate_field<'a>(
                 })
                 .map(|page| page.url.as_str())
                 .collect();
-            undecided |= kept.len() < 2
-                && members.len() >= 2
-                && members.iter().any(|page| page.noindex.is_none());
+            undecided |= members.len() >= 2 && members.iter().any(|page| page.noindex.is_none());
             (key, kept)
         })
         .collect();
 
     let mut duplicated: Vec<(&String, &Vec<&str>)> =
         grouped.iter().filter(|(_, urls)| urls.len() >= 2).collect();
+    let mut outcomes = if undecided {
+        vec![(
+            super::not_checked(
+                check_id,
+                format!("A page sharing its {label} with another compared page reached SiteCMD with its X-Robots-Tag lines combined, so whether it competes for that {label} could not be told."),
+            ),
+            Vec::new(),
+        )]
+    } else {
+        Vec::new()
+    };
     if duplicated.is_empty() {
-        return if undecided {
-            vec![(
-                super::not_checked(
-                    check_id,
-                    format!("A page sharing its {label} with another compared page reached SiteCMD with its X-Robots-Tag lines combined, so whether it competes for that {label} could not be told."),
-                ),
-                Vec::new(),
-            )]
-        } else {
-            Vec::new()
-        };
+        return outcomes;
     }
     duplicated.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(b.0)));
 
@@ -176,5 +175,6 @@ pub(super) fn duplicate_field<'a>(
         .iter()
         .flat_map(|(_, urls)| urls.iter().map(|url| url.to_string()))
         .collect();
-    vec![(result, named)]
+    outcomes.insert(0, (result, named));
+    outcomes
 }

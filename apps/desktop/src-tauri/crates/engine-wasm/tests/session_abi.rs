@@ -121,6 +121,30 @@ fn an_unknown_noindex_fact_skips_a_sitemap_comparison_through_the_abi() {
 }
 
 #[test]
+fn a_sitemap_finding_keeps_an_unknown_listing_decline_through_the_abi() {
+    // The ABI previously omitted the unknown listing's decline beside a known contradiction.
+    let mut pages = ["https://example.com/", "https://example.com/menu"]
+        .map(|url| session_page(&request(url)).expect("facts").expect("named"));
+    pages[0].noindex = Some(true);
+    pages[1].noindex = None;
+    let mut input = serde_json::json!({"pages": pages});
+    input["pages"][0]["sitemap"] =
+        serde_json::json!({"entries": ["r0", "r1"], "partial_causes": []});
+    let bytes = abi::call_json(engine_session_evaluate, &input);
+    let answer: SessionResponse = serde_json::from_slice(&bytes).expect("answer");
+    let rows: Vec<_> = answer
+        .verdicts
+        .iter()
+        .filter(|row| row.check_id == "seo.noindex_in_sitemap")
+        .collect();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].status, CheckStatus::Warn);
+    assert_eq!(rows[0].pages, [0]);
+    assert_eq!(rows[1].status, CheckStatus::Skipped);
+    assert!(rows[1].pages.is_empty());
+}
+
+#[test]
 fn page_facts_and_the_comparison_match_the_native_answers() {
     let mut pages: Vec<SessionPageFacts> = Vec::new();
     for url in ["https://example.com/", "https://example.com/menu"] {
