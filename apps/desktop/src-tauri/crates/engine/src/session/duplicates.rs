@@ -12,11 +12,12 @@ use std::collections::{HashMap, HashSet};
 /// Group pages by a normalized text field and report groups sharing a value.
 ///
 /// An unknown page joins its value's group but is never kept. Two established
-/// kept pages make a duplicate whatever unknown members say. A
-/// group with an unknown member declines alongside any duplicate.
-/// This can decline a group that no unknown page could complete, or a group
-/// that is duplicated in every reading because a known page canonicalizes
-/// to an unknown member and different pages compete in its two readings.
+/// kept pages make a duplicate whatever unknown members say. A group of two or
+/// more with an unknown member declines, after the duplicate row when one is
+/// found. This can decline a group that no unknown page could join or
+/// complete, or a group that is duplicated in every reading because a known
+/// page canonicalizes to an unknown member and different pages compete in its
+/// two readings.
 ///
 /// A repeated value is only a defect between pages that both ask to be indexed
 /// in their own right. A `noindex` page is not competing for the value, and a

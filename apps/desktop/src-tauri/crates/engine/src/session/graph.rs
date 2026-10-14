@@ -134,6 +134,17 @@ pub(super) fn noindex_in_sitemap(
     if contradictions.is_empty() {
         return outcomes;
     }
+    if outcomes.is_empty() {
+        if let Some(reason) = sitemap.partial_because {
+            outcomes.push((
+                super::not_checked(
+                    "seo.noindex_in_sitemap",
+                    super::partial_sitemap_reason(reason),
+                ),
+                Vec::new(),
+            ));
+        }
+    }
     let safe_contradictions: Vec<String> = contradictions
         .iter()
         .map(|url| safe_page_url(url))

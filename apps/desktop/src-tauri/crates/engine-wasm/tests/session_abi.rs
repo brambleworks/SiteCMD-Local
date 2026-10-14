@@ -122,7 +122,7 @@ fn an_unknown_noindex_fact_skips_a_sitemap_comparison_through_the_abi() {
 
 #[test]
 fn a_sitemap_finding_keeps_an_unknown_listing_decline_through_the_abi() {
-    // The ABI previously omitted the unknown listing's decline beside a known contradiction.
+    // A known contradiction must not hide the decline for an unknown listed page, through the ABI too.
     let mut pages = ["https://example.com/", "https://example.com/menu"]
         .map(|url| session_page(&request(url)).expect("facts").expect("named"));
     pages[0].noindex = Some(true);

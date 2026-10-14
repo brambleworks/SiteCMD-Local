@@ -184,9 +184,7 @@ fn unreported_outcomes(
                 ),
                 "seo.noindex_in_sitemap" => sitemap
                     .and_then(|sitemap| sitemap.partial_because)
-                    .map(|reason| format!(
-                        "SiteCMD read only part of this site's sitemap ({reason}), so a noindex page listed in the part it did not read would not have been seen."
-                    )),
+                    .map(partial_sitemap_reason),
                 "seo.hreflang_reciprocity" if compared.hreflang_truncated => Some(
                     "A compared page declares more hreflang alternates than SiteCMD keeps for one page, so a missing return link could not be told apart from one it did not keep."
                         .to_string(),
@@ -208,6 +206,12 @@ fn unreported_outcomes(
             }
         })
         .collect()
+}
+
+fn partial_sitemap_reason(reason: &str) -> String {
+    format!(
+        "SiteCMD read only part of this site's sitemap ({reason}), so a noindex page listed in the part it did not read would not have been seen."
+    )
 }
 
 /// The row of a check that reached no verdict, saying why.
