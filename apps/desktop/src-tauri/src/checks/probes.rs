@@ -8,7 +8,8 @@ use sitecmd_engine::probe::{ProbeOutcome, ProbeRequest};
 
 use super::{performance, probe, CheckContext, RedirectWalk, RobotsTxtFetch, SitemapProbe};
 
-/// Per-scan memo for origin-scoped probe fetches shared across async checks.
+/// Per-scan memo for origin-scoped probe fetches and the page's link resolution,
+/// shared across async checks.
 /// Checks racing on the same entry await one in-flight request instead of each
 /// re-fetching the same origin resource.
 #[derive(Default)]
@@ -21,6 +22,10 @@ pub struct ProbeCache {
     pub(in crate::checks) robots_txt: tokio::sync::OnceCell<RobotsTxtFetch>,
     pub(in crate::checks) sitemap: tokio::sync::OnceCell<SitemapProbe>,
     pub(in crate::checks) redirect_chain: tokio::sync::OnceCell<RedirectWalk>,
+    /// The page's anchor destinations under the desktop's subresource policy,
+    /// resolved once for both broken-link checks.
+    pub(in crate::checks) link_targets:
+        std::sync::OnceLock<sitecmd_engine::checks::seo::links::LinkTargets>,
     /// The certificate facts the TLS handshake produced. Memoized like the
     /// other origin probes, and for the same reason: it is one connection per
     /// scan, and what it learned outlives the verdicts it was opened for.

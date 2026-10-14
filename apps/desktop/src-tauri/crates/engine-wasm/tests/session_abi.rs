@@ -1,32 +1,35 @@
 //! The session ABI answers byte for byte what the native functions answer.
 
+#[path = "support/abi.rs"]
+mod abi;
+
 use serde::Deserialize;
 use sitecmd_engine::evaluation::{
-    evaluate_session, session_page, PageArtifact, SessionPageFacts, SessionPageRequest,
-    SessionRequest, SessionResponse,
+    evaluate_session, session_page, PageArtifact, RouteFacts, RouteSession, SessionPageFacts,
+    SessionPageRequest, SessionRequest, SessionResponse,
 };
+use sitecmd_engine::header_lines::HeaderLines;
 use sitecmd_engine::CheckStatus;
 use sitecmd_engine_wasm::{
-    engine_session_evaluate, engine_session_page, scorer_alloc, scorer_free,
+    engine_route_evaluate, engine_route_open, engine_route_plan, engine_route_session_page,
+    engine_session_evaluate,
 };
 
 const CORPUS: &str = include_str!("../../engine/fixtures/session/golden.json");
 
-fn call_through_abi(
-    entry: unsafe extern "C" fn(*mut u8, u32) -> *const u8,
-    request: &[u8],
-) -> Vec<u8> {
-    unsafe {
-        let input = scorer_alloc(request.len() as u32);
-        core::ptr::copy_nonoverlapping(request.as_ptr(), input, request.len());
-        let frame = entry(input, request.len() as u32) as *mut u8;
-        let mut length_bytes = [0u8; 4];
-        core::ptr::copy_nonoverlapping(frame, length_bytes.as_mut_ptr(), 4);
-        let payload_length = u32::from_le_bytes(length_bytes) as usize;
-        let payload = core::slice::from_raw_parts(frame.add(4), payload_length).to_vec();
-        scorer_free(frame, (4 + payload_length) as u32);
-        payload
-    }
+/// This thread's route opened on the request's page, its outcomes recorded,
+/// and its facts read through the ABI.
+fn facts_through_abi(request: &SessionPageRequest) -> Vec<u8> {
+    abi::open(&request.page);
+    let recorded = abi::call_json(
+        engine_route_plan,
+        &serde_json::json!({ "probe_outcomes": request.probe_outcomes }),
+    );
+    assert!(abi::refusal(&recorded).is_none());
+    abi::call_json(
+        engine_route_session_page,
+        &serde_json::json!({ "routes": request.routes }),
+    )
 }
 
 fn request(url: &str) -> SessionPageRequest {
@@ -57,7 +60,7 @@ fn each_supplied_sitemap_cause_skips_comparison_through_the_abi() {
 
     let mut pages = ["https://example.com/", "https://example.com/menu"]
         .map(|url| session_page(&request(url)).expect("facts").expect("named"));
-    pages[1].noindex = true;
+    pages[1].noindex = Some(true);
     for cause in [
         json!({"cause": "index", "listed": 0}),
         json!({"cause": "url_limit", "listed": SITEMAP_URL_LIMIT - 1}),
@@ -65,7 +68,7 @@ fn each_supplied_sitemap_cause_skips_comparison_through_the_abi() {
     ] {
         let mut input = json!({"pages": pages});
         input["pages"][0]["sitemap"] = json!({"entries": ["r0"], "partial_causes": [cause]});
-        let bytes = call_through_abi(
+        let bytes = abi::call(
             engine_session_evaluate,
             &serde_json::to_vec(&input).expect("input"),
         );
@@ -92,6 +95,32 @@ fn each_supplied_sitemap_cause_skips_comparison_through_the_abi() {
 }
 
 #[test]
+fn an_unknown_noindex_fact_skips_a_sitemap_comparison_through_the_abi() {
+    // Defaulting null noindex to false makes an undecided sitemap listing pass.
+    let pages = ["https://example.com/", "https://example.com/menu"]
+        .map(|url| session_page(&request(url)).expect("facts").expect("named"));
+    let mut input = serde_json::json!({"pages": pages});
+    input["pages"][0]["sitemap"] = serde_json::json!({"entries": ["r1"], "partial_causes": []});
+    for (noindex, expected) in [
+        (serde_json::Value::Null, CheckStatus::Skipped),
+        (serde_json::json!(true), CheckStatus::Warn),
+    ] {
+        input["pages"][1]["noindex"] = noindex;
+        let bytes = abi::call_json(engine_session_evaluate, &input);
+        let answer: SessionResponse = serde_json::from_slice(&bytes).expect("answer");
+        assert_eq!(
+            answer
+                .verdicts
+                .iter()
+                .find(|verdict| verdict.check_id == "seo.noindex_in_sitemap")
+                .expect("verdict")
+                .status,
+            expected,
+        );
+    }
+}
+
+#[test]
 fn page_facts_and_the_comparison_match_the_native_answers() {
     let mut pages: Vec<SessionPageFacts> = Vec::new();
     for url in ["https://example.com/", "https://example.com/menu"] {
@@ -99,10 +128,7 @@ fn page_facts_and_the_comparison_match_the_native_answers() {
             &serde_json::to_value(session_page(&request(url)).expect("facts")).expect("value"),
         )
         .expect("bytes");
-        let through = call_through_abi(
-            engine_session_page,
-            &serde_json::to_vec(&request(url)).expect("request"),
-        );
+        let through = facts_through_abi(&request(url));
         assert_eq!(through, native);
         pages.push(
             serde_json::from_slice::<Option<SessionPageFacts>>(&through)
@@ -114,7 +140,7 @@ fn page_facts_and_the_comparison_match_the_native_answers() {
     let native =
         serde_json::to_vec(&serde_json::to_value(evaluate_session(&compare)).expect("value"))
             .expect("bytes");
-    let through = call_through_abi(
+    let through = abi::call(
         engine_session_evaluate,
         &serde_json::to_vec(&compare).expect("request"),
     );
@@ -131,7 +157,7 @@ fn page_facts_and_the_comparison_match_the_native_answers() {
 
 #[test]
 fn a_malformed_comparison_is_refused_as_data() {
-    let answer = call_through_abi(engine_session_evaluate, b"{\"pages\": 3}");
+    let answer = abi::call(engine_session_evaluate, b"{\"pages\": 3}");
     assert!(String::from_utf8(answer)
         .expect("utf8")
         .starts_with("{\"error\":"));
@@ -168,10 +194,7 @@ fn every_corpus_answer_survives_both_framed_exports() {
             };
             let native =
                 serde_json::to_value(session_page(&request).expect("facts")).expect("value");
-            let through = call_through_abi(
-                engine_session_page,
-                &serde_json::to_vec(&request).expect("request"),
-            );
+            let through = facts_through_abi(&request);
             assert_eq!(
                 through,
                 serde_json::to_vec(&native).expect("bytes"),
@@ -191,7 +214,7 @@ fn every_corpus_answer_survives_both_framed_exports() {
             pages: facts.into_iter().flatten().collect(),
         };
         let native = serde_json::to_value(evaluate_session(&request)).expect("value");
-        let through = call_through_abi(
+        let through = abi::call(
             engine_session_evaluate,
             &serde_json::to_vec(&request).expect("request"),
         );
@@ -214,10 +237,59 @@ fn every_corpus_answer_survives_both_framed_exports() {
 fn an_unparseable_page_address_is_refused_through_the_abi() {
     let request = request("not a URL");
     let native = session_page(&request).expect_err("invalid address");
-    let through = call_through_abi(
-        engine_session_page,
-        &serde_json::to_vec(&request).expect("request"),
+    let through = abi::call_json(
+        engine_route_open,
+        &serde_json::json!({ "page": request.page }),
     );
-    let answer: serde_json::Value = serde_json::from_slice(&through).expect("error payload");
-    assert_eq!(answer["error"], native.to_string());
+    assert_eq!(
+        abi::refusal(&through).as_deref(),
+        Some(native.to_string().as_str())
+    );
+}
+
+#[test]
+fn the_open_frame_preserves_the_joined_header_line_form() {
+    // Ignoring the wire's joined value leaves a repeated X-Frame-Options value unrecognized.
+    let mut page = request("https://example.com/").page;
+    page.headers = vec![("x-frame-options".into(), "DENY, SAMEORIGIN".into())];
+    let opened = abi::call_json(
+        engine_route_open,
+        &serde_json::json!({ "page": page, "header_lines": "joined" }),
+    );
+    assert!(abi::refusal(&opened).is_none());
+    let joined = abi::call_json(engine_route_evaluate, &serde_json::json!({}));
+    let native = RouteSession::open_with(page.clone(), HeaderLines::Joined)
+        .expect("opens")
+        .evaluate(&RouteFacts::default());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&joined).expect("answer"),
+        serde_json::to_value(native).expect("native answer")
+    );
+    abi::open(&page);
+    let separate = abi::call_json(engine_route_evaluate, &serde_json::json!({}));
+    assert_ne!(joined, separate);
+}
+
+#[test]
+fn a_joined_robots_scope_serializes_unknown_noindex_as_null() {
+    // Omitting unknown noindex must not make an undecided fact disappear from the wire.
+    let request = request("https://example.com/");
+    let mut page = request.page;
+    page.headers = vec![("x-robots-tag".into(), "bingbot: noarchive, noindex".into())];
+    let opened = abi::call_json(
+        engine_route_open,
+        &serde_json::json!({"page": page, "header_lines": "joined"}),
+    );
+    assert!(abi::refusal(&opened).is_none());
+    let bytes = abi::call_json(
+        engine_route_session_page,
+        &serde_json::json!({"routes": request.routes}),
+    );
+    let frame: serde_json::Value = serde_json::from_slice(&bytes).expect("frame");
+    let native = RouteSession::open_with(page, HeaderLines::Joined)
+        .expect("opens")
+        .session_page(&request.routes)
+        .expect("facts");
+    assert_eq!(frame, serde_json::to_value(native).expect("native frame"));
+    assert_eq!(frame.get("noindex"), Some(&serde_json::Value::Null));
 }

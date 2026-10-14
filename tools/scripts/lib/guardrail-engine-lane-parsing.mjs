@@ -34,16 +34,37 @@ export function excludedChecks(source, tableConst) {
   }));
 }
 
-/** Return dispatched check types and total invocation count for parser coverage. */
+const FREE_FUNCTION_COVERS = [
+  ["accessibility.axe."],
+  [
+    "performance.cls",
+    "performance.fcp",
+    "performance.lcp",
+    "performance.long_task_blocking",
+    "polish.js-errors",
+  ],
+  ["performance.page_weight"],
+  ["security.ssl.chain", "security.ssl.expiry", "security.ssl.hostname", "security.ssl.protocol"],
+];
+
+/** Return check types and the count of runner rows requiring desktop registration. */
 export function runnerDispatches(source, tableConst) {
   const table = tableBlock(source, tableConst);
   if (table === null) return null;
-  // Separate inline and block closures to avoid nested regex quantifiers.
+  // Separate closure shapes to avoid nested quantifiers; free-function rows yield no type.
   const types = [
-    ...table.matchAll(/run: \|inputs\| ([\w:]+)\.run\(/g),
-    ...table.matchAll(/run: \|inputs\| \{\n\s*([\w:]+)\.run\(/g),
+    ...table.matchAll(/run: \|inputs\| ([\w:]+)(?:\.run|::evaluate)\(/g),
+    ...table.matchAll(/run: \|inputs\| \{\n\s*([\w:]+)(?:\.run|::evaluate)\(/g),
   ].map((match) => match[1].split("::").pop());
-  return { types, invocations: [...table.matchAll(/[\w:]+\.run\(/g)].length };
+  const freeFunctions = [...table.matchAll(/covers:\s*&\[([^\]]*)\],\s*run:\s*\|inputs\|/g)].filter(
+    (match) => {
+      const covers = [...match[1].matchAll(/"([^"]+)"/g)].map((id) => id[1]);
+      return FREE_FUNCTION_COVERS.some(
+        (ids) => ids.length === covers.length && ids.every((id) => covers.includes(id)),
+      );
+    },
+  ).length;
+  return { types, invocations: [...table.matchAll(/\brun:\s*\|inputs\|/g)].length - freeFunctions };
 }
 
 /** Return whether a fetch plan can supply every fact required by an entry. */

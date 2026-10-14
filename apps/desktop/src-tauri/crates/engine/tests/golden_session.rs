@@ -143,7 +143,7 @@ fn headline_verdicts_match_each_cases_pages() {
                 assert_eq!(actual.response.compared, [0, 2]);
                 let error = facts(1);
                 assert!(error.title.is_none() && error.description.is_none() && error.h1.is_none());
-                assert!(error.canonical.is_none() && !error.noindex);
+                assert!(error.canonical.is_none() && error.noindex == Some(false));
                 assert!(error.links.is_empty() && error.hreflang.is_empty());
             }
             "five_pages_with_one_unlinked" => {
@@ -212,7 +212,7 @@ fn headline_verdicts_match_each_cases_pages() {
                         && redirected.description.is_none()
                         && redirected.h1.is_none()
                 );
-                assert!(redirected.canonical.is_none() && !redirected.noindex);
+                assert!(redirected.canonical.is_none() && redirected.noindex == Some(false));
                 assert!(redirected.links.is_empty() && redirected.hreflang.is_empty());
             }
             "an_error_entry_page_keeps_its_sitemap" => {

@@ -46,7 +46,7 @@ pub const SEO_RUNNERS: &[Runner] = &[
     },
     Runner {
         covers: &["seo.noindex"],
-        run: |inputs| meta::NoindexCheck.run(inputs.page),
+        run: |inputs| meta::NoindexCheck::evaluate(inputs.page, inputs.header_lines),
     },
     Runner {
         covers: &["seo.og_image_relative"],

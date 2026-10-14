@@ -14,7 +14,7 @@ fn page(url: &str) -> SessionPage {
         meta_description: None,
         h1: None,
         canonical: None,
-        noindex: false,
+        noindex: Some(false),
         hreflang: Vec::new(),
         hreflang_truncated: false,
         internal_links: Vec::new(),
@@ -196,8 +196,8 @@ fn a_sitemap_contradiction_names_only_the_successful_noindex_page() {
         page("https://example.com/menu"),
     ];
     pages[1].status_code = 404;
-    pages[1].noindex = true;
-    pages[2].noindex = true;
+    pages[1].noindex = Some(true);
+    pages[2].noindex = Some(true);
     let urls: Vec<_> = pages.iter().map(|page| page.url.clone()).collect();
     let analysis = analyze_session(
         &pages,

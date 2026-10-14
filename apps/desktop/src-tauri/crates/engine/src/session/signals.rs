@@ -1,6 +1,8 @@
 //! Ephemeral per-page signals consumed by cross-page session analysis.
 //! They are skipped during serialization and never reach storage or the frontend.
 
+use crate::checks::seo::robots_tag;
+use crate::header_lines::HeaderLines;
 use std::sync::LazyLock;
 
 /// Per-page cap on internal links and on hreflang alternates, for bounded session memory.
@@ -20,7 +22,8 @@ pub struct PageSignals {
     pub meta_description: Option<String>,
     pub h1: Option<String>,
     pub canonical: Option<String>,
-    pub noindex: bool,
+    /// `None` when the page's X-Robots-Tag lines arrived joined and where one ended decides it.
+    pub noindex: Option<bool>,
     /// (hreflang value, resolved absolute href)
     pub hreflang: Vec<(String, String)>,
     /// Same-site outgoing links, resolved absolute, folded onto the scanned
@@ -56,17 +59,36 @@ fn x_robots_blocks_general_index(value: &str) -> bool {
     let mut applies_to_general_index = None;
     value.split(',').any(|clause| {
         let clause = clause.trim();
-        if let Some((agent, directives)) = clause.split_once(':') {
-            let applies = matches!(
-                agent.trim().to_ascii_lowercase().as_str(),
-                "googlebot" | "robots" | "*"
-            );
-            applies_to_general_index = Some(applies);
-            applies && has_noindex_directive(directives)
-        } else {
-            applies_to_general_index.unwrap_or(true) && has_noindex_directive(clause)
+        match clause.split_once(':') {
+            Some((name, directives)) => {
+                let Some(agent) = robots_tag::crawler_name(name) else {
+                    return false;
+                };
+                let applies = matches!(agent.as_str(), "googlebot" | "robots" | "*");
+                applies_to_general_index = Some(applies);
+                applies && has_noindex_directive(directives)
+            }
+            None => applies_to_general_index.unwrap_or(true) && has_noindex_directive(clause),
         }
     })
+}
+
+/// Whether the X-Robots-Tag lines mark the page noindex for the comparison,
+/// or `None` when joined lines say so read one line per clause and not read
+/// as they arrived. Any split of them reads as one of the two, since a clause
+/// after a name addresses that name's crawler or every crawler.
+fn header_noindex(headers: &http::HeaderMap, lines: HeaderLines) -> Option<bool> {
+    let readings = robots_tag::readings(headers, lines);
+    let blocks = |values: &[String]| {
+        values
+            .iter()
+            .any(|value| x_robots_blocks_general_index(value))
+    };
+    let as_arrived = blocks(&readings.as_arrived);
+    match readings.per_clause {
+        Some(per_clause) if blocks(&per_clause) != as_arrived => None,
+        _ => Some(as_arrived),
+    }
 }
 
 /// A link to the same site as `page_url`, rewritten onto the scanned origin, or
@@ -127,6 +149,25 @@ pub fn extract_page_signals_with_headers(
     body: &str,
     response_headers: &http::HeaderMap,
 ) -> PageSignals {
+    extract_page_signals_with_lines(
+        page_url,
+        requested_url,
+        status_code,
+        body,
+        response_headers,
+        HeaderLines::Separate,
+    )
+}
+
+/// Signals for a fetched page with the header lines as the runtime handed them over.
+pub fn extract_page_signals_with_lines(
+    page_url: &url::Url,
+    requested_url: &url::Url,
+    status_code: u16,
+    body: &str,
+    response_headers: &http::HeaderMap,
+    lines: HeaderLines,
+) -> PageSignals {
     // Markup examples in scripts/comments/styles are not document metadata or
     // navigation. Use the same exclusion boundary as the page-level checks.
     let scannable = crate::checks::seo::headings::NON_CONTENT_BLOCK_RE.replace_all(body, " ");
@@ -145,11 +186,7 @@ pub fn extract_page_signals_with_headers(
         .filter(|t| !t.is_empty());
 
     let mut meta_description = None;
-    let mut noindex = response_headers
-        .get_all("x-robots-tag")
-        .iter()
-        .filter_map(|value| value.to_str().ok())
-        .any(x_robots_blocks_general_index);
+    let mut noindex = header_noindex(response_headers, lines);
     for tag in crate::checks::html_attrs::tag_slices(&scannable, &lower, "meta") {
         let name = crate::checks::html_attrs::attr_value(tag, "name")
             .map(|name| name.to_ascii_lowercase());
@@ -163,7 +200,7 @@ pub fn extract_page_signals_with_headers(
                 if crate::checks::html_attrs::attr_value(tag, "content")
                     .is_some_and(|content| has_noindex_directive(&content)) =>
             {
-                noindex = true;
+                noindex = Some(true);
             }
             _ => {}
         }

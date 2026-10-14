@@ -11,6 +11,7 @@ pub mod code_rules;
 pub mod coverage;
 pub mod dns;
 pub mod evaluation;
+pub mod header_lines;
 pub mod identity;
 pub mod log_sanitizer;
 pub mod manifest;

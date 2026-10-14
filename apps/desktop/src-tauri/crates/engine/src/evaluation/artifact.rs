@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::EvaluationRequest;
+use crate::header_lines::{lines_of, HeaderLines};
 use crate::manifest::RuntimeFact;
 use crate::page::PageContext;
 
@@ -67,54 +67,79 @@ impl std::error::Error for EvaluationError {}
 
 impl PageArtifact {
     /// Rebuild the portable page record the checks read.
+    pub fn page_context(&self) -> Result<PageContext, EvaluationError> {
+        self.clone().into_page_context()
+    }
+
+    /// Build the portable page record the checks read, moving the body rather than copying it.
     ///
     /// `append` rather than `insert`, so a document that really did carry two
     /// `Set-Cookie` headers presents both to the cookie verdicts.
-    pub fn page_context(&self) -> Result<PageContext, EvaluationError> {
+    pub fn into_page_context(self) -> Result<PageContext, EvaluationError> {
+        self.into_page_context_with(HeaderLines::Separate)
+    }
+
+    /// Build the page record with the runtime's response header line form.
+    pub fn into_page_context_with(
+        self,
+        lines: HeaderLines,
+    ) -> Result<PageContext, EvaluationError> {
         let url = url::Url::parse(&self.url).map_err(|_| EvaluationError::Url)?;
         let mut response_headers = http::HeaderMap::new();
         for (name, value) in &self.headers {
             let header_name = http::header::HeaderName::from_bytes(name.as_bytes())
                 .map_err(|_| EvaluationError::HeaderName { name: name.clone() })?;
-            let header_value = http::header::HeaderValue::from_str(value)
-                .map_err(|_| EvaluationError::HeaderValue { name: name.clone() })?;
-            response_headers.append(header_name, header_value);
+            let values = if lines == HeaderLines::Joined {
+                lines_of(header_name.as_str(), value)
+            } else {
+                vec![value.as_str()]
+            };
+            for value in values {
+                let header_value = http::header::HeaderValue::from_str(value)
+                    .map_err(|_| EvaluationError::HeaderValue { name: name.clone() })?;
+                response_headers.append(header_name.clone(), header_value);
+            }
         }
         Ok(PageContext {
             url,
             response_headers,
             status_code: self.status_code,
-            body: self.body.clone(),
+            body: self.body,
             is_localhost: self.is_localhost,
             is_strict_localhost: self.is_strict_localhost,
-            http_version: self.http_version.clone(),
+            http_version: self.http_version,
             body_lower_cache: std::sync::OnceLock::new(),
             evaluation_time: self.evaluation_time,
         })
     }
 }
 
-/// Return the runtime facts present in the request in deterministic order.
-pub fn facts_present(request: &EvaluationRequest) -> Vec<RuntimeFact> {
+pub(super) fn facts_in_order(
+    fetch: bool,
+    resolver: bool,
+    tls: bool,
+    browser: bool,
+    vulnerability: bool,
+) -> Vec<RuntimeFact> {
     let mut facts = vec![RuntimeFact::PageArtifact];
     // Declaration order, matching the enum, so two requests carrying the same
     // facts always list them the same way.
-    if request.probe_outcomes.is_some() {
+    if fetch {
         facts.push(RuntimeFact::Fetch);
     }
-    if request.resolver_facts.is_some() {
+    if resolver {
         facts.push(RuntimeFact::Resolver);
     }
-    if request.tls_facts.is_some() {
+    if tls {
         facts.push(RuntimeFact::TlsFacts);
     }
-    if request.browser_facts.is_some() {
+    if browser {
         facts.push(RuntimeFact::Browser);
     }
-    if request.probe_outcomes.is_some() {
+    if fetch {
         facts.push(RuntimeFact::Rdap);
     }
-    if request.vulnerability_facts.is_some() {
+    if vulnerability {
         facts.push(RuntimeFact::VulnerabilityCorpus);
     }
     facts

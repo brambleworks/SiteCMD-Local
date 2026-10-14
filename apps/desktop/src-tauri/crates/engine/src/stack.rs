@@ -140,7 +140,7 @@ fn detect_from_headers(headers: &http::HeaderMap, stack: &mut DetectedStack) {
     }
 
     // X-Powered-By
-    if let Some(powered) = headers.get("x-powered-by").and_then(|v| v.to_str().ok()) {
+    if let Some(powered) = crate::header_lines::field_value(headers, "x-powered-by") {
         let p = powered.to_lowercase();
         if p.contains("next.js") {
             stack.framework = Some(labels::NEXT_JS.into());
@@ -171,7 +171,7 @@ fn detect_from_headers(headers: &http::HeaderMap, stack: &mut DetectedStack) {
     if headers.contains_key("x-nf-request-id") || headers.contains_key("x-netlify-request-id") {
         stack.cdn = Some(labels::NETLIFY.into());
     }
-    if let Some(via) = headers.get("via").and_then(|v| v.to_str().ok()) {
+    if let Some(via) = crate::header_lines::field_value(headers, "via") {
         let v = via.to_lowercase();
         if v.contains("cloudfront") {
             stack.cdn = Some(labels::CLOUDFRONT.into());
@@ -206,8 +206,8 @@ fn detect_from_headers(headers: &http::HeaderMap, stack: &mut DetectedStack) {
     }
 
     // X-Generator
-    if let Some(gen) = headers.get("x-generator").and_then(|v| v.to_str().ok()) {
-        parse_generator(gen, stack);
+    if let Some(gen) = crate::header_lines::field_value(headers, "x-generator") {
+        parse_generator(&gen, stack);
     }
 }
 

@@ -2,6 +2,11 @@
 //!
 //! Entry points consume UTF-8 JSON buffers and return length-prefixed JSON.
 //! Malformed input returns an error frame; internal panics trap.
+//!
+//! With the `checks` feature an instance evaluates one route: `engine_route_open`
+//! reads the route's document once, and each route call after it carries only
+//! what is new: the probe outcomes executed since the previous call, and the
+//! facts or routes that call reads.
 
 use sitecmd_engine::scoring::calculator::{compute_score, ScoreInputGroup};
 
@@ -99,7 +104,52 @@ pub unsafe extern "C" fn severity_apply(ptr: *mut u8, len: u32) -> *const u8 {
     leak_framed(payload)
 }
 
-/// Evaluate gathered route facts and return framed JSON with coverage reasons.
+/// Serialize through a `Value`, which orders map keys, so identical answers
+/// are identical bytes.
+#[cfg(feature = "checks")]
+fn canonical(value: &impl serde::Serialize) -> Vec<u8> {
+    serde_json::to_value(value)
+        .and_then(|value| serde_json::to_vec(&value))
+        .unwrap_or_else(|error| error_payload(&error))
+}
+
+/// Parse an owned request buffer, freeing it before the caller computes its
+/// answer.
+///
+/// # Safety
+///
+/// `ptr` must be an unfreed `scorer_alloc` buffer of exactly `len` bytes.
+#[cfg(feature = "checks")]
+unsafe fn read_request<T: serde::de::DeserializeOwned>(
+    ptr: *mut u8,
+    len: u32,
+) -> serde_json::Result<T> {
+    let request = Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len as usize));
+    serde_json::from_slice(&request)
+}
+
+#[cfg(feature = "checks")]
+thread_local! {
+    /// The route this instance evaluates. An instance serves one route and
+    /// dies with it, so one slot is all the state it keeps.
+    static ROUTE: std::cell::RefCell<Option<sitecmd_engine::evaluation::RouteSession>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Answer from the open route, or refuse when none is open.
+#[cfg(feature = "checks")]
+fn with_route(
+    answer: impl FnOnce(&mut sitecmd_engine::evaluation::RouteSession) -> Vec<u8>,
+) -> Vec<u8> {
+    ROUTE.with(|slot| match slot.borrow_mut().as_mut() {
+        Some(route) => answer(route),
+        None => error_payload(&"no route is open on this instance"),
+    })
+}
+
+/// Open this instance's route on its document and answer the external facts
+/// its evaluation reads. Replaces any route already open; a refused open
+/// leaves none open.
 ///
 /// # Safety
 ///
@@ -107,55 +157,25 @@ pub unsafe extern "C" fn severity_apply(ptr: *mut u8, len: u32) -> *const u8 {
 /// This call consumes the buffer.
 #[cfg(feature = "checks")]
 #[no_mangle]
-pub unsafe extern "C" fn engine_evaluate(ptr: *mut u8, len: u32) -> *const u8 {
-    use sitecmd_engine::evaluation::{evaluate, EvaluationRequest};
+pub unsafe extern "C" fn engine_route_open(ptr: *mut u8, len: u32) -> *const u8 {
+    use sitecmd_engine::evaluation::{RouteOpenRequest, RouteSession};
 
-    let request = Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len as usize));
-    let payload = match serde_json::from_slice::<EvaluationRequest>(&request) {
-        // Malformed requests and unusable artifacts return data rather than trap.
-        Ok(parsed) => match evaluate(&parsed) {
-            // Canonicalize arbitrary `raw_data` maps for deterministic bytes.
-            Ok(response) => serde_json::to_value(&response)
-                .and_then(|value| serde_json::to_vec(&value))
-                .unwrap_or_else(|error| error_payload(&error)),
-            Err(error) => error_payload(&error),
-        },
+    let parsed = read_request::<RouteOpenRequest>(ptr, len);
+    ROUTE.with(|slot| *slot.borrow_mut() = None);
+    let payload = match parsed.map(|open| RouteSession::open_with(open.page, open.header_lines)) {
+        Ok(Ok(route)) => {
+            let opened = canonical(&route.opened());
+            ROUTE.with(|slot| *slot.borrow_mut() = Some(route));
+            opened
+        }
+        Ok(Err(error)) => error_payload(&error),
         Err(error) => error_payload(&error),
     };
     leak_framed(payload)
 }
 
-/// Return the next framed probe plan for a route.
-/// Named omissions distinguish a complete plan from unsupported probe checks.
-///
-/// # Safety
-///
-/// `ptr` must be a buffer of exactly `len` bytes obtained from
-/// `scorer_alloc` and not yet freed; after this call the caller must not
-/// use it again.
-#[cfg(feature = "checks")]
-#[no_mangle]
-pub unsafe extern "C" fn engine_probe_plan(ptr: *mut u8, len: u32) -> *const u8 {
-    use sitecmd_engine::evaluation::{probe_plan, EvaluationRequest};
-
-    let request = Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len as usize));
-    let payload = match serde_json::from_slice::<EvaluationRequest>(&request) {
-        // Malformed requests and unusable artifacts return data rather than trap.
-        Ok(parsed) => match probe_plan(&parsed) {
-            // The same Value round trip, so identical requests produce
-            // identical payloads.
-            Ok(plan) => serde_json::to_value(&plan)
-                .and_then(|value| serde_json::to_vec(&value))
-                .unwrap_or_else(|error| error_payload(&error)),
-            Err(error) => error_payload(&error),
-        },
-        Err(error) => error_payload(&error),
-    };
-    leak_framed(payload)
-}
-
-/// Return one page's comparison facts as framed JSON, `null` for a page whose
-/// own address cannot be named without query material or credentials.
+/// Record the outcomes executed since the previous call and answer the
+/// route's next probe plan.
 ///
 /// # Safety
 ///
@@ -163,20 +183,61 @@ pub unsafe extern "C" fn engine_probe_plan(ptr: *mut u8, len: u32) -> *const u8 
 /// This call consumes the buffer.
 #[cfg(feature = "checks")]
 #[no_mangle]
-pub unsafe extern "C" fn engine_session_page(ptr: *mut u8, len: u32) -> *const u8 {
-    use sitecmd_engine::evaluation::{session_page, SessionPageRequest};
+pub unsafe extern "C" fn engine_route_plan(ptr: *mut u8, len: u32) -> *const u8 {
+    use sitecmd_engine::evaluation::RouteCall;
 
-    let request = Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len as usize));
-    let payload = match serde_json::from_slice::<SessionPageRequest>(&request) {
-        Ok(parsed) => match session_page(&parsed) {
-            Ok(facts) => serde_json::to_value(&facts)
-                .and_then(|value| serde_json::to_vec(&value))
-                .unwrap_or_else(|error| error_payload(&error)),
-            Err(error) => error_payload(&error),
-        },
+    let parsed = read_request::<RouteCall>(ptr, len);
+    leak_framed(match parsed {
+        Ok(call) => with_route(|route| {
+            route.record(call.probe_outcomes);
+            canonical(&route.plan())
+        }),
         Err(error) => error_payload(&error),
-    };
-    leak_framed(payload)
+    })
+}
+
+/// Record the outcomes executed since the previous call and answer the
+/// route's evaluation with these facts.
+///
+/// # Safety
+///
+/// `ptr` must be an unfreed `scorer_alloc` buffer of exactly `len` bytes.
+/// This call consumes the buffer.
+#[cfg(feature = "checks")]
+#[no_mangle]
+pub unsafe extern "C" fn engine_route_evaluate(ptr: *mut u8, len: u32) -> *const u8 {
+    use sitecmd_engine::evaluation::RouteEvaluationRequest;
+
+    let parsed = read_request::<RouteEvaluationRequest>(ptr, len);
+    leak_framed(match parsed {
+        Ok(call) => with_route(|route| {
+            route.record(call.probe_outcomes);
+            canonical(&route.evaluate(&call.facts))
+        }),
+        Err(error) => error_payload(&error),
+    })
+}
+
+/// Answer the route's comparison facts, `null` for a page whose own address
+/// cannot be named without query material or credentials.
+///
+/// # Safety
+///
+/// `ptr` must be an unfreed `scorer_alloc` buffer of exactly `len` bytes.
+/// This call consumes the buffer.
+#[cfg(feature = "checks")]
+#[no_mangle]
+pub unsafe extern "C" fn engine_route_session_page(ptr: *mut u8, len: u32) -> *const u8 {
+    use sitecmd_engine::evaluation::RouteSessionPageRequest;
+
+    let parsed = read_request::<RouteSessionPageRequest>(ptr, len);
+    leak_framed(match parsed {
+        Ok(call) => with_route(|route| match route.session_page(&call.routes) {
+            Ok(facts) => canonical(&facts),
+            Err(error) => error_payload(&error),
+        }),
+        Err(error) => error_payload(&error),
+    })
 }
 
 /// Compare one scan's pages and return its cross-page verdicts as framed JSON.
@@ -190,11 +251,9 @@ pub unsafe extern "C" fn engine_session_page(ptr: *mut u8, len: u32) -> *const u
 pub unsafe extern "C" fn engine_session_evaluate(ptr: *mut u8, len: u32) -> *const u8 {
     use sitecmd_engine::evaluation::{evaluate_session, SessionRequest};
 
-    let request = Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len as usize));
-    let payload = match serde_json::from_slice::<SessionRequest>(&request) {
-        Ok(parsed) => serde_json::to_value(evaluate_session(&parsed))
-            .and_then(|value| serde_json::to_vec(&value))
-            .unwrap_or_else(|error| error_payload(&error)),
+    let parsed = read_request::<SessionRequest>(ptr, len);
+    let payload = match parsed {
+        Ok(parsed) => canonical(&evaluate_session(&parsed)),
         Err(error) => error_payload(&error),
     };
     leak_framed(payload)

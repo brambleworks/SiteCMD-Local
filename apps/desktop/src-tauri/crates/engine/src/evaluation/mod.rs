@@ -1,22 +1,29 @@
 //! Portable evaluation with explicit outcomes for every manifest entry.
 
 mod artifact;
+mod inputs;
 mod origin_reads;
 mod probe_checks;
 mod probe_dns;
 mod probes;
+mod route_session;
 mod runners;
 mod runners_seo;
 mod session_eval;
 mod session_facts;
 
-pub use artifact::{facts_present, EvaluationError, PageArtifact};
+pub use artifact::{EvaluationError, PageArtifact};
+pub use inputs::EvaluationInputs;
 pub use probe_checks::{ProbeCheck, PROBE_CHECKS};
 pub use probes::{
     probe_key, probe_plan, unexecuted_probe, ExecutedProbe, PlannedProbe, ProbeContext,
     ProbeOutcomes, ProbePlan, EXCLUDED_PROBE_CHECKS,
 };
-pub use runners::{EvaluationInputs, Runner, RUNNERS};
+pub use route_session::{
+    RouteCall, RouteEvaluationRequest, RouteFacts, RouteOpenRequest, RouteOpened, RouteSession,
+    RouteSessionPageRequest,
+};
+pub use runners::{Runner, RUNNERS};
 pub use runners_seo::{EXCLUDED_ARTIFACT_CHECKS, SEO_RUNNERS};
 pub use session_eval::{evaluate_session, SessionRequest, SessionResponse, SessionVerdictRow};
 pub use session_facts::{
@@ -41,14 +48,14 @@ use crate::manifest::{
 };
 use crate::page::PageContext;
 use crate::severity_policy::WebSeverityInput;
-use crate::stack::{detect_stack, DetectedStack};
+use crate::stack::DetectedStack;
 use crate::vocab::CheckResult;
 
 /// Cached because hosted evaluation reuses this digest on every route.
 static MANIFEST: LazyLock<CapabilityManifest> = LazyLock::new(capability_manifest);
 
 /// Facts gathered for one route.
-/// Optional-field presence is authoritative; [`facts_present`] derives
+/// Optional-field presence is authoritative; the evaluation derives
 /// coverage from the payload so callers cannot claim facts they did not send.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluationRequest {
@@ -258,66 +265,17 @@ fn browser_measurement_samples(facts: Option<&BrowserFacts>) -> Vec<EvaluationMe
         .collect()
 }
 
-/// Evaluate one route, assigning every manifest entry to `planned` or
-/// `not_evaluated`. Lane, scope, fact, and runner checks are applied in that order.
+/// Evaluate one route from its whole request: a route session opened on its
+/// page, with every outcome recorded at once.
 pub fn evaluate(request: &EvaluationRequest) -> Result<EvaluationResponse, EvaluationError> {
-    let page = request.page.page_context()?;
-    let inputs = EvaluationInputs {
-        page: &page,
-        tls_facts: request.tls_facts.as_ref(),
-        browser_facts: request.browser_facts.as_ref(),
-    };
-    let outcomes = ProbeOutcomes::index(request.probe_outcomes.as_deref().unwrap_or(&[]));
-    let probe_context = ProbeContext {
-        page: &page,
-        outcomes: &outcomes,
-        requested_url: request.page.requested_url.as_deref(),
-        resolver_facts: request.resolver_facts.as_ref(),
-        vulnerability_facts: request.vulnerability_facts.as_ref(),
-    };
-    let facts = facts_present(request);
-
-    let claimed_by = runner_index();
-    // Execute each runner once in stable table order for deterministic payloads;
-    // artifact runner indexes precede probe indexes.
-    let artifact_count = artifact_runners().count();
-    let mut ran: Vec<bool> = vec![false; artifact_count + PROBE_CHECKS.len()];
-    let mut planned = Vec::new();
-    let mut not_evaluated = Vec::new();
-    for entry in &MANIFEST.entries {
-        match partition(entry, &facts, &claimed_by) {
-            Ok((check, index)) => {
-                ran[index] = true;
-                planned.push(check);
-            }
-            Err(omitted) => not_evaluated.push(omitted),
-        }
-    }
-
-    let mut results = Vec::new();
-    for (runner, executed) in artifact_runners().zip(&ran) {
-        if *executed {
-            results.extend((runner.run)(&inputs));
-        }
-    }
-    for (check, executed) in PROBE_CHECKS.iter().zip(&ran[artifact_count..]) {
-        if *executed {
-            results.extend((check.grade)(&probe_context));
-        }
-    }
-
-    let severity_inputs = results.iter().map(WebSeverityInput::of).collect();
-    Ok(EvaluationResponse {
-        manifest_digest: MANIFEST.digest().to_string(),
-        external_fact_plan: external_fact_plan(&page),
-        facts_present: facts,
-        planned,
-        results,
-        severity_inputs,
-        measurement_samples: browser_measurement_samples(request.browser_facts.as_ref()),
-        not_evaluated,
-        stack: detect_stack(&page.response_headers, &page.body, page.body_lower()),
-    })
+    let mut route = RouteSession::open(request.page.clone())?;
+    route.record(request.probe_outcomes.clone());
+    Ok(route.evaluate(&RouteFacts {
+        resolver_facts: request.resolver_facts.clone(),
+        vulnerability_facts: request.vulnerability_facts.clone(),
+        tls_facts: request.tls_facts.clone(),
+        browser_facts: request.browser_facts.clone(),
+    }))
 }
 
 /// Where one manifest entry lands: planned, with the runner index that

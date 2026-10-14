@@ -4,18 +4,10 @@
 //! one runner, here or in `runners_seo.rs`, or an explicit exclusion
 //! there, and no runner may claim an unpublished ID.
 
-use crate::checks::security::tls::TlsFacts;
+use super::EvaluationInputs;
+use crate::checks::seo::robots_conflicts::MetaRobotsConflictCheck;
 use crate::checks::Check;
-use crate::evaluation::BrowserFacts;
-use crate::page::PageContext;
 use crate::vocab::CheckResult;
-
-/// Shared input shape for every artifact runner.
-pub struct EvaluationInputs<'a> {
-    pub page: &'a PageContext,
-    pub tls_facts: Option<&'a TlsFacts>,
-    pub browser_facts: Option<&'a BrowserFacts>,
-}
 
 /// One compiled verdict and the manifest ids it is the sole producer of.
 pub struct Runner {
@@ -176,7 +168,7 @@ pub const RUNNERS: &[Runner] = &[
     },
     Runner {
         covers: &["seo.meta_conflicts"],
-        run: |inputs| crate::checks::seo::canonical_meta::MetaRobotsConflictCheck.run(inputs.page),
+        run: |inputs| MetaRobotsConflictCheck::evaluate(inputs.page, inputs.header_lines),
     },
     Runner {
         covers: &["seo.page_speed_hints"],

@@ -1,7 +1,6 @@
 import path from "node:path";
 
 import {
-  attributeBlock,
   claimedChecks,
   constList,
   excludedChecks,
@@ -9,6 +8,7 @@ import {
   laneCoverageFailures,
   runnerDispatches,
 } from "./guardrail-engine-lane-parsing.mjs";
+import { routeAbiFailures } from "./guardrail-engine-route-abi-rules.mjs";
 
 const WASM_LIB = "apps/desktop/src-tauri/crates/engine-wasm/src/lib.rs";
 const WASM_MANIFEST = "apps/desktop/src-tauri/crates/engine-wasm/Cargo.toml";
@@ -70,22 +70,7 @@ export function engineArtifactFailures(read) {
     }
   }
 
-  for (const symbol of [
-    "engine_evaluate",
-    "engine_probe_plan",
-    "engine_session_page",
-    "engine_session_evaluate",
-  ]) {
-    const exportedAt = wasmLib.indexOf(`extern "C" fn ${symbol}(`);
-    if (exportedAt === -1) {
-      failures.push(`${WASM_LIB} no longer exports \`${symbol}\`; the scan worker calls it`);
-    } else if (!attributeBlock(wasmLib, exportedAt).includes('#[cfg(feature = "checks")]')) {
-      failures.push(
-        `${WASM_LIB}: \`${symbol}\` is not behind \`#[cfg(feature = "checks")]\`; an exported ` +
-          `symbol is a link root, so an ungated one pulls the whole check tree into connect's artifact`,
-      );
-    }
-  }
+  failures.push(...routeAbiFailures(read));
 
   if (!/\bdefault\s*=\s*\[\s*\]/.test(wasmManifest)) {
     failures.push(

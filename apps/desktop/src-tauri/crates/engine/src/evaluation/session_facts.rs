@@ -13,15 +13,16 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::origin_reads::{robots_request, sitemap_probe};
-use super::probes::{ExecutedProbe, ProbeContext, ProbeOutcomes};
-use super::{EvaluationError, PageArtifact};
+use super::probes::{ExecutedProbe, ProbeContext};
+use super::{EvaluationError, PageArtifact, RouteSession};
 use crate::checks::seo::robots::{robots_fetch_from_probe, RobotsTxtFetch};
 use crate::checks::seo::sitemap::{
     parse_sitemap_document, sitemap_bound_description, sitemap_urls_from_robots,
     unread_sitemaps_count, unread_sitemaps_description, SitemapBound, SitemapParse, SitemapProbe,
 };
 use crate::checks::seo::sitemap_walk::SITEMAP_URL_LIMIT;
-use crate::session::signals::{extract_page_signals_with_headers, normalize_page_url};
+use crate::header_lines::HeaderLines;
+use crate::session::signals::{extract_page_signals_with_lines, normalize_page_url};
 
 /// The key of an address no scanned page can be.
 pub const ELSEWHERE: &str = "x";
@@ -91,7 +92,8 @@ pub struct SessionPageFacts {
     pub description: Option<String>,
     pub h1: Option<String>,
     pub canonical: Option<String>,
-    pub noindex: bool,
+    /// `null` when where a joined X-Robots-Tag line ended decides it.
+    pub noindex: Option<bool>,
     /// The keys of the alternates that could be scanned pages, from the
     /// first `MAX_INTERNAL_LINKS_PER_PAGE` the page declares.
     pub hreflang: Vec<String>,
@@ -155,32 +157,37 @@ impl RouteKeys {
 pub fn session_page(
     request: &SessionPageRequest,
 ) -> Result<Option<SessionPageFacts>, EvaluationError> {
-    let page = request.page.page_context()?;
-    let requested = match request.page.requested_url.as_deref() {
+    let mut route = RouteSession::open(request.page.clone())?;
+    route.record(Some(request.probe_outcomes.clone()));
+    route.session_page(&request.routes)
+}
+
+/// One page's facts, from the document its route kept and the outcomes it
+/// recorded.
+pub(super) fn page_facts(
+    context: &ProbeContext,
+    routes: &[String],
+    lines: HeaderLines,
+) -> Result<Option<SessionPageFacts>, EvaluationError> {
+    let page = context.page;
+    let requested = match context.requested_url {
         Some(address) => url::Url::parse(address).map_err(|_| EvaluationError::Url)?,
         None => page.url.clone(),
     };
-    let compared = extract_page_signals_with_headers(
+    let compared = extract_page_signals_with_lines(
         &page.url,
         &requested,
         page.status_code,
         &page.body,
         &page.response_headers,
+        lines,
     )
     .session_page();
-    let keys = RouteKeys::new(&page.url, &request.routes);
+    let keys = RouteKeys::new(&page.url, routes);
     let own = keys.key(&compared.url);
     if own == ELSEWHERE {
         return Ok(None);
     }
-    let outcomes = ProbeOutcomes::index(&request.probe_outcomes);
-    let context = ProbeContext {
-        page: &page,
-        outcomes: &outcomes,
-        requested_url: request.page.requested_url.as_deref(),
-        resolver_facts: None,
-        vulnerability_facts: None,
-    };
     // An error response is not the page the scan asked for, and the
     // comparison leaves it out, so nothing read from its body is kept. The
     // sitemap comes from the sitemap's own response, not from this one.
@@ -193,12 +200,12 @@ pub fn session_page(
             description: None,
             h1: None,
             canonical: None,
-            noindex: false,
+            noindex: Some(false),
             hreflang: Vec::new(),
             hreflang_truncated: false,
             links: Vec::new(),
             links_truncated: false,
-            sitemap: sitemap_facts(&context, &keys),
+            sitemap: sitemap_facts(context, &keys),
         }));
     }
     Ok(Some(SessionPageFacts {
@@ -217,7 +224,7 @@ pub fn session_page(
         hreflang_truncated: compared.hreflang_truncated,
         links: keys.keys(&compared.internal_links),
         links_truncated: compared.internal_links_truncated,
-        sitemap: sitemap_facts(&context, &keys),
+        sitemap: sitemap_facts(context, &keys),
     }))
 }
 

@@ -467,10 +467,11 @@ fn reflection_probe(ctx: &ProbeContext) -> Option<ProbeRequest> {
     (!ctx.page.is_localhost).then(|| reflection_probe_request(ctx.page.url.as_str()))
 }
 
-/// Resolve anchor targets without transport policy; refused targets return as
-/// failed probes so every runtime plans the same work.
-fn link_targets(ctx: &ProbeContext) -> LinkTargets {
-    resolve_link_targets(ctx.page, |_| true)
+/// Resolve anchor targets once per route without transport policy; refused
+/// targets return as failed probes so every runtime plans the same work.
+fn link_targets<'a>(ctx: &ProbeContext<'a>) -> &'a LinkTargets {
+    ctx.link_targets
+        .get_or_init(|| resolve_link_targets(ctx.page, |_| true))
 }
 
 /// The sampled destinations for one scope, with the eligible count and the
@@ -489,8 +490,7 @@ fn link_sample(targets: &LinkTargets, scope: LinkScope) -> (Vec<Url>, usize, usi
 
 /// Probe links with HEAD, adding GET only when HEAD needs confirmation.
 fn links_plan(ctx: &ProbeContext, scope: LinkScope) -> Vec<ProbeRequest> {
-    let targets = link_targets(ctx);
-    let (sample, _, _) = link_sample(&targets, scope);
+    let (sample, _, _) = link_sample(link_targets(ctx), scope);
     let mut requests = Vec::new();
     for url in &sample {
         let head = link_head_request(url);
@@ -515,10 +515,10 @@ fn links_grade(
     severity: Severity,
 ) -> Vec<CheckResult> {
     let targets = link_targets(ctx);
-    let (sample, eligible, limit) = link_sample(&targets, scope);
+    let (sample, eligible, limit) = link_sample(targets, scope);
     if sample.is_empty() {
         return vec![no_link_targets_result(
-            check_id, severity, scope, &targets, limit,
+            check_id, severity, scope, targets, limit,
         )];
     }
     let observations = sample
@@ -534,7 +534,7 @@ fn links_grade(
         check_id,
         severity,
         scope,
-        &targets,
+        targets,
         eligible,
         sample.len(),
         limit,

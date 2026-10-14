@@ -3,6 +3,7 @@
 
 pub use sitecmd_engine::checks::seo::canonical_meta;
 pub use sitecmd_engine::checks::seo::content;
+pub use sitecmd_engine::checks::seo::robots_conflicts;
 pub mod geo;
 pub use sitecmd_engine::checks::seo::headings;
 pub use sitecmd_engine::checks::seo::link_count;
@@ -41,7 +42,7 @@ pub fn sync_checks() -> Vec<Box<dyn Check>> {
         Box::new(structured_data::StructuredDataCheck),
         Box::new(content::ThinContentCheck),
         Box::new(canonical_meta::CanonicalMismatchCheck),
-        Box::new(canonical_meta::MetaRobotsConflictCheck),
+        Box::new(robots_conflicts::MetaRobotsConflictCheck),
         Box::new(speed_hints::PageSpeedHintsCheck),
         Box::new(geo::CitationMetaCheck),
         Box::new(geo::ContentFreshnessCheck),

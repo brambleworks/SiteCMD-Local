@@ -20,12 +20,17 @@ use url::Url;
 // `links::UrlStructureCheck` registration path keeps resolving.
 pub use sitecmd_engine::checks::seo::url_structure::UrlStructureCheck;
 
-/// Resolve this page's anchor destinations, applying the desktop's
-/// page-subresource network policy as the engine's allow-target gate.
-fn targets_for(ctx: &CheckContext) -> LinkTargets {
-    resolve_link_targets(&ctx.page, |resolved| {
-        crate::network_policy::validate_page_subresource_target(resolved, ctx.subordinate_policy())
+/// This page's anchor destinations under the desktop's page-subresource
+/// network policy, resolved once for both link checks.
+fn targets_for(ctx: &CheckContext) -> &LinkTargets {
+    ctx.probe_cache.link_targets.get_or_init(|| {
+        resolve_link_targets(&ctx.page, |resolved| {
+            crate::network_policy::validate_page_subresource_target(
+                resolved,
+                ctx.subordinate_policy(),
+            )
             .is_ok()
+        })
     })
 }
 
@@ -82,7 +87,7 @@ impl AsyncCheck for BrokenLinksCheck {
                 self.id(),
                 Severity::High,
                 LinkScope::Internal,
-                &targets,
+                targets,
                 sample_limit,
             )];
         }
@@ -97,7 +102,7 @@ impl AsyncCheck for BrokenLinksCheck {
             self.id(),
             Severity::High,
             LinkScope::Internal,
-            &targets,
+            targets,
             eligible_candidate_count,
             sampled.len(),
             sample_limit,
@@ -134,7 +139,7 @@ impl AsyncCheck for BrokenExternalLinksCheck {
                 self.id(),
                 Severity::Medium,
                 LinkScope::External,
-                &targets,
+                targets,
                 sample_limit,
             )];
         }
@@ -149,7 +154,7 @@ impl AsyncCheck for BrokenExternalLinksCheck {
             self.id(),
             Severity::Medium,
             LinkScope::External,
-            &targets,
+            targets,
             eligible_candidate_count,
             sampled.len(),
             sample_limit,

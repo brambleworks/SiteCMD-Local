@@ -7,6 +7,7 @@ const RUNNERS_SEO = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners
 const PROBE_CHECKS = "apps/desktop/src-tauri/crates/engine/src/evaluation/probe_checks.rs";
 const PROBE_SCHEMA = "apps/desktop/src-tauri/crates/engine/src/evaluation/probes.rs";
 const SESSION = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
+const ROUTE_SCHEMA = "apps/desktop/src-tauri/crates/engine/src/evaluation/route_session.rs";
 const SCHEMA = "apps/desktop/src-tauri/crates/engine/src/evaluation/mod.rs";
 const GOLDEN_TEST = "apps/desktop/src-tauri/crates/engine/tests/golden_checks.rs";
 const MANIFEST = "apps/desktop/src-tauri/crates/engine/manifest/capability_manifest.json";
@@ -24,13 +25,26 @@ const WASM_LIB_BASE = [
   'pub extern "C" fn scorer_alloc(len: u32) -> *mut u8 {}',
   'pub unsafe extern "C" fn scorer_free(ptr: *mut u8, len: u32) {}',
   'pub unsafe extern "C" fn scorer_score(ptr: *mut u8, len: u32) -> *const u8 {}',
-  gated("engine_evaluate"),
-  gated("engine_probe_plan"),
-  gated("engine_session_page"),
+  'pub unsafe extern "C" fn severity_apply(ptr: *mut u8, len: u32) -> *const u8 {}',
+  gated("engine_route_open"),
+  gated("engine_route_plan"),
+  gated("engine_route_evaluate"),
+  gated("engine_route_session_page"),
   gated("engine_session_evaluate"),
 ].join("\n\n");
 
 const WASM_MANIFEST_BASE = ["[features]", "default = []", "checks = []", ""].join("\n");
+
+const ROUTE_SCHEMA_BASE = [
+  "pub struct RouteOpenRequest {",
+  "}",
+  "pub struct RouteCall {",
+  "}",
+  "pub struct RouteEvaluationRequest {",
+  "}",
+  "pub struct RouteSessionPageRequest {",
+  "}",
+].join("\n");
 
 const SCHEMA_BASE = [
   "pub struct EvaluationRequest {",
@@ -190,6 +204,7 @@ function run(overrides = {}) {
     [PROBE_CHECKS]: PROBE_CHECKS_BASE,
     [PROBE_SCHEMA]: PROBE_SCHEMA_BASE,
     [SCHEMA]: SCHEMA_BASE,
+    [ROUTE_SCHEMA]: ROUTE_SCHEMA_BASE,
     [SESSION]: SESSION_BASE,
     ["apps/desktop/src-tauri/crates/engine/tests/golden_session.rs"]:
       'const CORPUS: &str = include_str!("../fixtures/session/golden.json");',
@@ -225,6 +240,7 @@ export {
   PROBE_CHECKS,
   PROBE_SCHEMA,
   SCHEMA,
+  ROUTE_SCHEMA,
   SESSION,
   MANIFEST,
   CHECKS_SCRIPT,
@@ -233,6 +249,7 @@ export {
   WASM_LIB_BASE,
   WASM_MANIFEST_BASE,
   SCHEMA_BASE,
+  ROUTE_SCHEMA_BASE,
   RUNNERS_BASE,
   RUNNERS_SEO_BASE,
   PROBE_CHECKS_BASE,

@@ -41,16 +41,10 @@ async fn send_probe(builder: reqwest::RequestBuilder) -> Option<compression::Enc
         .ok()?;
     Some(compression::EncodingProbe {
         http_status: resp.status().as_u16(),
-        encoding: resp
-            .headers()
-            .get("content-encoding")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_lowercase()),
-        vary: resp
-            .headers()
-            .get("vary")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_lowercase())
+        encoding: sitecmd_engine::header_lines::field_value(resp.headers(), "content-encoding")
+            .map(|value| value.to_lowercase()),
+        vary: sitecmd_engine::header_lines::field_value(resp.headers(), "vary")
+            .map(|value| value.to_lowercase())
             .unwrap_or_default(),
     })
 }
@@ -59,6 +53,50 @@ async fn send_probe(builder: reqwest::RequestBuilder) -> Option<compression::Enc
 mod tests {
     use super::*;
     use crate::checks::CheckStatus;
+
+    async fn repeated_headers_probe() -> compression::EncodingProbe {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .expect("bind probe server");
+        let address = listener.local_addr().expect("probe address");
+        let served = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept probe");
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut buffer).await.expect("read probe");
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..read]);
+            }
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Encoding: identity\r\nContent-Encoding: gzip\r\nVary: Cookie\r\nVary: Accept-Encoding\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .await.expect("write probe response");
+            stream.shutdown().await.expect("close probe response");
+        });
+        let probe = send_probe(
+            crate::http_client::no_decompress_client(true).head(format!("http://{address}/")),
+        )
+        .await
+        .expect("probe response");
+        served.await.expect("probe server");
+        probe
+    }
+
+    #[tokio::test]
+    async fn compression_probe_keeps_every_content_encoding_line() {
+        // Reading only the first encoding line misses the gzip evidence on the second.
+        let probe = repeated_headers_probe().await;
+        assert_eq!(probe.encoding.as_deref(), Some("identity, gzip"));
+    }
+
+    #[tokio::test]
+    async fn compression_probe_keeps_every_vary_line() {
+        // Reading only the first Vary line hides the Accept-Encoding declaration.
+        let probe = repeated_headers_probe().await;
+        assert_eq!(probe.vary, "cookie, accept-encoding");
+    }
 
     #[tokio::test]
     async fn localhost_previews_skip_without_probing() {

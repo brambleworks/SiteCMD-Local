@@ -4,6 +4,7 @@
 //! callers repeat plan and execute rounds until no probes remain.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +13,7 @@ use super::{
     CheckLayer, EvaluationError, EvaluationRequest, NotEvaluated, NotEvaluatedReason, PlannedCheck,
     MANIFEST,
 };
+use crate::checks::seo::links::LinkTargets;
 use crate::manifest::{HostedLane, RuntimeFact};
 use crate::page::PageContext;
 use crate::probe::{
@@ -134,9 +136,8 @@ impl<'a> ProbeOutcomes<'a> {
     }
 }
 
-/// Everything a probe-lane plan or verdict may read: the document, the answers
-/// gathered so far, and what the caller recorded asking for. No client, no
-/// clock, no cache.
+/// Everything a probe-lane plan or verdict may read: the document, the answers gathered so far,
+/// what the caller recorded asking for, and the kept anchor resolution. No client, no clock.
 pub struct ProbeContext<'a> {
     pub page: &'a PageContext,
     pub outcomes: &'a ProbeOutcomes<'a>,
@@ -145,6 +146,9 @@ pub struct ProbeContext<'a> {
     pub resolver_facts: Option<&'a crate::dns::ResolverFacts>,
     pub vulnerability_facts:
         Option<&'a crate::checks::security::vulnerable_libraries::AdvisoryLookup>,
+    /// The page's anchor destinations, resolved by the first link planner or
+    /// verdict that asks.
+    pub link_targets: &'a OnceLock<LinkTargets>,
 }
 
 /// Probe entries not yet planned by this crate, paired with the required reason.
@@ -216,27 +220,22 @@ pub(super) fn probe_check_index() -> HashMap<&'static str, usize> {
     index
 }
 
-/// Plan remaining probes for one route. Repeat until the plan is empty before
-/// calling [`super::evaluate`].
+/// Plan remaining probes for one route from its whole request. Repeat until
+/// the plan is empty before calling [`super::evaluate`].
 pub fn probe_plan(request: &EvaluationRequest) -> Result<ProbePlan, EvaluationError> {
-    let page = request.page.page_context()?;
-    let executed = request.probe_outcomes.as_deref().unwrap_or(&[]);
-    let outcomes = ProbeOutcomes::index(executed);
-    let context = ProbeContext {
-        page: &page,
-        outcomes: &outcomes,
-        requested_url: request.page.requested_url.as_deref(),
-        resolver_facts: request.resolver_facts.as_ref(),
-        vulnerability_facts: request.vulnerability_facts.as_ref(),
-    };
+    let mut route = super::RouteSession::open(request.page.clone())?;
+    route.record(request.probe_outcomes.clone());
+    Ok(route.plan())
+}
 
+pub(super) fn plan_probes(context: &ProbeContext) -> ProbePlan {
     // Probes in check-table order, then in each check's own order, merged by
     // key. `position` is a lookup only: the output order comes from the walk,
     // never from the map.
     let mut probes: Vec<PlannedProbe> = Vec::new();
     let mut position: HashMap<String, usize> = HashMap::new();
     for check in PROBE_CHECKS {
-        for request in (check.plan)(&context) {
+        for request in (check.plan)(context) {
             let key = probe_key(&request);
             // Deduplicate already-answered requests centrally so individual
             // checks can state their complete needs.
@@ -302,12 +301,12 @@ pub fn probe_plan(request: &EvaluationRequest) -> Result<ProbePlan, EvaluationEr
         }
     }
 
-    Ok(ProbePlan {
+    ProbePlan {
         manifest_digest: MANIFEST.digest().to_string(),
         probes,
         planned,
         not_planned,
-    })
+    }
 }
 
 /// Add a second claimant's ids to a probe already planned, without

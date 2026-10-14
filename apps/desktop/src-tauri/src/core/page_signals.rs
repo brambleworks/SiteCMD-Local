@@ -43,7 +43,7 @@ mod tests {
             r#"<meta name="robots" content="noindex, nofollow">
                <link rel="canonical" href="/b/">"#,
         );
-        assert!(s.noindex);
+        assert_eq!(s.noindex, Some(true));
         assert_eq!(s.canonical.as_deref(), Some("https://example.com/b"));
     }
 
@@ -171,7 +171,7 @@ mod tests {
             "https://example.com/",
             r#"<meta name=robots content=noindexif>"#,
         );
-        assert!(!false_positive.noindex);
+        assert_eq!(false_positive.noindex, Some(false));
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.append(
@@ -179,7 +179,7 @@ mod tests {
             reqwest::header::HeaderValue::from_static("googlebot: noindex, nofollow"),
         );
         let from_header = signals_with_headers("https://example.com/", "<html></html>", &headers);
-        assert!(from_header.noindex);
+        assert_eq!(from_header.noindex, Some(true));
 
         let mut news_headers = reqwest::header::HeaderMap::new();
         news_headers.insert(
@@ -188,7 +188,7 @@ mod tests {
         );
         let news_only =
             signals_with_headers("https://example.com/", "<html></html>", &news_headers);
-        assert!(!news_only.noindex);
+        assert_eq!(news_only.noindex, Some(false));
     }
 
     #[test]

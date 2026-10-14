@@ -180,11 +180,8 @@ fn inconclusive_result(http_status: u16) -> CheckResult {
 /// On probe failure, grade only positive page-header evidence.
 /// Auto-decompression makes an absent header inconclusive.
 fn check_from_headers(page: &PageContext) -> CheckResult {
-    let encoding = page
-        .response_headers
-        .get("content-encoding")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_lowercase());
+    let encoding = crate::header_lines::field_value(&page.response_headers, "content-encoding")
+        .map(|value| value.to_lowercase());
 
     let has_compression = encoding
         .as_ref()

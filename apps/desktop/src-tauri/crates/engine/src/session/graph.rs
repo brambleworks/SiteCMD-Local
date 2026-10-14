@@ -112,14 +112,27 @@ pub(super) fn noindex_in_sitemap(
 
     let contradictions: Vec<&str> = pages
         .iter()
-        .filter(|p| p.noindex && sitemap_set.contains(&p.url))
+        .filter(|p| p.noindex == Some(true) && sitemap_set.contains(&p.url))
         .map(|p| p.url.as_str())
         .collect();
 
     if contradictions.is_empty() {
-        return Vec::new();
+        // A listed page whose noindex is unknown may be the contradiction.
+        let undecided = pages
+            .iter()
+            .any(|p| p.noindex.is_none() && sitemap_set.contains(&p.url));
+        return if undecided {
+            vec![(
+                super::not_checked(
+                    "seo.noindex_in_sitemap",
+                    "A page listed in the sitemap reached SiteCMD with its X-Robots-Tag lines combined, so whether it is noindex could not be told.".into(),
+                ),
+                Vec::new(),
+            )]
+        } else {
+            Vec::new()
+        };
     }
-
     let safe_contradictions: Vec<String> = contradictions
         .iter()
         .map(|url| safe_page_url(url))

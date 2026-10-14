@@ -221,5 +221,5 @@
       }
     }
   ],
-  "comment": "Cross-runtime stack-detection fixtures. golden_stack pins detect_stack natively; the scan runner replays each page through the checks artifact's engine_evaluate and compares its stack. Expected blocks are written only by the ignored regenerate test."
+  "comment": "Cross-runtime stack-detection fixtures. golden_stack pins detect_stack natively; the scan runner replays each page through the checks artifact's route calls and compares its stack. Expected blocks are written only by the ignored regenerate test."
 }

@@ -11,6 +11,13 @@ use std::collections::{HashMap, HashSet};
 
 /// Group pages by a normalized text field and report groups sharing a value.
 ///
+/// An unknown page joins its value's group but is never kept. Two established
+/// kept pages make a duplicate whatever unknown members say. Otherwise a
+/// group with an unknown member declines when no other group is a duplicate.
+/// This can decline a group that no unknown page could complete, or a group
+/// that is duplicated in every reading because a known page canonicalizes
+/// to an unknown member and different pages compete in its two readings.
+///
 /// A repeated value is only a defect between pages that both ask to be indexed
 /// in their own right. A `noindex` page is not competing for the value, and a
 /// page whose canonical points at another member of its own group has already
@@ -33,7 +40,7 @@ pub(super) fn duplicate_field<'a>(
             if key.is_empty() || key.contains('\u{FFFD}') {
                 continue;
             }
-            if page.noindex {
+            if page.noindex == Some(true) {
                 noindex_excluded += 1;
                 continue;
             }
@@ -42,6 +49,7 @@ pub(super) fn duplicate_field<'a>(
     }
 
     let mut canonicalized_excluded = 0usize;
+    let mut undecided = false;
     let grouped: HashMap<String, Vec<&str>> = groups
         .into_iter()
         .map(|(key, members)| {
@@ -56,10 +64,13 @@ pub(super) fn duplicate_field<'a>(
                     if canonicalized_to_a_sibling {
                         canonicalized_excluded += 1;
                     }
-                    !canonicalized_to_a_sibling
+                    page.noindex.is_some() && !canonicalized_to_a_sibling
                 })
                 .map(|page| page.url.as_str())
                 .collect();
+            undecided |= kept.len() < 2
+                && members.len() >= 2
+                && members.iter().any(|page| page.noindex.is_none());
             (key, kept)
         })
         .collect();
@@ -67,7 +78,17 @@ pub(super) fn duplicate_field<'a>(
     let mut duplicated: Vec<(&String, &Vec<&str>)> =
         grouped.iter().filter(|(_, urls)| urls.len() >= 2).collect();
     if duplicated.is_empty() {
-        return Vec::new();
+        return if undecided {
+            vec![(
+                super::not_checked(
+                    check_id,
+                    format!("A page sharing its {label} with another compared page reached SiteCMD with its X-Robots-Tag lines combined, so whether it competes for that {label} could not be told."),
+                ),
+                Vec::new(),
+            )]
+        } else {
+            Vec::new()
+        };
     }
     duplicated.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(b.0)));
 

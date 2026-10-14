@@ -62,6 +62,17 @@ fn header_fallback_identity_is_inconclusive() {
 }
 
 #[test]
+fn header_fallback_reads_every_content_encoding_line() {
+    // RFC 9110 section 5.3: gzip on a second line is part of the field's value,
+    // as it is when one line lists both.
+    let mut page = page_with_encoding(Some("identity"));
+    page.response_headers
+        .append("content-encoding", "gzip".parse().expect("static header"));
+    let results = evaluate_compression_get(None, &page);
+    assert_eq!(results[0].status, CheckStatus::Pass);
+}
+
+#[test]
 fn non_2xx_probe_is_not_graded_as_the_page() {
     let results = evaluate_compression_get(Some(probe(405, None, "")), &page_with_encoding(None));
     assert_eq!(results[0].status, CheckStatus::Skipped);

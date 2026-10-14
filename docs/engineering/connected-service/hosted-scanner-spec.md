@@ -783,7 +783,7 @@ pins:
   absent from every persisted projection.
 - **Outbound probe bound, per route: 400 requests.** Every constant
   above caps one request; this one caps their sum, which nothing did
-  before. Measured rather than chosen: driving `engine_probe_plan` to
+  before. Measured rather than chosen: driving `engine_route_plan` to
   its fixpoint against a page carrying 200 internal and 80 external
   links costs 372 requests for one route when every probe fails (four
   rounds: 237, 132, 2, 1) and 246 when every probe answers along a live

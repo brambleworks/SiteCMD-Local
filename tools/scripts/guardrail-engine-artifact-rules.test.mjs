@@ -60,7 +60,7 @@ describe("engineArtifactFailures", () => {
     expect(flags(failures, "no longer exports `scorer_score`")).toBe(true);
   });
 
-  it("rejects an evaluate export that is not behind the checks feature", () => {
+  it("rejects a route export that is not behind the checks feature", () => {
     const failures = run({
       [WASM_LIB]: WASM_LIB_BASE.replace('#[cfg(feature = "checks")]\n', ""),
     });
@@ -70,11 +70,11 @@ describe("engineArtifactFailures", () => {
   it("rejects a missing evaluate export", () => {
     const failures = run({
       [WASM_LIB]: WASM_LIB_BASE.replace(
-        'pub unsafe extern "C" fn engine_evaluate(ptr: *mut u8, len: u32) -> *const u8 {}',
+        'pub unsafe extern "C" fn engine_route_evaluate(ptr: *mut u8, len: u32) -> *const u8 {}',
         "",
       ),
     });
-    expect(flags(failures, "no longer exports `engine_evaluate`")).toBe(true);
+    expect(flags(failures, "no longer exports `engine_route_evaluate`")).toBe(true);
   });
 
   it("rejects a default feature set that would change connect's vendored artifact", () => {
@@ -262,20 +262,20 @@ describe("engineArtifactFailures", () => {
 
   it("rejects a missing probe-plan export", () => {
     const failures = run({
-      [WASM_LIB]: WASM_LIB_BASE.replace(gated("engine_probe_plan"), ""),
+      [WASM_LIB]: WASM_LIB_BASE.replace(gated("engine_route_plan"), ""),
     });
-    expect(flags(failures, "no longer exports `engine_probe_plan`")).toBe(true);
+    expect(flags(failures, "no longer exports `engine_route_plan`")).toBe(true);
   });
 
-  it("rejects a probe-plan export gated only by the evaluate export's own cfg", () => {
+  it("rejects a probe-plan export gated only by the open export's own cfg", () => {
     const failures = run({
       [WASM_LIB]: WASM_LIB_BASE.replace(
-        gated("engine_probe_plan"),
-        gated("engine_probe_plan").replace('#[cfg(feature = "checks")]\n', ""),
+        gated("engine_route_plan"),
+        gated("engine_route_plan").replace('#[cfg(feature = "checks")]\n', ""),
       ),
     });
-    expect(flags(failures, "`engine_probe_plan` is not behind")).toBe(true);
-    expect(flags(failures, "`engine_evaluate` is not behind")).toBe(false);
+    expect(flags(failures, "`engine_route_plan` is not behind")).toBe(true);
+    expect(flags(failures, "`engine_route_open` is not behind")).toBe(false);
   });
 
   it("rejects a plan schema redefined inside the wasm wrapper", () => {

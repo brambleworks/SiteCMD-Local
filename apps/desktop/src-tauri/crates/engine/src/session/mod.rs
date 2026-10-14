@@ -59,7 +59,8 @@ pub struct SessionPage {
     /// Compared after `trim().to_ascii_lowercase()`.
     pub h1: Option<String>,
     pub canonical: Option<String>,
-    pub noindex: bool,
+    /// `None` when where a joined X-Robots-Tag line ended decides it; a check that it decides declines.
+    pub noindex: Option<bool>,
     /// Alternate targets; a target's declared language never decides whether
     /// it returns the link.
     pub hreflang: Vec<String>,
@@ -193,24 +194,28 @@ fn unreported_outcomes(
                 _ => None,
                 }
             };
-            let mut result = base_result(
-                check_id,
-                match &skipped_because {
-                    Some(_) => format!("{subject} were not checked"),
-                    None => format!("No {subject} across the scanned pages"),
-                },
-                skipped_because.clone().unwrap_or_else(|| {
-                    format!("SiteCMD compared {phrase} and found no {subject}.{note}")
-                }),
-            );
-            result.status = match skipped_because {
-                Some(_) => CheckStatus::Skipped,
-                None => CheckStatus::Pass,
-            };
-            result.confidence_reason = None;
-            result
+            match skipped_because {
+                Some(reason) => not_checked(check_id, reason),
+                None => {
+                    let mut result = base_result(
+                        check_id,
+                        format!("No {subject} across the scanned pages"),
+                        format!("SiteCMD compared {phrase} and found no {subject}.{note}"),
+                    );
+                    result.status = CheckStatus::Pass;
+                    result
+                }
+            }
         })
         .collect()
+}
+
+/// The row of a check that reached no verdict, saying why.
+fn not_checked(check_id: &str, reason: String) -> CheckResult {
+    let subject = session_check_subject(check_id);
+    let mut result = base_result(check_id, format!("{subject} were not checked"), reason);
+    result.status = CheckStatus::Skipped;
+    result
 }
 
 /// What each session check is about, in the words a person reads. A row that

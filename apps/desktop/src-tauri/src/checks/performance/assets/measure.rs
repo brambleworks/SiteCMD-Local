@@ -35,11 +35,8 @@ pub async fn fetch_asset(client: reqwest::Client, asset: CollectedAsset) -> Meas
                 .trim()
                 .to_ascii_lowercase()
         });
-    measured.cache_control = response
-        .headers()
-        .get(reqwest::header::CACHE_CONTROL)
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.to_string());
+    measured.cache_control =
+        sitecmd_engine::header_lines::field_value(response.headers(), "cache-control");
 
     if measured.status_code >= 400 {
         return measured;
@@ -93,9 +90,8 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    /// Serve one gzip-encoded asset that ignores the sampler's Range request,
-    /// the shape where a decoding client would lose the wire size.
-    async fn gzip_asset_server(body: Vec<u8>) -> String {
+    /// Serve an asset with supplied response fields that ignores the Range request.
+    async fn asset_server(body: Vec<u8>, extra_headers: &'static str) -> String {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind asset server");
@@ -112,7 +108,7 @@ mod tests {
                 request.extend_from_slice(&buffer[..read]);
             }
             let head = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\n{extra_headers}Content-Length: {}\r\nConnection: close\r\n\r\n",
                 body.len()
             );
             stream
@@ -137,7 +133,7 @@ mod tests {
             "fixture must compress enough for the two sizes to be distinguishable"
         );
 
-        let url = gzip_asset_server(compressed.clone()).await;
+        let url = asset_server(compressed.clone(), "Content-Encoding: gzip\r\n").await;
         let asset = CollectedAsset {
             url: url::Url::parse(&url).expect("asset url"),
             kind: sitecmd_engine::checks::performance::assets::AssetKind::Style,
@@ -156,6 +152,31 @@ mod tests {
             Some(compressed.len() as u64),
             "the sampler must report the bytes the server sent, not the {} decoded bytes",
             payload.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn an_asset_keeps_every_cache_control_line() {
+        // Reading only the first cache line misses the no-store directive on the second.
+        let url = asset_server(
+            Vec::new(),
+            "Cache-Control: max-age=60\r\nCache-Control: no-store\r\n",
+        )
+        .await;
+        let asset = CollectedAsset {
+            url: url::Url::parse(&url).expect("asset url"),
+            kind: sitecmd_engine::checks::performance::assets::AssetKind::Style,
+            has_srcset: false,
+            group: 0,
+        };
+        let measured = fetch_asset(
+            crate::http_client::no_decompress_client(true).clone(),
+            asset,
+        )
+        .await;
+        assert_eq!(
+            measured.cache_control.as_deref(),
+            Some("max-age=60, no-store")
         );
     }
 }

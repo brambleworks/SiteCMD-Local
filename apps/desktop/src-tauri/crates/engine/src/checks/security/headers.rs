@@ -6,7 +6,7 @@ use crate::vocab::{CheckResult, CheckStatus, ScanCategory, Severity};
 use std::sync::LazyLock;
 
 mod csp;
-use csp::{evaluate_csp, frame_ancestors_restrict, parse_csp_directives};
+use csp::{enforced_policies, evaluate_csp, frame_ancestors_restrict, parse_csp_directives};
 mod hsts;
 #[cfg(test)]
 use hsts::parse_hsts_max_age;
@@ -161,18 +161,11 @@ impl Check for SecurityHeadersCheck {
         // Collect all header names for raw_data
         let header_names: Vec<String> = headers.keys().map(|k| k.to_string()).collect();
 
-        let csp_values: Vec<String> = headers
-            .get_all("content-security-policy")
-            .iter()
-            .filter_map(|value| value.to_str().ok())
-            .map(String::from)
-            .collect();
+        let csp_values = enforced_policies(headers);
         let csp_policy_count = csp_values.len();
         let csp_value = csp_values.first().cloned();
-        let csp_report_only_value = headers
-            .get("content-security-policy-report-only")
-            .and_then(|v| v.to_str().ok())
-            .map(String::from);
+        let csp_report_only_value =
+            crate::header_lines::field_value(headers, "content-security-policy-report-only");
         let xfo_value = headers
             .get("x-frame-options")
             .and_then(|v| v.to_str().ok())
@@ -608,13 +601,7 @@ impl Check for SecurityHeadersCheck {
         });
 
         // Grade policy values from the header or browser-supported meta form.
-        let header_referrer_values: Vec<&str> = headers
-            .get_all("referrer-policy")
-            .iter()
-            .filter_map(|value| value.to_str().ok())
-            .collect();
-        let header_referrer =
-            (!header_referrer_values.is_empty()).then(|| header_referrer_values.join(", "));
+        let header_referrer = crate::header_lines::field_value(headers, "referrer-policy");
         let meta_referrer = if header_referrer.is_none() {
             meta_delivered_policy(&ctx.body, &META_REFERRER_NAME_RE)
         } else {
@@ -742,10 +729,7 @@ impl Check for SecurityHeadersCheck {
 
         // Permissions-Policy
         let has_permissions = headers.contains_key("permissions-policy");
-        let perms_value = headers
-            .get("permissions-policy")
-            .and_then(|v| v.to_str().ok())
-            .map(String::from);
+        let perms_value = crate::header_lines::field_value(headers, "permissions-policy");
         let perms_evidence_value = perms_value.as_deref().map(header_evidence_value);
         results.push(CheckResult {
             check_id: "security.headers.permissions_policy".into(),

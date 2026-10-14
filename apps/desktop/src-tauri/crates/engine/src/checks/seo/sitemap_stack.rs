@@ -4,11 +4,8 @@ use crate::checks::PageContext;
 
 /// Infer a short stack hint from response headers or generator metadata.
 pub fn detect_stack_hint(page: &PageContext) -> Option<&'static str> {
-    let powered_by = page
-        .response_headers
-        .get("x-powered-by")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
+    let powered_by = crate::header_lines::field_value(&page.response_headers, "x-powered-by")
+        .unwrap_or_default()
         .to_ascii_lowercase();
     let server = page
         .response_headers
