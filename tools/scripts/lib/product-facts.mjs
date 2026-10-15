@@ -19,6 +19,7 @@ const SITEMAP = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap.rs"
 const SITEMAP_DOCUMENT = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap_document.rs";
 const AXE_PAYLOAD = "apps/desktop/src-tauri/crates/engine/src/browser/payload.rs";
 const AXE_BUNDLE = "apps/desktop/src-tauri/crates/engine/browser/axe.min.js";
+const UPDATER_TYPES = "apps/desktop/src-tauri/src/updates/types.rs";
 
 const SUBRESOURCE_DISCLAIMER = "Tauri does not expose external subresource interception";
 const WEBRTC_LOCKDOWN = "apps/desktop/src-tauri/src/webview/webrtc_lockdown.js";
@@ -33,8 +34,6 @@ function extract(source, pattern, label, file) {
   }
   return match[1];
 }
-
-const DEPENDENCY_ENGINE_ECOSYSTEMS = 8;
 
 /** Returns production Rust source before its first inline test module. */
 export function productionHalf(source) {
@@ -167,6 +166,28 @@ function deriveAxeRunRuleCount(read) {
     .length;
 }
 
+/** Counts the updater's declared dependency ecosystems. */
+function deriveDependencyEcosystemCount(read) {
+  const body = extract(
+    productionHalf(read(UPDATER_TYPES)),
+    /^\s*pub enum Ecosystem\s*\{([^}]*)\}/m,
+    "the Ecosystem enum",
+    UPDATER_TYPES,
+  );
+  const variants = body
+    .replace(/\/\/.*$/gm, "")
+    .trim()
+    .replace(/,\s*$/, "")
+    .split(",")
+    .map((variant) => variant.trim());
+  if (variants.some((variant) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(variant))) {
+    throw new Error(
+      `product-facts: Ecosystem in ${UPDATER_TYPES} is no longer a plain list of unit variants; update lib/product-facts.mjs`,
+    );
+  }
+  return variants.length;
+}
+
 /** Derives the public check total from the owning engine sources. */
 export function deriveCheckCounts(read, _listFiles) {
   // The registries themselves generate this snapshot (`cargo test
@@ -182,14 +203,15 @@ export function deriveCheckCounts(read, _listFiles) {
   const registry = read("apps/desktop/src-tauri/crates/engine/src/code_rules.rs");
   const codeScan = [...registry.matchAll(/^\s*d\("[a-z0-9-]+"/gm)].length;
   const axe = deriveAxeRunRuleCount(read);
+  const dependencyEcosystems = deriveDependencyEcosystemCount(read);
 
   return {
     web,
     polish,
     codeScan,
     axe,
-    dependencyEcosystems: DEPENDENCY_ENGINE_ECOSYSTEMS,
-    total: web + polish + codeScan + axe + DEPENDENCY_ENGINE_ECOSYSTEMS,
+    dependencyEcosystems,
+    total: web + polish + codeScan + axe + dependencyEcosystems,
   };
 }
 
