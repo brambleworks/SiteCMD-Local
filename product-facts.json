@@ -21,15 +21,15 @@
     "web": 157,
     "polish": 30,
     "codeScan": 170,
-    "axe": 55,
+    "axe": 62,
     "dependencyEcosystems": 8,
-    "total": 420
+    "total": 427
   },
   "hostedCheckCounts": {
     "web": 153,
     "crossPage": 7,
-    "axe": 55,
-    "total": 208
+    "axe": 62,
+    "total": 215
   },
   "polishSignals": [
     {

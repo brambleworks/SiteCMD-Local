@@ -1,3 +1,5 @@
+import { runInNewContext } from "node:vm";
+
 import { deriveHostedCheckCounts } from "./hosted-check-counts.mjs";
 import { PRODUCT_SURFACE_STATUS } from "./product-surfaces.mjs";
 
@@ -15,6 +17,8 @@ const ASSETS = "apps/desktop/src-tauri/crates/engine/src/checks/performance/asse
 const CSS_FETCH = "apps/desktop/src-tauri/src/checks/polish/css_fetch.rs";
 const SITEMAP = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap.rs";
 const SITEMAP_DOCUMENT = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap_document.rs";
+const AXE_PAYLOAD = "apps/desktop/src-tauri/crates/engine/src/browser/payload.rs";
+const AXE_BUNDLE = "apps/desktop/src-tauri/crates/engine/browser/axe.min.js";
 
 const SUBRESOURCE_DISCLAIMER = "Tauri does not expose external subresource interception";
 const WEBRTC_LOCKDOWN = "apps/desktop/src-tauri/src/webview/webrtc_lockdown.js";
@@ -30,7 +34,6 @@ function extract(source, pattern, label, file) {
   return match[1];
 }
 
-const AXE_WCAG_A_AA_RULES = 55;
 const DEPENDENCY_ENGINE_ECOSYSTEMS = 8;
 
 /** Returns production Rust source before its first inline test module. */
@@ -105,6 +108,65 @@ export function webCheckIdPrefixes(read, listFiles, trees = Object.values(WEB_CH
   return prefixes;
 }
 
+/** Counts the bundled axe rules selected by the engine's whole-document run. */
+function deriveAxeRunRuleCount(read) {
+  const source = productionHalf(read(AXE_PAYLOAD));
+  const declaration = source.match(
+    /^\s*pub const AXE_RUN_TAGS:\s*\[&str;\s*(\d+)\s*\]\s*=\s*(\[[\s\S]*?\])\s*;/m,
+  );
+  const invalidTags = () =>
+    new Error(
+      `product-facts: could not read AXE_RUN_TAGS in ${AXE_PAYLOAD}; expected a non-empty [&str; N] string array matching its declared length`,
+    );
+  if (!declaration) throw invalidTags();
+  let tags;
+  try {
+    tags = JSON.parse(declaration[2].replace(/,\s*\]$/, "]"));
+  } catch {
+    throw invalidTags();
+  }
+  if (
+    tags.length === 0 ||
+    tags.length !== Number(declaration[1]) ||
+    tags.some((tag) => typeof tag !== "string" || tag.length === 0)
+  ) {
+    throw invalidTags();
+  }
+
+  const run = source.match(/\baxe\.run\(\s*document\s*,\s*\{\{([\s\S]*?)\}\}\s*\)/);
+  if (
+    !/\blet\s+tags\s*=\s*AXE_RUN_TAGS\s*\.iter\(\)\s*\.map\(\|tag\|\s*format!\("'\{tag\}'"\)\)\s*\.collect::<Vec<_>>\(\)\s*\.join\(", "\)\s*;/.test(
+      source,
+    ) ||
+    !/\brunOnly\s*:\s*\{\{\s*type:\s*'tag'\s*,\s*values:\s*\[\{tags\}\]\s*\}\}/.test(
+      run?.[1] ?? "",
+    ) ||
+    /\brules\s*:|["']rules["']\s*:/.test(run?.[1] ?? "")
+  ) {
+    throw new Error(
+      `product-facts: ${AXE_PAYLOAD} no longer calls axe.run(document) with runOnly tags from AXE_RUN_TAGS and no rules overrides; update lib/product-facts.mjs`,
+    );
+  }
+
+  const sandbox = { module: { exports: {} }, setTimeout, clearTimeout };
+  runInNewContext(read(AXE_BUNDLE), sandbox, { filename: AXE_BUNDLE });
+  const axe = sandbox.module.exports;
+  if (
+    typeof axe?._audit?.normalizeOptions !== "function" ||
+    typeof axe?.utils?.ruleShouldRun !== "function"
+  ) {
+    throw new Error(
+      `product-facts: ${AXE_BUNDLE} no longer exposes axe's rule selector (_audit.normalizeOptions, utils.ruleShouldRun); update lib/product-facts.mjs`,
+    );
+  }
+  const options = { runOnly: { type: "tag", values: tags } };
+  axe._audit.normalizeOptions(options);
+  // This is the selector the audit uses to enqueue rules; a tag the run names
+  // selects a rule disabled by default.
+  return axe._audit.rules.filter((rule) => axe.utils.ruleShouldRun(rule, { page: true }, options))
+    .length;
+}
+
 /** Derives the public check total from the owning engine sources. */
 export function deriveCheckCounts(read, _listFiles) {
   // The registries themselves generate this snapshot (`cargo test
@@ -119,14 +181,15 @@ export function deriveCheckCounts(read, _listFiles) {
 
   const registry = read("apps/desktop/src-tauri/crates/engine/src/code_rules.rs");
   const codeScan = [...registry.matchAll(/^\s*d\("[a-z0-9-]+"/gm)].length;
+  const axe = deriveAxeRunRuleCount(read);
 
   return {
     web,
     polish,
     codeScan,
-    axe: AXE_WCAG_A_AA_RULES,
+    axe,
     dependencyEcosystems: DEPENDENCY_ENGINE_ECOSYSTEMS,
-    total: web + polish + codeScan + AXE_WCAG_A_AA_RULES + DEPENDENCY_ENGINE_ECOSYSTEMS,
+    total: web + polish + codeScan + axe + DEPENDENCY_ENGINE_ECOSYSTEMS,
   };
 }
 
@@ -279,6 +342,7 @@ function scannerIdentity(read) {
 }
 
 export function productFacts(read, listFiles) {
+  const checkCounts = deriveCheckCounts(read, listFiles);
   return {
     sentryIngestHost: extract(
       read(TELEMETRY_WRAPPER),
@@ -294,8 +358,8 @@ export function productFacts(read, listFiles) {
     ),
     commercialModel: JSON.parse(read(COMMERCIAL_MODEL)),
     productSurfaceStatus: PRODUCT_SURFACE_STATUS,
-    checkCounts: deriveCheckCounts(read, listFiles),
-    hostedCheckCounts: deriveHostedCheckCounts(read, AXE_WCAG_A_AA_RULES),
+    checkCounts,
+    hostedCheckCounts: deriveHostedCheckCounts(read, checkCounts.axe),
     polishSignals: JSON.parse(read(POLISH_SIGNALS)).signals,
     telemetryEnvelopeTierIsPlaceholder: /tier:\s*"unknown"/.test(
       read(TELEMETRY_WRAPPER).slice(read(TELEMETRY_WRAPPER).indexOf("function buildEnvelope")),

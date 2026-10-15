@@ -101,7 +101,7 @@ describe("check-id extraction", () => {
         "pub fn run_all_signals(ctx: &Ctx) -> Vec<Signal> {\n    vec![\n        signals::one(ctx),\n    ]\n}",
       "apps/desktop/src-tauri/crates/engine/src/code_rules.rs": '    d("example-rule"),',
     };
-    const fakeRead = (file) => sources[file] ?? "";
+    const fakeRead = (file) => sources[file] ?? read(file);
     const fakeList = (dir) =>
       Object.keys(sources).filter((file) => file.startsWith(dir) && file.endsWith(".rs"));
 

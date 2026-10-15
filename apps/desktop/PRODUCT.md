@@ -39,7 +39,7 @@ ongoing health command center rather than a one-off audit.
 ## Positioning
 
 The mechanism a neighboring product could not truthfully copy: SiteCMD's
-detection basis is 390+ deterministic, reproducible checks run entirely on the
+detection basis is 400+ deterministic, reproducible checks run entirely on the
 user's machine, not an AI model guessing at problems. AI is confined to a
 fix-assist layer (fix prompts and guides) and never decides whether a finding
 exists. "Run your site on facts, not vibes" is the public expression of this.
@@ -120,7 +120,7 @@ Constraints and durable product facts:
 - One score, never split by source. Unified scans, never fragmented into
   separate web/code navigation. These are core product theses, not preferences.
 - `product-facts.json` carries the derived check counts for this repository
-  (currently 420 total). The public "390+" floor is maintained and
+  (currently 427 total). The public "400+" floor is maintained and
   guardrail-enforced in the separate SiteCMD-Web product package.
 - Honest scoring: diminishing deductions from 100, reduced effective counts
   for needs-review findings, and explicit coverage state. Severity alone does
@@ -164,7 +164,7 @@ a descriptor in running prose);
 - A fully built, shipping product. `product-facts.json` marks the desktop app,
   MCP server, CLI, CI quality gates, and ticket mirroring as available.
 - Real, generated check counts live in `product-facts.json`; the current total
-  is 420 and the public marketing floor is 390+.
+  is 427 and the public marketing floor is 400+.
 - A marketing and documentation site plus a public top-of-funnel scanner exist
   in the separate SiteCMD-Web repository.
 - Accessibility is shipped as a product feature (axe-core WCAG A/AA), a standard
