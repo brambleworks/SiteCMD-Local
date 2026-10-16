@@ -178,16 +178,19 @@ tier names the artifact that proves agreement:
    per-class rules below. Hosted axe runs with the identical `runOnly`
    tag set and the identical node-evidence caps; the hosted runner then
    drops each violation's node sample in the page, keeping its node count,
-   since no hosted verdict, record or page reads it. SiteCMD's scripts in
-   a rendered page run in an isolated world the page's own scripts cannot
-   reach, and the browser Worker bounds what the page returns before
-   reading it, refusing a payload past its bound. The browser Worker
+   since no hosted verdict, record or page reads it. SiteCMD's evidence
+   scripts in a rendered page (axe-core, its run and the Web Vitals
+   observer and read) run in an isolated world the page's own scripts
+   cannot reach; the one script that runs in the page's own world is the
+   isolation lock, which must, to disable the page's workers, WebSockets
+   and service worker registration. The browser Worker bounds what the
+   page returns before reading it, refusing a payload past its bound. The browser Worker
    counts every message the browser sends it before reading it, and ends
-   the pass when one message exceeds 2 MiB or the session's total exceeds
+   the pass when one message exceeds 2 MiB or a connection's total exceeds
    12 MiB, counting text at two bytes per UTF-16 code unit. One message at Cloudflare's 32 MiB WebSocket limit is whole in
    the Worker's memory before the Worker can refuse it, so it can lift its
    own pass past half the isolate for a moment; at the 3 MiB per-response
-   cap and 12 MiB session message cap, that pass measured 67,982,303 bytes.
+   cap and 12 MiB connection message cap, that pass measured 67,982,303 bytes.
    Cloudflare lets in-flight requests complete when an isolate passes
    128 MB, and starts a new isolate for later ones. A page near the request
    cap (400) and the session's 25 MiB of response data can lift its pass
