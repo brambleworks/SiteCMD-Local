@@ -205,9 +205,20 @@ tier names the artifact that proves agreement:
    CLS, long-task blocking) are measurements, not derivations; they
    vary by vantage even between two desktop runs. Measurement vantage
    is the same structured identity as everything else: hosted
-   transport measurements carry the attested colo, hosted browser
+   transport measurements carry the scan step's locality, which is
+   `unattested` while the platform documents no colo for the alarm-driven
+   steps that run them (Coverage production), hosted browser
    measurements the `unattested` lane (the session API exposes no
-   location), desktop measurements their credential-keyed producer. These checks are
+   location), desktop measurements their credential-keyed producer.
+   The hosted transport's TTFB is the faster of two requests for the page,
+   each timed from its dispatch to its response head over the redirects
+   it follows and leaving out the scanner's own address check before each
+   hop. Both are sent in the route's first probe round, after the page's
+   own fetch, the browser pass in a `full` scan and as many as 39 of that
+   round's other requests, and never beside another probe, where the
+   desktop times TTFB before its probes; the value is taken from
+   Cloudflare's network rather than a visitor's, so it is a different
+   vantage from a desktop's and is never compared with one. These checks are
    marked `class: measurement` and follow the measurement rules below,
    including their exclusion from automatic lifecycle transitions.
 
@@ -482,7 +493,8 @@ deployments, and alarms are at-least-once. Correctness comes from a
   protocol's currency predicate), `engine_release`, `manifest_digest`,
   `crawl_profile`, the execution profile, the current page step,
   sanitized partial outputs (occurrence identities, their authored
-  `scope_route` provenance, per-pair outcomes, coverage facts only), a retry
+  `scope_route` provenance, per-pair outcomes, coverage facts, and the rest
+  of each step as the privacy projection below persists it), a retry
   count, and a terminal status. Redirected findings retain final-URL identity
   while coverage also names the authored route, so a later redirect-target
   change can clear the old occurrence without moving its identity.
@@ -533,7 +545,7 @@ deployments, and alarms are at-least-once. Correctness comes from a
 
 A hosted scan mirrors the desktop's sequential page loop as a chain of
 steps driven by the coordinator: each step scans one route (transport
-fetch, wasm checks, browser work when the scan profile includes it),
+fetch, browser work when the scan profile includes it, wasm checks),
 commits its sanitized partial result under the fence, and yields.
 Between steps the coordinator checks for supersession and cancellation,
 the hosted equivalent of the desktop's 50 ms cancel polling, at page
@@ -782,21 +794,40 @@ pins:
   final URL after redirects, preserved trailing slashes, stripped query
   with `query_dependent` flagging.
 - **Transport constants**, identical to the desktop's except for the
-  page body and sitemap caps:
+  page body and sitemap caps and a coded asset body, which the desktop
+  counts as sent and the hosted transport leaves unread, since its
+  runtime can decode a body as it reads it:
   10-redirect limit with per-hop validation, 30 s page fetch timeout,
   15 s per-check timeout with timeout-as-`Skipped`, 1 MiB page body
   cap (overrun excepts only that route as `page_too_large` while the scan
   continues), 512 KiB probe cap, 2 MiB
   sitemap cap, 2 MiB stylesheet cap with at most 8 stylesheets,
-  30-asset sample with `Range: bytes=0-0`, link-probe samples of
+  30-asset sample with `Range: bytes=0-0` and `Accept-Encoding: identity`,
+  where the body of an answer below 400 that no header sizes is counted
+  under the probe cap and never kept, link-probe samples of
   100 internal and 30 external. One route at every bound must stay under
   half the Workers isolate's 128 MB, which every Durable Object it hosts
   shares with the Worker's code, so a second route fits beside it; the
   scan Worker measures that in workerd (`measure-route-memory.mjs`), and
   these caps are the largest 1 MiB steps toward the desktop's that held
-  it. Version 2 held every intercepted browser response at once; version 1
-  read pages to 10 MiB, with overrun scan-fatal as on desktop, and sitemaps
-  to 5 MiB. Neither ran for a customer.
+  it. Version 2 held every intercepted browser response at once, pinned
+  its asset sample without `Accept-Encoding: identity`, and sent the
+  transport's requests through Cloudflare's cache; version 1 read pages
+  to 10 MiB, with overrun scan-fatal as on desktop, and sitemaps to 5 MiB.
+  Neither ran for a customer.
+- **Cloudflare's cache:** every hosted transport request except one for
+  the route's own page, as requested or as served, is sent with
+  `cache: "no-store"`, which sets `Pragma: no-cache` and
+  `Cache-Control: no-cache` on it and, for a site not hosted on Cloudflare,
+  skips Cloudflare's cache. A Worker's `fetch` otherwise passes through
+  that cache, which keeps a site's robots.txt and its static files for
+  the origin's `max-age` or the default edge TTL, so a rescan after a fix
+  could read the old file, and which may turn a one-byte range into a
+  whole-file fetch from the site. The route's own page keeps no option:
+  page HTML is not cached by default, and a page read should look like a
+  visitor's. A site on Cloudflare is answered by its own zone, as its
+  visitors are; the browser layer's egress fetches every intercepted
+  request with the same option.
 - **Browser interception constants and timing semantics:** at most 400
   requests, 64 distinct hosts, 3 MiB of decoded body data for any one
   response, at most 3 MiB of response bodies held at once, each from its
@@ -815,22 +846,32 @@ pins:
   above caps one request; this one caps their sum, which nothing did
   before. Measured rather than chosen: driving `engine_route_plan` to
   its fixpoint against a page carrying 200 internal and 80 external
-  links costs 380 requests for one route when every probe fails (four
-  rounds: 245, 132, 2, 1) and 254 when every probe answers along a live
-  redirect chain (ten rounds: 245, then one per hop). The sitemap walk's
+  links, so both link samples bind, costs 384 requests for one route when
+  every probe fails (four rounds: 248, 133, 2, 1) and 258 when every probe
+  answers along a live redirect chain (ten rounds: 248, 2, then one per
+  hop). The same page naming 40 images, so the asset sample binds too,
+  asks for 414 when every probe fails (four rounds: 278, 133, 2, 1) and
+  409 when every link `HEAD` is answered `405` and everything else answers
+  (two rounds: 278, 131). The sitemap walk's
   longest request set, twenty failing declared sitemaps beside failing
-  probes and the og:image, asks for 401 and makes 400, the twentieth
-  declaration refused and read as unread. Requests and
+  probes and the og:image, asks for 405. Requests and
   rounds are maximised by opposite situations: failures cost requests,
   because the link check's `GET` confirmations are planned only where a
   `HEAD` failed, while answers cost rounds, because the redirect walk is
-  planned one hop at a time and each `3xx` names the next position. The
-  cap therefore admits the crawl profile's own
-  arithmetic with headroom rather than trimming it: a bound below the
-  profile would make coverage exceptions the normal case and would make
-  the limits published on `/scanner` false. The per-scan worst case
+  planned one hop at a time and each `3xx` names the next position.
+  Of these plans the cap binds three: the page with images when every
+  probe fails (414 asked) or its link `HEAD`s are answered `405` (409),
+  and the sitemap set (405); the other two fit whole. Where it binds,
+  it makes 400 and answers the rest with the budget's own refusal, which
+  each check reads as unanswered, never as broken or missing: the last
+  eleven internal link confirmations and the last three legal-page
+  candidates on the failing page, the last nine internal link
+  confirmations on the `405` page, and the last five declarations in the
+  sitemap set, read as unread. Raising
+  the cap is a capacity decision and trimming the profile a new version;
+  neither happens silently. The per-scan worst case
   follows as routes times the cap, and with origin-scoped checks
-  narrowed to the entry route the realistic ceiling is about 27,000
+  narrowed to the entry route the realistic ceiling is about 30,000
   requests to one origin per full scan. The bound is per route rather
   than per scan so that it needs no durable spend counter across alarm
   ticks and so that one pathological route cannot starve the rest of
@@ -1288,8 +1329,15 @@ storage, log, trace, cache, error report, or the connect submission:
   `detail_json`, and failure summaries. These exist only inside the
   executing step's memory.
 - Persisted (scan record and observation): occurrence identities in
-  the protocol's canonical form, per-pair outcomes, coverage facts,
-  profiles and versions, timing counters, and operational counters.
+  the protocol's canonical form, each with its verdict status and, for
+  broken links, the count the severity policy reads, per-pair outcomes,
+  measurement samples (check, route, value and unit), coverage facts,
+  profiles and versions, the entry route's stack labels (never the Server
+  header's product name),
+  each page's comparison facts (route keys, keyed path keys, Connect's
+  MACs of the title, description and H1 digests, the status code, the key
+  version, flags and counts, the gate's presence reason, never a digest
+  or an address), timing counters, and operational counters.
 - Error reports and logs carry the error taxonomy and `request_id`s,
   never page content; the projection is a function with a test, and
   the conformance corpus includes a hostile-page fixture (secrets in
@@ -1464,7 +1512,14 @@ reconciliation above as the check that catches drift after launch,
 since a concurrency line that appears on the bill is the provider
 telling us an allowance moved; the session-recording default-off
 confirmation; Workers global-fetch public-egress and trust-store flags;
-`node:tls` certificate metadata behavior; and the current Workers TCP
+`node:tls` certificate metadata behavior; whether a Workers `fetch` that
+names its codings in `Accept-Encoding` receives the origin's
+`Content-Encoding` unaltered for each of them while the body is unread
+(Cloudflare's Fetch documentation describes the passthrough for gzip
+and Brotli; zstd and deflate are not stated), and whether `identity`
+reaches the origin as sent; whether the platform documents a colo fact
+for worker execution contexts, worker-originated fetches included, which
+hosted transport locality waits on; and the current Workers TCP
 restriction boundaries.
 
 ## Parity harness and release discipline
