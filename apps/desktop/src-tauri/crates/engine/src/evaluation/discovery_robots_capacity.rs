@@ -1,5 +1,7 @@
 //! Release measurements for bounded discovery on long, hostile paths.
 
+#[path = "discovery_robots_capacity_dump.rs"]
+mod dump;
 #[path = "discovery_robots_capacity_inputs.rs"]
 mod inputs;
 #[path = "discovery_robots_capacity_support.rs"]
