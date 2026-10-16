@@ -348,6 +348,10 @@ mod tests;
 #[path = "probe_adapter_raw_tests.rs"]
 mod raw_tests;
 
+#[cfg(test)]
+#[path = "probe_adapter_missing_page_tests.rs"]
+mod missing_page_tests;
+
 /// The loopback origins the transport tests drive. Re-exported so the
 /// open-redirect sweep test can reach them under the adapter's own path.
 #[cfg(test)]

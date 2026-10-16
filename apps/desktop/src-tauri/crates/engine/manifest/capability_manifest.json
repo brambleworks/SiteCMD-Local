@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "manifest_digest": "ca2b345491c03c0f",
+  "manifest_digest": "29344485bb817e8b",
   "entries": [
     {
       "check": "accessibility.aria_usage",
@@ -275,7 +275,7 @@
     },
     {
       "check": "config.custom_404",
-      "contract": "5caac1c42e6b466c",
+      "contract": "4059cc8e564894cb",
       "hosted": "probe_adapter",
       "class": "deterministic",
       "scope": "origin",
