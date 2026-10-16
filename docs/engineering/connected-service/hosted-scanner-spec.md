@@ -190,7 +190,8 @@ tier names the artifact that proves agreement:
    12 MiB, counting text at two bytes per UTF-16 code unit. One message at Cloudflare's 32 MiB WebSocket limit is whole in
    the Worker's memory before the Worker can refuse it, so it can lift its
    own pass past half the isolate for a moment; at the 3 MiB per-response
-   cap and 12 MiB connection message cap, that pass measured 67,982,303 bytes.
+   cap and 12 MiB connection message cap, that pass measured 71,070,047 bytes
+   (the median of five runs).
    Cloudflare lets in-flight requests complete when an isolate passes
    128 MB, and starts a new isolate for later ones. A page near the request
    cap (400) and the session's 25 MiB of response data can lift its pass
