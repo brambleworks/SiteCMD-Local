@@ -176,7 +176,25 @@ tier names the artifact that proves agreement:
    Windows, `longtask` being Chromium-only), so the browser engine and
    build are **profile facts**, and the comparability gate applies the
    per-class rules below. Hosted axe runs with the identical `runOnly`
-   tag set and the identical node-evidence caps. A shared user agent
+   tag set and the identical node-evidence caps; the hosted runner then
+   drops each violation's node sample in the page, keeping its node count,
+   since no hosted verdict, record or page reads it. SiteCMD's scripts in
+   a rendered page run in an isolated world the page's own scripts cannot
+   reach, and the browser Worker bounds what the page returns before
+   reading it, refusing a payload past its bound. The browser Worker
+   counts every message the browser sends it before reading it, and ends
+   the pass when one message exceeds 2 MiB or the session's total exceeds
+   12 MiB, counting text at two bytes per UTF-16 code unit. One message at Cloudflare's 32 MiB WebSocket limit is whole in
+   the Worker's memory before the Worker can refuse it, so it can lift its
+   own pass past half the isolate for a moment; at the 3 MiB per-response
+   cap and 12 MiB session message cap, that pass measured 67,982,303 bytes.
+   Cloudflare lets in-flight requests complete when an isolate passes
+   128 MB, and starts a new isolate for later ones. A page near the request
+   cap (400) and the session's 25 MiB of response data can lift its pass
+   past half the isolate too, almost all of it garbage the isolate has not
+   collected yet. A page of 399 images of 16 KiB measured 86,759,684 bytes,
+   100 images of 128 KiB 68,975,409, and a heap snapshot of a pass with 99
+   such images fulfilled found 34,735,673 bytes live. A shared user agent
    does not guarantee equivalent content, so browser (and transport)
    coverage passes through the challenge gate defined under coverage.
 4. **Measurement tier: honest non-parity.** Timing values (TTFB, LCP,
@@ -426,19 +444,24 @@ blames an operator for the calendar.
 
 ## Execution architecture
 
-Two workers provide hosted execution, with fail-closed rate limits,
+Three workers provide hosted execution, with fail-closed rate limits,
 `nodejs_compat`, and observability:
 
 - **`apps/sitecmd-connect`** (protocol spec) owns triggers, durable
   tenant state, the event log, and the manifest registry. It never
   fetches user sites.
 - **`apps/sitecmd-scan`** owns scan execution: the wasm engine module,
-  the transport adapters, Browser Run sessions, and the network-policy
+  the transport adapters, and the network-policy
   module. Connect invokes it over a service binding, and it commits
   observations back through the named `commitHostedObservation`
   operation (protocol spec), idempotent by scan id. It holds no
   durable tenant findings; what it does hold is the bounded, sanitized
   execution state defined next.
+- **`apps/sitecmd-browser`** owns the browser pass: the Browser Run binding
+  and the egress and isolation policy every rendered page runs under. The
+  scan Worker invokes it over a service binding, sending each call's
+  session id and deadline and receiving the pass's evidence as plain data;
+  it holds nothing between calls.
 
 ### The scan state machine and its fence
 
@@ -725,9 +748,9 @@ prices, replaced by the pricing pass's decided values at graduation:
   `422`s already name their limits), so the beta cohort always sees
   the numbers that are actually in force.
 
-## Crawl profile, version 2
+## Crawl profile, version 3
 
-`crawl_profile: 2`, the envelope field the protocol spec reserved,
+`crawl_profile: 3`, the envelope field the protocol spec reserved,
 pins:
 
 - **Route set: the scan-scope resource, entirely.** The scan record
@@ -762,15 +785,18 @@ pins:
   continues), 512 KiB probe cap, 2 MiB
   sitemap cap, 2 MiB stylesheet cap with at most 8 stylesheets,
   30-asset sample with `Range: bytes=0-0`, link-probe samples of
-  100 internal and 30 external. One route's evaluation must fit the
-  Workers isolate's 128 MB, which every Durable Object it hosts shares
-  with the Worker's code, and at the desktop's 10 MiB page cap that
-  route's engine memory alone exceeded the limit. Version 1 differed
-  only in those two caps (10 MiB for pages, with overrun scan-fatal as
-  on desktop; 5 MiB for sitemaps) and ran for no customer.
+  100 internal and 30 external. One route at every bound must stay under
+  half the Workers isolate's 128 MB, which every Durable Object it hosts
+  shares with the Worker's code, so a second route fits beside it; the
+  scan Worker measures that in workerd (`measure-route-memory.mjs`), and
+  these caps are the largest 1 MiB steps toward the desktop's that held
+  it. Version 2 held every intercepted browser response at once; version 1
+  read pages to 10 MiB, with overrun scan-fatal as on desktop, and sitemaps
+  to 5 MiB. Neither ran for a customer.
 - **Browser interception constants and timing semantics:** at most 400
-  requests, 64 distinct hosts, 8 MiB of decoded body data for any one
-  response, and 25 MiB across the session. The per-response cap is
+  requests, 64 distinct hosts, 3 MiB of decoded body data for any one
+  response, at most 3 MiB of response bodies held at once, each from its
+  fetch to its fulfillment, and 25 MiB across the session. The per-response cap is
   enforced while reading, before the body is concatenated or handed to
   Playwright; the session ledger charges the same decoded bytes before
   fulfillment. Playwright fulfillment cannot stream the main document,
@@ -785,9 +811,12 @@ pins:
   above caps one request; this one caps their sum, which nothing did
   before. Measured rather than chosen: driving `engine_route_plan` to
   its fixpoint against a page carrying 200 internal and 80 external
-  links costs 372 requests for one route when every probe fails (four
-  rounds: 237, 132, 2, 1) and 246 when every probe answers along a live
-  redirect chain (ten rounds: 237, then one per hop). Requests and
+  links costs 380 requests for one route when every probe fails (four
+  rounds: 245, 132, 2, 1) and 254 when every probe answers along a live
+  redirect chain (ten rounds: 245, then one per hop). The sitemap walk's
+  longest request set, twenty failing declared sitemaps beside failing
+  probes and the og:image, asks for 401 and makes 400, the twentieth
+  declaration refused and read as unread. Requests and
   rounds are maximised by opposite situations: failures cost requests,
   because the link check's `GET` confirmations are planned only where a
   `HEAD` failed, while answers cost rounds, because the redirect walk is
@@ -1451,10 +1480,12 @@ restriction boundaries.
   digest regenerate with every engine build and publish to the
   registry before anything ships under them; the hosted runner refuses
   to scan under a digest its artifact does not match.
-- **Panic semantics:** a trap in wasm check evaluation fails the scan
-  step; step timeouts classify as `Skipped` coverage exceptions; the
-  corpus includes a poisoned fixture asserting both runtimes fail the
-  same way.
+- **Panic semantics:** a trap in wasm check evaluation, or the engine's
+  refusal of a request, excepts that route's pairs `route_unscannable`
+  and keeps the browser time the route spent, and the scan goes on: the
+  engine has no clock and no I/O, so a retry of the same document would
+  fail the same way. An I/O failure still fails the step, for the step's
+  retry. Step timeouts classify as `Skipped` coverage exceptions.
 
 ## Implemented parity foundation
 
