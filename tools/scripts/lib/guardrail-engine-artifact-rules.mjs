@@ -11,6 +11,7 @@ import {
 import { routeAbiFailures } from "./guardrail-engine-route-abi-rules.mjs";
 
 const WASM_LIB = "apps/desktop/src-tauri/crates/engine-wasm/src/lib.rs";
+const WASM_SRC = "apps/desktop/src-tauri/crates/engine-wasm/src";
 const WASM_MANIFEST = "apps/desktop/src-tauri/crates/engine-wasm/Cargo.toml";
 const RUNNERS = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners.rs";
 const RUNNERS_SEO = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners_seo.rs";
@@ -49,9 +50,12 @@ const REQUIRED_PROVENANCE = [
   "manifest_digest",
 ];
 
-export function engineArtifactFailures(read) {
+export function engineArtifactFailures(read, listFiles) {
   const failures = [];
-  const wasmLib = read(WASM_LIB);
+  const sources = listFiles(WASM_SRC, (file) => file.endsWith(".rs")).map((file) => [
+    file,
+    read(file),
+  ]);
   const wasmManifest = read(WASM_MANIFEST);
   const runners = read(RUNNERS);
   const runnersSeo = read(RUNNERS_SEO);
@@ -62,7 +66,7 @@ export function engineArtifactFailures(read) {
   const scorerScript = read(SCORER_SCRIPT);
 
   for (const symbol of SCORER_ABI) {
-    if (!wasmLib.includes(`extern "C" fn ${symbol}(`)) {
+    if (!sources.some(([, source]) => source.includes(`extern "C" fn ${symbol}(`))) {
       failures.push(
         `${WASM_LIB} no longer exports \`${symbol}\`; the connect worker resolves that symbol by ` +
           `name from its vendored artifact, and renaming it breaks a worker in another repository`,
@@ -70,7 +74,7 @@ export function engineArtifactFailures(read) {
     }
   }
 
-  failures.push(...routeAbiFailures(read));
+  failures.push(...routeAbiFailures(read, listFiles));
 
   if (!/\bdefault\s*=\s*\[\s*\]/.test(wasmManifest)) {
     failures.push(
@@ -89,11 +93,13 @@ export function engineArtifactFailures(read) {
     if (!schema.includes(type)) {
       failures.push(`${SCHEMA} no longer defines \`${type}\`; it is the shared wire definition`);
     }
-    if (wasmLib.includes(type)) {
-      failures.push(
-        `${WASM_LIB} defines \`${type}\` itself; the schema is authored in the engine crate so the ` +
-          `desktop and the hosted runner cannot read two definitions of one request`,
-      );
+    for (const [file, source] of sources) {
+      if (source.includes(type)) {
+        failures.push(
+          `${file} defines \`${type}\` itself; the schema is authored in the engine crate so the ` +
+            `desktop and the hosted runner cannot read two definitions of one request`,
+        );
+      }
     }
   }
   if (!schema.includes("enum NotEvaluatedReason")) {
@@ -109,11 +115,13 @@ export function engineArtifactFailures(read) {
           `probe plan and of the outcomes a caller hands back`,
       );
     }
-    if (wasmLib.includes(type)) {
-      failures.push(
-        `${WASM_LIB} defines \`${type}\` itself; the schema is authored in the engine crate so the ` +
-          `desktop and the hosted runner cannot read two definitions of one plan`,
-      );
+    for (const [file, source] of sources) {
+      if (source.includes(type)) {
+        failures.push(
+          `${file} defines \`${type}\` itself; the schema is authored in the engine crate so the ` +
+            `desktop and the hosted runner cannot read two definitions of one plan`,
+        );
+      }
     }
   }
 

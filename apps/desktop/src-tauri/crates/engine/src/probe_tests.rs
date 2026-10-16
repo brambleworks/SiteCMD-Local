@@ -71,3 +71,40 @@ fn a_measure_writes_only_what_was_measured() {
         serde_json::json!({ "counted_bytes": 10, "count_capped": true })
     );
 }
+
+#[test]
+fn lossy_decoding_matches_standard_text_with_exact_capacity() {
+    let mut samples = vec![
+        b"User-agent: *\nDisallow: /private".to_vec(),
+        br#""quoted" \\ path"#.to_vec(),
+        b"first\r\nsecond\nthird\r".to_vec(),
+        "caf\u{e9} \u{4e16}\u{754c} \u{1f680}".as_bytes().to_vec(),
+        vec![0xff],
+        vec![0xe2, 0x82],
+        Vec::new(),
+    ];
+    samples.extend((0..32).map(|byte| vec![byte]));
+    samples.push(vec![0xff; 2_097_152]);
+    let mut excess_capacity = Vec::new();
+    for (index, sample) in samples.iter().enumerate() {
+        let decoded = decode_probe_body(sample.clone());
+        assert_eq!(
+            decoded.text,
+            String::from_utf8_lossy(sample),
+            "sample {index}"
+        );
+        assert_eq!(decoded.bytes, sample.len(), "sample {index}");
+        assert_eq!(
+            decoded.utf8_valid,
+            std::str::from_utf8(sample).is_ok(),
+            "sample {index}"
+        );
+        if !decoded.utf8_valid && decoded.text.capacity() != decoded.text.len() {
+            excess_capacity.push((index, decoded.text.capacity(), decoded.text.len()));
+        }
+    }
+    assert!(
+        excess_capacity.is_empty(),
+        "sample, capacity, length: {excess_capacity:?}"
+    );
+}

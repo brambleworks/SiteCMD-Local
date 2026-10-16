@@ -309,11 +309,25 @@ pub fn decode_probe_body(bytes: Vec<u8>) -> ProbeBody {
             bytes: raw_len,
             utf8_valid: true,
         },
-        Err(error) => ProbeBody {
-            text: String::from_utf8_lossy(error.as_bytes()).into_owned(),
-            bytes: raw_len,
-            utf8_valid: false,
-        },
+        Err(error) => {
+            let bytes = error.as_bytes();
+            let len = bytes
+                .utf8_chunks()
+                .map(|chunk| chunk.valid().len() + if chunk.invalid().is_empty() { 0 } else { 3 })
+                .sum();
+            let mut text = String::with_capacity(len);
+            for chunk in bytes.utf8_chunks() {
+                text.push_str(chunk.valid());
+                if !chunk.invalid().is_empty() {
+                    text.push('\u{FFFD}');
+                }
+            }
+            ProbeBody {
+                text,
+                bytes: raw_len,
+                utf8_valid: false,
+            }
+        }
     }
 }
 

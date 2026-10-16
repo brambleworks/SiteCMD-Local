@@ -405,7 +405,7 @@ export function repoGuardrailFailures({ root, read, readJson, exists, listFiles 
   failures.push(...scannerIdentityFailures(read, listFiles));
   failures.push(...capabilityManifestFailures(read, listFiles));
   failures.push(...npmCliPackageFailures(read));
-  failures.push(...engineArtifactFailures(read));
+  failures.push(...engineArtifactFailures(read, listFiles));
   failures.push(...scanScopeFailures(read));
   failures.push(...verifiedGoodFailures(read));
   failures.push(...engineStampFailures(read));

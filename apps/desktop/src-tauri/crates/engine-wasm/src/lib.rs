@@ -1,12 +1,12 @@
 //! Minimal C ABI for the portable scorer, the severity policy and the optional check evaluator.
 //!
-//! Entry points consume UTF-8 JSON buffers and return length-prefixed JSON.
-//! Malformed input returns an error frame; internal panics trap.
+//! Entry points consume UTF-8 JSON buffers (the `checks` entries framed as `[JSON length: u32 LE]`
+//! `[JSON][body region]`, see `request.rs`) and return length-prefixed JSON. Malformed input
+//! returns an error frame; internal panics trap.
 //!
-//! With the `checks` feature an instance evaluates one route: `engine_route_open`
-//! reads the route's document once, and each route call after it carries only
-//! what is new: the probe outcomes executed since the previous call, and the
-//! facts or routes that call reads.
+//! With the `checks` feature an instance evaluates one route: `engine_route_open` reads the
+//! route's document once, and each route call after it carries only what is new: the probe
+//! outcomes executed since the previous call, and the facts or routes that call reads.
 
 use sitecmd_engine::scoring::calculator::{compute_score, ScoreInputGroup};
 
@@ -104,6 +104,12 @@ pub unsafe extern "C" fn severity_apply(ptr: *mut u8, len: u32) -> *const u8 {
     leak_framed(payload)
 }
 
+// The framing every `checks` entry reads its request in.
+#[cfg(feature = "checks")]
+mod request;
+#[cfg(feature = "checks")]
+use request::{read_request, BodyFields};
+
 /// Serialize through a `Value`, which orders map keys, so identical answers
 /// are identical bytes.
 #[cfg(feature = "checks")]
@@ -111,21 +117,6 @@ fn canonical(value: &impl serde::Serialize) -> Vec<u8> {
     serde_json::to_value(value)
         .and_then(|value| serde_json::to_vec(&value))
         .unwrap_or_else(|error| error_payload(&error))
-}
-
-/// Parse an owned request buffer, freeing it before the caller computes its
-/// answer.
-///
-/// # Safety
-///
-/// `ptr` must be an unfreed `scorer_alloc` buffer of exactly `len` bytes.
-#[cfg(feature = "checks")]
-unsafe fn read_request<T: serde::de::DeserializeOwned>(
-    ptr: *mut u8,
-    len: u32,
-) -> serde_json::Result<T> {
-    let request = Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, len as usize));
-    serde_json::from_slice(&request)
 }
 
 #[cfg(feature = "checks")]
@@ -150,6 +141,8 @@ fn with_route(
 /// Open this instance's route on its document and answer the external facts
 /// its evaluation reads. Replaces any route already open; a refused open
 /// leaves none open.
+/// Its request is framed (see `request.rs`), `page.body` a reference
+/// `{"at": offset, "len": byte_length}` into the body region.
 ///
 /// # Safety
 ///
@@ -160,7 +153,7 @@ fn with_route(
 pub unsafe extern "C" fn engine_route_open(ptr: *mut u8, len: u32) -> *const u8 {
     use sitecmd_engine::evaluation::{RouteOpenRequest, RouteSession};
 
-    let parsed = read_request::<RouteOpenRequest>(ptr, len);
+    let parsed = read_request::<RouteOpenRequest>(ptr, len, BodyFields::Page);
     ROUTE.with(|slot| *slot.borrow_mut() = None);
     let payload = match parsed.map(|open| {
         RouteSession::open_with(open.page, open.header_lines)
@@ -179,6 +172,8 @@ pub unsafe extern "C" fn engine_route_open(ptr: *mut u8, len: u32) -> *const u8 
 
 /// Record the outcomes executed since the previous call and answer the
 /// route's next probe plan.
+/// Its request is framed (see `request.rs`): each response `body` in `probe_outcomes`
+/// is null or a reference `{"at": offset, "len": byte_length}` into the body region.
 ///
 /// # Safety
 ///
@@ -189,7 +184,7 @@ pub unsafe extern "C" fn engine_route_open(ptr: *mut u8, len: u32) -> *const u8 
 pub unsafe extern "C" fn engine_route_plan(ptr: *mut u8, len: u32) -> *const u8 {
     use sitecmd_engine::evaluation::RouteCall;
 
-    let parsed = read_request::<RouteCall>(ptr, len);
+    let parsed = read_request::<RouteCall>(ptr, len, BodyFields::Probes);
     leak_framed(match parsed {
         Ok(call) => with_route(|route| {
             route.record(call.probe_outcomes);
@@ -201,6 +196,8 @@ pub unsafe extern "C" fn engine_route_plan(ptr: *mut u8, len: u32) -> *const u8 
 
 /// Record the outcomes executed since the previous call and answer the
 /// route's evaluation with these facts.
+/// Its request is framed (see `request.rs`): each response `body` in `probe_outcomes`
+/// is null or a reference `{"at": offset, "len": byte_length}` into the body region.
 ///
 /// # Safety
 ///
@@ -211,7 +208,7 @@ pub unsafe extern "C" fn engine_route_plan(ptr: *mut u8, len: u32) -> *const u8 
 pub unsafe extern "C" fn engine_route_evaluate(ptr: *mut u8, len: u32) -> *const u8 {
     use sitecmd_engine::evaluation::RouteEvaluationRequest;
 
-    let parsed = read_request::<RouteEvaluationRequest>(ptr, len);
+    let parsed = read_request::<RouteEvaluationRequest>(ptr, len, BodyFields::Probes);
     leak_framed(match parsed {
         Ok(call) => with_route(|route| {
             route.record(call.probe_outcomes);
@@ -223,6 +220,7 @@ pub unsafe extern "C" fn engine_route_evaluate(ptr: *mut u8, len: u32) -> *const
 
 /// Answer the route's comparison facts, `null` for a page whose own address
 /// cannot be named without query material or credentials.
+/// Its request is framed (see `request.rs`); the body region goes unread.
 ///
 /// # Safety
 ///
@@ -233,7 +231,7 @@ pub unsafe extern "C" fn engine_route_evaluate(ptr: *mut u8, len: u32) -> *const
 pub unsafe extern "C" fn engine_route_session_page(ptr: *mut u8, len: u32) -> *const u8 {
     use sitecmd_engine::evaluation::RouteSessionPageRequest;
 
-    let parsed = read_request::<RouteSessionPageRequest>(ptr, len);
+    let parsed = read_request::<RouteSessionPageRequest>(ptr, len, BodyFields::None);
     leak_framed(match parsed {
         Ok(call) => with_route(|route| match route.session_page(&call.routes) {
             Ok(facts) => canonical(&facts),
@@ -244,6 +242,7 @@ pub unsafe extern "C" fn engine_route_session_page(ptr: *mut u8, len: u32) -> *c
 }
 
 /// Answer the routes the open route's reads discover for its scan.
+/// Its request is framed (see `request.rs`); the body region goes unread.
 ///
 /// # Safety
 ///
@@ -254,7 +253,7 @@ pub unsafe extern "C" fn engine_route_session_page(ptr: *mut u8, len: u32) -> *c
 pub unsafe extern "C" fn engine_route_discover(ptr: *mut u8, len: u32) -> *const u8 {
     use sitecmd_engine::evaluation::RouteDiscoverRequest;
 
-    let parsed = read_request::<RouteDiscoverRequest>(ptr, len);
+    let parsed = read_request::<RouteDiscoverRequest>(ptr, len, BodyFields::None);
     leak_framed(match parsed {
         Ok(call) => with_route(|route| canonical(&route.discover(&call.planned, call.limit))),
         Err(error) => error_payload(&error),
@@ -262,6 +261,7 @@ pub unsafe extern "C" fn engine_route_discover(ptr: *mut u8, len: u32) -> *const
 }
 
 /// Compare one scan's pages and return its cross-page verdicts as framed JSON.
+/// Its request is framed (see `request.rs`); the body region goes unread.
 ///
 /// # Safety
 ///
@@ -272,7 +272,7 @@ pub unsafe extern "C" fn engine_route_discover(ptr: *mut u8, len: u32) -> *const
 pub unsafe extern "C" fn engine_session_evaluate(ptr: *mut u8, len: u32) -> *const u8 {
     use sitecmd_engine::evaluation::{evaluate_session, SessionRequest};
 
-    let parsed = read_request::<SessionRequest>(ptr, len);
+    let parsed = read_request::<SessionRequest>(ptr, len, BodyFields::None);
     let payload = match parsed {
         Ok(parsed) => canonical(&evaluate_session(&parsed)),
         Err(error) => error_payload(&error),

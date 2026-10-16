@@ -15,6 +15,12 @@ import {
 const flags = (failures, fragment) => failures.some((failure) => failure.includes(fragment));
 
 describe("the route ABI", () => {
+  it.each(["request.rs", "nested/wire.rs"])("refuses an extra export in %s", (name) => {
+    const file = WASM_LIB.replace("lib.rs", name);
+    const failures = run({ [file]: gated("checks_evaluate") });
+    expect(flags(failures, `${file} exports \`checks_evaluate\``)).toBe(true);
+  });
+
   it.each(["engine_evaluate", "engine_probe_plan", "engine_session_page"])(
     "refuses a page-carrying export %s beside the route calls",
     (symbol) => {
@@ -43,8 +49,14 @@ describe("the route ABI", () => {
     expect(flags(failures, `no longer defines \`struct ${type}\``)).toBe(true);
   });
 
-  it("refuses a route request the wasm crate defines itself", () => {
-    const failures = run({ [WASM_LIB]: `${WASM_LIB_BASE}\npub struct RouteCall {}` });
-    expect(flags(failures, "defines `struct RouteCall` itself")).toBe(true);
-  });
+  it.each(["lib.rs", "request.rs", "nested/wire.rs"])(
+    "refuses a route request defined in %s",
+    (name) => {
+      const file = WASM_LIB.replace("lib.rs", name);
+      const failures = run({
+        [file]: `${name === "lib.rs" ? WASM_LIB_BASE : ""}\npub struct RouteCall {}`,
+      });
+      expect(flags(failures, "defines `struct RouteCall` itself")).toBe(true);
+    },
+  );
 });

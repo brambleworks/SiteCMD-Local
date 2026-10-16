@@ -3,7 +3,8 @@
 
 import { attributeBlock } from "./guardrail-engine-lane-parsing.mjs";
 
-const WASM_LIB = "apps/desktop/src-tauri/crates/engine-wasm/src/lib.rs";
+const WASM_SRC = "apps/desktop/src-tauri/crates/engine-wasm/src";
+const WASM_LIB = `${WASM_SRC}/lib.rs`;
 const ROUTE_SCHEMA = "apps/desktop/src-tauri/crates/engine/src/evaluation/route_session.rs";
 const DEFAULT_ABI = ["scorer_alloc", "scorer_free", "scorer_score", "severity_apply"];
 const ROUTE_ABI = [
@@ -22,24 +23,33 @@ const ROUTE_REQUESTS = [
   "struct RouteDiscoverRequest",
 ];
 
-export function routeAbiFailures(read) {
+export function routeAbiFailures(read, listFiles) {
   const failures = [];
-  const wasmLib = read(WASM_LIB);
+  const sources = listFiles(WASM_SRC, (file) => file.endsWith(".rs")).map((file) => [
+    file,
+    read(file),
+  ]);
   for (const symbol of ROUTE_ABI) {
-    const exportedAt = wasmLib.indexOf(`extern "C" fn ${symbol}(`);
-    if (exportedAt === -1) {
+    const exporting = sources.filter(([, source]) => source.includes(`extern "C" fn ${symbol}(`));
+    if (exporting.length === 0) {
       failures.push(`${WASM_LIB} no longer exports \`${symbol}\`; the scan worker calls it`);
-    } else if (!attributeBlock(wasmLib, exportedAt).includes('#[cfg(feature = "checks")]')) {
-      failures.push(
-        `${WASM_LIB}: \`${symbol}\` is not behind \`#[cfg(feature = "checks")]\`; an exported ` +
-          `symbol is a link root, so an ungated one pulls the whole check tree into connect's artifact`,
-      );
+    }
+    for (const [file, source] of exporting) {
+      const exportedAt = source.indexOf(`extern "C" fn ${symbol}(`);
+      if (!attributeBlock(source, exportedAt).includes('#[cfg(feature = "checks")]')) {
+        failures.push(
+          `${file}: \`${symbol}\` is not behind \`#[cfg(feature = "checks")]\`; an exported ` +
+            `symbol is a link root, so an ungated one pulls the whole check tree into connect's artifact`,
+        );
+      }
     }
   }
   // A page-carrying export beside the route calls is a second way in.
-  for (const [, symbol] of wasmLib.matchAll(/extern "C" fn (\w+)\(/g)) {
-    if (!ROUTE_ABI.includes(symbol) && !DEFAULT_ABI.includes(symbol)) {
-      failures.push(`${WASM_LIB} exports \`${symbol}\`, which the scan worker does not call`);
+  for (const [file, source] of sources) {
+    for (const [, symbol] of source.matchAll(/extern "C" fn (\w+)\(/g)) {
+      if (!ROUTE_ABI.includes(symbol) && !DEFAULT_ABI.includes(symbol)) {
+        failures.push(`${file} exports \`${symbol}\`, which the scan worker does not call`);
+      }
     }
   }
   const routeSchema = read(ROUTE_SCHEMA);
@@ -49,10 +59,12 @@ export function routeAbiFailures(read) {
         `${ROUTE_SCHEMA} no longer defines \`${type}\`; it is the shared wire definition`,
       );
     }
-    if (wasmLib.includes(type)) {
-      failures.push(
-        `${WASM_LIB} defines \`${type}\` itself; the request shapes are authored in the engine crate`,
-      );
+    for (const [file, source] of sources) {
+      if (source.includes(type)) {
+        failures.push(
+          `${file} defines \`${type}\` itself; the request shapes are authored in the engine crate`,
+        );
+      }
     }
   }
   return failures;

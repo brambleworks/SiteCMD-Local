@@ -232,7 +232,11 @@ function run(overrides = {}) {
     [REGISTRATION]: REGISTRATION_BASE,
     ...overrides,
   };
-  return engineArtifactFailures((file) => fixture[file] ?? "");
+  return engineArtifactFailures(
+    (file) => fixture[file] ?? "",
+    (dir, predicate) =>
+      Object.keys(fixture).filter((file) => file.startsWith(`${dir}/`) && predicate(file)),
+  );
 }
 
 export {
