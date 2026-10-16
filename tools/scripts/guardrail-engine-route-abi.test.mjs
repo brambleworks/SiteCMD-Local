@@ -32,13 +32,16 @@ describe("the route ABI", () => {
     );
   });
 
-  it.each(["RouteOpenRequest", "RouteCall", "RouteEvaluationRequest", "RouteSessionPageRequest"])(
-    "refuses a route request %s the engine crate stopped defining",
-    (type) => {
-      const failures = run({ [ROUTE_SCHEMA]: ROUTE_SCHEMA_BASE.replace(`struct ${type} {`, "") });
-      expect(flags(failures, `no longer defines \`struct ${type}\``)).toBe(true);
-    },
-  );
+  it.each([
+    "RouteOpenRequest",
+    "RouteCall",
+    "RouteEvaluationRequest",
+    "RouteSessionPageRequest",
+    "RouteDiscoverRequest",
+  ])("refuses a route request %s the engine crate stopped defining", (type) => {
+    const failures = run({ [ROUTE_SCHEMA]: ROUTE_SCHEMA_BASE.replace(`struct ${type} {`, "") });
+    expect(flags(failures, `no longer defines \`struct ${type}\``)).toBe(true);
+  });
 
   it("refuses a route request the wasm crate defines itself", () => {
     const failures = run({ [WASM_LIB]: `${WASM_LIB_BASE}\npub struct RouteCall {}` });

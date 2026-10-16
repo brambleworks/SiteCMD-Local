@@ -129,10 +129,10 @@ pub fn evaluate_sitemap(
 ) -> Vec<CheckResult> {
     let base = origin_with_port(&page.url);
     let conventional_urls = sitemap_candidate_urls(&base);
-    let declared_all = match robots {
-        RobotsTxtFetch::Found { body } => sitemap_urls_from_robots(body),
-        _ => Vec::new(),
-    };
+    let declared_all = robots
+        .body()
+        .map(sitemap_urls_from_robots)
+        .unwrap_or_default();
     let mut same_origin_declared = Vec::new();
     let mut cross_origin_declared = Vec::new();
     let mut invalid_declaration_count = 0usize;

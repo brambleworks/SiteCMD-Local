@@ -8,9 +8,9 @@ use crate::checks::origin_with_port;
 use crate::checks::seo::geo::llms_txt::{evaluate_llms_txt, llms_txt_url};
 use crate::checks::seo::og_image::{evaluate_og_image, plan_og_image, OgImageStep};
 use crate::checks::seo::robots::{robots_fetch_from_probe, robots_txt_url, RobotsTxtFetch};
-use crate::checks::seo::sitemap::{sitemap_candidate_urls, SitemapProbe};
+use crate::checks::seo::sitemap::{sitemap_candidate_urls, SitemapFetch, SitemapProbe};
 use crate::checks::seo::sitemap_walk::{
-    sitemap_candidates, sitemap_request, walk_sitemap_candidates,
+    robots_was_read, sitemap_candidates, sitemap_request, walk_sitemap_candidates,
 };
 use crate::probe::{BodyPolicy, ProbeRequest};
 use crate::vocab::CheckResult;
@@ -25,10 +25,35 @@ pub(super) fn robots_fetch(ctx: &ProbeContext) -> RobotsTxtFetch {
     robots_fetch_from_probe(ctx.outcomes.owned(&robots_request(ctx)))
 }
 
+/// Whether robots.txt was read and every earlier candidate was conclusively missing.
+pub(super) fn sitemap_sources_read(
+    context: &ProbeContext,
+    robots: &RobotsTxtFetch,
+    found: &SitemapFetch,
+) -> bool {
+    let candidates = sitemap_candidates(&origin_with_port(&context.page.url), robots);
+    let ahead = candidates
+        .iter()
+        .position(|url| *url == found.url)
+        .unwrap_or(candidates.len());
+    context
+        .outcomes
+        .get(&robots_request(context))
+        .is_some_and(robots_was_read)
+        && matches!(
+            walk_sitemap_candidates(&candidates[..ahead], |request| context
+                .outcomes
+                .get(request)),
+            Ok(SitemapProbe::Missing { .. })
+        )
+}
+
 /// What the sitemap walk still needs. Until robots.txt answers, that is
 /// robots.txt and the conventional paths, which every walk that finds no
 /// well-formed declaration reads anyway, so asking for them now saves rounds;
-/// after it, the first candidate in walk order with no answer.
+/// after it, the first candidate in walk order with no answer, and once the
+/// walk has found an index, the index's children this route still reads
+/// (`sitemap_children.rs`).
 pub(super) fn sitemap_plan(ctx: &ProbeContext) -> Vec<ProbeRequest> {
     let origin = origin_with_port(&ctx.page.url);
     let robots = robots_request(ctx);
@@ -43,6 +68,10 @@ pub(super) fn sitemap_plan(ctx: &ProbeContext) -> Vec<ProbeRequest> {
     };
     let candidates = sitemap_candidates(&origin, &robots_fetch_from_probe(answer.clone()));
     match walk_sitemap_candidates(&candidates, |request| ctx.outcomes.get(request)) {
+        // The comparison reads an index's pages from its children.
+        Ok(SitemapProbe::Found(found)) if found.kind.lists_child_sitemaps() => {
+            ctx.sitemap_children.wanted(&found, &origin)
+        }
         Ok(_) => Vec::new(),
         Err(next) => vec![next],
     }
@@ -60,6 +89,15 @@ pub(super) fn sitemap_probe(ctx: &ProbeContext, robots: &RobotsTxtFetch) -> Site
     .unwrap_or(SitemapProbe::Inconclusive {
         observations: Vec::new(),
     })
+}
+
+/// The index the walk found over the answers in hand, when what it found is one.
+pub(super) fn found_index(ctx: &ProbeContext) -> Option<SitemapFetch> {
+    let robots = robots_fetch_from_probe(ctx.outcomes.get(&robots_request(ctx))?.clone());
+    match sitemap_probe(ctx, &robots) {
+        SitemapProbe::Found(found) if found.kind.lists_child_sitemaps() => Some(found),
+        _ => None,
+    }
 }
 
 pub(super) fn llms_request(ctx: &ProbeContext) -> ProbeRequest {

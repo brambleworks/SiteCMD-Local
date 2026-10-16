@@ -7,12 +7,18 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 use super::artifact::facts_in_order;
-use super::probes::{plan_probes, ExecutedProbe, ProbeContext, ProbeOutcomes, ProbePlan};
+use super::discovery::{discover, DiscoveryResponse};
+use super::origin_reads::found_index;
+use super::probes::{
+    is_sitemap_child_key, plan_probes, ExecutedProbe, ProbeContext, ProbeOutcomes, ProbePlan,
+};
 use super::session_facts::{page_facts, SessionPageFacts};
+use super::sitemap_children::ChildSitemaps;
 use super::{
     artifact_runners, external_fact_plan, partition, runner_index, BrowserFacts, EvaluationError,
     EvaluationInputs, EvaluationResponse, ExternalFactPlan, PageArtifact, MANIFEST, PROBE_CHECKS,
 };
+use crate::checks::origin_with_port;
 use crate::checks::security::tls::TlsFacts;
 use crate::checks::security::vulnerable_libraries::AdvisoryLookup;
 use crate::checks::seo::links::LinkTargets;
@@ -50,6 +56,10 @@ pub struct RouteOpenRequest {
     /// How the runtime handed over its header lines; the desktop's are separate.
     #[serde(default)]
     pub header_lines: HeaderLines,
+    /// How many of an index sitemap's children the route reads; none unless
+    /// the runtime names a number.
+    #[serde(default)]
+    pub sitemap_children: usize,
 }
 
 /// A route call's request: the probe outcomes executed since the previous
@@ -77,6 +87,16 @@ pub struct RouteSessionPageRequest {
     pub routes: Vec<String>,
 }
 
+/// `engine_route_discover`'s request: the routes the scan's plan held after
+/// its entry route when it started, as canonical paths, which stand in for
+/// pages the walk could not read, and how many routes discovery may add.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteDiscoverRequest {
+    #[serde(default)]
+    pub planned: Vec<String>,
+    pub limit: usize,
+}
+
 /// One route's document, read once, and the probe outcomes recorded for it.
 pub struct RouteSession {
     page: PageContext,
@@ -90,6 +110,9 @@ pub struct RouteSession {
     /// The page's anchor destinations, resolved by the first link planner or
     /// verdict that asks and read by every later call.
     link_targets: OnceLock<LinkTargets>,
+    /// An index sitemap's children this route reads, none unless its runtime
+    /// names a limit.
+    sitemap_children: ChildSitemaps,
     /// The asset sample's addresses, resolved by the first asset planner that
     /// asks and read by every later call.
     asset_sample: OnceLock<Vec<url::Url>>,
@@ -115,6 +138,7 @@ impl RouteSession {
             fetched: false,
             external_fact_plan,
             link_targets: OnceLock::new(),
+            sitemap_children: ChildSitemaps::default(),
             asset_sample: OnceLock::new(),
         })
     }
@@ -126,9 +150,18 @@ impl RouteSession {
         }
     }
 
-    /// Record the outcomes executed since the previous call. A later answer
-    /// for a key already recorded is the one read, as a whole request's index
-    /// keeps the last. A joined session restores each response's field lines.
+    /// Read an index sitemap's children, at most `limit` on the page's origin;
+    /// a route reads none unless its runtime asks.
+    pub fn with_sitemap_children(mut self, limit: usize) -> Self {
+        self.sitemap_children = ChildSitemaps::new(limit);
+        self
+    }
+
+    /// Record the outcomes executed since the previous call. Except for child
+    /// sitemap keys, a later answer for a key already recorded is the one read,
+    /// as a whole request's index keeps the last. A child sitemap's first answer
+    /// is the one read. A joined session restores each response's field lines.
+    /// A child sitemap's answer is kept without its body, once its page addresses are read.
     pub fn record(&mut self, outcomes: Option<Vec<ExecutedProbe>>) {
         if let Some(mut outcomes) = outcomes {
             if self.header_lines == HeaderLines::Joined {
@@ -139,7 +172,24 @@ impl RouteSession {
                 }
             }
             self.fetched = true;
-            self.outcomes.extend(outcomes);
+            // A child sitemap's answer is read once and kept as its page
+            // addresses, after the walk's own answers in the same call, which
+            // are what find its index.
+            let (children, others): (Vec<_>, Vec<_>) = outcomes
+                .into_iter()
+                .partition(|probe| is_sitemap_child_key(&probe.key));
+            self.outcomes.extend(others);
+            if !children.is_empty() && !self.sitemap_children.knows_index() {
+                let outcomes = ProbeOutcomes::index(&self.outcomes);
+                if let Some(index) = found_index(&self.context(&outcomes, &RouteFacts::default())) {
+                    self.sitemap_children
+                        .learn_index(&index, &origin_with_port(&self.page.url));
+                }
+            }
+            for child in children {
+                let kept = self.sitemap_children.absorb(child);
+                self.outcomes.push(kept);
+            }
         }
     }
 
@@ -244,6 +294,17 @@ impl RouteSession {
         )
     }
 
+    /// The routes this route's reads discover for its scan (`discovery.rs`):
+    /// `routes` is `None` when its document did not answer with a success.
+    pub fn discover(&self, planned: &[String], limit: usize) -> DiscoveryResponse {
+        let outcomes = ProbeOutcomes::index(&self.outcomes);
+        discover(
+            &self.context(&outcomes, &RouteFacts::default()),
+            planned,
+            limit,
+        )
+    }
+
     fn context<'a>(
         &'a self,
         outcomes: &'a ProbeOutcomes<'a>,
@@ -256,102 +317,12 @@ impl RouteSession {
             resolver_facts: facts.resolver_facts.as_ref(),
             vulnerability_facts: facts.vulnerability_facts.as_ref(),
             link_targets: &self.link_targets,
+            sitemap_children: &self.sitemap_children,
             asset_sample: &self.asset_sample,
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn probe_plans_ignore_resolver_and_vulnerability_facts() {
-        let linked: PageArtifact = serde_json::from_value(serde_json::json!({
-            "url": "https://example.com/",
-            "requested_url": "https://example.com/",
-            "status_code": 200,
-            "headers": [["content-type", "text/html; charset=utf-8"]],
-            "body": concat!(
-                "<html><head><title>Home</title><link rel=\"icon\" href=\"/icon.png\"></head>",
-                "<body><a href=\"/about\">About</a><a href=\"/team\">Team</a>",
-                "<a href=\"https://elsewhere.example.net/\">Elsewhere</a></body></html>"
-            ),
-            "evaluation_time": "2026-08-05T00:00:00Z"
-        }))
-        .expect("a linked page");
-        let corpus: serde_json::Value =
-            serde_json::from_str(include_str!("../../fixtures/checks/golden.json"))
-                .expect("corpus parses");
-        let pages =
-            std::iter::once(linked).chain(corpus["cases"].as_array().expect("cases").iter().map(
-                |case| serde_json::from_value(case["page"].clone()).expect("a page artifact"),
-            ));
-        let facts: RouteFacts = serde_json::from_value(serde_json::json!({
-            "resolver_facts": {
-                "domain": "example.com",
-                "apex_txt": { "answer": "no_records" },
-                "apex_mx": { "answer": "no_records" },
-                "dmarc_txt": { "answer": "no_records" },
-                "dkim_txt": [],
-                "dnskey": { "answer": "no_records" },
-                "caa": { "answer": "no_records" },
-                "www_cname": { "answer": "no_records" },
-                "www_target_addresses": null
-            },
-            "vulnerability_facts": { "status": "answered", "advisories": [] }
-        }))
-        .expect("route facts parse");
-        for page in pages {
-            let route = RouteSession::open(page).expect("opens");
-            let outcomes = ProbeOutcomes::index(&[]);
-            assert_eq!(
-                serde_json::to_value(plan_probes(&route.context(&outcomes, &facts)))
-                    .expect("plan with facts serializes"),
-                serde_json::to_value(route.plan()).expect("route plan serializes"),
-                "{}",
-                route.page.url
-            );
-        }
-    }
-
-    #[test]
-    fn every_call_reads_one_resolution_of_the_page_anchors() {
-        let page: PageArtifact = serde_json::from_value(serde_json::json!({
-            "url": "https://example.com/",
-            "status_code": 200,
-            "headers": [],
-            "body": "<a href=\"/about\">About</a><a href=\"https://elsewhere.example.net/\">Out</a>",
-            "evaluation_time": "2026-08-05T00:00:00Z"
-        }))
-        .expect("a page");
-        let mut route = RouteSession::open(page).expect("opens");
-        route.record(Some(Vec::new()));
-        route.plan();
-        let first = route.link_targets.get().map(std::ptr::from_ref);
-        assert!(first.is_some(), "a link planner resolved the anchors");
-        route.plan();
-        route.evaluate(&RouteFacts::default());
-        assert_eq!(route.link_targets.get().map(std::ptr::from_ref), first);
-    }
-
-    #[test]
-    fn every_call_reads_one_resolution_of_the_asset_sample() {
-        let page: PageArtifact = serde_json::from_value(serde_json::json!({
-            "url": "https://example.com/",
-            "status_code": 200,
-            "headers": [],
-            "body": "<img src=\"/hero.png\" alt=\"Hero\"><script src=\"/app.js\"></script>",
-            "evaluation_time": "2026-08-05T00:00:00Z"
-        }))
-        .expect("a page");
-        let mut route = RouteSession::open(page).expect("opens");
-        route.record(Some(Vec::new()));
-        route.plan();
-        let first = route.asset_sample.get().map(std::ptr::from_ref);
-        assert!(first.is_some(), "the asset planner resolved the sample");
-        route.plan();
-        route.evaluate(&RouteFacts::default());
-        assert_eq!(route.asset_sample.get().map(std::ptr::from_ref), first);
-    }
-}
+#[path = "route_session_tests.rs"]
+mod tests;

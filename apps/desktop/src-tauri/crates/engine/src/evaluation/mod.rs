@@ -1,6 +1,8 @@
 //! Portable evaluation with explicit outcomes for every manifest entry.
 
 mod artifact;
+mod discovery;
+mod discovery_robots;
 mod inputs;
 mod origin_reads;
 mod probe_checks;
@@ -11,8 +13,10 @@ mod runners;
 mod runners_seo;
 mod session_eval;
 mod session_facts;
+mod sitemap_children;
 
 pub use artifact::{EvaluationError, PageArtifact};
+pub use discovery::DiscoveryResponse;
 pub use inputs::EvaluationInputs;
 pub use probe_checks::{ProbeCheck, PROBE_CHECKS};
 pub use probes::{
@@ -20,8 +24,8 @@ pub use probes::{
     ProbeOutcomes, ProbePlan, EXCLUDED_PROBE_CHECKS,
 };
 pub use route_session::{
-    RouteCall, RouteEvaluationRequest, RouteFacts, RouteOpenRequest, RouteOpened, RouteSession,
-    RouteSessionPageRequest,
+    RouteCall, RouteDiscoverRequest, RouteEvaluationRequest, RouteFacts, RouteOpenRequest,
+    RouteOpened, RouteSession, RouteSessionPageRequest,
 };
 pub use runners::{Runner, RUNNERS};
 pub use runners_seo::{EXCLUDED_ARTIFACT_CHECKS, SEO_RUNNERS};

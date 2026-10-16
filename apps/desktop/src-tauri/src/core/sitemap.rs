@@ -8,7 +8,10 @@ use sitecmd_engine::checks::seo::sitemap::{
     parse_sitemap_document, partial_reason, sitemap_candidate_urls, sitemap_urls_from_robots,
     unread_sitemaps_reason, SitemapBound, SitemapParse,
 };
-use sitecmd_engine::checks::seo::sitemap_walk::SITEMAP_URL_LIMIT as MAX_URLS;
+use sitecmd_engine::checks::seo::sitemap_walk::{
+    robots_was_read, SITEMAP_URL_LIMIT as MAX_URLS, SITEMAP_WALK_INCOMPLETE_REASON,
+};
+use sitecmd_engine::probe::{ProbeOutcome, ProbeRequest};
 use ts_rs::TS;
 const MAX_CHILD_SITEMAPS: usize = 50;
 /// Concurrent child-sitemap fetches per batch when walking a sitemap index.
@@ -59,16 +62,24 @@ pub async fn discover_sitemap(
     // Candidate paths inherit the validated base; discovered URLs are revalidated.
     // A sitemap answering at a conventional path does not mean it is the only
     // one the site publishes, so robots.txt is still read for the declared set.
+    let mut preceding_partial = None;
     for url in &sitemap_candidate_urls(base) {
-        if let Some(mut result) = try_fetch_sitemap(client, url, origin).await {
-            let declared = robots_sitemap_urls(client, base).await;
-            note_partial(&mut result, unread_sitemaps_reason(&declared, Some(url)));
-            return result;
-        }
+        let mut result = match try_fetch_sitemap(client, url, origin).await {
+            Ok(Some(result)) => result,
+            Ok(None) => continue,
+            Err(()) => {
+                preceding_partial = Some(SITEMAP_WALK_INCOMPLETE_REASON.to_string());
+                continue;
+            }
+        };
+        let (declared, partial) = robots_sitemap_urls(client, base).await;
+        note_partial(&mut result, partial.or(preceding_partial));
+        note_partial(&mut result, unread_sitemaps_reason(&declared, Some(url)));
+        return result;
     }
 
     // Parse robots.txt sitemap directives.
-    let declared = robots_sitemap_urls(client, base).await;
+    let (declared, partial) = robots_sitemap_urls(client, base).await;
     for sitemap_url in &declared {
         // Reject sitemap URLs that point at private / metadata / loopback
         // addresses unless the original scan target was already strict-local.
@@ -79,7 +90,8 @@ pub async fn discover_sitemap(
             );
             continue;
         }
-        if let Some(mut result) = try_fetch_sitemap(client, sitemap_url, origin).await {
+        if let Ok(Some(mut result)) = try_fetch_sitemap(client, sitemap_url, origin).await {
+            note_partial(&mut result, partial.or(preceding_partial));
             note_partial(
                 &mut result,
                 unread_sitemaps_reason(&declared, Some(sitemap_url)),
@@ -96,31 +108,25 @@ pub async fn discover_sitemap(
     }
 }
 
-/// The sitemap URLs a site declares in robots.txt, empty when robots.txt is
-/// missing, unreadable, or declares none.
-async fn robots_sitemap_urls(client: &Client, base: &str) -> Vec<String> {
-    let robots_url = format!("{}/robots.txt", base);
-    let Ok(response) = client
-        .get(&robots_url)
-        .timeout(API_TIMEOUT_SHORT)
-        .send()
-        .await
-    else {
-        return Vec::new();
-    };
-    if !response.status().is_success() {
-        return Vec::new();
-    }
-    match crate::http_client::read_text_limited(
-        response,
-        crate::constants::MAX_PROBE_BODY_SIZE,
-        API_TIMEOUT_SHORT,
+/// The declared sitemap URLs and whether a transient robots.txt failure leaves
+/// the set partial; a body-cap refusal answered with unknown declarations.
+async fn robots_sitemap_urls(client: &Client, base: &str) -> (Vec<String>, Option<String>) {
+    let outcome = crate::checks::probe_with_timeout(
+        client,
+        ProbeRequest::get(format!("{base}/robots.txt")),
+        Some(API_TIMEOUT_SHORT),
     )
-    .await
-    {
-        Ok(body) => sitemap_urls_from_robots(&body),
-        Err(_) => Vec::new(),
-    }
+    .await;
+    let partial = (!robots_was_read(&outcome)).then(|| SITEMAP_WALK_INCOMPLETE_REASON.to_string());
+    let declared = match &outcome {
+        ProbeOutcome::Response(response) if (200..300).contains(&response.status) => response
+            .body
+            .as_ref()
+            .map(|body| sitemap_urls_from_robots(&body.text))
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    (declared, partial)
 }
 
 /// Record one more reason a set is partial, keeping any already recorded: a set
@@ -146,8 +152,8 @@ pub async fn fetch_sitemap_url(
     origin: crate::network_policy::LocalOrigin,
 ) -> SitemapResult {
     match try_fetch_sitemap(client, sitemap_url, origin).await {
-        Some(result) => result,
-        None => SitemapResult {
+        Ok(Some(result)) => result,
+        _ => SitemapResult {
             status: SitemapStatus::Error,
             urls: vec![],
             source_url: Some(sitemap_url.to_string()),
@@ -163,15 +169,18 @@ async fn try_fetch_sitemap(
     client: &Client,
     url: &str,
     origin: crate::network_policy::LocalOrigin,
-) -> Option<SitemapResult> {
+) -> Result<Option<SitemapResult>, ()> {
     let resp = client
         .get(url)
         .timeout(API_TIMEOUT_SHORT)
         .send()
         .await
-        .ok()?;
+        .map_err(|_| ())?;
+    if matches!(resp.status().as_u16(), 429 | 500..=599) {
+        return Err(());
+    }
     if !resp.status().is_success() {
-        return None;
+        return Ok(None);
     }
     let body = crate::http_client::read_text_limited(
         resp,
@@ -179,14 +188,14 @@ async fn try_fetch_sitemap(
         API_TIMEOUT_SHORT,
     )
     .await
-    .ok()?;
+    .map_err(|_| ())?;
     // One parser, shared with the seo.sitemap check. A document the strict
     // grammar rejects still yields locations here: discovery's job is finding
     // pages, and a malformed sitemap's URLs are real.
     let parse = parse_sitemap_document(&body);
     let locs = parse.locs();
     if locs.is_empty() {
-        return None;
+        return Ok(None);
     }
     if let SitemapParse::Salvaged { reason, .. } = &parse {
         tracing::info!(
@@ -203,12 +212,12 @@ async fn try_fetch_sitemap(
         let listed = locs.len();
         let mut urls: Vec<String> = locs.to_vec();
         urls.truncate(MAX_URLS);
-        return Some(SitemapResult {
+        return Ok(Some(SitemapResult {
             status: SitemapStatus::Found,
             urls,
             source_url: Some(url.to_string()),
             partial_because: partial_reason(SitemapBound::Urls, listed, MAX_URLS),
-        });
+        }));
     }
 
     // Fetch child sitemaps in stable batches and stop at MAX_URLS.
@@ -269,7 +278,7 @@ async fn try_fetch_sitemap(
     }
 
     if all_urls.is_empty() {
-        return None;
+        return Ok(None);
     }
     let mut result = SitemapResult {
         status: SitemapStatus::Found,
@@ -278,7 +287,7 @@ async fn try_fetch_sitemap(
         partial_because: child_cap,
     };
     note_partial(&mut result, url_cap);
-    Some(result)
+    Ok(Some(result))
 }
 
 #[cfg(test)]

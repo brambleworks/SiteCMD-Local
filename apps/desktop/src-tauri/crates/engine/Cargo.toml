@@ -20,6 +20,7 @@ browser-payload = []
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
 # Matches reqwest's HeaderMap without introducing reqwest into the engine.
 http = "1"
+memchr = "2.8.3"
 psl = "2"
 quick-xml = "0.41"
 regex = "1"

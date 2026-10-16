@@ -16,6 +16,7 @@ pub mod forms;
 pub mod hardcoded_secrets;
 pub mod headers;
 pub mod https_enforcement;
+pub(crate) mod key_patterns;
 pub mod mixed_content;
 pub mod open_redirect;
 pub mod security_txt;

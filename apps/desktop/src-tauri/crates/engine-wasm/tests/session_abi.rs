@@ -5,22 +5,26 @@ mod abi;
 
 use serde::Deserialize;
 use sitecmd_engine::evaluation::{
-    evaluate_session, session_page, PageArtifact, RouteFacts, RouteSession, SessionPageFacts,
-    SessionPageRequest, SessionRequest, SessionResponse,
+    evaluate_session, session_page, PageArtifact, RouteDiscoverRequest, RouteFacts, RouteSession,
+    SessionPageFacts, SessionPageRequest, SessionRequest, SessionResponse,
 };
 use sitecmd_engine::header_lines::HeaderLines;
 use sitecmd_engine::CheckStatus;
 use sitecmd_engine_wasm::{
-    engine_route_evaluate, engine_route_open, engine_route_plan, engine_route_session_page,
-    engine_session_evaluate,
+    engine_route_discover, engine_route_evaluate, engine_route_open, engine_route_plan,
+    engine_route_session_page, engine_session_evaluate,
 };
 
 const CORPUS: &str = include_str!("../../engine/fixtures/session/golden.json");
 
 /// This thread's route opened on the request's page, its outcomes recorded,
 /// and its facts read through the ABI.
-fn facts_through_abi(request: &SessionPageRequest) -> Vec<u8> {
-    abi::open(&request.page);
+fn facts_through_abi(request: &SessionPageRequest, children: usize) -> Vec<u8> {
+    let opened = abi::call_json(
+        engine_route_open,
+        &serde_json::json!({ "page": request.page, "sitemap_children": children }),
+    );
+    assert!(abi::refusal(&opened).is_none());
     let recorded = abi::call_json(
         engine_route_plan,
         &serde_json::json!({ "probe_outcomes": request.probe_outcomes }),
@@ -152,7 +156,7 @@ fn page_facts_and_the_comparison_match_the_native_answers() {
             &serde_json::to_value(session_page(&request(url)).expect("facts")).expect("value"),
         )
         .expect("bytes");
-        let through = facts_through_abi(&request(url));
+        let through = facts_through_abi(&request(url), 0);
         assert_eq!(through, native);
         pages.push(
             serde_json::from_slice::<Option<SessionPageFacts>>(&through)
@@ -196,6 +200,10 @@ struct Case {
     name: String,
     routes: Vec<String>,
     pages: Vec<CasePage>,
+    #[serde(default)]
+    sitemap_children: usize,
+    #[serde(default)]
+    discover: Option<RouteDiscoverRequest>,
     expected: serde_json::Value,
 }
 #[derive(Deserialize)]
@@ -216,9 +224,13 @@ fn every_corpus_answer_survives_both_framed_exports() {
                 routes: case.routes.clone(),
                 probe_outcomes: input.probe_outcomes,
             };
-            let native =
-                serde_json::to_value(session_page(&request).expect("facts")).expect("value");
-            let through = facts_through_abi(&request);
+            let mut native = RouteSession::open(request.page.clone())
+                .expect("fixture opens")
+                .with_sitemap_children(case.sitemap_children);
+            native.record(Some(request.probe_outcomes.clone()));
+            let native = serde_json::to_value(native.session_page(&case.routes).expect("facts"))
+                .expect("value");
+            let through = facts_through_abi(&request, case.sitemap_children);
             assert_eq!(
                 through,
                 serde_json::to_vec(&native).expect("bytes"),
@@ -316,4 +328,68 @@ fn a_joined_robots_scope_serializes_unknown_noindex_as_null() {
         .expect("facts");
     assert_eq!(frame, serde_json::to_value(native).expect("native frame"));
     assert_eq!(frame.get("noindex"), Some(&serde_json::Value::Null));
+}
+
+#[test]
+fn every_corpus_discovery_survives_the_framed_export() {
+    let corpus: Corpus = serde_json::from_str(CORPUS).expect("corpus");
+    let mut discovering = 0;
+    for case in corpus.cases {
+        let Some(mut discover) = case.discover else {
+            continue;
+        };
+        discovering += 1;
+        let entry = case.pages.into_iter().next().expect("entry page");
+        let mut native = RouteSession::open(entry.page.clone())
+            .expect("opens")
+            .with_sitemap_children(case.sitemap_children);
+        native.record(Some(entry.probe_outcomes.clone()));
+        let opened = abi::call_json(
+            engine_route_open,
+            &serde_json::json!({ "page": entry.page, "sitemap_children": case.sitemap_children }),
+        );
+        assert!(abi::refusal(&opened).is_none(), "{}", case.name);
+        let recorded = abi::call_json(
+            engine_route_plan,
+            &serde_json::json!({ "probe_outcomes": entry.probe_outcomes }),
+        );
+        assert!(abi::refusal(&recorded).is_none(), "{}", case.name);
+        let requested_limit = discover.limit;
+        for limit in [requested_limit, 1] {
+            discover.limit = limit;
+            let expected = serde_json::to_value(native.discover(&discover.planned, discover.limit))
+                .expect("value");
+            let through = abi::call_json(
+                engine_route_discover,
+                &serde_json::to_value(&discover).expect("request"),
+            );
+            assert_eq!(
+                through,
+                serde_json::to_vec(&expected).expect("bytes"),
+                "{}",
+                case.name
+            );
+            if limit == requested_limit {
+                assert_eq!(expected, case.expected["discovered"], "{}", case.name);
+            }
+        }
+    }
+    assert!(discovering > 0, "the corpus holds no discovering case");
+}
+
+#[test]
+fn a_malformed_discovery_request_is_an_error_frame_not_a_trap() {
+    let corpus: Corpus = serde_json::from_str(CORPUS).expect("corpus");
+    let entry = corpus
+        .cases
+        .into_iter()
+        .next()
+        .expect("a case")
+        .pages
+        .into_iter()
+        .next()
+        .expect("a page");
+    abi::open(&entry.page);
+    let bytes = abi::call(engine_route_discover, br#"{"limit": "many"}"#);
+    assert!(abi::refusal(&bytes).is_some());
 }

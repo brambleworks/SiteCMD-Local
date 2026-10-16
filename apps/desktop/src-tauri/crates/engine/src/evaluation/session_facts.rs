@@ -12,15 +12,16 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::origin_reads::{robots_request, sitemap_probe};
+use super::origin_reads::{robots_request, sitemap_probe, sitemap_sources_read};
 use super::probes::{ExecutedProbe, ProbeContext};
 use super::{EvaluationError, PageArtifact, RouteSession};
-use crate::checks::seo::robots::{robots_fetch_from_probe, RobotsTxtFetch};
+use crate::checks::origin_with_port;
+use crate::checks::seo::robots::robots_fetch_from_probe;
 use crate::checks::seo::sitemap::{
     parse_sitemap_document, sitemap_bound_description, sitemap_urls_from_robots,
     unread_sitemaps_count, unread_sitemaps_description, SitemapBound, SitemapParse, SitemapProbe,
 };
-use crate::checks::seo::sitemap_walk::SITEMAP_URL_LIMIT;
+use crate::checks::seo::sitemap_walk::{SITEMAP_URL_LIMIT, SITEMAP_WALK_INCOMPLETE_REASON};
 use crate::header_lines::HeaderLines;
 use crate::session::signals::{extract_page_signals_with_lines, normalize_page_url};
 
@@ -54,8 +55,8 @@ impl SessionSitemapFacts {
             .partial_causes
             .iter()
             .map(|cause| match *cause {
-                SessionSitemapCause::Index { listed } => {
-                    sitemap_bound_description(SitemapBound::ChildSitemaps, listed, 0)
+                SessionSitemapCause::Index { listed, read } => {
+                    sitemap_bound_description(SitemapBound::ChildSitemaps, listed, read)
                 }
                 SessionSitemapCause::UrlLimit { listed } => {
                     sitemap_bound_description(SitemapBound::Urls, listed, SITEMAP_URL_LIMIT)
@@ -63,6 +64,12 @@ impl SessionSitemapFacts {
                 SessionSitemapCause::UnreadDeclarations { count } => {
                     unread_sitemaps_description(count)
                 }
+                SessionSitemapCause::UnfinishedWalk => SITEMAP_WALK_INCOMPLETE_REASON.to_string(),
+                SessionSitemapCause::IndexUrls => sitemap_bound_description(
+                    SitemapBound::IndexUrls,
+                    SITEMAP_URL_LIMIT,
+                    SITEMAP_URL_LIMIT,
+                ),
             })
             .collect();
         (!reasons.is_empty()).then(|| reasons.join("; "))
@@ -73,9 +80,28 @@ impl SessionSitemapFacts {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "cause", rename_all = "snake_case")]
 pub enum SessionSitemapCause {
-    Index { listed: usize },
-    UrlLimit { listed: usize },
-    UnreadDeclarations { count: usize },
+    /// An index whose children this route did not all read, as on every route
+    /// that names no child limit: how many it lists, and how many were read in
+    /// its order before the first that was not, omitted when none was.
+    Index {
+        listed: usize,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        read: usize,
+    },
+    UrlLimit {
+        listed: usize,
+    },
+    UnreadDeclarations {
+        count: usize,
+    },
+    /// An index's children's pages reached the walk's URL limit.
+    IndexUrls,
+    /// The found document may omit pages from sources that did not answer.
+    UnfinishedWalk,
+}
+
+fn is_zero(count: &usize) -> bool {
+    *count == 0
 }
 
 /// One page's contribution to the comparison.
@@ -239,9 +265,10 @@ fn digest(value: Option<&str>) -> Option<String> {
         .then(|| hex::encode(&Sha256::digest(key.as_bytes())[..]))
 }
 
-/// The sitemap the walk found, on the route that walked it. An index lists
-/// child sitemaps, which no hosted read follows, so its page set is partial
-/// and empty; a document with no entries is no sitemap, as on the desktop.
+/// The sitemap the walk found, on the route that walked it. An index's pages
+/// are the ones its children list, as far as this route read them, and what it
+/// did not read is a partial cause; a document with no entries is no sitemap,
+/// as on the desktop.
 fn sitemap_facts(context: &ProbeContext, keys: &RouteKeys) -> Option<SessionSitemapFacts> {
     let answer = context.outcomes.get(&robots_request(context))?;
     let robots = robots_fetch_from_probe(answer.clone());
@@ -253,37 +280,48 @@ fn sitemap_facts(context: &ProbeContext, keys: &RouteKeys) -> Option<SessionSite
     };
     let mut partial_causes = Vec::new();
     let index = document.kind.lists_child_sitemaps();
-    if index {
-        partial_causes.push(SessionSitemapCause::Index {
-            listed: document.locs.len(),
-        });
-    } else if document.locs.len() > SITEMAP_URL_LIMIT {
-        partial_causes.push(SessionSitemapCause::UrlLimit {
-            listed: document.locs.len(),
-        });
-    }
-    let declared = match &robots {
-        RobotsTxtFetch::Found { body } => sitemap_urls_from_robots(body),
-        _ => Vec::new(),
+    let pages: &[String] = if index {
+        let names_limit = context.sitemap_children.names_limit();
+        let children = context
+            .sitemap_children
+            .pages(&found, &origin_with_port(&context.page.url));
+        if !names_limit || children.read < children.listed {
+            partial_causes.push(SessionSitemapCause::Index {
+                listed: children.listed,
+                read: children.read,
+            });
+        }
+        if children.url_limited {
+            partial_causes.push(SessionSitemapCause::IndexUrls);
+        }
+        children.pages
+    } else {
+        if document.locs.len() > SITEMAP_URL_LIMIT {
+            partial_causes.push(SessionSitemapCause::UrlLimit {
+                listed: document.locs.len(),
+            });
+        }
+        &document.locs
     };
+    let declared = robots
+        .body()
+        .map(sitemap_urls_from_robots)
+        .unwrap_or_default();
     let count = unread_sitemaps_count(&declared, Some(&found.url));
     if count > 0 {
         partial_causes.push(SessionSitemapCause::UnreadDeclarations { count });
+    } else if !sitemap_sources_read(context, &robots, &found) {
+        partial_causes.push(SessionSitemapCause::UnfinishedWalk);
     }
     if !index && document.locs.is_empty() {
         return None;
     }
     Some(SessionSitemapFacts {
-        entries: if index {
-            Vec::new()
-        } else {
-            document
-                .locs
-                .iter()
-                .take(SITEMAP_URL_LIMIT)
-                .map(|loc| keys.key(&normalize_page_url(loc)))
-                .collect()
-        },
+        entries: pages
+            .iter()
+            .take(SITEMAP_URL_LIMIT)
+            .map(|loc| keys.key(&normalize_page_url(loc)))
+            .collect(),
         partial_causes,
     })
 }

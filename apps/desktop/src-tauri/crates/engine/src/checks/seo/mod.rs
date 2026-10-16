@@ -15,6 +15,7 @@ pub mod redirects;
 pub mod robots;
 pub mod robots_conflicts;
 pub mod robots_directives;
+pub(crate) mod robots_document;
 pub mod robots_tag;
 pub mod sitemap;
 pub mod sitemap_document;

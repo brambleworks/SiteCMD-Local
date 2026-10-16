@@ -13824,6 +13824,1903 @@
         }
       ],
       "routes": ["https://www.example.com/", "https://www.example.com/private"]
+    },
+    {
+      "expected": {
+        "facts": [
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["r1"],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r0",
+            "requested": "r0",
+            "sitemap": {
+              "entries": ["r1", "p746af0ced5836908"],
+              "partial_causes": []
+            },
+            "status_code": 200,
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["r0"],
+            "links_truncated": false,
+            "noindex": true,
+            "page": "r1",
+            "requested": "r1",
+            "status_code": 200,
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+          }
+        ],
+        "response": {
+          "checks": [
+            {
+              "check": "seo.canonical_loop",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_description_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_h1",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_title_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.hreflang_reciprocity",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.noindex_in_sitemap",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.orphan_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            }
+          ],
+          "compared": [0, 1],
+          "manifest_digest": "ca2b345491c03c0f",
+          "verdicts": [
+            {
+              "check_id": "seo.noindex_in_sitemap",
+              "pages": [1],
+              "severity": "medium",
+              "status": "warn"
+            },
+            {
+              "check_id": "seo.duplicate_title_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_description_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_h1",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.orphan_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.canonical_loop",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.hreflang_reciprocity",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            }
+          ]
+        }
+      },
+      "name": "an_index_sitemaps_children_supply_its_pages",
+      "pages": [
+        {
+          "page": {
+            "body": "<html><head><title>Home</title></head><body><a href=\"/listed\">Listed</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/",
+            "status_code": 200,
+            "url": "https://example.com/"
+          },
+          "probe_outcomes": [
+            {
+              "key": "get\u001fhttps://example.com/robots.txt\u001fbody=success_only\u001fredirects=follow",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/robots.txt",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": {
+                  "bytes": 236,
+                  "text": "<?xml version='1.0'?><sitemapindex xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><sitemap><loc>https://example.com/sitemap-posts.xml</loc></sitemap><sitemap><loc>https://example.com/sitemap-pages.xml</loc></sitemap></sitemapindex>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-posts.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap_child",
+              "outcome": {
+                "body": {
+                  "bytes": 138,
+                  "text": "<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://example.com/listed</loc></url></urlset>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap-posts.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-pages.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap_child",
+              "outcome": {
+                "body": {
+                  "bytes": 137,
+                  "text": "<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://example.com/about</loc></url></urlset>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap-pages.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            }
+          ]
+        },
+        {
+          "page": {
+            "body": "<html><head><title>Listed</title><meta name=\"robots\" content=\"noindex\"></head><body><a href=\"/\">Home</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/listed",
+            "status_code": 200,
+            "url": "https://example.com/listed"
+          },
+          "probe_outcomes": []
+        }
+      ],
+      "routes": ["https://example.com/", "https://example.com/listed"],
+      "sitemap_children": 50
+    },
+    {
+      "expected": {
+        "facts": [
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["r1"],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r0",
+            "requested": "r0",
+            "sitemap": {
+              "entries": ["r1", "p746af0ced5836908"],
+              "partial_causes": [
+                {
+                  "cause": "index",
+                  "listed": 3,
+                  "read": 2
+                }
+              ]
+            },
+            "status_code": 200,
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": [],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r1",
+            "requested": "r1",
+            "status_code": 200,
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+          }
+        ],
+        "response": {
+          "checks": [
+            {
+              "check": "seo.canonical_loop",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_description_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_h1",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_title_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.hreflang_reciprocity",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.noindex_in_sitemap",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.orphan_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            }
+          ],
+          "compared": [0, 1],
+          "manifest_digest": "ca2b345491c03c0f",
+          "verdicts": [
+            {
+              "check_id": "seo.duplicate_title_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_description_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_h1",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.orphan_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.noindex_in_sitemap",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.canonical_loop",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.hreflang_reciprocity",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            }
+          ]
+        }
+      },
+      "name": "an_index_past_the_child_limit_keeps_a_partial_cause",
+      "pages": [
+        {
+          "page": {
+            "body": "<html><head><title>Home</title></head><body><a href=\"/listed\">Listed</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/",
+            "status_code": 200,
+            "url": "https://example.com/"
+          },
+          "probe_outcomes": [
+            {
+              "key": "get\u001fhttps://example.com/robots.txt\u001fbody=success_only\u001fredirects=follow",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/robots.txt",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": {
+                  "bytes": 305,
+                  "text": "<?xml version='1.0'?><sitemapindex xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><sitemap><loc>https://example.com/sitemap-posts.xml</loc></sitemap><sitemap><loc>https://example.com/sitemap-pages.xml</loc></sitemap><sitemap><loc>https://example.com/sitemap-archive.xml</loc></sitemap></sitemapindex>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-posts.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap_child",
+              "outcome": {
+                "body": {
+                  "bytes": 138,
+                  "text": "<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://example.com/listed</loc></url></urlset>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap-posts.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-pages.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap_child",
+              "outcome": {
+                "body": {
+                  "bytes": 137,
+                  "text": "<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://example.com/about</loc></url></urlset>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap-pages.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-archive.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap_child",
+              "outcome": {
+                "body": {
+                  "bytes": 140,
+                  "text": "<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://example.com/archived</loc></url></urlset>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap-archive.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            }
+          ]
+        },
+        {
+          "page": {
+            "body": "<html><head><title>Listed</title></head><body></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/listed",
+            "status_code": 200,
+            "url": "https://example.com/listed"
+          },
+          "probe_outcomes": []
+        }
+      ],
+      "routes": ["https://example.com/", "https://example.com/listed"],
+      "sitemap_children": 2
+    },
+    {
+      "expected": {
+        "facts": [
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["r1"],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r0",
+            "requested": "r0",
+            "sitemap": {
+              "entries": ["r1"],
+              "partial_causes": [
+                {
+                  "cause": "index",
+                  "listed": 2
+                }
+              ]
+            },
+            "status_code": 200,
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": [],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r1",
+            "requested": "r1",
+            "status_code": 200,
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+          }
+        ],
+        "response": {
+          "checks": [
+            {
+              "check": "seo.canonical_loop",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_description_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_h1",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_title_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.hreflang_reciprocity",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.noindex_in_sitemap",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.orphan_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            }
+          ],
+          "compared": [0, 1],
+          "manifest_digest": "ca2b345491c03c0f",
+          "verdicts": [
+            {
+              "check_id": "seo.duplicate_title_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_description_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_h1",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.orphan_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.noindex_in_sitemap",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.canonical_loop",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.hreflang_reciprocity",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            }
+          ]
+        }
+      },
+      "name": "a_child_sitemap_that_did_not_answer_keeps_the_set_partial",
+      "pages": [
+        {
+          "page": {
+            "body": "<html><head><title>Home</title></head><body><a href=\"/listed\">Listed</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/",
+            "status_code": 200,
+            "url": "https://example.com/"
+          },
+          "probe_outcomes": [
+            {
+              "key": "get\u001fhttps://example.com/robots.txt\u001fbody=success_only\u001fredirects=follow",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/robots.txt",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": {
+                  "bytes": 236,
+                  "text": "<?xml version='1.0'?><sitemapindex xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><sitemap><loc>https://example.com/sitemap-posts.xml</loc></sitemap><sitemap><loc>https://example.com/sitemap-pages.xml</loc></sitemap></sitemapindex>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-posts.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap_child",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/html",
+                "final_url": "https://example.com/sitemap-posts.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 503
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-pages.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap_child",
+              "outcome": {
+                "body": {
+                  "bytes": 138,
+                  "text": "<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://example.com/listed</loc></url></urlset>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap-pages.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            }
+          ]
+        },
+        {
+          "page": {
+            "body": "<html><head><title>Listed</title></head><body></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/listed",
+            "status_code": 200,
+            "url": "https://example.com/listed"
+          },
+          "probe_outcomes": []
+        }
+      ],
+      "routes": ["https://example.com/", "https://example.com/listed"],
+      "sitemap_children": 50
+    },
+    {
+      "discover": {
+        "limit": 99
+      },
+      "expected": {
+        "discovered": {
+          "routes": ["/pricing", "/about"]
+        },
+        "facts": [
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["r1", "pd07612a0879b703e", "pebee1deb63f2bb01"],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r0",
+            "requested": "r0",
+            "sitemap": {
+              "entries": ["r2", "r1"],
+              "partial_causes": []
+            },
+            "status_code": 200,
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["r0"],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r1",
+            "requested": "r1",
+            "status_code": 200,
+            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["r0"],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r2",
+            "requested": "r2",
+            "status_code": 200,
+            "title": "a4262e1c9bcbc1721eb3fe13558154460a2b2a2d307daa32532478526ce6ccb1"
+          }
+        ],
+        "response": {
+          "checks": [
+            {
+              "check": "seo.canonical_loop",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_description_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_h1",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_title_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.hreflang_reciprocity",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.noindex_in_sitemap",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.orphan_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            }
+          ],
+          "compared": [0, 1, 2],
+          "manifest_digest": "ca2b345491c03c0f",
+          "verdicts": [
+            {
+              "check_id": "seo.duplicate_title_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_description_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_h1",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.orphan_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.noindex_in_sitemap",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.canonical_loop",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.hreflang_reciprocity",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            }
+          ]
+        }
+      },
+      "name": "discovery_adds_the_home_links_then_the_sitemap_pages",
+      "pages": [
+        {
+          "page": {
+            "body": "<html><head><title>Home</title></head><body><a href=\"/pricing\">Plans</a><a href=\"/menu\">Menu</a><a href=\"/brochure.pdf\">Brochure</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/",
+            "status_code": 200,
+            "url": "https://example.com/"
+          },
+          "probe_outcomes": [
+            {
+              "key": "get\u001fhttps://example.com/robots.txt\u001fbody=success_only\u001fredirects=follow",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/robots.txt",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": {
+                  "bytes": 186,
+                  "text": "<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://example.com/about</loc></url><url><loc>https://example.com/pricing</loc></url></urlset>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "head\u001fhttps://example.com/menu\u001fbody=none\u001fredirects=follow",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "application/pdf",
+                "final_url": "https://example.com/menu",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            }
+          ]
+        },
+        {
+          "page": {
+            "body": "<html><head><title>Pricing</title></head><body><a href=\"/\">Home</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/pricing",
+            "status_code": 200,
+            "url": "https://example.com/pricing"
+          },
+          "probe_outcomes": []
+        },
+        {
+          "page": {
+            "body": "<html><head><title>About</title></head><body><a href=\"/\">Home</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/about",
+            "status_code": 200,
+            "url": "https://example.com/about"
+          },
+          "probe_outcomes": []
+        }
+      ],
+      "routes": ["https://example.com/", "https://example.com/pricing", "https://example.com/about"]
+    },
+    {
+      "discover": {
+        "limit": 99,
+        "planned": ["/listed"]
+      },
+      "expected": {
+        "discovered": {
+          "routes": ["/pricing", "/listed"]
+        },
+        "facts": [
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["r1"],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r0",
+            "requested": "r0",
+            "status_code": 200,
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": [],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r2",
+            "requested": "r2",
+            "status_code": 200,
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+          }
+        ],
+        "response": {
+          "checks": [
+            {
+              "check": "seo.canonical_loop",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_description_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_h1",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_title_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.hreflang_reciprocity",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.noindex_in_sitemap",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.orphan_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            }
+          ],
+          "compared": [0, 1],
+          "manifest_digest": "ca2b345491c03c0f",
+          "verdicts": [
+            {
+              "check_id": "seo.duplicate_title_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_description_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_h1",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.orphan_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.noindex_in_sitemap",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.canonical_loop",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.hreflang_reciprocity",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            }
+          ]
+        }
+      },
+      "name": "discovery_keeps_the_planned_routes_when_the_sitemap_did_not_answer",
+      "pages": [
+        {
+          "page": {
+            "body": "<html><head><title>Home</title></head><body><a href=\"/pricing\">Plans</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/",
+            "status_code": 200,
+            "url": "https://example.com/"
+          },
+          "probe_outcomes": [
+            {
+              "key": "get\u001fhttps://example.com/robots.txt\u001fbody=success_only\u001fredirects=follow",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/robots.txt",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/html",
+                "final_url": "https://example.com/sitemap.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 503
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-index.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/html",
+                "final_url": "https://example.com/sitemap-index.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap_index.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/html",
+                "final_url": "https://example.com/sitemap_index.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/wp-sitemap.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/html",
+                "final_url": "https://example.com/wp-sitemap.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.php\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/html",
+                "final_url": "https://example.com/sitemap.php",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.txt\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/html",
+                "final_url": "https://example.com/sitemap.txt",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            }
+          ]
+        },
+        {
+          "page": {
+            "body": "<html><head><title>Listed</title></head><body></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/listed",
+            "status_code": 200,
+            "url": "https://example.com/listed"
+          },
+          "probe_outcomes": []
+        }
+      ],
+      "routes": [
+        "https://example.com/",
+        "https://example.com/pricing",
+        "https://example.com/listed"
+      ]
+    },
+    {
+      "discover": {
+        "limit": 99,
+        "planned": ["/listed"]
+      },
+      "expected": {
+        "discovered": {
+          "routes": null
+        },
+        "facts": [
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": [],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r0",
+            "requested": "r0",
+            "status_code": 500,
+            "title": null
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": [],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r1",
+            "requested": "r1",
+            "status_code": 200,
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+          }
+        ],
+        "response": {
+          "checks": [
+            {
+              "check": "seo.canonical_loop",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_description_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_h1",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_title_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.hreflang_reciprocity",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.noindex_in_sitemap",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.orphan_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            }
+          ],
+          "compared": [1],
+          "manifest_digest": "ca2b345491c03c0f",
+          "verdicts": [
+            {
+              "check_id": "seo.duplicate_title_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.duplicate_description_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.duplicate_h1",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.orphan_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.noindex_in_sitemap",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.canonical_loop",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.hreflang_reciprocity",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            }
+          ]
+        }
+      },
+      "name": "discovery_reads_nothing_from_an_error_entry_page",
+      "pages": [
+        {
+          "page": {
+            "body": "<html><head><title>Home</title></head><body><a href=\"/pricing\">Plans</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/",
+            "status_code": 500,
+            "url": "https://example.com/"
+          },
+          "probe_outcomes": []
+        },
+        {
+          "page": {
+            "body": "<html><head><title>Listed</title></head><body></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/listed",
+            "status_code": 200,
+            "url": "https://example.com/listed"
+          },
+          "probe_outcomes": []
+        }
+      ],
+      "routes": ["https://example.com/", "https://example.com/listed"]
+    },
+    {
+      "discover": {
+        "limit": 99,
+        "planned": ["/listed"]
+      },
+      "expected": {
+        "discovered": {
+          "routes": ["/pricing", "/posts/first", "/about"]
+        },
+        "facts": [
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["r1"],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r0",
+            "requested": "r0",
+            "sitemap": {
+              "entries": ["r2", "r3"],
+              "partial_causes": []
+            },
+            "status_code": 200,
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": [],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r1",
+            "requested": "r1",
+            "status_code": 200,
+            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": [],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r2",
+            "requested": "r2",
+            "status_code": 200,
+            "title": "c51e1e554f857a3ed8d42a139ae2db262ef6fbbafc0b0d06306295ff5cca2875"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": [],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r3",
+            "requested": "r3",
+            "status_code": 200,
+            "title": "a4262e1c9bcbc1721eb3fe13558154460a2b2a2d307daa32532478526ce6ccb1"
+          }
+        ],
+        "response": {
+          "checks": [
+            {
+              "check": "seo.canonical_loop",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_description_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_h1",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_title_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.hreflang_reciprocity",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.noindex_in_sitemap",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.orphan_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            }
+          ],
+          "compared": [0, 1, 2, 3],
+          "manifest_digest": "ca2b345491c03c0f",
+          "verdicts": [
+            {
+              "check_id": "seo.duplicate_title_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_description_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_h1",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.orphan_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.noindex_in_sitemap",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.canonical_loop",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.hreflang_reciprocity",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            }
+          ]
+        }
+      },
+      "name": "discovery_reads_an_indexs_children",
+      "pages": [
+        {
+          "page": {
+            "body": "<html><head><title>Home</title></head><body><a href=\"/pricing\">Plans</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/",
+            "status_code": 200,
+            "url": "https://example.com/"
+          },
+          "probe_outcomes": [
+            {
+              "key": "get\u001fhttps://example.com/robots.txt\u001fbody=success_only\u001fredirects=follow",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/robots.txt",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": {
+                  "bytes": 236,
+                  "text": "<?xml version='1.0'?><sitemapindex xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><sitemap><loc>https://example.com/sitemap-posts.xml</loc></sitemap><sitemap><loc>https://example.com/sitemap-pages.xml</loc></sitemap></sitemapindex>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-posts.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap_child",
+              "outcome": {
+                "body": {
+                  "bytes": 143,
+                  "text": "<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://example.com/posts/first</loc></url></urlset>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap-posts.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-pages.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap_child",
+              "outcome": {
+                "body": {
+                  "bytes": 137,
+                  "text": "<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'><url><loc>https://example.com/about</loc></url></urlset>",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "application/xml",
+                "final_url": "https://example.com/sitemap-pages.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            }
+          ]
+        },
+        {
+          "page": {
+            "body": "<html><head><title>Pricing</title></head><body></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/pricing",
+            "status_code": 200,
+            "url": "https://example.com/pricing"
+          },
+          "probe_outcomes": []
+        },
+        {
+          "page": {
+            "body": "<html><head><title>First post</title></head><body></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/posts/first",
+            "status_code": 200,
+            "url": "https://example.com/posts/first"
+          },
+          "probe_outcomes": []
+        },
+        {
+          "page": {
+            "body": "<html><head><title>About</title></head><body></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/about",
+            "status_code": 200,
+            "url": "https://example.com/about"
+          },
+          "probe_outcomes": []
+        }
+      ],
+      "routes": [
+        "https://example.com/",
+        "https://example.com/pricing",
+        "https://example.com/posts/first",
+        "https://example.com/about"
+      ],
+      "sitemap_children": 50
+    },
+    {
+      "discover": {
+        "limit": 99,
+        "planned": ["/listed"]
+      },
+      "expected": {
+        "discovered": {
+          "routes": ["/public"]
+        },
+        "facts": [
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": ["p858ec808dfd652dc", "r1"],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r0",
+            "requested": "r0",
+            "status_code": 200,
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+          },
+          {
+            "canonical": null,
+            "description": null,
+            "h1": null,
+            "hreflang": [],
+            "hreflang_truncated": false,
+            "links": [],
+            "links_truncated": false,
+            "noindex": false,
+            "page": "r1",
+            "requested": "r1",
+            "status_code": 200,
+            "title": "efa1f375d76194fa51a3556a97e641e61685f914d446979da50a551a4333ffd7"
+          }
+        ],
+        "response": {
+          "checks": [
+            {
+              "check": "seo.canonical_loop",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_description_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_h1",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.duplicate_title_across_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.hreflang_reciprocity",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.noindex_in_sitemap",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            },
+            {
+              "check": "seo.orphan_pages",
+              "class": "deterministic",
+              "layer": "transport",
+              "scope": "session"
+            }
+          ],
+          "compared": [0, 1],
+          "manifest_digest": "ca2b345491c03c0f",
+          "verdicts": [
+            {
+              "check_id": "seo.duplicate_title_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_description_across_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.duplicate_h1",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.orphan_pages",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.noindex_in_sitemap",
+              "pages": [],
+              "severity": "medium",
+              "status": "skipped"
+            },
+            {
+              "check_id": "seo.canonical_loop",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            },
+            {
+              "check_id": "seo.hreflang_reciprocity",
+              "pages": [],
+              "severity": "medium",
+              "status": "pass"
+            }
+          ]
+        }
+      },
+      "name": "discovery_omits_a_robots_disallowed_home_link",
+      "pages": [
+        {
+          "page": {
+            "body": "<html><head><title>Home</title></head><body><a href=\"/private\">Private</a><a href=\"/public\">Public</a></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/",
+            "status_code": 200,
+            "url": "https://example.com/"
+          },
+          "probe_outcomes": [
+            {
+              "key": "get\u001fhttps://example.com/robots.txt\u001fbody=success_only\u001fredirects=follow",
+              "outcome": {
+                "body": {
+                  "bytes": 33,
+                  "text": "User-agent: *\nDisallow: /private\n",
+                  "utf8_valid": true
+                },
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/robots.txt",
+                "headers": [],
+                "kind": "response",
+                "status": 200
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/sitemap.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap-index.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/sitemap-index.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap_index.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/sitemap_index.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/wp-sitemap.xml\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/wp-sitemap.xml",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.php\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/sitemap.php",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            },
+            {
+              "key": "get\u001fhttps://example.com/sitemap.txt\u001fbody=success_only\u001fredirects=follow\u001flimit=sitemap",
+              "outcome": {
+                "body": null,
+                "content_length": null,
+                "content_type": "text/plain",
+                "final_url": "https://example.com/sitemap.txt",
+                "headers": [],
+                "kind": "response",
+                "status": 404
+              }
+            }
+          ]
+        },
+        {
+          "page": {
+            "body": "<html><head><title>Public</title></head><body></body></html>",
+            "evaluation_time": "2026-08-05T00:00:00Z",
+            "headers": [["content-type", "text/html; charset=utf-8"]],
+            "http_version": null,
+            "is_localhost": false,
+            "is_strict_localhost": false,
+            "requested_url": "https://example.com/public",
+            "status_code": 200,
+            "url": "https://example.com/public"
+          },
+          "probe_outcomes": []
+        }
+      ],
+      "routes": ["https://example.com/", "https://example.com/public"]
     }
   ],
   "comment": "Cross-runtime cross-page fixtures: each case's scan routes and page artifacts, the comparison facts the engine answers for each page, and the comparison over them. Embedded via include_str! so the same bytes run natively and through the wasm artifact."

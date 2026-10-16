@@ -11,6 +11,7 @@ const ROUTE_ABI = [
   "engine_route_plan",
   "engine_route_evaluate",
   "engine_route_session_page",
+  "engine_route_discover",
   "engine_session_evaluate",
 ];
 const ROUTE_REQUESTS = [
@@ -18,6 +19,7 @@ const ROUTE_REQUESTS = [
   "struct RouteCall",
   "struct RouteEvaluationRequest",
   "struct RouteSessionPageRequest",
+  "struct RouteDiscoverRequest",
 ];
 
 export function routeAbiFailures(read) {

@@ -43,7 +43,7 @@ fn collapse_whitespace(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn rel_has(rel: &str, expected: &str) -> bool {
+pub(crate) fn rel_has(rel: &str, expected: &str) -> bool {
     rel.split_ascii_whitespace()
         .any(|token| token.eq_ignore_ascii_case(expected))
 }

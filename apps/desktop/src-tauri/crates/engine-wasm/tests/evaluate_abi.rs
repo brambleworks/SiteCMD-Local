@@ -11,7 +11,8 @@ use sitecmd_engine::evaluation::{
 use sitecmd_engine::manifest::{capability_manifest, CheckScope, RuntimeFact};
 use sitecmd_engine::{Check, CheckResult};
 use sitecmd_engine_wasm::{
-    engine_route_evaluate, engine_route_open, engine_route_plan, engine_route_session_page,
+    engine_route_discover, engine_route_evaluate, engine_route_open, engine_route_plan,
+    engine_route_session_page,
 };
 
 const CORPUS: &str = include_str!("../../engine/fixtures/checks/golden.json");
@@ -261,6 +262,7 @@ fn a_route_call_before_any_open_is_refused_as_data() {
             abi::call(engine_route_plan, b"{}"),
             abi::call(engine_route_evaluate, b"{}"),
             abi::call(engine_route_session_page, b"{\"routes\": []}"),
+            abi::call(engine_route_discover, b"{\"limit\": 0}"),
         ]
         .map(|frame| abi::refusal(&frame))
     })

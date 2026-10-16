@@ -162,7 +162,10 @@ pub unsafe extern "C" fn engine_route_open(ptr: *mut u8, len: u32) -> *const u8 
 
     let parsed = read_request::<RouteOpenRequest>(ptr, len);
     ROUTE.with(|slot| *slot.borrow_mut() = None);
-    let payload = match parsed.map(|open| RouteSession::open_with(open.page, open.header_lines)) {
+    let payload = match parsed.map(|open| {
+        RouteSession::open_with(open.page, open.header_lines)
+            .map(|route| route.with_sitemap_children(open.sitemap_children))
+    }) {
         Ok(Ok(route)) => {
             let opened = canonical(&route.opened());
             ROUTE.with(|slot| *slot.borrow_mut() = Some(route));
@@ -236,6 +239,24 @@ pub unsafe extern "C" fn engine_route_session_page(ptr: *mut u8, len: u32) -> *c
             Ok(facts) => canonical(&facts),
             Err(error) => error_payload(&error),
         }),
+        Err(error) => error_payload(&error),
+    })
+}
+
+/// Answer the routes the open route's reads discover for its scan.
+///
+/// # Safety
+///
+/// `ptr` must be an unfreed `scorer_alloc` buffer of exactly `len` bytes.
+/// This call consumes the buffer.
+#[cfg(feature = "checks")]
+#[no_mangle]
+pub unsafe extern "C" fn engine_route_discover(ptr: *mut u8, len: u32) -> *const u8 {
+    use sitecmd_engine::evaluation::RouteDiscoverRequest;
+
+    let parsed = read_request::<RouteDiscoverRequest>(ptr, len);
+    leak_framed(match parsed {
+        Ok(call) => with_route(|route| canonical(&route.discover(&call.planned, call.limit))),
         Err(error) => error_payload(&error),
     })
 }

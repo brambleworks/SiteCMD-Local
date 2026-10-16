@@ -16,6 +16,19 @@ use crate::probe::{BodyLimit, ProbeFailureClass, ProbeOutcome, ProbeRequest};
 /// on every lane. A set cut here is partial, and says so.
 pub const SITEMAP_URL_LIMIT: usize = 5000;
 
+/// Why unread sitemap sources prevent a complete comparison.
+pub const SITEMAP_WALK_INCOMPLETE_REASON: &str = "robots.txt or an earlier sitemap did not answer";
+
+/// Whether robots.txt answered for its sitemap set: a body-cap refusal answered
+/// with unknown declarations; other failures, HTTP 429 and HTTP 5xx are transient
+/// and leave the set partial.
+pub fn robots_was_read(outcome: &ProbeOutcome) -> bool {
+    match outcome {
+        ProbeOutcome::Failure(failure) => failure.class == ProbeFailureClass::BodyCapExceeded,
+        ProbeOutcome::Response(response) => !matches!(response.status, 429 | 500..=599),
+    }
+}
+
 /// One candidate's request: a plain GET read under the sitemap cap.
 ///
 /// Deliberately NOT the browser `Accept` the 404 probe sends: no evidence says
@@ -26,11 +39,17 @@ pub fn sitemap_request(url: &str) -> ProbeRequest {
     ProbeRequest::get(url).limit(BodyLimit::Sitemap)
 }
 
+/// An index's child: the same plain GET under the sitemap cap, keyed apart
+/// from a candidate's so a runtime records its answer on its own.
+pub fn sitemap_child_request(url: &str) -> ProbeRequest {
+    ProbeRequest::get(url).limit(BodyLimit::SitemapChild)
+}
+
 /// The candidates in walk order: the declarations robots.txt makes on this
 /// origin, then the conventional paths, with no URL twice.
 pub fn sitemap_candidates(origin: &str, robots: &RobotsTxtFetch) -> Vec<String> {
     let mut candidates: Vec<String> = Vec::new();
-    if let RobotsTxtFetch::Found { body } = robots {
+    if let Some(body) = robots.body() {
         for url in sitemap_urls_from_robots(body)
             .into_iter()
             .filter(|url| url_is_same_origin(url, origin))

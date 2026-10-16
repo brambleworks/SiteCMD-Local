@@ -46,7 +46,7 @@ use crate::checks::seo::links::{LinkScope, EXTERNAL_CHECK_ID, INTERNAL_CHECK_ID}
 use crate::checks::seo::redirects::{
     evaluate_temporary_redirect, temporary_redirect_unrecorded_start,
 };
-use crate::checks::seo::robots::{evaluate_robots_txt, RobotsTxtFetch};
+use crate::checks::seo::robots::evaluate_robots_txt;
 use crate::checks::seo::robots_directives::evaluate_sitemap_in_robots;
 use crate::checks::seo::sitemap::{evaluate_sitemap, SitemapProbe};
 use crate::page::origin_with_port;
@@ -289,11 +289,10 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
     ProbeCheck {
         covers: &["seo.ai_crawler_blocking"],
         plan: |ctx| vec![origin_reads::robots_request(ctx)],
-        // The desktop's own rule: a crawler policy is read only from a
-        // robots.txt that answered with one, and anything else states nothing.
-        grade: |ctx| match origin_reads::robots_fetch(ctx) {
-            RobotsTxtFetch::Found { body } => evaluate_ai_crawler_blocking(&body),
-            _ => Vec::new(),
+        grade: |ctx| {
+            origin_reads::robots_fetch(ctx)
+                .body()
+                .map_or_else(Vec::new, evaluate_ai_crawler_blocking)
         },
     },
     ProbeCheck {

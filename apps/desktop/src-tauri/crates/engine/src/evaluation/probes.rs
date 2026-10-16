@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 use super::probe_checks::PROBE_CHECKS;
+use super::sitemap_children::ChildSitemaps;
 use super::{
     CheckLayer, EvaluationError, EvaluationRequest, NotEvaluated, NotEvaluatedReason, PlannedCheck,
     MANIFEST,
@@ -24,6 +25,10 @@ use crate::probe::{
 /// Non-printable separator for collision-resistant probe keys whose fields may
 /// contain any printable character.
 const KEY_SEPARATOR: char = '\u{1f}';
+
+/// The key field a child sitemap's request carries, by which a route reads
+/// the answer as it records it.
+const SITEMAP_CHILD_FIELD: &str = "limit=sitemap_child";
 
 /// One probe the caller must execute and every manifest check it serves.
 /// Exact comparisons use serialized boundary bytes, so this type intentionally
@@ -96,9 +101,16 @@ pub fn probe_key(request: &ProbeRequest) -> String {
         key.push(KEY_SEPARATOR);
         key.push_str(field);
     }
-    if request.limit == BodyLimit::Sitemap {
-        key.push(KEY_SEPARATOR);
-        key.push_str("limit=sitemap");
+    match request.limit {
+        BodyLimit::Sitemap => {
+            key.push(KEY_SEPARATOR);
+            key.push_str("limit=sitemap");
+        }
+        BodyLimit::SitemapChild => {
+            key.push(KEY_SEPARATOR);
+            key.push_str(SITEMAP_CHILD_FIELD);
+        }
+        BodyLimit::Probe => {}
     }
     if request.coding == ContentCoding::Raw {
         key.push(KEY_SEPARATOR);
@@ -115,6 +127,12 @@ pub fn probe_key(request: &ProbeRequest) -> String {
         key.push_str(value);
     }
     key
+}
+
+/// Whether a probe key is a child sitemap's request, as `probe_key` writes it.
+pub(super) fn is_sitemap_child_key(key: &str) -> bool {
+    key.rsplit_once(KEY_SEPARATOR)
+        .is_some_and(|(_, field)| field == SITEMAP_CHILD_FIELD)
 }
 
 /// Represent a planned but unexecuted probe as a transport failure.
@@ -170,7 +188,8 @@ impl<'a> ProbeOutcomes<'a> {
 }
 
 /// Everything a probe-lane plan or verdict may read: the document, the answers gathered so far,
-/// what the caller recorded asking for, and the kept anchor resolution and asset sample.
+/// what the caller recorded asking for, the kept anchor resolution and asset sample,
+/// and the index sitemap's children this route reads.
 /// No client, no clock.
 pub struct ProbeContext<'a> {
     pub page: &'a PageContext,
@@ -183,6 +202,8 @@ pub struct ProbeContext<'a> {
     /// The page's anchor destinations, resolved by the first link planner or
     /// verdict that asks.
     pub link_targets: &'a OnceLock<LinkTargets>,
+    /// An index sitemap's children this route reads, and what they gave.
+    pub sitemap_children: &'a ChildSitemaps,
     /// The asset sample's addresses, resolved by the first asset planner that
     /// asks.
     pub asset_sample: &'a OnceLock<Vec<url::Url>>,

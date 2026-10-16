@@ -10,71 +10,95 @@ use sitecmd_engine::session::{analyze_session, SessionSitemap};
 use sitecmd_engine::CheckStatus;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[tokio::test]
-async fn oversized_robots_declarations_leave_both_sitemap_comparisons_complete() {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+type Reply = (&'static str, &'static str, &'static str, String);
+
+struct TestSite {
+    origin: String,
+    server: tokio::task::JoinHandle<()>,
+}
+
+impl TestSite {
+    async fn new(answers: impl FnOnce(&str) -> Vec<Reply>) -> Self {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind listener");
+        let origin = format!(
+            "http://{}",
+            listener.local_addr().expect("listener address")
+        );
+        let answers = answers(&origin);
+        let server = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut request = [0; 4096];
+                let read = stream.read(&mut request).await.expect("read request");
+                let request = String::from_utf8_lossy(&request[..read]);
+                let path = request.split_whitespace().nth(1).expect("request path");
+                let (status, content_type, body) = answers
+                    .iter()
+                    .find(|(route, _, _, _)| *route == path)
+                    .map(|(_, status, content_type, body)| (*status, *content_type, body.as_str()))
+                    .unwrap_or(("404 Not Found", "text/plain", ""));
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+            }
+        });
+        Self { origin, server }
+    }
+
+    async fn discover(&self) -> SitemapResult {
+        discover_sitemap(
+            crate::http_client::for_url(true),
+            &self.origin,
+            crate::network_policy::LocalOrigin::Loopback,
+        )
         .await
-        .expect("bind listener");
-    let origin = format!(
-        "http://{}",
-        listener.local_addr().expect("listener address")
-    );
-    let routes = vec![format!("{origin}/"), format!("{origin}/private")];
-    let sitemap = format!("<urlset><url><loc>{origin}/</loc></url></urlset>");
-    let declarations = format!("\nSitemap: {origin}/sitemap.xml\nSitemap: {origin}/posts.xml\n");
-    let mut robots = format!(
-        "# {}",
-        ".".repeat(crate::constants::MAX_PROBE_BODY_SIZE as usize)
-    );
-    robots.push_str(&declarations);
-    assert!(robots.len() as u64 > crate::constants::MAX_PROBE_BODY_SIZE);
-    assert!((robots.len() as u64) < crate::constants::MAX_SITEMAP_SIZE);
-    let posts = format!("<urlset><url><loc>{origin}/private</loc></url></urlset>");
-    let server = tokio::spawn(async move {
-        while let Ok((mut stream, _)) = listener.accept().await {
-            let mut request = [0; 4096];
-            let read = stream.read(&mut request).await.expect("read request");
-            let request = String::from_utf8_lossy(&request[..read]);
-            let (content_type, body) = if request.starts_with("GET /robots.txt ") {
-                ("text/plain", &robots)
-            } else if request.starts_with("GET /posts.xml ") {
-                ("application/xml", &posts)
-            } else {
-                ("application/xml", &sitemap)
-            };
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-        }
-    });
-    let client = crate::http_client::for_url(true);
-    let discovered = discover_sitemap(
-        client,
-        &origin,
-        crate::network_policy::LocalOrigin::Loopback,
-    )
-    .await;
+    }
+}
+
+impl Drop for TestSite {
+    fn drop(&mut self) {
+        self.server.abort();
+    }
+}
+
+fn urlset(origin: &str, path: &str) -> String {
+    format!("<urlset><url><loc>{origin}{path}</loc></url></urlset>")
+}
+
+async fn compare(site: &TestSite, expected: CheckStatus) -> (SitemapResult, Vec<ExecutedProbe>) {
+    let routes = vec![
+        format!("{}/", site.origin),
+        format!("{}/private", site.origin),
+    ];
+    let discovered = site.discover().await;
     let mut outcomes = Vec::new();
-    for request in [
-        ProbeRequest::get(format!("{origin}/robots.txt")),
-        sitemap_request(&format!("{origin}/sitemap.xml")),
-    ] {
+    let requests = std::iter::once(ProbeRequest::get(format!("{}/robots.txt", site.origin))).chain(
+        sitemap_candidate_urls(&site.origin)
+            .iter()
+            .map(|url| sitemap_request(url))
+            .collect::<Vec<_>>(),
+    );
+    for request in requests {
         outcomes.push(ExecutedProbe::new(
             probe_key(&request),
-            crate::checks::probe(client, request).await,
+            crate::checks::probe(crate::http_client::for_url(true), request).await,
         ));
     }
-    server.abort();
-    assert!(matches!(
-        &outcomes[0].outcome,
-        ProbeOutcome::Failure(failure) if failure.class == ProbeFailureClass::BodyCapExceeded
-    ));
+    if let Some(source) = &discovered.source_url {
+        let request = sitemap_request(source);
+        let key = probe_key(&request);
+        if !outcomes.iter().any(|outcome| outcome.key == key) {
+            outcomes.push(ExecutedProbe::new(
+                key,
+                crate::checks::probe(crate::http_client::for_url(true), request).await,
+            ));
+        }
+    }
     assert_eq!(discovered.status, SitemapStatus::Found);
     assert_eq!(discovered.urls, vec![routes[0].clone()]);
-    assert_eq!(discovered.partial_because, None);
-
     let mut native = Vec::new();
     let mut hosted = Vec::new();
     for (position, route) in routes.iter().enumerate() {
@@ -136,7 +160,192 @@ async fn oversized_robots_declarations_leave_both_sitemap_comparisons_complete()
         .iter()
         .find(|verdict| verdict.check_id == "seo.noindex_in_sitemap")
         .expect("hosted verdict");
-    assert_eq!(native.result.status, CheckStatus::Pass);
+    assert_eq!(native.result.status, expected);
     assert_eq!(hosted.status, native.result.status);
     assert_eq!(hosted.pages, native.pages);
+    (discovered, outcomes)
+}
+
+#[tokio::test]
+async fn oversized_robots_declarations_leave_both_sitemap_comparisons_complete() {
+    let site = TestSite::new(|origin| {
+        let mut robots = format!(
+            "# {}",
+            ".".repeat(crate::constants::MAX_PROBE_BODY_SIZE as usize)
+        );
+        robots.push_str(&format!(
+            "\nSitemap: {origin}/sitemap.xml\nSitemap: {origin}/posts.xml\n"
+        ));
+        assert!(robots.len() as u64 > crate::constants::MAX_PROBE_BODY_SIZE);
+        assert!((robots.len() as u64) < crate::constants::MAX_SITEMAP_SIZE);
+        vec![
+            ("/robots.txt", "200 OK", "text/plain", robots),
+            (
+                "/sitemap.xml",
+                "200 OK",
+                "application/xml",
+                urlset(origin, "/"),
+            ),
+            (
+                "/posts.xml",
+                "200 OK",
+                "application/xml",
+                urlset(origin, "/private"),
+            ),
+        ]
+    })
+    .await;
+    let (discovered, outcomes) = compare(&site, CheckStatus::Pass).await;
+    assert_eq!(discovered.partial_because, None);
+    assert!(matches!(&outcomes[0].outcome,
+        ProbeOutcome::Failure(failure) if failure.class == ProbeFailureClass::BodyCapExceeded));
+}
+
+#[tokio::test]
+async fn transient_robots_failures_leave_both_sitemap_comparisons_partial() {
+    let site = TestSite::new(|origin| {
+        vec![
+            (
+                "/robots.txt",
+                "503 Service Unavailable",
+                "text/plain",
+                String::new(),
+            ),
+            (
+                "/sitemap.xml",
+                "200 OK",
+                "application/xml",
+                urlset(origin, "/"),
+            ),
+        ]
+    })
+    .await;
+    compare(&site, CheckStatus::Skipped).await;
+}
+
+#[tokio::test]
+async fn html_robots_declarations_find_a_custom_sitemap() {
+    let site = TestSite::new(|origin| {
+        vec![
+            (
+                "/robots.txt",
+                "200 OK",
+                "text/html; charset=utf-8",
+                format!("Sitemap: {origin}/custom.xml"),
+            ),
+            (
+                "/custom.xml",
+                "200 OK",
+                "application/xml",
+                urlset(origin, "/"),
+            ),
+        ]
+    })
+    .await;
+    let discovered = site.discover().await;
+    assert_eq!(discovered.status, SitemapStatus::Found);
+    assert_eq!(discovered.urls, vec![format!("{}/", site.origin)]);
+    assert_eq!(
+        discovered.source_url,
+        Some(format!("{}/custom.xml", site.origin))
+    );
+    assert_eq!(discovered.partial_because, None);
+}
+
+#[tokio::test]
+async fn html_robots_declarations_keep_a_second_sitemap_partial() {
+    let site = TestSite::new(|origin| {
+        vec![
+            (
+                "/robots.txt",
+                "200 OK",
+                "text/html; charset=utf-8",
+                format!("Sitemap: {origin}/posts.xml"),
+            ),
+            (
+                "/sitemap.xml",
+                "200 OK",
+                "application/xml",
+                urlset(origin, "/"),
+            ),
+        ]
+    })
+    .await;
+    let discovered = site.discover().await;
+    assert_eq!(discovered.status, SitemapStatus::Found);
+    assert_eq!(discovered.urls, vec![format!("{}/", site.origin)]);
+    assert_eq!(
+        discovered.partial_because.as_deref(),
+        Some("robots.txt declares 1 further sitemap that was not read")
+    );
+}
+
+#[tokio::test]
+async fn an_unanswered_earlier_candidate_leaves_both_sitemap_comparisons_partial() {
+    let site = TestSite::new(|origin| {
+        vec![
+            (
+                "/sitemap.xml",
+                "503 Service Unavailable",
+                "text/plain",
+                String::new(),
+            ),
+            (
+                "/sitemap-index.xml",
+                "200 OK",
+                "application/xml",
+                urlset(origin, "/"),
+            ),
+        ]
+    })
+    .await;
+    compare(&site, CheckStatus::Skipped).await;
+}
+
+#[tokio::test]
+async fn html_typed_robots_declarations_agree_in_both_sitemap_comparisons() {
+    let site = TestSite::new(|origin| {
+        vec![
+            (
+                "/robots.txt",
+                "200 OK",
+                "text/html; charset=utf-8",
+                format!("User-agent: *\nAllow: /\nSitemap: {origin}/custom.xml"),
+            ),
+            (
+                "/custom.xml",
+                "200 OK",
+                "application/xml",
+                urlset(origin, "/"),
+            ),
+        ]
+    })
+    .await;
+    compare(&site, CheckStatus::Pass).await;
+}
+
+#[tokio::test]
+async fn robots_line_endings_agree_in_both_sitemap_comparisons() {
+    for ending in ["\n", "\r", "\r\n"] {
+        let site = TestSite::new(|origin| {
+            vec![
+                (
+                    "/robots.txt",
+                    "200 OK",
+                    "text/plain",
+                    format!(
+                        "User-agent: *{ending}Allow: /{ending}Sitemap: {origin}/custom.xml{ending}"
+                    ),
+                ),
+                (
+                    "/custom.xml",
+                    "200 OK",
+                    "application/xml",
+                    urlset(origin, "/"),
+                ),
+            ]
+        })
+        .await;
+        compare(&site, CheckStatus::Pass).await;
+    }
 }

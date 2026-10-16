@@ -3,8 +3,9 @@
 use serde::{Deserialize, Serialize};
 use sitecmd_engine::checks::seo::sitemap_walk::SITEMAP_URL_LIMIT;
 use sitecmd_engine::evaluation::{
-    evaluate_session, session_page, ExecutedProbe, PageArtifact, SessionPageFacts,
-    SessionPageRequest, SessionRequest, SessionResponse, SessionSitemapCause, ELSEWHERE,
+    evaluate_session, DiscoveryResponse, ExecutedProbe, PageArtifact, RouteDiscoverRequest,
+    RouteSession, SessionPageFacts, SessionRequest, SessionResponse, SessionSitemapCause,
+    ELSEWHERE,
 };
 use sitecmd_engine::CheckStatus;
 
@@ -20,6 +21,10 @@ struct Case {
     name: String,
     routes: Vec<String>,
     pages: Vec<CasePage>,
+    #[serde(default)]
+    sitemap_children: usize,
+    #[serde(default)]
+    discover: Option<RouteDiscoverRequest>,
     expected: Option<Expected>,
 }
 
@@ -32,8 +37,20 @@ struct CasePage {
 
 #[derive(Deserialize, Serialize)]
 struct Expected {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    discovered: Option<DiscoveryResponse>,
     facts: Vec<Option<SessionPageFacts>>,
     response: SessionResponse,
+}
+
+/// One page's route session, opened with the case's child limit and every
+/// outcome recorded at once, as the stateless calls record them.
+fn route(case: &Case, input: &CasePage) -> RouteSession {
+    let mut route = RouteSession::open(input.page.clone())
+        .expect("fixture opens")
+        .with_sitemap_children(case.sitemap_children);
+    route.record(Some(input.probe_outcomes.clone()));
+    route
 }
 
 fn run_case(case: &Case) -> Expected {
@@ -41,18 +58,24 @@ fn run_case(case: &Case) -> Expected {
         .pages
         .iter()
         .map(|input| {
-            session_page(&SessionPageRequest {
-                page: input.page.clone(),
-                probe_outcomes: input.probe_outcomes.clone(),
-                routes: case.routes.clone(),
-            })
-            .expect("fixture builds facts")
+            route(case, input)
+                .session_page(&case.routes)
+                .expect("fixture builds facts")
         })
         .collect();
     let response = evaluate_session(&SessionRequest {
         pages: facts.iter().flatten().cloned().collect(),
     });
-    Expected { facts, response }
+    let discovered = case
+        .discover
+        .as_ref()
+        .map(|discover| route(case, &case.pages[0]).discover(&discover.planned, discover.limit));
+
+    Expected {
+        discovered,
+        facts,
+        response,
+    }
 }
 
 #[test]
@@ -76,6 +99,33 @@ fn golden_cases_reproduce_their_verdicts() {
 }
 
 #[test]
+fn a_discovering_case_is_keyed_against_the_plan_its_discovery_leaves() {
+    let corpus: Corpus = serde_json::from_str(CORPUS).expect("corpus parses");
+    let mut discovering = 0;
+    for case in &corpus.cases {
+        let Some(discover) = &case.discover else {
+            continue;
+        };
+        discovering += 1;
+        let origin = url::Url::parse(&case.routes[0])
+            .expect("entry route")
+            .origin()
+            .ascii_serialization();
+        // A null answer, or an empty one with planned routes, keeps the existing plan.
+        let after_entry = run_case(case)
+            .discovered
+            .and_then(|answer| answer.routes)
+            .filter(|routes| !routes.is_empty() || discover.planned.is_empty())
+            .unwrap_or_else(|| discover.planned.clone());
+        let plan: Vec<String> = std::iter::once(case.routes[0].clone())
+            .chain(after_entry.iter().map(|route| format!("{origin}{route}")))
+            .collect();
+        assert_eq!(case.routes, plan, "{}", case.name);
+    }
+    assert!(discovering > 0, "the corpus holds no discovering case");
+}
+
+#[test]
 fn headline_verdicts_match_each_cases_pages() {
     let corpus: Corpus = serde_json::from_str(CORPUS).expect("corpus parses");
     for case in &corpus.cases {
@@ -88,6 +138,14 @@ fn headline_verdicts_match_each_cases_pages() {
                 .iter()
                 .find(|v| v.check_id == id)
                 .expect("verdict")
+        };
+        let discovered = || {
+            actual
+                .discovered
+                .as_ref()
+                .expect("discovered")
+                .routes
+                .clone()
         };
         let shared_title = "seo.duplicate_title_across_pages";
         match case.name.as_str() {
@@ -176,7 +234,7 @@ fn headline_verdicts_match_each_cases_pages() {
                 assert!(sitemap.entries.is_empty());
                 assert_eq!(
                     sitemap.partial_causes,
-                    [SessionSitemapCause::Index { listed: 1 }]
+                    [SessionSitemapCause::Index { listed: 1, read: 0 }]
                 );
                 assert_eq!(
                     sitemap.partial_because().as_deref(),
@@ -231,6 +289,77 @@ fn headline_verdicts_match_each_cases_pages() {
                 }
                 assert_eq!(verdict("seo.noindex_in_sitemap").status, CheckStatus::Warn);
                 assert_eq!(verdict("seo.noindex_in_sitemap").pages, [1]);
+            }
+            "an_index_sitemaps_children_supply_its_pages" => {
+                let sitemap = facts(0).sitemap.as_ref().expect("sitemap");
+                assert_eq!(sitemap.entries.len(), 2);
+                assert_eq!(sitemap.entries[0], "r1");
+                assert!(sitemap.partial_causes.is_empty());
+                assert_eq!(verdict("seo.noindex_in_sitemap").status, CheckStatus::Warn);
+                assert_eq!(verdict("seo.noindex_in_sitemap").pages, [1]);
+            }
+            "an_index_past_the_child_limit_keeps_a_partial_cause" => {
+                let sitemap = facts(0).sitemap.as_ref().expect("sitemap");
+                assert_eq!(
+                    sitemap.partial_causes,
+                    [SessionSitemapCause::Index { listed: 3, read: 2 }]
+                );
+                assert_eq!(
+                    sitemap.partial_because().as_deref(),
+                    Some("the sitemap index lists 3 child sitemaps and SiteCMD read the first 2")
+                );
+                assert_eq!(
+                    verdict("seo.noindex_in_sitemap").status,
+                    CheckStatus::Skipped
+                );
+            }
+            "a_child_sitemap_that_did_not_answer_keeps_the_set_partial" => {
+                let sitemap = facts(0).sitemap.as_ref().expect("sitemap");
+                assert_eq!(sitemap.entries, ["r1"]);
+                assert_eq!(
+                    sitemap.partial_causes,
+                    [SessionSitemapCause::Index { listed: 2, read: 0 }]
+                );
+                assert_eq!(
+                    verdict("seo.noindex_in_sitemap").status,
+                    CheckStatus::Skipped
+                );
+            }
+            "discovery_adds_the_home_links_then_the_sitemap_pages" => {
+                assert_eq!(discovered(), Some(vec!["/pricing".into(), "/about".into()]));
+                assert!(facts(0).links.contains(&"r1".to_string()));
+                assert_eq!(
+                    facts(0).sitemap.as_ref().expect("sitemap").entries,
+                    ["r2", "r1"]
+                );
+            }
+            "discovery_keeps_the_planned_routes_when_the_sitemap_did_not_answer" => {
+                assert_eq!(
+                    discovered(),
+                    Some(vec!["/pricing".into(), "/listed".into()])
+                );
+                assert_eq!(facts(1).page, "r2");
+            }
+            "discovery_reads_nothing_from_an_error_entry_page" => {
+                assert_eq!(discovered(), None);
+                assert_eq!(facts(1).page, "r1");
+            }
+            "discovery_reads_an_indexs_children" => {
+                assert_eq!(
+                    discovered(),
+                    Some(vec![
+                        "/pricing".into(),
+                        "/posts/first".into(),
+                        "/about".into()
+                    ])
+                );
+                assert_eq!(
+                    facts(0).sitemap.as_ref().expect("sitemap").entries,
+                    ["r2", "r3"]
+                );
+            }
+            "discovery_omits_a_robots_disallowed_home_link" => {
+                assert_eq!(discovered(), Some(vec!["/public".into()]));
             }
             other => panic!("no headline assertion for {other}"),
         }

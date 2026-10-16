@@ -148,7 +148,7 @@ async fn exchange(
     }
     let body_cap = match request.limit {
         BodyLimit::Probe => crate::constants::MAX_PROBE_BODY_SIZE,
-        BodyLimit::Sitemap => crate::constants::MAX_SITEMAP_SIZE,
+        BodyLimit::Sitemap | BodyLimit::SitemapChild => crate::constants::MAX_SITEMAP_SIZE,
     };
     let outcome = match crate::http_client::read_body_limited(
         response,
