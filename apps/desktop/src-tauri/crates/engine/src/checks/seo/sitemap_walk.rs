@@ -134,6 +134,12 @@ fn classify(url: &str, outcome: &ProbeOutcome) -> Candidate {
     let Some(body) = &response.body else {
         return Candidate::Inconclusive(unread());
     };
+    if !body.utf8_valid {
+        return Candidate::Missing(format!(
+            "HTTP {} but the sitemap is not valid UTF-8",
+            response.status
+        ));
+    }
     match parse_sitemap_document(&body.text) {
         SitemapParse::WellFormed(document) => {
             Candidate::Found(SitemapFetch::new(url, body.text.clone(), &document))

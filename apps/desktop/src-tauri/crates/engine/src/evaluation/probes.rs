@@ -135,6 +135,13 @@ pub(super) fn is_sitemap_child_key(key: &str) -> bool {
         .is_some_and(|(_, field)| field == SITEMAP_CHILD_FIELD)
 }
 
+/// Whether a probe key names a sitemap body limit, as `probe_key` writes it.
+pub fn is_sitemap_probe_key(key: &str) -> bool {
+    key.split(KEY_SEPARATOR)
+        .skip(4)
+        .any(|field| matches!(field, "limit=sitemap" | SITEMAP_CHILD_FIELD))
+}
+
 /// Represent a planned but unexecuted probe as a transport failure.
 pub fn unexecuted_probe() -> ProbeOutcome {
     ProbeOutcome::Failure(ProbeFailure {
