@@ -26,6 +26,27 @@ const ENV = {
   ACTIONS_ID_TOKEN_REQUEST_URL: OIDC_ENDPOINT,
 };
 
+const REQUEST_ID = "req_0123456789abcdef";
+const TITLES = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  409: "Conflict",
+};
+
+// A refusal the way Connect answers one: RFC 9457 problem details.
+function problem(status, code, detail = "The registry refused this request.") {
+  return {
+    code,
+    detail,
+    request_id: REQUEST_ID,
+    status,
+    title: TITLES[status],
+    type: "about:blank",
+  };
+}
+
 // Stub OIDC and registry responses while recording requests.
 function stubPort(answers, mint = { status: 200, value: MINTED_TOKEN }) {
   const puts = [];
@@ -103,7 +124,7 @@ describe("the capability manifest reaches the registry before anything ships und
 
   it("fails without ever retrying when the digest is registered with different bytes", async () => {
     const result = await publish([
-      { body: { error: { code: "already_registered_with_different_content" } }, status: 409 },
+      { body: problem(409, "already_registered_with_different_content"), status: 409 },
     ]);
     expect(result.ok).toBe(false);
     expect(result.puts).toHaveLength(1);
@@ -112,15 +133,13 @@ describe("the capability manifest reaches the registry before anything ships und
   });
 
   it("fails rather than passing when the registry door is unconfigured", async () => {
-    const result = await publish([{ body: { error: { code: "not_found" } }, status: 404 }]);
+    const result = await publish([{ body: problem(404, "not_found"), status: 404 }]);
     expect(result.ok).toBe(false);
     expect(result.message).toContain("not a no-op");
   });
 
   it("names the 400 the registry actually returned", async () => {
-    const result = await publish([
-      { body: { error: { code: "engine_release_required" } }, status: 400 },
-    ]);
+    const result = await publish([{ body: problem(400, "engine_release_required"), status: 400 }]);
     expect(result.ok).toBe(false);
     expect(result.message).toContain("x-sitecmd-engine-release");
   });
@@ -146,9 +165,7 @@ describe("the capability manifest reaches the registry before anything ships und
   });
 
   it("never repeats a request the registry has already judged", async () => {
-    const result = await publish([
-      { body: { error: { code: "malformed_manifest" } }, status: 400 },
-    ]);
+    const result = await publish([{ body: problem(400, "malformed_manifest"), status: 400 }]);
     expect(result.puts).toHaveLength(1);
   });
 
@@ -159,7 +176,7 @@ describe("the capability manifest reaches the registry before anything ships und
   });
 
   it("keeps every credential out of the reported message", async () => {
-    const refused = await publish([{ body: { error: { code: "unauthorized" } }, status: 401 }]);
+    const refused = await publish([{ body: problem(401, "unauthorized"), status: 401 }]);
     const mintFailed = await publish([], { mint: { status: 403, value: MINTED_TOKEN } });
     for (const message of [refused.message, mintFailed.message]) {
       expect(message).not.toContain(MINTED_TOKEN);
@@ -195,6 +212,35 @@ describe("the capability manifest reaches the registry before anything ships und
   it("reads the digest of the artifact this repository actually ships", async () => {
     const document = manifestDigestOf(fs.readFileSync(path.join(ROOT, MANIFEST_FILE), "utf8"));
     expect(document.ok).toBe(true);
+  });
+
+  it("names a problem refusal's code, detail and request id", () => {
+    const verdict = classifyPublishResponse({
+      body: problem(
+        409,
+        "already_registered_with_different_content",
+        "This digest already names other bytes.",
+      ),
+      digest: DIGEST,
+      status: 409,
+    });
+    expect(verdict.outcome).toBe("refused");
+    expect(verdict.message).toContain("409 already_registered_with_different_content");
+    expect(verdict.message).toContain("This digest already names other bytes.");
+    expect(verdict.message).toContain(`[${REQUEST_ID}]`);
+  });
+
+  it("names the provenance reason a rejected identity carries", () => {
+    for (const reason of ["ref_mismatch", "workflow_ref_mismatch", "repository_mismatch"]) {
+      const verdict = classifyPublishResponse({
+        body: { ...problem(403, "provenance_rejected"), reason },
+        digest: DIGEST,
+        status: 403,
+      });
+      expect(verdict.outcome).toBe("refused");
+      expect(verdict.message).toContain("403 provenance_rejected");
+      expect(verdict.message).toContain(`reason: ${reason}`);
+    }
   });
 
   it("treats an unexpected 4xx as a refusal and a 5xx as retryable", async () => {

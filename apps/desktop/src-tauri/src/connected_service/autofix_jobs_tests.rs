@@ -97,7 +97,7 @@ async fn token_doors_return_the_operation_token() {
 #[tokio::test]
 async fn a_refusal_surfaces_the_service_code() {
     let (origin, _captured) = respond_once(
-        r#"{"error":{"code":"provenance_rejected","message":"no","request_id":"req_1","details":{"reason":"workflow_mismatch"}}}"#,
+        r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"no","code":"provenance_rejected","request_id":"req_0123456789abcdef","reason":"workflow_mismatch"}"#,
         "403 Forbidden",
     )
     .await;

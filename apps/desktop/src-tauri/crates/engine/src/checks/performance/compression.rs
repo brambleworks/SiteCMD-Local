@@ -5,10 +5,49 @@
 use crate::checks::{
     CheckResult, CheckStatus, IssueConfidence, PageContext, ScanCategory, Severity,
 };
+use crate::probe::{BodyPolicy, ContentCoding, ProbeOutcome, ProbeRequest};
 use serde::{Deserialize, Serialize};
 
 pub const CHECK_ID: &str = "performance.compression";
 pub const TITLE: &str = "Compression";
+
+/// The codings the compression probes offer, as the desktop's probe always
+/// sent them.
+pub const PROBE_ACCEPT_ENCODING: &str = "gzip, deflate, br, zstd";
+
+/// The status-only probe a compressed answer can settle alone, read as the
+/// server sent it so `Content-Encoding` stays in evidence.
+pub fn head_request(url: &url::Url) -> ProbeRequest {
+    ProbeRequest::head(url.as_str())
+        .header("accept-encoding", PROBE_ACCEPT_ENCODING)
+        .coding(ContentCoding::Raw)
+}
+
+/// The confirmation a HEAD that proved nothing needs: the same question as a
+/// GET, its body never read.
+pub fn get_request(url: &url::Url) -> ProbeRequest {
+    ProbeRequest::get(url.as_str())
+        .body(BodyPolicy::None)
+        .header("accept-encoding", PROBE_ACCEPT_ENCODING)
+        .coding(ContentCoding::Raw)
+}
+
+/// What one compression probe observed, from its answer, or `None` for a
+/// request that produced no response. Both headers are list fields, read whole
+/// however many lines carried them.
+pub fn encoding_probe(outcome: &ProbeOutcome) -> Option<EncodingProbe> {
+    let ProbeOutcome::Response(response) = outcome else {
+        return None;
+    };
+    Some(EncodingProbe {
+        http_status: response.status,
+        encoding: crate::header_lines::probe_field_value(response, "content-encoding")
+            .map(|value| value.to_lowercase()),
+        vary: crate::header_lines::probe_field_value(response, "vary")
+            .map(|value| value.to_lowercase())
+            .unwrap_or_default(),
+    })
+}
 
 /// What one compression probe observed: the status line and the two headers
 /// the verdict reads, taken from a non-decompressing transport.
@@ -180,11 +219,8 @@ fn inconclusive_result(http_status: u16) -> CheckResult {
 /// On probe failure, grade only positive page-header evidence.
 /// Auto-decompression makes an absent header inconclusive.
 fn check_from_headers(page: &PageContext) -> CheckResult {
-    let encoding = page
-        .response_headers
-        .get("content-encoding")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_lowercase());
+    let encoding = crate::header_lines::field_value(&page.response_headers, "content-encoding")
+        .map(|value| value.to_lowercase());
 
     let has_compression = encoding
         .as_ref()

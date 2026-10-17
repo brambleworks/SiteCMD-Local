@@ -45,11 +45,11 @@ export function manifestDigestOf(text) {
 
 /** Classify a registry response as published, retryable, or refused. */
 export function classifyPublishResponse({ status, body, digest }) {
-  const detail = body && typeof body === "object" && body.error ? body.error : null;
-  const code = detail && typeof detail.code === "string" ? detail.code : "unknown";
-  const said = detail && typeof detail.message === "string" ? ` ${detail.message}` : "";
+  const problem = body && typeof body === "object" && typeof body.code === "string" ? body : null;
+  const code = problem ? problem.code : "unknown";
+  const said = problem && typeof problem.detail === "string" ? ` ${problem.detail}` : "";
   const requestId =
-    detail && typeof detail.request_id === "string" ? ` [${detail.request_id}]` : "";
+    problem && typeof problem.request_id === "string" ? ` [${problem.request_id}]` : "";
   const entries =
     body && typeof body === "object" && typeof body.entries === "number" ? body.entries : "unknown";
 
@@ -120,9 +120,14 @@ export function classifyPublishResponse({ status, body, digest }) {
     };
   }
   if (status === 401 || status === 403) {
+    // provenance_rejected names which claim failed (ref_mismatch,
+    // workflow_ref_mismatch, repository_mismatch, ...), the one fact that
+    // says what to fix.
+    const reason =
+      problem && typeof problem.reason === "string" ? ` (reason: ${problem.reason})` : "";
     return {
       message:
-        `refused (${status} ${code}): the connect registry did not accept this job's identity.${said}${requestId}\n` +
+        `refused (${status} ${code}): the connect registry did not accept this job's identity${reason}.${said}${requestId}\n` +
         `  The token must be a GitHub Actions OIDC token for audience ${OIDC_AUDIENCE}, minted in a job with permissions: id-token: write, whose repository claim is the registry's allowed publisher.`,
       outcome: "refused",
     };

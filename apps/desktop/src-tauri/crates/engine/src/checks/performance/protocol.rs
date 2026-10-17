@@ -48,12 +48,8 @@ impl Check for Http2Check {
         let plaintext_scheme = ctx.url.scheme() == "http";
         // The scan client negotiates at most HTTP/2, so HTTP/3 support is
         // detected from the Alt-Svc advertisement (h3 / h3-NN tokens).
-        let advertises_h3 = ctx
-            .response_headers
-            .get("alt-svc")
-            .and_then(|v| v.to_str().ok())
-            .map(|v| v.contains("h3"))
-            .unwrap_or(false)
+        let advertises_h3 = crate::header_lines::field_value(&ctx.response_headers, "alt-svc")
+            .is_some_and(|value| value.contains("h3"))
             || version.contains("HTTP/3");
 
         vec![CheckResult {

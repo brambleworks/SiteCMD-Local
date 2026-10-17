@@ -103,12 +103,13 @@ done
 
 Configure these GitHub environments:
 
-| Environment               | Protection                                                                                 | Values                                                                                         |
-| ------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `release-tag-trust`       | Deployment tags limited to `v*`; protected from workflow-authenticated writes              | `RELEASE_ALLOWED_SIGNERS`, matching `.github/allowed-signers`                                  |
-| `release-signing`         | One required reviewer, admin bypass disabled, deployment tags limited to `v*`              | License configuration, desktop OAuth credentials, Sentry DSN, Apple credentials, Azure secrets |
-| `release-updater-signing` | Deployment tags limited to `v*`; reachable only after the approved platform builds succeed | `TAURI_SIGNING_PRIVATE_KEY` and its optional password                                          |
-| `release-publish`         | Deployment tags limited to `v*`; no reviewer or timer                                      | R2 credentials and `RELEASE_ADMIN_KEY` only                                                    |
+| Environment               | Protection                                                                                 | Values                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `release-tag-trust`       | Deployment tags limited to `v*`; protected from workflow-authenticated writes              | `RELEASE_ALLOWED_SIGNERS`, matching `.github/allowed-signers`                                                                             |
+| `release-signing`         | One required reviewer, admin bypass disabled, deployment tags limited to `v*`              | License configuration, desktop OAuth credentials, Sentry DSN, Apple credentials, Azure secrets                                            |
+| `release-updater-signing` | Deployment tags limited to `v*`; reachable only after the approved platform builds succeed | `TAURI_SIGNING_PRIVATE_KEY` and its optional password                                                                                     |
+| `release-publish`         | Deployment tags limited to `v*`; no reviewer or timer                                      | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`; no releases-worker key, because publishing presents the job's OIDC token |
+| `npm-publish`             | Deployment tags limited to `v*`; no reviewer or timer                                      | None; npm trusted publishing accepts the `publish-npm` job's OIDC token ([npm credential](#npm-credential))                               |
 
 Put `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, and `AZURE_SIGN_PROFILE` in the
 `release-signing` environment as variables. Move the listed secrets out of
@@ -298,7 +299,8 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`:
    signatures on all three desktop platforms and the Linux arm64 CLI leg.
 9. **Publication** runs only after every verifier passes. A checkout-free job
    hash-compares any existing R2 object before upload (including `SHA256SUMS`,
-   `SHA256SUMS.sig`, and `SHA256SUMS.minisig`), advances the updater manifest,
+   `SHA256SUMS.sig`, and `SHA256SUMS.minisig`), advances the updater manifest
+   with the job's own OIDC token (see [Publish credential](#publish-credential)),
    and then creates the GitHub Release for the tag with the changelog section
    as notes and the two checksum files attached. Binaries stay on R2. Once the
    Release exists, a SHA-pinned `actions/attest-build-provenance` step attests
@@ -318,8 +320,9 @@ produced safe bytes. The post-publication reproducible-build milestone in the
 [repository and release security specification](../engineering/repository-release-security-spec.md)
 addresses that remaining source-to-bytes gap.
 
-Cost: a clean release is roughly 300-600 billed GitHub Actions minutes (macOS
-bills at 10x). Signing runbooks live in
+Cost: the repository is public, and every release job runs on a standard
+GitHub-hosted runner, so a release bills no Actions minutes and a failed job is
+recovered by re-running it. Signing runbooks live in
 [macos-code-signing.md](../engineering/macos-code-signing.md) and
 [windows-code-signing.md](../engineering/windows-code-signing.md); key rotation
 in [release-signing-key-rotation.md](../engineering/release-signing-key-rotation.md).
@@ -389,6 +392,80 @@ deployed without its manifest bucket or publisher allowlist, or this repository
 is not the allowed publisher. Passing on a 404 would let the release ship under
 a digest the registry never learned, which is the exact state the ingest gate
 quarantines.
+
+### Publish credential
+
+Two jobs call the releases worker's admin endpoint,
+`https://releases.sitecmd.com/api/releases-admin`: the `validate-publish-key`
+probe before any build, and the manifest advance in `publish-release`. Neither
+holds a stored key. Each has `permissions: id-token: write`, asks GitHub for an
+Actions OIDC token with the audience `https://releases.sitecmd.com`, and sends
+it as the bearer. The worker verifies the token against GitHub's published keys
+and accepts it only when the repository is `brambleworks/SiteCMD-Local`, the
+workflow is `.github/workflows/release.yml`, the environment is
+`release-publish`, and the ref is a `v*` tag. Membership of
+`release-publish` is therefore the publish credential, and a repository
+guardrail scans every workflow in `.github/workflows`, since any of them could be
+dispatched against a tag, and allows only the probe and `publish-release` in
+`release.yml` to use that environment.
+
+The probe posts an empty manifest and expects `400`: the worker accepted the
+token and refused the body, so nothing was published. Any other status fails
+the run before the platform builds, and the step prints the worker's answer. A
+`401` means the worker refused the token: either the job no longer runs in
+`release-publish` on a `v*` tag, or the deployed worker expects another audience
+or claim. Fix whichever side moved, then use **Re-run failed jobs**.
+
+There is no manual publish path. When the manifest advance fails, fix the cause
+and re-run the failed `publish-release` job the same way. It rebuilds nothing,
+skips R2 objects that already hold the verified bytes, and must run within the
+24-hour retention of the `signed-release-payload` artifact, as
+[Verify the release](#verify-the-release) describes.
+
+Nothing reads `RELEASE_ADMIN_KEY` any more. Once the releases worker that
+verifies OIDC tokens is deployed, delete the `RELEASE_ADMIN_KEY` secret from the
+`release-publish` environment. A repository guardrail refuses the name anywhere
+under `.github/`.
+
+### npm credential
+
+`publish-npm` runs in its own `npm-publish` environment and holds no npm token.
+It publishes through npm trusted publishing: with `permissions: id-token: write`,
+npm exchanges the job's GitHub Actions OIDC token for a short-lived publish
+token and attests provenance. npm accepts the token only when each package's
+trusted publisher matches: GitHub Actions, organization `brambleworks`,
+repository `SiteCMD-Local`, workflow `release.yml`, environment `npm-publish`.
+Trusted publishing needs npm 11.5.1 or later, which the Node in `.nvmrc` ships.
+A repository guardrail allows only `publish-npm` in `npm-publish`, keeps it out
+of `release-publish`, and refuses `NPM_TOKEN` and `NODE_AUTH_TOKEN` anywhere
+under `.github/`.
+
+Set up once, before the first tag that carries this workflow:
+
+1. Create the `npm-publish` environment with deployment tags limited to `v*`.
+2. Add the trusted publisher above to each of `@sitecmd/cli`,
+   `@sitecmd/cli-darwin-universal`, `@sitecmd/cli-linux-arm64`,
+   `@sitecmd/cli-linux-x64` and `@sitecmd/cli-win32-x64`, either on npmjs.com
+   under each package's **Settings > Trusted Publisher**, or with npm 11.15.0
+   or later from an account with two-factor authentication:
+
+   ```bash
+   for pkg in cli cli-darwin-universal cli-linux-arm64 cli-linux-x64 cli-win32-x64; do
+     npm trust github "@sitecmd/$pkg" --file release.yml \
+       --repo brambleworks/SiteCMD-Local --env npm-publish --allow-publish
+   done
+   ```
+
+3. On npmjs.com, set each package's **Publishing access** to **Require
+   two-factor authentication and disallow tokens**.
+4. Revoke the granular npm token and delete `NPM_TOKEN` from the
+   `release-publish` environment.
+
+npm cannot create a package through trusted publishing, so a platform package
+added later is published by hand once, then given the same trusted publisher.
+If a tag runs before step 2, only `publish-npm` fails: the release is already
+live, and **Re-run failed jobs** publishes to npm once the trusted publishers
+exist, within the 24-hour retention of the `signed-release-payload` artifact.
 
 ## Verify the release
 

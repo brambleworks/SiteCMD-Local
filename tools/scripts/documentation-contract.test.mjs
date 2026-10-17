@@ -30,6 +30,13 @@ describe("maintained desktop documentation", () => {
     expect(product).not.toContain("never tanks");
   });
 
+  it("states the generated check total in PRODUCT.md", () => {
+    const total = JSON.parse(read("product-facts.json")).checkCounts.total;
+    const product = prose("apps/desktop/PRODUCT.md");
+    expect(product).toContain(`(currently ${total} total)`);
+    expect(product).toContain(`the current total is ${total}`);
+  });
+
   it("points diagnostics readers at the Settings section that owns the controls", () => {
     const settings = read("apps/desktop/src/components/settings/SettingsPage.tsx");
     const privacy = settings.slice(settings.indexOf('id: "privacy-diagnostics"'));

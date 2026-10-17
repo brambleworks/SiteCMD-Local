@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "manifest_digest": "e4ecca30c90c8a42",
+  "manifest_digest": "29344485bb817e8b",
   "entries": [
     {
       "check": "accessibility.aria_usage",
@@ -275,7 +275,7 @@
     },
     {
       "check": "config.custom_404",
-      "contract": "5caac1c42e6b466c",
+      "contract": "4059cc8e564894cb",
       "hosted": "probe_adapter",
       "class": "deterministic",
       "scope": "origin",
@@ -401,7 +401,7 @@
     },
     {
       "check": "performance.asset_caching",
-      "contract": "02b2c774b6109a1d",
+      "contract": "98d90c24d2e4e36f",
       "hosted": "probe_adapter",
       "class": "deterministic",
       "scope": "page",
@@ -410,7 +410,7 @@
     },
     {
       "check": "performance.asset_weight",
-      "contract": "c5132f01d2b606d0",
+      "contract": "9012aa19356fd129",
       "hosted": "probe_adapter",
       "class": "deterministic",
       "scope": "page",
@@ -520,7 +520,7 @@
     },
     {
       "check": "performance.images.heavy",
-      "contract": "bb1cafc3a249fe9f",
+      "contract": "bc7a00c2ab943f41",
       "hosted": "probe_adapter",
       "class": "deterministic",
       "scope": "page",
@@ -1102,19 +1102,19 @@
     {
       "check": "seo.canonical",
       "contract": "c2cf55a34b228e49",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.canonical_loop",
       "contract": "2f7f2e64d661442d",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
@@ -1129,10 +1129,10 @@
     {
       "check": "seo.charset",
       "contract": "341cb9423d350e2b",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
@@ -1156,55 +1156,55 @@
     {
       "check": "seo.duplicate_description",
       "contract": "52a7e79d05f7721d",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.duplicate_description_across_pages",
       "contract": "515cf57d19f7058f",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.duplicate_h1",
       "contract": "035a7b18b0af2d14",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.duplicate_meta",
       "contract": "301f7ee12de501c8",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.duplicate_title",
       "contract": "585c1a48278ad4e4",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.duplicate_title_across_pages",
       "contract": "2830f7c1ca50cde3",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
@@ -1237,19 +1237,19 @@
     {
       "check": "seo.hreflang",
       "contract": "4517e34d8af92ccc",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.hreflang_reciprocity",
       "contract": "7193e8827c585ebc",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
@@ -1291,10 +1291,10 @@
     {
       "check": "seo.meta_description",
       "contract": "1aed7f66bb8f99e5",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
@@ -1309,28 +1309,28 @@
     {
       "check": "seo.noindex",
       "contract": "d4e53d5f011e49f0",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.noindex_in_sitemap",
       "contract": "069d4226c0a9680a",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.og_image_relative",
       "contract": "5362cb9cadb021c5",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
@@ -1345,10 +1345,10 @@
     {
       "check": "seo.open_graph",
       "contract": "d55f9f4efc1ced6d",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
@@ -1363,10 +1363,10 @@
     {
       "check": "seo.orphan_pages",
       "contract": "b6aa76e95b2922bb",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
@@ -1471,19 +1471,19 @@
     {
       "check": "seo.title",
       "contract": "165a269a8998103e",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
       "check": "seo.twitter_cards",
       "contract": "531ef50e0e6ec51c",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     },
     {
@@ -1498,10 +1498,10 @@
     {
       "check": "seo.viewport",
       "contract": "db08268819ce49ee",
-      "hosted": "unsupported",
+      "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
-      "requires": [],
+      "requires": ["page_artifact"],
       "compare_on": []
     }
   ]

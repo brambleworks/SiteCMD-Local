@@ -1,6 +1,7 @@
 import { productionHalf, webCheckIdPrefixes, webCheckIdSources } from "./product-facts.mjs";
+import { constList } from "./guardrail-engine-lane-parsing.mjs";
 
-const SESSION_CHECKS = "apps/desktop/src-tauri/src/core/session_analysis.rs";
+const SESSION_CHECKS = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
 
 const CATEGORY_BY_VARIANT = {
   Accessibility: "accessibility",
@@ -128,12 +129,11 @@ export function checkCategories(read, listFiles) {
   for (const [file, ids] of idsByFile) resolveFile(file, productionHalf(read(file)), ids, assign);
 
   const sessionSource = productionHalf(read(SESSION_CHECKS));
-  const sessionBlock = sessionSource.slice(
-    sessionSource.indexOf("SESSION_CHECK_IDS: &[&str] = &["),
-    sessionSource.indexOf("];", sessionSource.indexOf("SESSION_CHECK_IDS")),
-  );
-  const sessionIds = new Set([...sessionBlock.matchAll(/"([^"]+)"/g)].map((m) => m[1]));
-  if (sessionIds.size > 0) resolveFile(SESSION_CHECKS, sessionSource, sessionIds, assign);
+  const sessionIds = new Set(constList(sessionSource, "SESSION_CHECK_IDS") ?? []);
+  if (sessionIds.size === 0) {
+    throw new Error(`check-categories: ${SESSION_CHECKS} declares no SESSION_CHECK_IDS`);
+  }
+  resolveFile(SESSION_CHECKS, sessionSource, sessionIds, assign);
 
   const families = new Map();
   for (const [prefix, file] of webCheckIdPrefixes(read, listFiles)) {

@@ -1,10 +1,52 @@
 //! Transport-sequencing tests for the link probe shell: the HEAD-then-GET
-//! two-step against a real local server. The collection, resolution, and
-//! verdict tests live with the engine module.
+//! two-step against a real local server, plus checks of the shared resolution.
+//! The collection, resolution, and verdict tests live with the engine module.
 
 use super::*;
 use sitecmd_engine::checks::seo::links::ProbeOutcomeKind;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+fn link_context(body: &str) -> CheckContext {
+    CheckContext::new(
+        crate::checks::PageContext {
+            url: url::Url::parse("https://example.com/").expect("static url"),
+            response_headers: reqwest::header::HeaderMap::new(),
+            status_code: 200,
+            body: body.into(),
+            is_localhost: false,
+            is_strict_localhost: false,
+            http_version: None,
+            body_lower_cache: std::sync::OnceLock::new(),
+            evaluation_time: chrono::DateTime::parse_from_rfc3339("2026-08-05T00:00:00Z")
+                .expect("static time")
+                .with_timezone(&chrono::Utc),
+        },
+        crate::http_client::for_url(false).clone(),
+    )
+}
+
+#[test]
+fn both_link_checks_read_one_resolution_of_the_page() {
+    let ctx = link_context(
+        "<a href=\"/about\">About</a><a href=\"https://elsewhere.example.net/\">Out</a>",
+    );
+    assert!(std::ptr::eq(targets_for(&ctx), targets_for(&ctx)));
+    assert_eq!(targets_for(&ctx).internal.len(), 1);
+}
+
+#[tokio::test]
+async fn internal_link_check_reads_the_memoized_resolution() {
+    let ctx = link_context("<a href=\"#top\">Top</a>");
+    BrokenLinksCheck.run(&ctx).await;
+    assert!(ctx.probe_cache.link_targets.get().is_some());
+}
+
+#[tokio::test]
+async fn external_link_check_reads_the_memoized_resolution() {
+    let ctx = link_context("<a href=\"#top\">Top</a>");
+    BrokenExternalLinksCheck.run(&ctx).await;
+    assert!(ctx.probe_cache.link_targets.get().is_some());
+}
 
 async fn method_status_server(
     head_status: u16,

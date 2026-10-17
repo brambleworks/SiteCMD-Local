@@ -1,14 +1,26 @@
 //! Verdicts over a bounded sample of page-referenced assets.
 //!
-//! Runtime adapters supply bytes, status, content type, and cache facts. This is
-//! a sampler, not a browser transfer trace.
+//! Every runtime executes each sampled asset's request and hands back its
+//! answer; this module sizes it and grades the sample. This is a sampler, not a
+//! browser transfer trace.
 
 mod collect;
 mod results;
+mod unanswered;
 
-pub use collect::{collect_assets, AssetCollection, AssetKind, CollectedAsset};
+pub use collect::{asset_sample, collect_assets, AssetCollection, AssetKind, CollectedAsset};
+
+/// How many page assets (images, scripts, stylesheets) the sample requests to
+/// measure real transfer sizes. Bounded so a media-heavy page cannot turn one
+/// scan into hundreds of requests.
+pub const ASSET_SAMPLE_LIMIT: usize = 30;
+
+/// One byte is enough to learn the status, the type, and the length header
+/// without pulling an image the verdict never looks at.
+pub const ASSET_SAMPLE_RANGE: &str = "bytes=0-0";
 
 use crate::checks::CheckResult;
+use crate::probe::{BodyPolicy, ContentCoding, ProbeMeasure, ProbeOutcome, ProbeRequest};
 use serde::{Deserialize, Serialize};
 
 /// One sampled asset after the runtime's measurement pass.
@@ -53,10 +65,67 @@ impl MeasuredAsset {
     }
 }
 
+/// One sampled asset's request: a one-byte range, read as the server sends it.
+/// `identity` asks for the uncoded representation, so every runtime sizes the
+/// same bytes whatever codings it could decode; a body that no header sizes is
+/// counted, never kept.
+pub fn asset_request(url: &url::Url) -> ProbeRequest {
+    ProbeRequest::get(url.as_str())
+        .header("range", ASSET_SAMPLE_RANGE)
+        .header("accept-encoding", "identity")
+        .body(BodyPolicy::Count)
+        .coding(ContentCoding::Raw)
+}
+
+/// One sampled asset's measurement from its answer, read in the order the
+/// sampler always read a response: the status, the type and the cache header,
+/// then a 206's Content-Range total, else the declared Content-Length, else the
+/// body the runtime counted.
+pub fn measured_asset(
+    asset: &CollectedAsset,
+    outcome: &ProbeOutcome,
+    measure: Option<ProbeMeasure>,
+) -> MeasuredAsset {
+    let mut measured = MeasuredAsset::unfetched(asset);
+    let ProbeOutcome::Response(response) = outcome else {
+        return measured;
+    };
+    measured.status_code = response.status;
+    measured.content_type = response.content_type.as_deref().map(|value| {
+        value
+            .split(';')
+            .next()
+            .unwrap_or(value)
+            .trim()
+            .to_ascii_lowercase()
+    });
+    measured.cache_control = crate::header_lines::probe_field_value(response, "cache-control");
+    if response.status >= 400 {
+        return measured;
+    }
+    // 206 Partial Content: Content-Range names the full size for one byte of
+    // transfer.
+    if response.status == 206 {
+        measured.bytes = response
+            .header("content-range")
+            .and_then(parse_content_range_total);
+        return measured;
+    }
+    if let Some(length) = response.content_length {
+        measured.bytes = Some(length);
+        return measured;
+    }
+    if let Some(measure) = measure.filter(|measure| measure.counted_bytes.is_some()) {
+        measured.bytes = measure.counted_bytes;
+        measured.measured_floor = measure.count_capped;
+    }
+    measured
+}
+
 /// Parse the total size out of a Content-Range header value such as
-/// `bytes 0-0/12345`. Returns None when the total is unknown (`*`). Shared
-/// so every runtime's Range-probe adapter classifies the header identically.
-pub fn parse_content_range_total(value: &str) -> Option<u64> {
+/// `bytes 0-0/12345`. Returns None when the total is unknown (`*`).
+/// Read by `measured_asset`, so every runtime's answer is classified identically.
+fn parse_content_range_total(value: &str) -> Option<u64> {
     let rest = value.trim().strip_prefix("bytes")?.trim_start();
     let (_, total) = rest.rsplit_once('/')?;
     let total = total.trim();
@@ -66,18 +135,39 @@ pub fn parse_content_range_total(value: &str) -> Option<u64> {
     total.parse().ok()
 }
 
-/// Grade one collection plus its measurements into the sampler's four rows.
+/// Grade one collection plus its measurements into the sampler's four rows. A
+/// verdict whose requests all went unanswered states nothing: a transport
+/// failure is not an observation about the site.
 pub fn evaluate_asset_sample(
     html_bytes: u64,
     collection: &AssetCollection,
     measured: &[MeasuredAsset],
 ) -> Vec<CheckResult> {
     let page_origin = collection.page_origin.as_deref();
+    // The sampled requests of one kind, or of every kind, when not one of them
+    // got a response.
+    let all_unanswered = |kind: Option<AssetKind>| {
+        let read: Vec<&MeasuredAsset> = measured
+            .iter()
+            .filter(|asset| kind.is_none_or(|kind| asset.kind == kind))
+            .collect();
+        (!read.is_empty() && read.iter().all(|asset| asset.status_code == 0)).then_some(read.len())
+    };
+    let any = all_unanswered(None);
     vec![
-        results::asset_weight_result(html_bytes, collection, measured),
+        any.map_or_else(
+            || results::asset_weight_result(html_bytes, collection, measured),
+            unanswered::weight_unmeasured,
+        ),
         results::broken_images_result(measured, page_origin),
-        results::heavy_images_result(measured, page_origin),
-        results::asset_caching_result(measured, page_origin),
+        all_unanswered(Some(AssetKind::Image)).map_or_else(
+            || results::heavy_images_result(measured, page_origin),
+            unanswered::heavy_unmeasured,
+        ),
+        any.map_or_else(
+            || results::asset_caching_result(measured, page_origin),
+            unanswered::caching_unassessed,
+        ),
     ]
 }
 
@@ -123,3 +213,7 @@ mod content_range_tests {
         assert_eq!(parse_content_range_total("bytes 0-0/abc"), None);
     }
 }
+
+#[cfg(test)]
+#[path = "sample_tests.rs"]
+mod sample_tests;

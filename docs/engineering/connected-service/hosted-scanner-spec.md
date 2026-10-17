@@ -5,8 +5,7 @@
 Revision history is maintained in Git. Only the current normative text in
 this document is part of the implementation contract.
 
-This implementation specification fulfills the hosted-runner portion of the
-connected service architecture record in the private SiteCMD-Web repository. The
+This specification defines hosted-scan execution. The
 [protocol and state spec](connected-protocol-spec.md) owns the wire
 contract this scanner feeds: identity, coverage encoding, evidence
 precedence, deployment currency, the scan-scope resource, the
@@ -19,7 +18,7 @@ drift checks. It does not own alert content or wake-up policy (alert
 and report delivery spec) or allowances and pricing, which are set
 outside this specification.
 
-**Audience:** Engineers building the hosted runner in SiteCMD-Web and
+**Audience:** Engineers building the hosted runner and
 maintaining the desktop engine it must match.
 
 **After reading:** A reader should be able to say, for any of the
@@ -79,8 +78,9 @@ tier names the artifact that proves agreement:
    classification, size-limit behavior, header casing), so the
    conformance corpus pins them: shared fixtures assert that both
    adapters classify the same transport situations identically
-   (final-URL recording, the 10-redirect limit, body-cap overrun as
-   scan-fatal, timeout as `Skipped`, HEAD-then-GET link probing).
+   (final-URL recording, the 10-redirect limit, timeout as `Skipped`,
+   HEAD-then-GET link probing); past its page cap, the hosted lane excepts
+   the route while the desktop fails that page's read.
    Special transports: the seven DNS checks resolve over DNS-over-HTTPS
    hosted (Cloudflare's resolver) while the desktop keeps its
    system-resolver-only posture; record projection and verdicts
@@ -176,16 +176,49 @@ tier names the artifact that proves agreement:
    Windows, `longtask` being Chromium-only), so the browser engine and
    build are **profile facts**, and the comparability gate applies the
    per-class rules below. Hosted axe runs with the identical `runOnly`
-   tag set and the identical node-evidence caps. A shared user agent
+   tag set and the identical node-evidence caps; the hosted runner then
+   drops each violation's node sample in the page, keeping its node count,
+   since no hosted verdict, record or page reads it. SiteCMD's evidence
+   scripts in a rendered page (axe-core, its run and the Web Vitals
+   observer and read) run in an isolated world the page's own scripts
+   cannot reach; the one script that runs in the page's own world is the
+   isolation lock, which must, to disable the page's workers, WebSockets
+   and service worker registration. The browser Worker bounds what the
+   page returns before reading it, refusing a payload past its bound. The browser Worker
+   counts every message the browser sends it before reading it, and ends
+   the pass when one message exceeds 2 MiB or a connection's total exceeds
+   12 MiB, counting text at two bytes per UTF-16 code unit. One message at Cloudflare's 32 MiB WebSocket limit is whole in
+   the Worker's memory before the Worker can refuse it, so it can lift its
+   own pass past half the isolate for a moment; at the 3 MiB per-response
+   cap and 12 MiB connection message cap, that pass measured 71,070,047 bytes
+   (the median of five runs).
+   Cloudflare lets in-flight requests complete when an isolate passes
+   128 MB, and starts a new isolate for later ones. A page near the request
+   cap (400) and the session's 25 MiB of response data can lift its pass
+   past half the isolate too, almost all of it garbage the isolate has not
+   collected yet. A page of 399 images of 16 KiB measured 86,759,684 bytes,
+   100 images of 128 KiB 68,975,409, and a heap snapshot of a pass with 99
+   such images fulfilled found 34,735,673 bytes live. A shared user agent
    does not guarantee equivalent content, so browser (and transport)
    coverage passes through the challenge gate defined under coverage.
 4. **Measurement tier: honest non-parity.** Timing values (TTFB, LCP,
    CLS, long-task blocking) are measurements, not derivations; they
    vary by vantage even between two desktop runs. Measurement vantage
    is the same structured identity as everything else: hosted
-   transport measurements carry the attested colo, hosted browser
+   transport measurements carry the scan step's locality, which is
+   `unattested` while the platform documents no colo for the alarm-driven
+   steps that run them (Coverage production), hosted browser
    measurements the `unattested` lane (the session API exposes no
-   location), desktop measurements their installation. These checks are
+   location), desktop measurements their credential-keyed producer.
+   The hosted transport's TTFB is the faster of two requests for the page,
+   each timed from its dispatch to its response head over the redirects
+   it follows and leaving out the scanner's own address check before each
+   hop. Both are sent in the route's first probe round, after the page's
+   own fetch, the browser pass in a `full` scan and as many as 39 of that
+   round's other requests, and never beside another probe, where the
+   desktop times TTFB before its probes; the value is taken from
+   Cloudflare's network rather than a visitor's, so it is a different
+   vantage from a desktop's and is never compared with one. These checks are
    marked `class: measurement` and follow the measurement rules below,
    including their exclusion from automatic lifecycle transitions.
 
@@ -426,20 +459,24 @@ blames an operator for the calendar.
 
 ## Execution architecture
 
-Two workers in SiteCMD-Web, following the repository's conventions
-(migrations-owned D1, fail-closed rate limits, `nodejs_compat`,
-observability on):
+Three workers provide hosted execution, with fail-closed rate limits,
+`nodejs_compat`, and observability:
 
 - **`apps/sitecmd-connect`** (protocol spec) owns triggers, durable
   tenant state, the event log, and the manifest registry. It never
   fetches user sites.
 - **`apps/sitecmd-scan`** owns scan execution: the wasm engine module,
-  the transport adapters, Browser Run sessions, and the network-policy
+  the transport adapters, and the network-policy
   module. Connect invokes it over a service binding, and it commits
   observations back through the named `commitHostedObservation`
   operation (protocol spec), idempotent by scan id. It holds no
   durable tenant findings; what it does hold is the bounded, sanitized
   execution state defined next.
+- **`apps/sitecmd-browser`** owns the browser pass: the Browser Run binding
+  and the egress and isolation policy every rendered page runs under. The
+  scan Worker invokes it over a service binding, sending each call's
+  session id and deadline and receiving the pass's evidence as plain data;
+  it holds nothing between calls.
 
 ### The scan state machine and its fence
 
@@ -456,7 +493,8 @@ deployments, and alarms are at-least-once. Correctness comes from a
   protocol's currency predicate), `engine_release`, `manifest_digest`,
   `crawl_profile`, the execution profile, the current page step,
   sanitized partial outputs (occurrence identities, their authored
-  `scope_route` provenance, per-pair outcomes, coverage facts only), a retry
+  `scope_route` provenance, per-pair outcomes, coverage facts, and the rest
+  of each step as the privacy projection below persists it), a retry
   count, and a terminal status. Redirected findings retain final-URL identity
   while coverage also names the authored route, so a later redirect-target
   change can clear the old occurrence without moving its identity.
@@ -507,7 +545,7 @@ deployments, and alarms are at-least-once. Correctness comes from a
 
 A hosted scan mirrors the desktop's sequential page loop as a chain of
 steps driven by the coordinator: each step scans one route (transport
-fetch, wasm checks, browser work when the scan profile includes it),
+fetch, browser work when the scan profile includes it, wasm checks),
 commits its sanitized partial result under the fence, and yields.
 Between steps the coordinator checks for supersession and cancellation,
 the hosted equivalent of the desktop's 50 ms cancel polling, at page
@@ -593,8 +631,10 @@ prices, replaced by the pricing pass's decided values at graduation:
   ceiling and coalescing floor, per-destination and per-account daily
   send caps, per-credential rate limits, per-scan and per-site budget
   bounds (pages, sessions, session seconds), the allowance-slot
-  cooldown window, and the dunning grace length the entitlement path
-  reads during the beta.
+  cooldown window, and the retained `dunning_grace_days` setting.
+  Entitlement does not read that setting: payment grace is the Stripe
+  `past_due` status, which permits watching but not adding sites or
+  dispatching fix jobs.
 - The **beta-1 values**, the initial committed artifact ("set
   conservatively" is not a value an implementer can ship). These are
   capacity engineering, not prices; every revision is a version bump
@@ -610,7 +650,8 @@ prices, replaced by the pricing pass's decided values at graduation:
   | Coalescing floor                 | Full profile for the first 10 deploy scans per day, `standard` after                                                                                                                                                                                                                                                                 |
   | Per-destination send cap         | 50 messages per day                                                                                                                                                                                                                                                                                                                  |
   | Per-account send cap             | 200 messages per day                                                                                                                                                                                                                                                                                                                 |
-  | Installation-token rate limit    | 120 requests per minute                                                                                                                                                                                                                                                                                                              |
+  | Account-credential rate limit    | 120 requests per minute                                                                                                                                                                                                                                                                                                              |
+  | Live personal tokens per account | 50                                                                                                                                                                                                                                                                                                                                   |
   | CI-token rate limit              | 60 requests per minute                                                                                                                                                                                                                                                                                                               |
   | Hook-door rate limit             | 60 events per minute per site                                                                                                                                                                                                                                                                                                        |
   | Resend-intake rate limit         | 300 events per minute, global                                                                                                                                                                                                                                                                                                        |
@@ -618,10 +659,17 @@ prices, replaced by the pricing pass's decided values at graduation:
   | Per-site daily budget            | 60 scans, 15 sessions, 13,500 session seconds, 6,000 pages                                                                                                                                                                                                                                                                           |
   | Per-scan budget                  | 100 routes, 1 browser session, 900 session seconds, 400 outbound probe requests per route                                                                                                                                                                                                                                            |
   | Allowance-slot cooldown          | 7 days                                                                                                                                                                                                                                                                                                                               |
-  | Dunning grace (beta entitlement) | 7 days                                                                                                                                                                                                                                                                                                                               |
+  | Retained dunning setting         | 7 days, unused by entitlement                                                                                                                                                                                                                                                                                                        |
   | Browser admission partition      | Ceiling = the billed-free concurrency allowance (10), deliberately not the platform limit (120) recorded beside it: the provider refuses above one and bills above the other, so they are different numbers on purpose; reserve 2; 4 shards; per-shard quota = floor((ceiling - reserve) / 4), literals stamped at config generation |
   | Scheduled reservation, daily     | Up to 3 attempts: 300 pages, 0 sessions, per site                                                                                                                                                                                                                                                                                    |
   | Scheduled reservation, weekly    | Up to 3 attempts: 300 pages, 3 sessions, 2,700 session seconds, per site                                                                                                                                                                                                                                                             |
+
+  The account-credential rate uses `account_token_requests_per_minute`:
+  120 requests per minute per dashboard session bearer or personal token,
+  including the dashboard entrypoint. `personal_tokens_per_account` limits
+  live personal tokens to 50; revocation frees a place. Configuration
+  version 13 introduces that limit. `dunning_grace_days` remains declared
+  as 7 but is unused; entitlement reads subscription status.
 
 - **The trigger algorithm, deterministic end to end.** "Day" means
   the UTC calendar day, everywhere a daily quantity appears (rolling
@@ -716,9 +764,9 @@ prices, replaced by the pricing pass's decided values at graduation:
   `422`s already name their limits), so the beta cohort always sees
   the numbers that are actually in force.
 
-## Crawl profile, version 1
+## Crawl profile, version 3
 
-`crawl_profile: 1`, the envelope field the protocol spec reserved,
+`crawl_profile: 3`, the envelope field the protocol spec reserved,
 pins:
 
 - **Route set: the scan-scope resource, entirely.** The scan record
@@ -727,8 +775,8 @@ pins:
   truncation, because a route that can never be scanned is a promise
   that can never be kept. The reconciliation is at the resource
   boundary instead: the protocol rejects a scope `PUT` exceeding the
-  entitlement's connected-scope cap with `422 scope_exceeds_plan`
-  (v1 ceiling: 100 routes; per-plan values are set at or under it), so scope and scan capacity are the same number by
+  single 100-route cap for every account with `422 scope_exceeds_plan`,
+  so scope and scan capacity are the same number by
   construction, session checks can always reach complete coverage,
   and nothing rots uncovered. The environment entry URL counts as a
   route (deduplicated if also listed). The wire-format bound of 5,000
@@ -745,16 +793,45 @@ pins:
 - **Identity rules** by reference to the protocol spec's canonicalizer:
   final URL after redirects, preserved trailing slashes, stripped query
   with `query_dependent` flagging.
-- **Transport constants**, identical to the desktop's:
+- **Transport constants**, identical to the desktop's except for the
+  page body and sitemap caps and a coded asset body, which the desktop
+  counts as sent and the hosted transport leaves unread, since its
+  runtime can decode a body as it reads it:
   10-redirect limit with per-hop validation, 30 s page fetch timeout,
-  15 s per-check timeout with timeout-as-`Skipped`, 10 MiB page body
-  cap (overrun is scan-fatal, as on desktop), 512 KiB probe cap, 5 MiB
+  15 s per-check timeout with timeout-as-`Skipped`, 1 MiB page body
+  cap (overrun excepts only that route as `page_too_large` while the scan
+  continues), 512 KiB probe cap, 2 MiB
   sitemap cap, 2 MiB stylesheet cap with at most 8 stylesheets,
-  30-asset sample with `Range: bytes=0-0`, link-probe samples of
-  100 internal and 30 external.
+  30-asset sample with `Range: bytes=0-0` and `Accept-Encoding: identity`,
+  where the body of an answer below 400 that no header sizes is counted
+  under the probe cap and never kept, link-probe samples of
+  100 internal and 30 external. One route at every bound must stay under
+  half the Workers isolate's 128 MB, which every Durable Object it hosts
+  shares with the Worker's code, so a second route fits beside it; the
+  scan Worker measures that in workerd (`measure-route-memory.mjs`), and
+  these caps are the largest 1 MiB steps toward the desktop's that held
+  it. Version 2 held every intercepted browser response at once, pinned
+  its asset sample without `Accept-Encoding: identity`, and sent the
+  transport's requests through Cloudflare's cache; version 1 read pages
+  to 10 MiB, with overrun scan-fatal as on desktop, and sitemaps to 5 MiB.
+  Neither ran for a customer.
+- **Cloudflare's cache:** every hosted transport request except one for
+  the route's own page, as requested or as served, is sent with
+  `cache: "no-store"`, which sets `Pragma: no-cache` and
+  `Cache-Control: no-cache` on it and, for a site not hosted on Cloudflare,
+  skips Cloudflare's cache. A Worker's `fetch` otherwise passes through
+  that cache, which keeps a site's robots.txt and its static files for
+  the origin's `max-age` or the default edge TTL, so a rescan after a fix
+  could read the old file, and which may turn a one-byte range into a
+  whole-file fetch from the site. The route's own page keeps no option:
+  page HTML is not cached by default, and a page read should look like a
+  visitor's. A site on Cloudflare is answered by its own zone, as its
+  visitors are; the browser layer's egress fetches every intercepted
+  request with the same option.
 - **Browser interception constants and timing semantics:** at most 400
-  requests, 64 distinct hosts, 8 MiB of decoded body data for any one
-  response, and 25 MiB across the session. The per-response cap is
+  requests, 64 distinct hosts, 3 MiB of decoded body data for any one
+  response, at most 3 MiB of response bodies held at once, each from its
+  fetch to its fulfillment, and 25 MiB across the session. The per-response cap is
   enforced while reading, before the body is concatenated or handed to
   Playwright; the session ledger charges the same decoded bytes before
   fulfillment. Playwright fulfillment cannot stream the main document,
@@ -767,21 +844,34 @@ pins:
   absent from every persisted projection.
 - **Outbound probe bound, per route: 400 requests.** Every constant
   above caps one request; this one caps their sum, which nothing did
-  before. Measured rather than chosen: driving `engine_probe_plan` to
+  before. Measured rather than chosen: driving `engine_route_plan` to
   its fixpoint against a page carrying 200 internal and 80 external
-  links costs 372 requests for one route when every probe fails (four
-  rounds: 237, 132, 2, 1) and 246 when every probe answers along a live
-  redirect chain (ten rounds: 237, then one per hop). Requests and
+  links, so both link samples bind, costs 384 requests for one route when
+  every probe fails (four rounds: 248, 133, 2, 1) and 258 when every probe
+  answers along a live redirect chain (ten rounds: 248, 2, then one per
+  hop). The same page naming 40 images, so the asset sample binds too,
+  asks for 414 when every probe fails (four rounds: 278, 133, 2, 1) and
+  409 when every link `HEAD` is answered `405` and everything else answers
+  (two rounds: 278, 131). The sitemap walk's
+  longest request set, twenty failing declared sitemaps beside failing
+  probes and the og:image, asks for 405. Requests and
   rounds are maximised by opposite situations: failures cost requests,
   because the link check's `GET` confirmations are planned only where a
   `HEAD` failed, while answers cost rounds, because the redirect walk is
-  planned one hop at a time and each `3xx` names the next position. The
-  cap therefore admits the crawl profile's own
-  arithmetic with headroom rather than trimming it: a bound below the
-  profile would make coverage exceptions the normal case and would make
-  the limits published on `/scanner` false. The per-scan worst case
+  planned one hop at a time and each `3xx` names the next position.
+  Of these plans the cap binds three: the page with images when every
+  probe fails (414 asked) or its link `HEAD`s are answered `405` (409),
+  and the sitemap set (405); the other two fit whole. Where it binds,
+  it makes 400 and answers the rest with the budget's own refusal, which
+  each check reads as unanswered, never as broken or missing: the last
+  eleven internal link confirmations and the last three legal-page
+  candidates on the failing page, the last nine internal link
+  confirmations on the `405` page, and the last five declarations in the
+  sitemap set, read as unread. Raising
+  the cap is a capacity decision and trimming the profile a new version;
+  neither happens silently. The per-scan worst case
   follows as routes times the cap, and with origin-scoped checks
-  narrowed to the entry route the realistic ceiling is about 27,000
+  narrowed to the entry route the realistic ceiling is about 30,000
   requests to one origin per full scan. The bound is per route rather
   than per scan so that it needs no durable spend counter across alarm
   ticks and so that one pathological route cannot starve the rest of
@@ -833,7 +923,8 @@ produces them.
   **server-owned route-profile resource** (per route, beside the
   occurrence state; site lifetime, exported, erased with the site,
   explicitly on the persistence allowlist), never inside the
-  desktop-owned scope resource, because scans refresh signatures and
+  scope resource changed by a signed-in person through the dashboard,
+  because scans refresh signatures and
   a scan must not churn `scope_revision` or race a scope replacement.
   Two signatures per route, transport and browser:
   `{ status_class, content_length_bucket, title_mac, script_origin_set_mac }`
@@ -877,8 +968,9 @@ produces them.
   ordinary visitors still see broken. The exclusion is a named
   coverage exception (`document_changed`), visible like every other.
   **Self-heal**: three consecutive consistent observations of the new
-  signature adopt it and lift the exclusion; the explicit route-profile
-  reset lifts it immediately for deliberate redesigns. A first scan
+  signature adopt it and lift the exclusion. The route-profile contract
+  describes an immediate reset for deliberate redesigns, but Connect
+  does not implement that endpoint. A first scan
   has no signature and gates on challenge markers alone - **unless
   standing evidence exists for that vantage**, in which case the
   missing signature is `profile_cold`, not first-scan innocence: a
@@ -905,12 +997,12 @@ produces them.
   `{ producer_instance, layer, locality }`, with each part earning
   its place:
 
-  - **`producer_instance`** is a stable instance identity, not a
-    producer kind: for the desktop it is the **installation id**,
-    because two installations are two vantage points. A laptop in
-    one country must not clear evidence established by a workstation
-    in another. For the hosted scanner it is `hosted`; for CI it is the
-    CI token's stable identity.
+  - **`producer_instance`** identifies the authenticated producer. For a
+    desktop submission it is `user:<subject>` for a dashboard session or
+    `token:<token_id>` for a personal token. Clients sharing that actor
+    share a vantage; separate personal tokens create separate vantages.
+    For the hosted scanner it is `hosted`; for CI it is the CI token's
+    stable identity. The client cannot supply this key.
   - **`layer`** is the check's manifest layer, as before.
   - **`locality` is recorded only from a documented platform fact at
     the scan step's own execution** - one derivation function, no
@@ -929,8 +1021,8 @@ produces them.
     locality is the constant `unattested` - one lane, honestly
     unlocalized, with the residual geo-variance risk stated rather
     than a fabricated colo pretending precision. Desktop locality is
-    the constant `local` (the installation is the stability, and a
-    roaming laptop stays one vantage by that choice). There are no
+    the constant `local`; the credential-keyed producer supplies identity,
+    so changing location does not change its vantage. There are no
     epochs and no lane transitions: an attested locality **is** the
     identity - if attestation ever exists, a moved execution point
     simply produces a
@@ -965,7 +1057,7 @@ produces them.
   spec (32 entries, with the aggregate-overflow rule).
   Profiles store and compare signatures per the same full
   `(producer_instance, layer, locality)` identity - a narrower
-  signature key would collapse installations and localities right
+  signature key would collapse credential-keyed producers and localities right
   back together. The browser layer executes page code and uses a
   browser request profile even though its target traffic is fetched by
   the Worker, so a site may legitimately produce different content than
@@ -1018,11 +1110,10 @@ produces them.
   their entries unresolved indefinitely, as a named content-variant
   condition in site state - visible, explained, never silently
   accepted and never silently flagged forever.
-  The route profile is a protocol resource with reads and a
-  revision-guarded reset endpoint (protocol spec), so the user-visible
-  reset is implementable, exported, erased with the site, and bounded
-  by compaction; a deliberate redesign can be acknowledged immediately
-  instead of waiting out the healing window. The `bot_challenge` exception is
+  The protocol spec describes route-profile reads and a revision-guarded
+  reset, with export, site erasure, and compaction requirements. Connect
+  implements neither route, so a deliberate redesign has no API reset
+  that bypasses the healing window. The `bot_challenge` exception is
   user-visible and actionable: the site is challenging its own
   guardian, and the scanner page documents how to allowlist it.
 
@@ -1238,8 +1329,15 @@ storage, log, trace, cache, error report, or the connect submission:
   `detail_json`, and failure summaries. These exist only inside the
   executing step's memory.
 - Persisted (scan record and observation): occurrence identities in
-  the protocol's canonical form, per-pair outcomes, coverage facts,
-  profiles and versions, timing counters, and operational counters.
+  the protocol's canonical form, each with its verdict status and, for
+  broken links, the count the severity policy reads, per-pair outcomes,
+  measurement samples (check, route, value and unit), coverage facts,
+  profiles and versions, the entry route's stack labels (never the Server
+  header's product name),
+  each page's comparison facts (route keys, keyed path keys, Connect's
+  MACs of the title, description and H1 digests, the status code, the key
+  version, flags and counts, the gate's presence reason, never a digest
+  or an address), timing counters, and operational counters.
 - Error reports and logs carry the error taxonomy and `request_id`s,
   never page content; the projection is a function with a test, and
   the conformance corpus includes a hostile-page fixture (secrets in
@@ -1368,7 +1466,7 @@ actually computed from:
   the modeled total back to the actual invoice line, so the
   allocation model is checked against the bill every month rather
   than trusted.
-- **Workers requests and CPU time, D1 reads, writes, and storage,
+- **Workers requests and CPU time, Postgres queries and storage, Hyperdrive,
   Durable Object duration and storage, Queue operations, and R2
   operations**, attributed to site and activity (scan, ingest,
   delivery, render) by the worker doing the work.
@@ -1383,10 +1481,10 @@ actually computed from:
   classes attribute to their site; account-level security notices
   are account overhead, allocated **equally across the account's
   connected site-days in the billing month** - deliberately not the
-  session-seconds rule, because an account can send recovery notices
+  session-seconds rule, because an account can send leaked-token notices
   on a day with zero browser activity, and a zero-denominator
-  allocation is undefined. An account can also hold installations,
-  destinations, and recovery state with **zero** connected site-days
+  allocation is undefined. An account can also hold personal tokens,
+  destinations, and security notices with **zero** connected site-days
   (every site disconnected, none erased), so the rule has an
   explicit floor: with no site-days in the period, the cost lands in
   a named **account overhead bucket** in the cost report - its own
@@ -1414,7 +1512,14 @@ reconciliation above as the check that catches drift after launch,
 since a concurrency line that appears on the bill is the provider
 telling us an allowance moved; the session-recording default-off
 confirmation; Workers global-fetch public-egress and trust-store flags;
-`node:tls` certificate metadata behavior; and the current Workers TCP
+`node:tls` certificate metadata behavior; whether a Workers `fetch` that
+names its codings in `Accept-Encoding` receives the origin's
+`Content-Encoding` unaltered for each of them while the body is unread
+(Cloudflare's Fetch documentation describes the passthrough for gzip
+and Brotli; zstd and deflate are not stated), and whether `identity`
+reaches the origin as sent; whether the platform documents a colo fact
+for worker execution contexts, worker-originated fetches included, which
+hosted transport locality waits on; and the current Workers TCP
 restriction boundaries.
 
 ## Parity harness and release discipline
@@ -1434,10 +1539,12 @@ restriction boundaries.
   digest regenerate with every engine build and publish to the
   registry before anything ships under them; the hosted runner refuses
   to scan under a digest its artifact does not match.
-- **Panic semantics:** a trap in wasm check evaluation fails the scan
-  step; step timeouts classify as `Skipped` coverage exceptions; the
-  corpus includes a poisoned fixture asserting both runtimes fail the
-  same way.
+- **Panic semantics:** a trap in wasm check evaluation, or the engine's
+  refusal of a request, excepts that route's pairs `route_unscannable`
+  and keeps the browser time the route spent, and the scan goes on: the
+  engine has no clock and no I/O, so a retry of the same document would
+  fail the same way. An I/O failure still fails the step, for the step's
+  retry. Step timeouts classify as `Skipped` coverage exceptions.
 
 ## Implemented parity foundation
 
@@ -1469,7 +1576,7 @@ must consume:
    publish its digest before product artifacts are built. Persisted runs and
    connected envelopes carry the matching release and profile facts.
 
-SiteCMD-Web owns hosted transport adapters, scheduling, tenant isolation, and
+The hosted service owns transport adapters, scheduling, tenant isolation, and
 deployment. A hosted implementation is conformant only when it consumes these
 artifacts, passes the same corpus, and refuses an unknown or mismatched manifest
 digest. Copying verdict logic into TypeScript is not a supported fallback.
@@ -1504,22 +1611,18 @@ digest. Copying verdict logic into TypeScript is not a supported fallback.
 6. **The currency predicate is exact**: current head (including the
    no-deployment state) and current scope revision; bare
    event-sequence movement never invalidates an observation.
-7. **Scope validity is a standing condition, not a `PUT`-time check**:
-   entitlement downgrades produce the visible `scope_over_plan` state
-   with a grace window and then visibly excepted overflow (protocol
-   spec), an occurrence becomes `out_of_scope` only when none of its
-   authored `scope_routes` remains selected, absence requires every
-   currently in-scope provenance route to be covered, and
-   groups with no in-scope records go dormant instead of lying.
-8. **Scope and scan capacity are the same number by construction**:
-   the entitlement cap is enforced at scope `PUT` with a visible
-   error, so no route is ever silently unscannnable and session
-   coverage is always achievable - with **one stated exception**: a
-   site truncated after the `scope_over_plan` grace scans the
-   plan-cap prefix, so session-scoped checks there are inconclusive
-   with cause `coverage_truncated` (protocol spec), attributed and
-   remediable, never "achievable by construction" in a state the
-   construction explicitly permits to exceed the cap.
+7. **Scope membership follows the selected routes**: an occurrence becomes
+   `out_of_scope` only when none of its authored `scope_routes` remains
+   selected. Absence requires every currently in-scope provenance route
+   to be covered, and groups with no in-scope records go dormant.
+8. **Scope and scan capacity use the same cap**: scope `PUT` refuses an
+   excessive route count explicitly. Connect scans the accepted scope
+   without allowance-driven truncation. Connect's site state omits
+   `scope_over_plan`, `site_allowance_over_plan`, their grace-expiry fields,
+   and `scope_overflow_count`. The desktop reads the absent flags as
+   `false`, expiry fields as `null`, and overflow count as `0` through
+   deserialization defaults; it never sends those fields. Incomplete
+   execution still produces coverage exceptions and cannot prove absence.
 9. **TLS facts come from a schema with runtime adapters**, because
    Workers cannot open direct TCP to every Cloudflare-fronted target.
    The hosted adapter therefore keeps the Workers-fetch chain verdict

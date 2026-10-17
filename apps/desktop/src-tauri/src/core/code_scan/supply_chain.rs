@@ -21,8 +21,8 @@ mod usage_evidence;
 use usage_evidence::collect_extra_usage_evidence;
 mod resolution;
 use resolution::{
-    collect_base_url_prefixes, collect_path_alias_prefixes, has_lockfile_in_scope,
-    importer_is_typescript, is_framework_provided, types_package_name,
+    collect_base_url_prefixes, collect_path_alias_prefixes, importer_is_typescript,
+    is_framework_provided, lockfile_dir_in_scope, types_package_name,
 };
 
 pub(super) fn analyze_supply_chain(
@@ -172,8 +172,8 @@ pub(super) fn analyze_supply_chain(
     for manifest in manifests {
         let manifest_dir = manifest.absolute_path.parent().unwrap_or(root);
         let resolved_registry_hosts = collect_lockfile_registry_hosts(manifest_dir);
-        let has_supported_lockfile =
-            has_lockfile_in_scope(manifest_dir, root, &mut workspace_members);
+        let lockfile_dir = lockfile_dir_in_scope(manifest_dir, root, &mut workspace_members);
+        let has_supported_lockfile = lockfile_dir.is_some();
         let external_declared_dependencies = manifest
             .dependencies
             .iter()
@@ -403,7 +403,7 @@ pub(super) fn analyze_supply_chain(
             }
         }
 
-        if has_supported_lockfile {
+        if let Some(lockfile_dir) = lockfile_dir.as_deref() {
             // Count package.json script binaries as dependency usage even when
             // source files never import them.
             let script_referenced = collect_script_referenced_packages(
@@ -425,8 +425,9 @@ pub(super) fn analyze_supply_chain(
                 .cloned()
                 .collect::<HashSet<_>>();
             // A declared package that satisfies a used package's peer
-            // requirement is used through that package. Read the lockfile only
-            // once an unused candidate actually appears.
+            // requirement is used through that package. The covering lockfile
+            // may sit at the workspace root; read it only once an unused
+            // candidate actually appears.
             let mut peer_required: Option<HashSet<String>> = None;
 
             for dependency in &external_installed_dependencies {
@@ -435,7 +436,7 @@ pub(super) fn analyze_supply_chain(
                 }
                 if peer_required
                     .get_or_insert_with(|| {
-                        collect_lockfile_peer_dependencies(manifest_dir)
+                        collect_lockfile_peer_dependencies(lockfile_dir)
                             .into_iter()
                             .filter(|(host, _)| used.contains(host))
                             .flat_map(|(_, peers)| peers)

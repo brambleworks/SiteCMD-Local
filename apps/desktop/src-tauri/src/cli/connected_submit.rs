@@ -10,6 +10,7 @@ use crate::connected_service::{CiDeploymentHead, ConnectedServiceClient, Connect
 use crate::db::Database;
 
 use super::connected::{build_candidate_snapshot, read_connection_export, scan_this_checkout};
+use super::{settle, ConnectStop};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubmitArgs {
@@ -73,7 +74,23 @@ fn open_database(db_path: Option<PathBuf>) -> Result<Database, String> {
 
 /// Audit and submit this checkout rather than stale desktop state.
 /// Dry runs omit credential-derived publish ordering and print only local data.
-pub async fn run_submit(mut args: SubmitArgs) -> Result<String, String> {
+pub async fn run_submit(args: SubmitArgs) -> Result<String, String> {
+    run_submit_with(args, ConnectedServiceClient::configured).await
+}
+
+/// `run_submit` through the client `connect` builds from the CI token, which
+/// is what lets the wire tests point it at a local double.
+async fn run_submit_with(
+    args: SubmitArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<String, String> {
+    settle(submit(args, connect).await, |notice| notice)
+}
+
+async fn submit(
+    mut args: SubmitArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<String, ConnectStop> {
     args.deployment.validate()?;
     // Fail on a missing send credential before running the project audit.
     let token = if args.dry_run {
@@ -87,14 +104,14 @@ pub async fn run_submit(mut args: SubmitArgs) -> Result<String, String> {
     let connection = open_connection(&args.connection_export, &args.passphrase_env)?;
     let client = token
         .as_ref()
-        .map(|token| ConnectedServiceClient::configured(token.trim()))
+        .map(|token| connect(token.trim()))
         .transpose()?;
     let head = if let Some(client) = &client {
         Some(
             client
                 .ci_deployment_head(&connection.site_id)
                 .await
-                .map_err(|error| refusal(&error, "submission capability read", &args.token_env))?,
+                .map_err(|error| stop(&error, "submission capability read", &args.token_env))?,
         )
     } else {
         None
@@ -137,7 +154,7 @@ pub async fn run_submit(mut args: SubmitArgs) -> Result<String, String> {
             oidc_token.as_ref().map(|token| token.as_str()),
         )
         .await
-        .map_err(|error| refusal(&error, "submission", &args.token_env))?;
+        .map_err(|error| stop(&error, "submission", &args.token_env).unrecorded(""))?;
 
     let deployment = if receipt.created_deployment() {
         "recorded"
@@ -181,7 +198,23 @@ fn publish_ordering_preview_notice(deployment: &DeploymentFacts) -> Option<&'sta
 }
 
 /// Tell the service a deployment happened, with no scan attached.
-pub async fn run_deploy(mut args: DeployArgs) -> Result<String, String> {
+pub async fn run_deploy(args: DeployArgs) -> Result<String, String> {
+    run_deploy_with(args, ConnectedServiceClient::configured).await
+}
+
+/// `run_deploy` through the client `connect` builds from the CI token, which
+/// is what lets the wire tests point it at a local double.
+async fn run_deploy_with(
+    args: DeployArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<String, String> {
+    settle(deploy(args, connect).await, |notice| notice)
+}
+
+async fn deploy(
+    mut args: DeployArgs,
+    connect: impl Fn(&str) -> Result<ConnectedServiceClient, String>,
+) -> Result<String, ConnectStop> {
     args.deployment.validate()?;
     let site_id = match (&args.site_id, &args.connection_export) {
         (Some(site_id), _) => site_id.clone(),
@@ -196,14 +229,14 @@ pub async fn run_deploy(mut args: DeployArgs) -> Result<String, String> {
     };
     let token = read_secret(&args.token_env, "the CI token minted for this site")?;
 
-    let client = ConnectedServiceClient::configured(token.trim())?;
+    let client = connect(token.trim())?;
     apply_current_publish_ordering(&client, &site_id, &mut args.deployment, &args.token_env)
         .await?;
     args.deployment.validate()?;
     let receipt = client
         .record_ci_deployment(&site_id, &args.deployment)
         .await
-        .map_err(|error| refusal(&error, "deployment", &args.token_env))?;
+        .map_err(|error| stop(&error, "deployment", &args.token_env).unrecorded(""))?;
 
     let outcome = if receipt.created {
         "Recorded"
@@ -241,15 +274,15 @@ async fn apply_current_publish_ordering(
     site_id: &str,
     deployment: &mut DeploymentFacts,
     token_env: &str,
-) -> Result<(), String> {
+) -> Result<(), ConnectStop> {
     if deployment.published || deployment.ordering.is_some() {
         return Ok(());
     }
     let head = client
         .ci_deployment_head(site_id)
         .await
-        .map_err(|error| refusal(&error, "deployment ordering read", token_env))?;
-    apply_publish_ordering_from_head(&head, deployment)
+        .map_err(|error| stop(&error, "deployment ordering read", token_env))?;
+    Ok(apply_publish_ordering_from_head(&head, deployment)?)
 }
 
 fn apply_publish_ordering_from_head(
@@ -323,6 +356,12 @@ fn basis_label(kind: sitecmd_engine::sync::CodeBasisKind) -> &'static str {
     }
 }
 
+/// A refusal as the command's stop. An inactive account is read before the
+/// refusal is described, so it never reaches `next_action`.
+fn stop(error: &ConnectedServiceError, door: &str, token_env: &str) -> ConnectStop {
+    ConnectStop::refused(error, |error| refusal(error, door, token_env))
+}
+
 /// Format a refusal without exposing tenant-bearing `details`.
 /// Adds CLI-specific recovery guidance to the service message.
 fn refusal(error: &ConnectedServiceError, door: &str, token_env: &str) -> String {
@@ -345,11 +384,35 @@ fn refusal(error: &ConnectedServiceError, door: &str, token_env: &str) -> String
 }
 
 fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String> {
-    // The one refusal whose next step names a variable rather than a fact, so
-    // it is answered before the table of fixed sentences.
+    // The refusals whose next step names a variable or the service's own id
+    // are answered before the table of fixed sentences.
     if error.code == "unauthorized" {
         return Some(format!(
             "The CI token in {token_env} is unknown or revoked. Mint a fresh one for this site in the desktop app and replace the secret."
+        ));
+    }
+    // The two refusals that say when to come back name the wait the service's
+    // Retry-After gave.
+    if error.code == "request_in_progress" {
+        let wait = retry_wait(error.retry_after, "in a few minutes");
+        return Some(format!(
+            "An earlier run of this step with the same payload is still being applied. Nothing new was applied; re-run this step {wait}."
+        ));
+    }
+    if error.code == "rate_limited" {
+        let wait = retry_wait(error.retry_after, "after the interval the service named");
+        return Some(format!("This site is sending too fast. Retry {wait}."));
+    }
+    if error.code == "secret_already_issued" {
+        let issued = error
+            .details
+            .as_ref()
+            .and_then(|details| details.pointer("/issued/id"))
+            .and_then(serde_json::Value::as_str)
+            .map(|id| format!(" ({id})"))
+            .unwrap_or_default();
+        return Some(format!(
+            "This request already created a secret{issued}, which is shown only once. Revoke it in the desktop app and create a new one."
         ));
     }
     let action = match error.code.as_str() {
@@ -398,6 +461,9 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
         "idempotency_conflict" => {
             "This submission's key was already used for a different request. Nothing was applied. Re-run the step; the key is derived from the payload, so a genuine retry cannot land here."
         }
+        "unsupported_media_type" => {
+            "The service could not read this request's body type. Install the current CLI release."
+        }
         "concurrent_write" => "Another write landed first and nothing was applied. Re-run this step.",
         "stale_key_version" | "key_commitment_mismatch" | "unclaimed_key_version"
         | "rotation_incomplete" => {
@@ -406,13 +472,22 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
         "malformed_request" => {
             "The service could not read this payload. That usually means the CLI is older than the service's schema; install the current release."
         }
-        "rate_limited" => "This site is sending too fast. Retry after the interval the service named.",
         "transport_failed" | "response_failed" | "unsafe_endpoint" => {
             "The service was not reached, so nothing was applied. Re-run this step."
         }
         _ => return None,
     };
     Some(action.to_string())
+}
+
+/// When to retry: after the whole seconds a Retry-After named, or `fallback`
+/// where it named none.
+fn retry_wait(seconds: Option<u64>, fallback: &str) -> String {
+    match seconds {
+        Some(1) => "after 1 second".into(),
+        Some(seconds) => format!("after {seconds} seconds"),
+        None => fallback.into(),
+    }
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use crate::core::analysis_types::{AxeReport, CoreWebVitals};
 use crate::core::scanner::ScanResult;
 use crate::scoring::calculator;
 use sitecmd_engine::checks::accessibility::axe;
-use sitecmd_engine::checks::performance::browser_vitals;
+use sitecmd_engine::checks::performance::{browser_vitals, ttfb};
 
 /// Append axe and Core Web Vitals results, then recalculate scores.
 /// Missing axe output preserves first-party accessibility findings.
@@ -32,7 +32,7 @@ pub fn append_webview_results(
             .filter(|raw| {
                 raw.get("measurement_source")
                     .and_then(serde_json::Value::as_str)
-                    == Some("http_probe")
+                    == Some(ttfb::HTTP_PROBE_SOURCE)
             })
             .and_then(|raw| raw.get("ttfb_ms"))
             .cloned();

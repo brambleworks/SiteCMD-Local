@@ -1,5 +1,6 @@
 //! Recognize guards on redirect destinations, not unrelated file-wide signals.
 
+use super::handler_spans::HandlerSpans;
 use super::js_sinks::{blank_js, call_arg_window, first_arg};
 use super::*;
 use crate::constants::{
@@ -79,6 +80,40 @@ pub(super) fn has_guarded_redirects(source: &str, checkout: bool) -> bool {
             .all(|(value, at)| context.safe_value(value, at, 0))
 }
 
+/// Offset of a request-derived redirect field that shares a route handler with
+/// a redirect destination that is neither constant nor locally guarded.
+pub(super) fn unguarded_request_redirect(source: &str) -> Option<usize> {
+    let mut fields = USER_CONTROLLED_REDIRECT_PATTERNS
+        .iter()
+        .flat_map(|pattern| pattern.find_iter(source).map(|found| found.start()))
+        .collect::<Vec<_>>();
+    fields.sort_unstable();
+    let context = GuardContext {
+        source,
+        structure: blank_js(source, true),
+    };
+    let handlers = HandlerSpans::new(&context.structure);
+    let mut targets = 0;
+    for call in REDIRECT_CALL.find_iter(&context.structure) {
+        let Some(&field) = fields
+            .iter()
+            .find(|&&field| !handlers.separate(field, call.start()))
+        else {
+            continue;
+        };
+        let Some(window) = complete_call_window(&context.structure, call.end()) else {
+            return Some(field);
+        };
+        targets += 1;
+        let target = first_arg(&source[call.end()..call.end() + window.len() - 1]).trim();
+        if targets > CODE_SCAN_REDIRECT_MAX_TARGETS || !context.safe_value(target, call.start(), 0)
+        {
+            return Some(field);
+        }
+    }
+    None
+}
+
 impl GuardContext<'_> {
     fn safe_value(&self, value: &str, at: usize, depth: usize) -> bool {
         if depth >= CODE_SCAN_REDIRECT_MAX_DEPTH || value.len() > CODE_SCAN_REDIRECT_ARGUMENT_BYTES
@@ -88,6 +123,11 @@ impl GuardContext<'_> {
         let value = value.trim();
         if literal(value).is_some() {
             return true;
+        }
+        if let Some(parts) = template_interpolations(value) {
+            return parts
+                .into_iter()
+                .all(|part| self.safe_value(part, at, depth + 1));
         }
         let structure = blank_js(value, true);
         if let Some(question) = structure.find('?') {
@@ -251,6 +291,39 @@ fn literal(value: &str) -> Option<&str> {
         .trim()
         .is_empty()
         .then(|| &value[1..value.len() - 1])
+}
+
+/// Interpolated expressions of a single template literal, or `None` when the
+/// value is not one template or nests quotes inside an interpolation.
+fn template_interpolations(value: &str) -> Option<Vec<&str>> {
+    let body = value.strip_prefix('`')?.strip_suffix('`')?;
+    let bytes = body.as_bytes();
+    let mut parts = Vec::new();
+    let mut index = 0;
+    while let Some(&byte) = bytes.get(index) {
+        match byte {
+            b'\\' => index += 2,
+            b'`' => return None,
+            b'$' if bytes.get(index + 1) == Some(&b'{') => {
+                let start = index + 2;
+                let mut depth = 1;
+                let mut end = start;
+                while depth > 0 {
+                    match bytes.get(end)? {
+                        b'{' => depth += 1,
+                        b'}' => depth -= 1,
+                        b'`' | b'"' | b'\'' => return None,
+                        _ => {}
+                    }
+                    end += 1;
+                }
+                parts.push(&body[start..end - 1]);
+                index = end;
+            }
+            _ => index += 1,
+        }
+    }
+    Some(parts)
 }
 
 fn scope_start(structure: &str, at: usize) -> usize {

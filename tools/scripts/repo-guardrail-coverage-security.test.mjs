@@ -309,7 +309,186 @@ describe.concurrent(
             ),
           );
         },
-        "release.yml must keep R2 and manifest-promotion credentials in the checkout-free publish-release job",
+        "release.yml must keep R2 credentials and the releases-audience OIDC token request in the checkout-free publish-release job",
+      );
+    });
+
+    it("fails when a job outside the publishers requests a releases-audience OIDC token", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/release.yml",
+            mustMutate(
+              workflow,
+              "          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}",
+              [
+                "          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}",
+                '          RELEASES_TOKEN_URL: "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com"',
+              ].join("\n"),
+            ),
+          );
+        },
+        "release.yml must keep R2 credentials and the releases-audience OIDC token request in the checkout-free publish-release job",
+      );
+    });
+
+    it("fails when the stored publish key returns to the release workflow", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/release.yml",
+            mustMutate(
+              workflow,
+              "      - name: Advance the production updater manifest\n",
+              [
+                "      - name: Advance the production updater manifest",
+                "        env:",
+                "          RELEASE_ADMIN_KEY: ${{ secrets.RELEASE_ADMIN_KEY }}",
+                "",
+              ].join("\n"),
+            ),
+          );
+        },
+        "RELEASE_ADMIN_KEY must not return to the release pipeline (found in .github/workflows/release.yml)",
+      );
+    });
+
+    for (const [form, environment] of [
+      ["the short form", "    environment: release-publish\n"],
+      [
+        "a url before the name",
+        "    environment:\n      url: https://example.com\n      name: release-publish\n",
+      ],
+      ["the flow form", "    environment: { name: release-publish }\n"],
+      ["a quoted name", '    environment:\n      name: "release-publish"\n'],
+      ["an expression", "    environment: ${{ inputs.target }}\n"],
+    ]) {
+      it(`fails when another release job joins release-publish through ${form}`, () => {
+        expectGuardrailFailure(
+          releaseArtifactSafetyFailures,
+          (fixtureRoot) => {
+            const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+            writeFixtureFile(
+              fixtureRoot,
+              ".github/workflows/release.yml",
+              mustMutate(
+                workflow,
+                "    environment:\n      name: release-updater-signing\n    steps:\n      - uses: actions/checkout@",
+                `${environment}    steps:\n      - uses: actions/checkout@`,
+              ),
+            );
+          },
+          ".github/workflows/release.yml#validate-updater-key",
+        );
+      });
+    }
+
+    it("fails when a dispatchable workflow's job uses release-publish", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/manual-publish.yml",
+            [
+              "name: Manual publish",
+              "on:",
+              "  workflow_dispatch:",
+              "jobs:",
+              "  publish:",
+              "    runs-on: ubuntu-22.04",
+              "    permissions:",
+              "      id-token: write",
+              "    environment:",
+              "      name: release-publish",
+              "    steps:",
+              "      - run: echo publish",
+              "",
+            ].join("\n"),
+          );
+        },
+        ".github/workflows/manual-publish.yml#publish",
+      );
+    });
+
+    it("fails when a release helper script reads the stored publish key", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/scripts/release/advance-manifest.sh",
+            'curl -H "Authorization: Bearer ${RELEASE_ADMIN_KEY}" https://releases.sitecmd.com/api/releases-admin\n',
+          );
+        },
+        "RELEASE_ADMIN_KEY must not return to the release pipeline (found in .github/scripts/release/advance-manifest.sh)",
+      );
+    });
+
+    it("fails when publish-npm moves back into release-publish", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/release.yml",
+            mustMutate(workflow, "      name: npm-publish\n", "      name: release-publish\n"),
+          );
+        },
+        "may use the release-publish environment (found: .github/workflows/release.yml#publish-npm,",
+      );
+    });
+
+    it("fails when another job joins npm-publish", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/manual-npm.yml",
+            [
+              "name: Manual npm publish",
+              "on:",
+              "  workflow_dispatch:",
+              "jobs:",
+              "  publish:",
+              "    runs-on: ubuntu-22.04",
+              "    permissions:",
+              "      id-token: write",
+              "    environment: npm-publish",
+              "    steps:",
+              "      - run: npm publish",
+              "",
+            ].join("\n"),
+          );
+        },
+        "(found: .github/workflows/manual-npm.yml#publish, .github/workflows/release.yml#publish-npm)",
+      );
+    });
+
+    it("fails when a stored npm token returns to the npm publish", () => {
+      expectGuardrailFailure(
+        releaseArtifactSafetyFailures,
+        (fixtureRoot) => {
+          const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
+          writeFixtureFile(
+            fixtureRoot,
+            ".github/workflows/release.yml",
+            mustMutate(
+              workflow,
+              "          VERSION: ${{ needs.prepare-candidate.outputs.version }}\n        shell: bash\n        run: bash .github/scripts/release/publish-npm-packages.sh\n",
+              "          VERSION: ${{ needs.prepare-candidate.outputs.version }}\n          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}\n        shell: bash\n        run: bash .github/scripts/release/publish-npm-packages.sh\n",
+            ),
+          );
+        },
+        "A stored npm token must not return to the release pipeline (found in .github/workflows/release.yml)",
       );
     });
 
@@ -1421,6 +1600,38 @@ describe.concurrent(
             exposed.replace(
               "script_extraction_preserves_offsets_after_unicode_case_expansion",
               "script_extraction_without_unicode_regression",
+            ),
+          );
+        },
+        "HTML offset parsing must preserve UTF-8 byte positions and keep Unicode regression coverage",
+      );
+    });
+
+    it("reports a local stack detector with the engine-port guardrails", () => {
+      expectGuardrailFailure(
+        repoGuardrailFailures,
+        (fixtureRoot) => {
+          const detectorPath = "apps/desktop/src-tauri/src/core/detector.rs";
+          const detector = readFixtureFile(fixtureRoot, detectorPath);
+          writeFixtureFile(fixtureRoot, detectorPath, `${detector}\nfn detect_cms() {}\n`);
+        },
+        "Engine-port guardrails failed:",
+      );
+    });
+
+    it("fails when stack generator Unicode coverage is renamed", () => {
+      expectGuardrailFailure(
+        desktopScannerBodySafetyFailures,
+        (fixtureRoot) => {
+          const stackTestsPath = "apps/desktop/src-tauri/crates/engine/src/stack_tests.rs";
+          const stackTests = readFixtureFile(fixtureRoot, stackTestsPath);
+          writeFixtureFile(
+            fixtureRoot,
+            stackTestsPath,
+            mustMutate(
+              stackTests,
+              "generator_detection_preserves_offsets_after_unicode_case_expansion",
+              "generator_detection_without_unicode_regression",
             ),
           );
         },

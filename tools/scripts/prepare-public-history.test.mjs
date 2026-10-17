@@ -50,6 +50,8 @@ function repositoryFixture() {
   command("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", key], root);
   git(root, "config", "gpg.format", "ssh");
   git(root, "config", "user.signingkey", `${key}.pub`);
+  // A global tag.gpgSign turns the lightweight fixture tag into a signed one that needs a message.
+  git(root, "config", "tag.gpgSign", "false");
 
   fs.mkdirSync(path.join(root, ".github"));
   const publicKey = fs.readFileSync(`${key}.pub`, "utf8").trim();

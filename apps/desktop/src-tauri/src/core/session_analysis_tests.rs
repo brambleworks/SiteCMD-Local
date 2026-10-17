@@ -11,7 +11,7 @@ fn page(url: &str) -> PageSignals {
         meta_description: None,
         h1: None,
         canonical: None,
-        noindex: false,
+        noindex: Some(false),
         hreflang: Vec::new(),
         internal_links: Vec::new(),
         internal_links_truncated: false,
@@ -134,7 +134,7 @@ fn orphans_need_minimum_pages_and_skip_entry_page() {
 #[test]
 fn noindex_in_sitemap_contradiction_detected() {
     let mut a = page("https://a.com/private");
-    a.noindex = true;
+    a.noindex = Some(true);
     let b = page("https://a.com/public");
     let sitemap = vec![
         "https://a.com/private/".to_string(),
@@ -477,7 +477,7 @@ fn review_noindex_and_canonicalized_pages_are_left_out_of_duplicate_groups() {
     print_view.canonical = Some("https://a.com/product".into());
     let mut thank_you = page("https://a.com/thank-you");
     thank_you.title = Some("Widget".into());
-    thank_you.noindex = true;
+    thank_you.noindex = Some(true);
 
     let results = analyze_session(&[product, print_view, thank_you], None);
     let finding = outcome(&results, "seo.duplicate_title_across_pages");
@@ -719,13 +719,13 @@ fn review_noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers(
     let header = with_header("https://a.com/d", "noindex, nofollow");
     let other_bot_header = with_header("https://a.com/e", "otherbot: noindex");
     let mut host_twin = page("https://a.com/f");
-    host_twin.noindex = true;
+    host_twin.noindex = Some(true);
 
-    assert!(comma_list.noindex);
-    assert!(googlebot_none.noindex);
-    assert!(!bingbot_only.noindex);
-    assert!(header.noindex);
-    assert!(!other_bot_header.noindex);
+    assert_eq!(comma_list.noindex, Some(true));
+    assert_eq!(googlebot_none.noindex, Some(true));
+    assert_eq!(bingbot_only.noindex, Some(false));
+    assert_eq!(header.noindex, Some(true));
+    assert_eq!(other_bot_header.noindex, Some(false));
 
     let sitemap = vec![
         "https://a.com/a/".to_string(),
@@ -830,7 +830,7 @@ fn an_error_status_page_is_not_compared_against_the_pages_that_answered() {
 #[test]
 fn an_error_status_page_is_not_a_noindex_contradiction_in_the_sitemap() {
     let mut gone = error_page("https://a.com/gone", 404);
-    gone.noindex = true;
+    gone.noindex = Some(true);
     let live = page("https://a.com/live");
     let sitemap = vec![
         "https://a.com/gone".to_string(),
@@ -965,7 +965,7 @@ fn a_partial_sitemap_read_skips_the_noindex_contradiction_instead_of_passing_it(
 #[test]
 fn a_partial_sitemap_still_reports_the_contradictions_it_did_observe() {
     let mut private = page("https://a.com/private");
-    private.noindex = true;
+    private.noindex = Some(true);
     let public = page("https://a.com/public");
     let urls = vec!["https://a.com/private".to_string()];
     let partial = SessionSitemap {

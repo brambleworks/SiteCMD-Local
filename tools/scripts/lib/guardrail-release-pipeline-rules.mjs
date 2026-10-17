@@ -233,14 +233,25 @@ export function releasePipelineSafetyFailures(read) {
     "release.yml must verify the extracted macOS CLI with codesign and the extracted Windows CLI with Authenticode, bind each to the app's signer, and do so before executing either binary.",
   );
 
+  // The releases worker verifies a GitHub Actions OIDC token minted for its
+  // audience in release-publish on a v* tag; no stored key authenticates.
+  const releasesTokenRequest =
+    'curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com"';
+  const presentsReleasesToken = (source) =>
+    source.includes(releasesTokenRequest) && source.includes('"Authorization: Bearer ${token}"');
+  const advanceManifestStep =
+    /\n {6}- name: Advance the production updater manifest\n[\s\S]*?(?=\n {6}- |$)/.exec(
+      publisherJob,
+    )?.[0] ?? "";
   check(
     publisherJob.includes("needs: [prepare-candidate, verify-release]") &&
       publisherJob.includes("name: release-publish") &&
-      publisherJob.includes("Advance the production updater manifest") &&
-      publisherJob.includes("${{ secrets.RELEASE_ADMIN_KEY }}") &&
+      publisherJob.includes("\n      id-token: write\n") &&
+      presentsReleasesToken(advanceManifestStep) &&
+      advanceManifestStep.includes("curl --fail-with-body -sS -X POST") &&
       !publisherJob.includes("uses: actions/checkout@") &&
       orderedBefore(releaseWorkflow, "\n  verify-release:\n", "\n  publish-release:\n"),
-    "release.yml must publish only after every secretless verification leg and must not check out or execute product source in the credentialed publisher.",
+    "release.yml must publish only after every secretless verification leg, advance the updater manifest with the job's own releases-audience OIDC token (id-token: write) through curl --fail-with-body so a refusal prints the worker's reason, and must not check out or execute product source in the credentialed publisher.",
   );
 
   // Retain prior signing keys; the lookbehind distinguishes overwrite from append.
@@ -267,14 +278,15 @@ export function releasePipelineSafetyFailures(read) {
     "Release workflow must keep the validate-updater-key probe job (release-updater-signing environment, tauri signer sign) so a bad signing secret fails in seconds instead of after every platform build.",
   );
 
-  // Authenticate the publish key with a non-mutating request before building.
+  // Authenticate the publish token with a non-mutating request before building.
   check(
     validatePublishKeyJob.includes("name: release-publish") &&
-      validatePublishKeyJob.includes('"Authorization: Bearer ${RELEASE_ADMIN_KEY}"') &&
+      validatePublishKeyJob.includes("\n      id-token: write\n") &&
+      presentsReleasesToken(validatePublishKeyJob) &&
       validatePublishKeyJob.includes('!= "400"') &&
-      (releaseWorkflow.match(/\$\{\{ secrets\.RELEASE_ADMIN_KEY \}\}/g) || []).length === 2 &&
+      releaseWorkflow.split(releasesTokenRequest).length - 1 === 2 &&
       orderedBefore(releaseWorkflow, "\n  validate-publish-key:\n", "\n  build:\n"),
-    "Release workflow must keep the validate-publish-key probe job (release-publish environment, invalid-body POST expecting 400) so RELEASE_ADMIN_KEY drift fails in seconds instead of after every platform build.",
+    "Release workflow must keep the validate-publish-key probe job (release-publish environment, id-token: write, invalid-body POST with the releases-audience OIDC token expecting 400) so a token the releases worker refuses fails in seconds instead of after every platform build.",
   );
 
   // The AWS CLI requires a region even when pointed at R2.

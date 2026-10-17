@@ -1,0 +1,395 @@
+{
+  "cases": [
+    {
+      "events": [],
+      "expected": [],
+      "name": "empty_inputs_have_no_correlations",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_5_point_drop_does_not_correlate",
+      "scans": [{"id":2,"overall_score":85,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 6 point score drop (90 \u2192 84)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_6_point_drop_is_medium",
+      "scans": [{"id":2,"overall_score":84,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 10 point score drop (90 \u2192 80)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_10_point_drop_is_medium",
+      "scans": [{"id":2,"overall_score":80,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 11 point score drop (90 \u2192 79)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_11_point_drop_is_high",
+      "scans": [{"id":2,"overall_score":79,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_5_point_gain_does_not_correlate",
+      "scans": [{"id":2,"overall_score":85,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":80,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 6 point score improvement (80 -> 86)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_6_point_gain_is_medium",
+      "scans": [{"id":2,"overall_score":86,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":80,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 10 point score improvement (80 -> 90)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_10_point_gain_is_medium",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":80,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 11 point score improvement (80 -> 91)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_11_point_gain_is_high",
+      "scans": [{"id":2,"overall_score":91,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":80,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704106800000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T11:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_drop_exactly_two_hours_is_high",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704106799999,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T10:59:59.999+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_drop_two_hours_and_a_millisecond_is_medium",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704092400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T07:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_drop_exactly_six_hours_is_medium",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704092399999,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"low","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T06:59:59.999+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_drop_six_hours_and_a_millisecond_is_low",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027600000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"low","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2023-12-31T13:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_drop_exactly_twenty_four_hours_is_low",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027599999,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_drop_beyond_twenty_four_hours_does_not_correlate",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704114000001,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_scan_before_the_deploy_does_not_correlate",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":1704117599999,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - 1h apart apart","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":2,"targetTimestamp":"2024-01-01T13:59:59.999+00:00"}],
+      "name": "a_traffic_drop_one_hour_and_fifty_nine_minutes_from_downtime",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":1704117600000,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"medium","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - 2h apart apart","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":2,"targetTimestamp":"2024-01-01T14:00:00+00:00"}],
+      "name": "a_traffic_drop_exactly_two_hours_from_downtime",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":1704128399999,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"medium","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - 4h apart apart","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":2,"targetTimestamp":"2024-01-01T16:59:59.999+00:00"}],
+      "name": "a_traffic_drop_four_hours_and_fifty_nine_minutes_from_downtime",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":1704128400000,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [],
+      "name": "a_traffic_drop_exactly_five_hours_from_downtime",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":1704103200001,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - 1h apart apart","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":2,"targetTimestamp":"2024-01-01T10:00:00.001+00:00"}],
+      "name": "a_traffic_drop_nearly_two_hours_before_downtime_is_high",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"warning","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":1704112200000,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [],
+      "name": "noncritical_uptime_does_not_explain_a_drop",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":1704112200000,"severity":"warning","title":"Traffic increase detected"}],
+      "expected": [],
+      "name": "analytics_without_a_drop_does_not_pair_with_downtime",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"analytics","id":7,"occurred_at_ms":1704114000000,"severity":"info","title":"Visits spiked on the pricing page"}],
+      "expected": [],
+      "name": "an_anomaly_at_nine_points_does_not_correlate",
+      "scans": [{"id":2,"overall_score":81,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":7,"occurred_at_ms":1704160799999,"severity":"info","title":"Visits spiked on the pricing page"}],
+      "expected": [{"confidence":"medium","correlationType":"scan_to_traffic","description":"Score dropped 10 pts (90 \u2192 80) near a traffic anomaly: Visits spiked on the pricing page","sourceEventId":7,"sourceTimestamp":"2024-01-01T13:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-02T01:59:59.999+00:00"}],
+      "name": "an_anomaly_at_nearly_thirteen_hours_is_medium",
+      "scans": [{"id":2,"overall_score":80,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":7,"occurred_at_ms":1704160800000,"severity":"info","title":"Visits spiked on the pricing page"}],
+      "expected": [{"confidence":"low","correlationType":"scan_to_traffic","description":"Score dropped 10 pts (90 \u2192 80) near a traffic anomaly: Visits spiked on the pricing page","sourceEventId":7,"sourceTimestamp":"2024-01-01T13:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-02T02:00:00+00:00"}],
+      "name": "an_anomaly_at_exactly_thirteen_hours_is_low",
+      "scans": [{"id":2,"overall_score":80,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":7,"occurred_at_ms":1704290399999,"severity":"info","title":"Visits spiked on the pricing page"}],
+      "expected": [{"confidence":"low","correlationType":"scan_to_traffic","description":"Score dropped 10 pts (90 \u2192 80) near a traffic anomaly: Visits spiked on the pricing page","sourceEventId":7,"sourceTimestamp":"2024-01-01T13:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-03T13:59:59.999+00:00"}],
+      "name": "an_anomaly_at_nearly_forty_nine_hours_is_low",
+      "scans": [{"id":2,"overall_score":80,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":7,"occurred_at_ms":1704290400000,"severity":"info","title":"Visits spiked on the pricing page"}],
+      "expected": [],
+      "name": "an_anomaly_at_exactly_forty_nine_hours_does_not_correlate",
+      "scans": [{"id":2,"overall_score":80,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"},{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"Later duplicate title"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "the_first_duplicate_event_supplies_the_title",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":9,"occurred_at_ms":1704121200000,"severity":"warning","title":"Traffic drop detected"},{"event_type":"analytics","id":2,"occurred_at_ms":1704112200000,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"medium","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - 3h apart apart","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":9,"targetTimestamp":"2024-01-01T15:00:00+00:00"}],
+      "name": "the_first_eligible_traffic_event_wins",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "equal_scan_times_choose_the_lower_scan_id",
+      "scans": [{"id":9,"overall_score":60,"timestamp":"2024-01-01T13:00:00Z","url":"https://other.example.com"},{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":8,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://other.example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":7,"occurred_at_ms":1704110400000,"severity":"warning","title":"Traffic drop detected"},{"event_type":"deploy","id":7,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"},{"event_type":"uptime","id":9,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"uptime","id":3,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"}],
+      "expected": [{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":3,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":7,"targetTimestamp":"2024-01-01T12:00:00+00:00"},{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":7,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"},{"confidence":"medium","correlationType":"scan_to_traffic","description":"Score dropped 20 pts (90 \u2192 70) near a traffic anomaly: Traffic drop detected","sourceEventId":7,"sourceTimestamp":"2024-01-01T13:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-01T12:00:00+00:00"},{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":9,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":7,"targetTimestamp":"2024-01-01T12:00:00+00:00"}],
+      "name": "correlations_sort_by_source_id_then_type",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uD83D\uDE00x"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uD83D\uDE00\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_deploy_excerpt_counts_bmp_and_astral_characters",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":7,"occurred_at_ms":1704114000000,"severity":"info","title":"\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uD83D\uDE00x"}],
+      "expected": [{"confidence":"medium","correlationType":"scan_to_traffic","description":"Score dropped 20 pts (90 \u2192 70) near a traffic anomaly: \uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uD83D\uDE00","sourceEventId":7,"sourceTimestamp":"2024-01-01T13:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00+00:00"}],
+      "name": "an_anomaly_excerpt_counts_bmp_and_astral_characters",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":253402300800000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":253402300800000,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":1,"sourceTimestamp":"+10000-01-01T00:00:00+00:00","targetEventId":2,"targetTimestamp":"+10000-01-01T00:00:00+00:00"}],
+      "name": "year_ten_thousand_uses_five_digits",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":-62198755200000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":-62198755200000,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":1,"sourceTimestamp":"-0001-01-01T00:00:00+00:00","targetEventId":2,"targetTimestamp":"-0001-01-01T00:00:00+00:00"}],
+      "name": "year_negative_one_uses_four_digits",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400100,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00.100+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_hundred_millisecond_fraction_keeps_three_digits",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1709294400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "february_thirty_does_not_roll_into_a_deploy_window",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-02-30T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-03-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":8210266876800000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":8210266876800000,"severity":"warning","title":"Traffic drop detected"},{"event_type":"uptime","id":3,"occurred_at_ms":8210266876800000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":4,"occurred_at_ms":8210266876800000,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [],
+      "name": "events_at_the_first_millisecond_past_chronos_range_do_not_correlate",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":8210266876800001,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":8210266876800001,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [],
+      "name": "events_two_milliseconds_past_chronos_range_do_not_correlate",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":-8334601228800000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":-8334601228800000,"severity":"warning","title":"Traffic drop detected"},{"event_type":"uptime","id":3,"occurred_at_ms":-8334601228800001,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":4,"occurred_at_ms":-8334601228800001,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":1,"sourceTimestamp":"-262143-01-01T00:00:00+00:00","targetEventId":2,"targetTimestamp":"-262143-01-01T00:00:00+00:00"}],
+      "name": "the_lower_bound_is_included_and_one_millisecond_before_is_excluded",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704114000000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T13:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_scan_at_the_deploy_instant_correlates",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704092399999,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"low","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 15 point score improvement (80 -> 95)","sourceEventId":1,"sourceTimestamp":"2024-01-01T06:59:59.999+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_resolution_beyond_six_hours_is_low",
+      "scans": [{"id":2,"overall_score":95,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":80,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"uptime","id":1,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":1704112200000,"severity":"warning","title":"Traffic Drop detected"}],
+      "expected": [{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":2,"targetTimestamp":"2024-01-01T12:30:00+00:00"}],
+      "name": "a_capitalized_traffic_drop_correlates",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704099600000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 20 point score improvement (70 -> 90)","sourceEventId":1,"sourceTimestamp":"2024-01-01T09:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T11:00:00Z"}],
+      "name": "scan_pairs_keep_the_supplied_list_order",
+      "scans": [{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"},{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"low","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (80 \u2192 60)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T20:00:00Z"},{"confidence":"medium","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 10 point score improvement (70 -> 80)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T18:00:00Z"}],
+      "name": "the_newest_qualifying_scan_pair_wins",
+      "scans": [{"id":4,"overall_score":60,"timestamp":"2024-01-01T20:00:00Z","url":"https://example.com"},{"id":3,"overall_score":80,"timestamp":"2024-01-01T18:00:00Z","url":"https://example.com"},{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":7,"occurred_at_ms":1704290399999,"severity":"info","title":"Visits spiked on the pricing page"},{"event_type":"analytics","id":8,"occurred_at_ms":1704114000000,"severity":"info","title":"Visits spiked on the pricing page"}],
+      "expected": [{"confidence":"low","correlationType":"scan_to_traffic","description":"Score dropped 10 pts (90 \u2192 80) near a traffic anomaly: Visits spiked on the pricing page","sourceEventId":7,"sourceTimestamp":"2024-01-01T13:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-03T13:59:59.999+00:00"}],
+      "name": "the_first_qualifying_anomaly_wins",
+      "scans": [{"id":2,"overall_score":80,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"uptime","id":5,"occurred_at_ms":1704112200000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":5,"occurred_at_ms":1704112200000,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"medium","correlationType":"scan_to_traffic","description":"Score dropped 20 pts (90 \u2192 70) near a traffic anomaly: Traffic drop detected","sourceEventId":5,"sourceTimestamp":"2024-01-01T13:00:00Z","targetEventId":null,"targetTimestamp":"2024-01-01T12:30:00+00:00"},{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":5,"sourceTimestamp":"2024-01-01T12:30:00+00:00","targetEventId":5,"targetTimestamp":"2024-01-01T12:30:00+00:00"}],
+      "name": "correlation_type_sorts_before_insertion_order",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"uptime","id":10,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"uptime","id":9,"occurred_at_ms":1704110400000,"severity":"critical","title":"Site down"},{"event_type":"analytics","id":2,"occurred_at_ms":1704112200000,"severity":"warning","title":"Traffic drop detected"}],
+      "expected": [{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":9,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":2,"targetTimestamp":"2024-01-01T12:30:00+00:00"},{"confidence":"high","correlationType":"uptime_to_traffic","description":"Downtime event likely caused the traffic drop - same hour apart","sourceEventId":10,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":2,"targetTimestamp":"2024-01-01T12:30:00+00:00"}],
+      "name": "event_ids_sort_numerically",
+      "scans": []
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01t13:00:00Z"}],
+      "name": "a_scan_with_lowercase_t_separator_correlates",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01t13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01 13:00:00Z"}],
+      "name": "a_scan_with_space_separator_correlates",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01 13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00z"}],
+      "name": "a_scan_with_lowercase_z_suffix_correlates",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704106800000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T11:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.0000005Z"}],
+      "name": "a_drop_two_hours_and_five_hundred_nanoseconds_is_medium",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0000005Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027600000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_drop_twenty_four_hours_and_five_hundred_nanoseconds_does_not_correlate",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0000005Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"analytics","id":2,"occurred_at_ms":1704160800000,"severity":"warning","title":"Traffic anomaly"}],
+      "expected": [{"confidence":"medium","correlationType":"scan_to_traffic","description":"Score dropped 20 pts (90 \u2192 70) near a traffic anomaly: Traffic anomaly","sourceEventId":2,"sourceTimestamp":"2024-01-01T13:00:00.0000005Z","targetEventId":null,"targetTimestamp":"2024-01-02T02:00:00+00:00"}],
+      "name": "an_anomaly_five_hundred_nanoseconds_before_thirteen_hours_is_medium",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0000005Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 30 point score drop (90 \u2192 60)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.0000009Z"}],
+      "name": "submillisecond_scan_times_choose_the_newer_scan_over_the_lower_id",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0000001Z","url":"https://example.com"},{"id":9,"overall_score":60,"timestamp":"2024-01-01T13:00:00.0000009Z","url":"https://other.example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"},{"id":8,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://other.example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T11:00:00\u221202:00"}],
+      "name": "a_unicode_minus_offset_is_read_as_thirteen_hundred_utc",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T11:00:00\u221202:00","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027600050,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"low","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2023-12-31T13:00:00.050+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.0123456789Z"}],
+      "name": "a_leading_zero_fraction_past_nine_digits_inside_twenty_four_hours_is_low",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.0123456789Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704106800000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 20 point score improvement (70 -> 90)","sourceEventId":1,"sourceTimestamp":"2024-01-01T11:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_resolution_exactly_two_hours_is_high",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704106800000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"medium","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 20 point score improvement (70 -> 90)","sourceEventId":1,"sourceTimestamp":"2024-01-01T11:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.001Z"}],
+      "name": "a_resolution_two_hours_and_a_millisecond_is_medium",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00.001Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027600000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"low","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 20 point score improvement (70 -> 90)","sourceEventId":1,"sourceTimestamp":"2023-12-31T13:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_resolution_exactly_twenty_four_hours_is_low",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704027600000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_resolution_twenty_four_hours_and_a_millisecond_does_not_correlate",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00.001Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704114000000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_resolution","description":"Deploy \"v1.2.3 deployed\" likely resolved a 20 point score improvement (70 -> 90)","sourceEventId":1,"sourceTimestamp":"2024-01-01T13:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00Z"}],
+      "name": "a_resolution_at_the_deploy_instant_is_high",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T13:00:00Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704114000000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [],
+      "name": "a_resolution_before_the_deploy_does_not_correlate",
+      "scans": [{"id":2,"overall_score":90,"timestamp":"2024-01-01T12:59:59.999Z","url":"https://example.com"},{"id":1,"overall_score":70,"timestamp":"2023-12-31T11:00:00Z","url":"https://example.com"}]
+    },
+    {
+      "events": [{"event_type":"deploy","id":1,"occurred_at_ms":1704110400000,"severity":"info","title":"v1.2.3 deployed"}],
+      "expected": [{"confidence":"high","correlationType":"deploy_to_regression","description":"Deploy \"v1.2.3 deployed\" may have caused a 20 point score drop (90 \u2192 70)","sourceEventId":1,"sourceTimestamp":"2024-01-01T12:00:00+00:00","targetEventId":null,"targetTimestamp":"2024-01-01T13:00:00.123456789Z"}],
+      "name": "a_scan_with_extra_fraction_digits_correlates",
+      "scans": [{"id":2,"overall_score":70,"timestamp":"2024-01-01T13:00:00.123456789Z","url":"https://example.com"},{"id":1,"overall_score":90,"timestamp":"2024-01-01T11:00:00Z","url":"https://example.com"}]
+    }
+  ],
+  "comment": "Expected blocks are written only by src/core/event_correlations_parity_tests.rs through its ignored regenerate test. event_correlations_boundaries.json holds event-correlation boundaries, ordering and timestamp cases."
+}

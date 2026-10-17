@@ -5,7 +5,7 @@ use crate::manifest::Entry;
 pub const ENTRIES: &[Entry] = &[
     Entry::new("config.analytics"),
     Entry::new("config.console_logs"),
-    Entry::new("config.custom_404").probe().origin(),
+    Entry::new("config.custom_404").probe().origin().revision(2),
     Entry::new("config.debug_mode"),
     Entry::new("config.deprecated_html"),
     Entry::new("config.dev_dependencies"),

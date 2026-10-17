@@ -180,6 +180,20 @@ Read the desktop guide and component guide before writing markup.
 
 ## Process
 
+### Agent context efficiency
+
+- Search narrowly with `rg` before reading source; request only the relevant
+  sections. Read applicable guidance once per task unless it changes.
+- Keep routine tool output near 2,000 tokens. Save verbose test and build logs
+  to a temporary file and inspect summaries or failure excerpts. Increase the
+  output budget when correctness requires more context.
+- Load only skills needed for the task. Use bounded specialist assignments only
+  when delegation is requested; avoid broad agent fan-out for focused changes.
+- Run the required checks after the final relevant edit. Repeat checks when a
+  change or failure invalidates their results, not for unchanged progress updates.
+
+### Delivery
+
 1. Restart `pnpm tauri:dev` after Rust changes. Frontend changes hot-reload.
 2. Branch names use `<type>/<short-kebab-case-description>` with one of
    `feature`, `bugfix`, `hotfix`, `release`, or `docs`. Add a ticket after the

@@ -18,6 +18,8 @@ pub mod localhost;
 pub mod native_alerts;
 pub mod normalized_scan;
 pub mod page_signals;
+#[cfg(test)]
+mod parity_corpus_tests;
 pub mod project;
 pub mod regression_blame;
 pub(crate) mod safe_fs;

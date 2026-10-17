@@ -1,15 +1,39 @@
 //! Portable evaluation with explicit outcomes for every manifest entry.
 
+mod artifact;
+mod discovery;
+mod discovery_robots;
+mod inputs;
+mod origin_reads;
 mod probe_checks;
+mod probe_dns;
 mod probes;
+mod route_session;
 mod runners;
+mod runners_seo;
+mod session_eval;
+mod session_facts;
+mod sitemap_children;
 
+pub use artifact::{EvaluationError, PageArtifact};
+pub use discovery::DiscoveryResponse;
+pub use inputs::EvaluationInputs;
 pub use probe_checks::{ProbeCheck, PROBE_CHECKS};
 pub use probes::{
     probe_key, probe_plan, unexecuted_probe, ExecutedProbe, PlannedProbe, ProbeContext,
     ProbeOutcomes, ProbePlan, EXCLUDED_PROBE_CHECKS,
 };
-pub use runners::{EvaluationInputs, Runner, EXCLUDED_ARTIFACT_CHECKS, RUNNERS};
+pub use route_session::{
+    RouteCall, RouteDiscoverRequest, RouteEvaluationRequest, RouteFacts, RouteOpenRequest,
+    RouteOpened, RouteSession, RouteSessionPageRequest,
+};
+pub use runners::{Runner, RUNNERS};
+pub use runners_seo::{EXCLUDED_ARTIFACT_CHECKS, SEO_RUNNERS};
+pub use session_eval::{evaluate_session, SessionRequest, SessionResponse, SessionVerdictRow};
+pub use session_facts::{
+    session_page, SessionPageFacts, SessionPageRequest, SessionSitemapCause, SessionSitemapFacts,
+    ELSEWHERE,
+};
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -23,48 +47,19 @@ use crate::checks::security::vulnerable_libraries::{
 };
 use crate::dns::{DkimSelectorQuestion, ResolverFacts, ResolverPlan};
 use crate::manifest::{
-    capability_manifest, CapabilityManifest, CheckClass, CheckScope, HostedLane, MeasurementUnit,
-    RuntimeFact,
+    capability_manifest, CapabilityManifest, CheckClass, CheckScope, HostedLane, ManifestEntry,
+    MeasurementUnit, RuntimeFact,
 };
 use crate::page::PageContext;
+use crate::severity_policy::WebSeverityInput;
+use crate::stack::DetectedStack;
 use crate::vocab::CheckResult;
 
 /// Cached because hosted evaluation reuses this digest on every route.
 static MANIFEST: LazyLock<CapabilityManifest> = LazyLock::new(capability_manifest);
 
-/// Stable wire representation of a fetched document.
-/// Runtime-only `PageContext` fields stay outside the cross-runtime contract.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PageArtifact {
-    /// The URL the body came from, after redirects. Route identity and every
-    /// origin-scoped verdict derive from this, never from what was requested.
-    pub url: String,
-    /// URL requested before redirects. `None` means redirect checks must
-    /// decline; defaulting to the final URL would create a false pass.
-    #[serde(default)]
-    pub requested_url: Option<String>,
-    pub status_code: u16,
-    /// The negotiated protocol as the transport reported it ("HTTP/2.0").
-    /// Optional because a runtime that cannot observe it must say so rather
-    /// than assert a default: `performance.http2` grades this field.
-    #[serde(default)]
-    pub http_version: Option<String>,
-    #[serde(default)]
-    pub is_localhost: bool,
-    /// Strict loopback only. Separate from `is_localhost` because the TLS
-    /// bypass decision is narrower than the preview-posture one.
-    #[serde(default)]
-    pub is_strict_localhost: bool,
-    /// Response headers in arrival order, preserving repeated fields.
-    #[serde(default)]
-    pub headers: Vec<(String, String)>,
-    pub body: String,
-    /// Caller-supplied clock basis for deterministic time-dependent verdicts.
-    pub evaluation_time: chrono::DateTime<chrono::Utc>,
-}
-
 /// Facts gathered for one route.
-/// Optional-field presence is authoritative; [`facts_present`] derives
+/// Optional-field presence is authoritative; the evaluation derives
 /// coverage from the payload so callers cannot claim facts they did not send.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluationRequest {
@@ -148,6 +143,9 @@ pub enum NotEvaluatedReason {
     /// Reported rather than filtered out, because a consumer that never
     /// hears about the check cannot tell it apart from one that passed.
     UnsupportedLane,
+    /// A cross-page check: no single route's evaluation can produce it, and
+    /// [`evaluate_session`] grades it once over the scan's pages.
+    SessionScope,
     /// The lane and the facts both check out and no runner claims the check.
     /// A defect unless the id appears in `EXCLUDED_ARTIFACT_CHECKS` or
     /// `EXCLUDED_PROBE_CHECKS` with its reason; the registry tests fail on
@@ -193,14 +191,19 @@ pub struct EvaluationResponse {
     pub facts_present: Vec<RuntimeFact>,
     /// Every check whose facts were present and whose runner executed.
     pub planned: Vec<PlannedCheck>,
-    /// Runner-ordered verdict rows; skipped rows remain coverage exceptions.
+    /// Runner-ordered verdicts; skipped results remain coverage exceptions.
     pub results: Vec<CheckResult>,
+    /// Severity inputs aligned with `results`, so consumers apply the policy
+    /// without reading a verdict's raw data.
+    pub severity_inputs: Vec<WebSeverityInput>,
     /// Measurement-class observations. These never imply a lifecycle verdict,
     /// even though the same engine may also grade the value for a local UI.
     #[serde(default)]
     pub measurement_samples: Vec<EvaluationMeasurement>,
     /// Every other manifest entry, with the reason it produced nothing.
     pub not_evaluated: Vec<NotEvaluated>,
+    /// The stack this document shows, from the detector the desktop runs.
+    pub stack: DetectedStack,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -252,170 +255,54 @@ fn external_fact_plan(page: &PageContext) -> ExternalFactPlan {
     }
 }
 
-fn browser_measurement_samples(facts: Option<&BrowserFacts>) -> Vec<EvaluationMeasurement> {
-    let Some(facts) = facts else {
-        return Vec::new();
-    };
-    crate::measurement::from_browser_vitals(&facts.core_web_vitals)
-        .into_iter()
-        .map(|sample| EvaluationMeasurement {
-            check: sample.check.to_string(),
-            value: sample.value,
-            unit: sample.unit,
-        })
-        .collect()
-}
-
-/// Structured request refusal for the wasm boundary. Errors may name headers
-/// but never echo their potentially sensitive values.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EvaluationError {
-    /// The artifact's URL did not parse, so no verdict has an origin.
-    Url,
-    /// A response-header name is not a valid HTTP field name.
-    HeaderName { name: String },
-    /// A response-header value is not a valid HTTP field value.
-    HeaderValue { name: String },
-}
-
-impl std::fmt::Display for EvaluationError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Url => write!(formatter, "page artifact url did not parse"),
-            Self::HeaderName { name } => {
-                write!(formatter, "response header name is not valid: {name}")
-            }
-            Self::HeaderValue { name } => {
-                write!(formatter, "response header value is not valid: {name}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for EvaluationError {}
-
-impl PageArtifact {
-    /// Rebuild the portable page record the checks read.
-    ///
-    /// `append` rather than `insert`, so a document that really did carry two
-    /// `Set-Cookie` headers presents both to the cookie verdicts.
-    pub fn page_context(&self) -> Result<PageContext, EvaluationError> {
-        let url = url::Url::parse(&self.url).map_err(|_| EvaluationError::Url)?;
-        let mut response_headers = http::HeaderMap::new();
-        for (name, value) in &self.headers {
-            let header_name = http::header::HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_| EvaluationError::HeaderName { name: name.clone() })?;
-            let header_value = http::header::HeaderValue::from_str(value)
-                .map_err(|_| EvaluationError::HeaderValue { name: name.clone() })?;
-            response_headers.append(header_name, header_value);
-        }
-        Ok(PageContext {
-            url,
-            response_headers,
-            status_code: self.status_code,
-            body: self.body.clone(),
-            is_localhost: self.is_localhost,
-            is_strict_localhost: self.is_strict_localhost,
-            http_version: self.http_version.clone(),
-            body_lower_cache: std::sync::OnceLock::new(),
-            evaluation_time: self.evaluation_time,
-        })
-    }
-}
-
-/// Return the runtime facts present in the request in deterministic order.
-pub fn facts_present(request: &EvaluationRequest) -> Vec<RuntimeFact> {
-    let mut facts = vec![RuntimeFact::PageArtifact];
-    // Declaration order, matching the enum, so two requests carrying the same
-    // facts always list them the same way.
-    if request.probe_outcomes.is_some() {
-        facts.push(RuntimeFact::Fetch);
-    }
-    if request.resolver_facts.is_some() {
-        facts.push(RuntimeFact::Resolver);
-    }
-    if request.tls_facts.is_some() {
-        facts.push(RuntimeFact::TlsFacts);
-    }
-    if request.browser_facts.is_some() {
-        facts.push(RuntimeFact::Browser);
-    }
-    if request.probe_outcomes.is_some() {
-        facts.push(RuntimeFact::Rdap);
-    }
-    if request.vulnerability_facts.is_some() {
-        facts.push(RuntimeFact::VulnerabilityCorpus);
-    }
-    facts
-}
-
-/// Evaluate one route, assigning every manifest entry to `planned` or
-/// `not_evaluated`. Lane, fact, and runner checks are applied in that order.
+/// Evaluate one route from its whole request: a route session opened on its
+/// page, with every outcome recorded at once.
 pub fn evaluate(request: &EvaluationRequest) -> Result<EvaluationResponse, EvaluationError> {
-    let page = request.page.page_context()?;
-    let inputs = EvaluationInputs {
-        page: &page,
-        tls_facts: request.tls_facts.as_ref(),
-        browser_facts: request.browser_facts.as_ref(),
-    };
-    let outcomes = ProbeOutcomes::index(request.probe_outcomes.as_deref().unwrap_or(&[]));
-    let probe_context = ProbeContext {
-        page: &page,
-        outcomes: &outcomes,
-        requested_url: request.page.requested_url.as_deref(),
-        resolver_facts: request.resolver_facts.as_ref(),
-        vulnerability_facts: request.vulnerability_facts.as_ref(),
-    };
-    let facts = facts_present(request);
+    let mut route = RouteSession::open(request.page.clone())?;
+    route.record(request.probe_outcomes.clone());
+    Ok(route.evaluate(&RouteFacts {
+        resolver_facts: request.resolver_facts.clone(),
+        vulnerability_facts: request.vulnerability_facts.clone(),
+        tls_facts: request.tls_facts.clone(),
+        browser_facts: request.browser_facts.clone(),
+    }))
+}
 
-    let claimed_by = runner_index();
-    // Execute each runner once in stable table order for deterministic payloads;
-    // artifact runner indexes precede probe indexes.
-    let mut ran: Vec<bool> = vec![false; RUNNERS.len() + PROBE_CHECKS.len()];
-    let mut planned = Vec::new();
-    let mut not_evaluated = Vec::new();
-
-    for entry in &MANIFEST.entries {
-        let layer = CheckLayer::of(entry.hosted);
-        // Preserve manifest scope directly through every partition branch.
-        if entry.hosted == HostedLane::Unsupported {
-            not_evaluated.push(NotEvaluated {
-                check: entry.check.clone(),
-                layer,
-                class: entry.class,
-                measurement_unit: entry.measurement_unit,
-                scope: entry.scope,
-                reason: NotEvaluatedReason::UnsupportedLane,
-            });
-            continue;
-        }
-        // The FIRST missing fact, in the order the manifest declares them, so
-        // a check needing two absent facts always names the same one and the
-        // response stays byte-stable across runs.
-        if let Some(missing) = entry.requires.iter().find(|fact| !facts.contains(*fact)) {
-            not_evaluated.push(NotEvaluated {
-                check: entry.check.clone(),
-                layer,
-                class: entry.class,
-                measurement_unit: entry.measurement_unit,
-                scope: entry.scope,
-                reason: NotEvaluatedReason::MissingFact { fact: *missing },
-            });
-            continue;
-        }
-        let Some(&index) = claimed_by.get(entry.check.as_str()) else {
-            not_evaluated.push(NotEvaluated {
-                check: entry.check.clone(),
-                layer,
-                class: entry.class,
-                measurement_unit: entry.measurement_unit,
-                scope: entry.scope,
-                reason: NotEvaluatedReason::NoRunner,
-            });
-            continue;
-        };
-        ran[index] = true;
-        planned.push(PlannedCheck {
+/// Where one manifest entry lands: planned, with the runner index that
+/// produces it, or named with the reason it produced nothing. Lane, scope, fact, and
+/// runner checks are applied in that order.
+fn partition(
+    entry: &ManifestEntry,
+    facts: &[RuntimeFact],
+    claimed_by: &HashMap<&'static str, usize>,
+) -> Result<(PlannedCheck, usize), NotEvaluated> {
+    let layer = CheckLayer::of(entry.hosted);
+    // Preserve manifest scope directly through every partition branch.
+    let omitted = |reason| NotEvaluated {
+        check: entry.check.clone(),
+        layer,
+        class: entry.class,
+        measurement_unit: entry.measurement_unit,
+        scope: entry.scope,
+        reason,
+    };
+    if entry.hosted == HostedLane::Unsupported {
+        return Err(omitted(NotEvaluatedReason::UnsupportedLane));
+    }
+    if entry.scope == CheckScope::Session {
+        return Err(omitted(NotEvaluatedReason::SessionScope));
+    }
+    // The FIRST missing fact, in the order the manifest declares them, so a
+    // check needing two absent facts always names the same one and the
+    // response stays byte-stable across runs.
+    if let Some(missing) = entry.requires.iter().find(|fact| !facts.contains(*fact)) {
+        return Err(omitted(NotEvaluatedReason::MissingFact { fact: *missing }));
+    }
+    let Some(&index) = claimed_by.get(entry.check.as_str()) else {
+        return Err(omitted(NotEvaluatedReason::NoRunner));
+    };
+    Ok((
+        PlannedCheck {
             check: entry.check.clone(),
             // A planned check always has a producing layer: the only lane
             // without one is Unsupported, which returned above.
@@ -423,44 +310,30 @@ pub fn evaluate(request: &EvaluationRequest) -> Result<EvaluationResponse, Evalu
             class: entry.class,
             measurement_unit: entry.measurement_unit,
             scope: entry.scope,
-        });
-    }
+        },
+        index,
+    ))
+}
 
-    let mut results = Vec::new();
-    for (runner, executed) in RUNNERS.iter().zip(&ran) {
-        if *executed {
-            results.extend((runner.run)(&inputs));
-        }
-    }
-    for (check, executed) in PROBE_CHECKS.iter().zip(&ran[RUNNERS.len()..]) {
-        if *executed {
-            results.extend((check.grade)(&probe_context));
-        }
-    }
-
-    Ok(EvaluationResponse {
-        manifest_digest: MANIFEST.digest().to_string(),
-        external_fact_plan: external_fact_plan(&page),
-        facts_present: facts,
-        planned,
-        results,
-        measurement_samples: browser_measurement_samples(request.browser_facts.as_ref()),
-        not_evaluated,
-    })
+/// Every artifact runner in response order: the shared table, then the SEO
+/// table beside it.
+fn artifact_runners() -> impl Iterator<Item = &'static Runner> {
+    RUNNERS.iter().chain(SEO_RUNNERS)
 }
 
 /// Maps manifest ids to the runner indexes used by `ran`, with artifact
 /// runners followed by probe runners.
 fn runner_index() -> HashMap<&'static str, usize> {
     let mut index = HashMap::new();
-    for (position, runner) in RUNNERS.iter().enumerate() {
+    for (position, runner) in artifact_runners().enumerate() {
         for check in runner.covers {
             index.insert(*check, position);
         }
     }
+    let artifact_count = artifact_runners().count();
     for (position, check) in PROBE_CHECKS.iter().enumerate() {
         for id in check.covers {
-            index.insert(*id, RUNNERS.len() + position);
+            index.insert(*id, artifact_count + position);
         }
     }
     index

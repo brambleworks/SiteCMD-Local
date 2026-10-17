@@ -70,8 +70,8 @@ Do not make an accuracy assertion depend only on a regenerated snapshot.
    for each result, or the supported dynamic family. Choose the truthful scope
    and hosted lane; increment its revision when changing existing semantics.
    When the check supports hosted page evaluation, also register its runner in
-   `crates/engine/src/evaluation/runners.rs`; a manifest entry alone does not
-   execute the detector.
+   `crates/engine/src/evaluation/runners.rs` (or `runners_seo.rs` for an SEO page
+   check); a manifest entry alone does not execute the detector.
 4. Add the local guide under `apps/desktop/src/lib/fix-guides/`: a short
    explanation, bounded baseline steps, and an effort consistent with the
    existing guide types. Code Scan uses `lib/code-fix-guides/` instead.
@@ -116,8 +116,8 @@ local push gate. Keep generated run output and review transcripts out of Git.
 
 ## Code Scan differences
 
-Code Scan reads a bounded source inventory and has a separate registry at
-`src/core/code_scan/registry.rs`. Its detectors live under
+Code Scan reads a bounded source inventory and has a separate rule table at
+`crates/engine/src/code_rules.rs`, which the severity policy reads. Its detectors live under
 `src/core/code_scan/`, with positive and negative fixtures in the corresponding
 test modules. Follow an existing check in the same domain, preserve its stable
 canonical identity, and use the shared file/path and text-budget helpers.

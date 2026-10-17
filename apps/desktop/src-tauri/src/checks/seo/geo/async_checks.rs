@@ -44,10 +44,10 @@ impl AsyncCheck for AiCrawlerBlockingCheck {
     }
 
     async fn run(&self, ctx: &CheckContext) -> Vec<CheckResult> {
-        match ctx.robots_txt().await {
-            crate::checks::RobotsTxtFetch::Found { body } => evaluate_ai_crawler_blocking(body),
-            _ => vec![],
-        }
+        ctx.robots_txt()
+            .await
+            .body()
+            .map_or_else(Vec::new, evaluate_ai_crawler_blocking)
     }
 }
 

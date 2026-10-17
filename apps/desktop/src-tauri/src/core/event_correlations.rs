@@ -389,6 +389,10 @@ pub fn record_regression_observations(
 }
 
 #[cfg(test)]
+#[path = "event_correlations_parity_tests.rs"]
+mod parity_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::EventSource;

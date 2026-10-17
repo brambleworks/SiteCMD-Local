@@ -1,0 +1,387 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_ten_point_drop_names_the_drop",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"code_scan.open-redirect","severity":"high","title":"Possible request-derived redirect"}],
+          "score_drop": 2,
+          "severity": "warn",
+          "title": "Deploy introduced 1 new Code Scan finding"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"code_scan.open-redirect","severity":"high","title":"Possible request-derived redirect"}],"current_score":88,"engine_release":"1.5.0","previous_score":90,"scan_kind":"code","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_new_high_finding_without_a_drop",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": null
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":null},
+      "name": "no_listed_commits_blames_nothing",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"critical","title":"Missing Content-Security-Policy"}],
+          "score_drop": 1,
+          "severity": "critical",
+          "title": "Deploy introduced 1 new Web Scan finding"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"critical","title":"Missing Content-Security-Policy"}],"current_score":89,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_new_critical_finding_is_critical",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],
+          "score_drop": 20,
+          "severity": "critical",
+          "title": "Deploy dropped the Web Scan score by 20 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],"current_score":70,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_twenty_point_drop_is_critical",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "25 commits landed between the last two scans (0f1e2d3..a1b2c3d) (newest 20 shown). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":20,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":25}},
+      "name": "a_capped_window_says_how_many_it_shows",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. 1 other finding comes from a check that changed in SiteCMD 1.5.0, so it is not attributed to these commits. The commit range is the blame window.",
+          "detector_changed_count": 1,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"},{"check_id":"seo.title","severity":"medium","title":"Missing page title"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_changed_check_is_held_back_with_its_release",
+      "unattributable": ["seo.title"]
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. 2 other findings come from checks that changed between the two scans, so they are not attributed to these commits. The commit range is the blame window.",
+          "detector_changed_count": 2,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"},{"check_id":"seo.title","severity":"medium","title":"Missing page title"},{"check_id":"config.favicon","severity":"low","title":"Missing favicon"}],"current_score":80,"engine_release":null,"previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "held_back_checks_without_a_release",
+      "unattributable": ["seo.title","config.favicon"]
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 1 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": ["security.cors"],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":["config.favicon","security.cors"],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_retired_check_is_not_a_fix",
+      "unattributable": ["config.favicon"]
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"high","title":"b"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"low","title":"a"},{"check_id":"security.headers.csp","severity":"high","title":"b"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "duplicate_check_ids_keep_the_highest",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": null
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":87,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "nothing_attributable_blames_nothing",
+      "unattributable": ["security.headers.csp"]
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "1 commit landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":1,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":1}},
+      "name": "one_commit_takes_the_singular",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": null
+      },
+      "input": {"active_check_ids":["security.headers.csp"],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_finding_already_active_is_not_new",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 5 new issues appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"a.check","severity":"high","title":"a.check"},{"check_id":"z.check","severity":"high","title":"z.check"},{"check_id":"\u00FF.check","severity":"high","title":"\u00FF.check"},{"check_id":"\uFFFD.check","severity":"high","title":"\uFFFD.check"},{"check_id":"\uD83D\uDE00.check","severity":"high","title":"\uD83D\uDE00.check"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"z.check","severity":"high","title":"z.check"},{"check_id":"\u00FF.check","severity":"high","title":"\u00FF.check"},{"check_id":"a.check","severity":"high","title":"a.check"},{"check_id":"\uFFFD.check","severity":"high","title":"\uFFFD.check"},{"check_id":"\uD83D\uDE00.check","severity":"high","title":"\uD83D\uDE00.check"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "check_ids_outside_ascii_sort_by_scalar_value",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": null
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],"current_score":86,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_4_point_drop_at_the_blame_boundary",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],
+          "score_drop": 5,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 5 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],"current_score":85,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_5_point_drop_at_the_blame_boundary",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],
+          "score_drop": 6,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 6 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],"current_score":84,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_6_point_drop_at_the_blame_boundary",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],
+          "score_drop": 19,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 19 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],"current_score":71,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_19_point_drop_at_the_critical_boundary",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],
+          "score_drop": 20,
+          "severity": "critical",
+          "title": "Deploy dropped the Web Scan score by 20 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],"current_score":70,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_20_point_drop_at_the_critical_boundary",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],
+          "score_drop": 21,
+          "severity": "critical",
+          "title": "Deploy dropped the Web Scan score by 21 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"medium","title":"Missing Content-Security-Policy"}],"current_score":69,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_21_point_drop_at_the_critical_boundary",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 3 new issues appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"code_scan.open-redirect","severity":"high","title":"f"},{"check_id":"security.headers.csp","severity":"high","title":"a"},{"check_id":"seo.title","severity":"high","title":"c"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"a"},{"check_id":"security.headers.csp","severity":"low","title":"b"},{"check_id":"seo.title","severity":"high","title":"c"},{"check_id":"seo.title","severity":"high","title":"d"},{"check_id":"code_scan.open-redirect","severity":"low","title":"e"},{"check_id":"code_scan.open-redirect","severity":"high","title":"f"},{"check_id":"code_scan.open-redirect","severity":"low","title":"g"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "duplicates_keep_the_first_highest_for_each_check",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 5 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": ["a.check","z.check","\u00FF.check","\uFFFD.check","\uD83D\uDE00.check"],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Web Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":["z.check","\uD83D\uDE00.check","a.check","\uFFFD.check","\u00FF.check"],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "fixed_check_ids_sort_by_scalar_value",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": null
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":1,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":0}},
+      "name": "zero_total_commits_blames_nothing",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],
+          "score_drop": 4,
+          "severity": "warn",
+          "title": "Deploy introduced 1 new Web Scan finding"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"security.headers.csp","severity":"high","title":"Missing Content-Security-Policy"}],"current_score":86,"engine_release":"1.5.0","previous_score":90,"scan_kind":"web","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_high_finding_at_four_points_names_the_finding",
+      "unattributable": []
+    }
+  ],
+  "comment": "Expected blocks are written only by src/core/regression_blame_parity_tests.rs through its ignored regenerate test."
+}

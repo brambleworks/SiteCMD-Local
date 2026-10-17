@@ -22,9 +22,6 @@ const BUILDER_SEND = /\.send\(\s*\)/;
 // reason it cannot reproduce the burst; a new check does not, and belongs on
 // the seam instead of on this list.
 const DIRECT_SEND_EXEMPTIONS = new Map([
-  ["probes.rs", "walks its sitemap candidates one await at a time"],
-  ["performance/compression.rs", "reads the bodies it asks for"],
-  ["performance/assets/measure.rs", "reads the bodies it asks for"],
   ["polish/css_fetch.rs", "reads the bodies it asks for"],
   ["performance/timing.rs", "measures TTFB and must not time seam queueing"],
   ["security/vulnerable_libraries.rs", "queries the OSV API, not the scanned origin"],
@@ -59,7 +56,8 @@ export function probeSeamFailures(read, files) {
     if (DIRECT_SEND_EXEMPTIONS.has(relative)) continue;
     failures.push(
       `${file} sends an HTTP request directly instead of through the probe seam. ` +
-        `Build a ProbeRequest and call checks::probe (or probe_with_timeout) so the request ` +
+        `Build a ProbeRequest and call checks::probe or probe_with_timeout, or probe_raw ` +
+        `for an answer read as the server sent it, so the request ` +
         `counts against PROBE_HOST_CONCURRENCY for its origin.`,
     );
   }
@@ -114,8 +112,11 @@ describe("the probe seam is the only way a check reaches an origin", () => {
         ],
       ]),
     );
-    expect(probeSeamFailures(read, files).join("\n")).toContain(
-      "security/new_burst.rs sends an HTTP request directly",
+    const failures = probeSeamFailures(read, files).join("\n");
+    expect(failures).toContain("security/new_burst.rs sends an HTTP request directly");
+    // Omitting the raw seam points raw probes at a client that refuses them.
+    expect(failures).toContain(
+      "call checks::probe or probe_with_timeout, or probe_raw for an answer read as the server sent it",
     );
   });
 

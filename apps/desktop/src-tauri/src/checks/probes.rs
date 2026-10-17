@@ -1,19 +1,15 @@
-//! Origin-scoped, per-scan probe transport. Classification and sitemap grammar
-//! remain in the portable engine.
+//! Origin-scoped, per-scan probe transport. Classification, the sitemap candidate
+//! walk and sitemap grammar remain in the portable engine.
 
 use sitecmd_engine::checks::seo::robots::{robots_fetch_from_probe, robots_txt_url};
-use sitecmd_engine::checks::seo::sitemap::{
-    parse_sitemap_document, sitemap_candidate_urls, sitemap_urls_from_robots, url_is_same_origin,
-    SitemapParse, SITEMAP_DECLARATION_PROBE_LIMIT,
-};
-use sitecmd_engine::probe::ProbeRequest;
+use sitecmd_engine::checks::seo::sitemap_walk::{sitemap_candidates, walk_sitemap_candidates};
+use sitecmd_engine::evaluation::probe_key;
+use sitecmd_engine::probe::{ProbeOutcome, ProbeRequest};
 
-use super::{
-    performance, probe, CheckContext, RedirectWalk, RobotsTxtFetch, SitemapFetch, SitemapProbe,
-    SitemapProbeObservation,
-};
+use super::{performance, probe, CheckContext, RedirectWalk, RobotsTxtFetch, SitemapProbe};
 
-/// Per-scan memo for origin-scoped probe fetches shared across async checks.
+/// Per-scan memo for origin-scoped probe fetches and the page's link resolution,
+/// shared across async checks.
 /// Checks racing on the same entry await one in-flight request instead of each
 /// re-fetching the same origin resource.
 #[derive(Default)]
@@ -26,6 +22,10 @@ pub struct ProbeCache {
     pub(in crate::checks) robots_txt: tokio::sync::OnceCell<RobotsTxtFetch>,
     pub(in crate::checks) sitemap: tokio::sync::OnceCell<SitemapProbe>,
     pub(in crate::checks) redirect_chain: tokio::sync::OnceCell<RedirectWalk>,
+    /// The page's anchor destinations under the desktop's subresource policy,
+    /// resolved once for both broken-link checks.
+    pub(in crate::checks) link_targets:
+        std::sync::OnceLock<sitecmd_engine::checks::seo::links::LinkTargets>,
     /// The certificate facts the TLS handshake produced. Memoized like the
     /// other origin probes, and for the same reason: it is one connection per
     /// scan, and what it learned outlives the verdicts it was opened for.
@@ -58,116 +58,27 @@ impl CheckContext {
 
     /// Probe the sitemap candidate URLs once per scan. The memo preserves a
     /// conclusive missing result separately from access/network failures.
+    /// The desktop sends each request the walk names through the probe seam in order.
     pub async fn sitemap(&self) -> &SitemapProbe {
         self.probe_cache
             .sitemap
             .get_or_init(|| async {
                 let origin = super::origin_with_port(&self.url);
-                // Prefer the sitemap the site declares in robots.txt (the only
-                // reliable way to find non-conventional paths, and what stock
-                // WordPress + most SEO plugins actually emit), then fall back to
-                // the conventional candidate paths. Same-origin only.
-                let mut candidates: Vec<String> = Vec::new();
-                if let RobotsTxtFetch::Found { body } = self.robots_txt().await {
-                    for url in sitemap_urls_from_robots(body)
-                        .into_iter()
-                        .filter(|url| url_is_same_origin(url, &origin))
-                        .take(SITEMAP_DECLARATION_PROBE_LIMIT)
-                    {
-                        if !candidates.contains(&url) {
-                            candidates.push(url);
-                        }
-                    }
-                }
-                for url in sitemap_candidate_urls(&origin) {
-                    if !candidates.contains(&url) {
-                        candidates.push(url);
-                    }
-                }
-                let mut observations = Vec::with_capacity(candidates.len());
-                let mut inconclusive = false;
-                for url in candidates {
-                    let safe_url = crate::log_sanitizer::evidence_safe_page_url(&url);
-                    // Deliberately NOT sent here: the browser `Accept` the
-                    // 404 probe uses. That header is on the 404 probe because
-                    // origins measurably content-negotiate a missing *page*;
-                    // no evidence says they do it for a sitemap, and asking
-                    // for text/html first would make an HTML shell the
-                    // preferred representation of a document
-                    // `parse_sitemap_document` rejects, turning a found
-                    // sitemap into a missing one.
-                    let resp = match self
-                        .client
-                        .get(&url)
-                        .timeout(crate::constants::CHECK_PROBE_TIMEOUT)
-                        .send()
-                        .await
-                    {
-                        Ok(response) => response,
-                        Err(_) => {
-                            inconclusive = true;
-                            observations.push(SitemapProbeObservation {
-                                url: safe_url,
-                                outcome: "request failed".into(),
-                            });
-                            continue;
-                        }
+                let candidates = sitemap_candidates(&origin, self.robots_txt().await);
+                let mut answered: Vec<(String, ProbeOutcome)> = Vec::new();
+                loop {
+                    let next = match walk_sitemap_candidates(&candidates, |request| {
+                        let key = probe_key(request);
+                        answered
+                            .iter()
+                            .find(|(asked, _)| *asked == key)
+                            .map(|(_, outcome)| outcome)
+                    }) {
+                        Ok(found) => return found,
+                        Err(next) => next,
                     };
-                    let status = resp.status().as_u16();
-                    if matches!(status, 404 | 410) {
-                        observations.push(SitemapProbeObservation {
-                            url: safe_url,
-                            outcome: format!("HTTP {}", status),
-                        });
-                        continue;
-                    }
-                    if !resp.status().is_success() {
-                        inconclusive = true;
-                        observations.push(SitemapProbeObservation {
-                            url: safe_url,
-                            outcome: format!("HTTP {}", status),
-                        });
-                        continue;
-                    }
-
-                    let body = match crate::http_client::read_text_limited(
-                        resp,
-                        crate::constants::MAX_SITEMAP_SIZE,
-                        crate::constants::CHECK_PROBE_TIMEOUT,
-                    )
-                    .await
-                    {
-                        Ok(body) => body,
-                        Err(_) => {
-                            inconclusive = true;
-                            observations.push(SitemapProbeObservation {
-                                url: safe_url,
-                                outcome: "response body could not be read within probe limits"
-                                    .into(),
-                            });
-                            continue;
-                        }
-                    };
-                    match parse_sitemap_document(&body) {
-                        SitemapParse::WellFormed(document) => {
-                            return SitemapProbe::Found(SitemapFetch::new(url, body, &document));
-                        }
-                        // A document the grammar rejects is not a valid
-                        // sitemap here even when page discovery can still
-                        // read locations out of it.
-                        SitemapParse::Salvaged { reason, .. }
-                        | SitemapParse::Unusable { reason } => {
-                            observations.push(SitemapProbeObservation {
-                                url: safe_url,
-                                outcome: format!("HTTP {} but {}", status, reason),
-                            })
-                        }
-                    }
-                }
-                if inconclusive {
-                    SitemapProbe::Inconclusive { observations }
-                } else {
-                    SitemapProbe::Missing { observations }
+                    let key = probe_key(&next);
+                    answered.push((key, probe(&self.client, next).await));
                 }
             })
             .await

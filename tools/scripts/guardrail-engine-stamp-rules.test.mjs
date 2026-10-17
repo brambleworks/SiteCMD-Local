@@ -100,6 +100,22 @@ impl Attribution {
 
 pub fn emit_regression_blame(ctx: BlameContext<'_>) -> Option<RegressionNotice> {
     let attribution = Attribution::between(ctx.db, previous.scan_id, ctx.scan_id);
+    let decision = decide_blame(&input, &attribution)?;
+    None
+}
+
+fn appearing_issues(input: &BlameInput) -> Vec<&CurrentIssue> {
+    dedup_by_check_id(input.current_issues.iter()
+        .filter(|issue| !input.active_check_ids.contains(&issue.check_id)).collect())
+}
+
+fn withheld_check_count(input: &BlameInput, attribution: &impl BlameAttribution) -> usize {
+    appearing_issues(input).into_iter()
+        .filter(|issue| !attribution.attributable(&issue.check_id)).count()
+}
+
+pub fn decide_blame(input: &BlameInput, attribution: &impl BlameAttribution) -> Option<BlameDecision> {
+    let appeared = appearing_issues(input);
     let (new_issues, detector_changed): (Vec<&CurrentIssue>, Vec<&CurrentIssue>) = appeared
         .into_iter()
         .partition(|issue| attribution.attributable(&issue.check_id));
@@ -253,6 +269,19 @@ describe("what the older build could produce survives the upgrade", () => {
 });
 
 describe("blame accuses a commit only when the scanner held still", () => {
+  it.each([
+    ["fn appearing_issues(", "fn other_issues("],
+    ["let appeared = appearing_issues(input);", "let appeared = input.current_issues;"],
+    ["appearing_issues(input).into_iter()", "input.current_issues.iter()"],
+    ["!input.active_check_ids.contains(&issue.check_id)", "true"],
+  ])("requires one definition of appearing checks: %s", (before, after) => {
+    const mutant = HEALTHY[BLAME].replace(before, after);
+    expect(mutant).not.toEqual(HEALTHY[BLAME]);
+    expect(failuresWith({ [BLAME]: mutant }).join(" ")).toContain(
+      "must share appearing_issues between the decision and withheld count",
+    );
+  });
+
   it("fails when a check the older build lacked is blamed on a deploy", () => {
     const permissive = HEALTHY[BLAME].replace(
       "Comparability::Comparable | Comparability::Unregistered",
@@ -321,5 +350,47 @@ describe("blame accuses a commit only when the scanner held still", () => {
     expect(failuresWith({ [BLAME]: blind }).join(" ")).toContain(
       "must resolve both runs' provenance",
     );
+  });
+
+  it("fails when emitting blame bypasses the shared decision", () => {
+    const bypassed = HEALTHY[BLAME].replace(
+      "    let decision = decide_blame(&input, &attribution)?;",
+      "",
+    );
+    expect(failuresWith({ [BLAME]: bypassed }).join(" ")).toContain(
+      "must decide through decide_blame",
+    );
+  });
+
+  it("fails when the shared decision is missing", () => {
+    const missing = HEALTHY[BLAME].replace("pub fn decide_blame(", "pub fn other_decision(");
+    expect(failuresWith({ [BLAME]: missing }).join(" ")).toContain("must define decide_blame");
+  });
+
+  it.each([
+    "    let decision = decide_blame(&input, &AlwaysAttributable)?;",
+    "    // let decision = decide_blame(&input, &attribution)?;",
+    "    /* let decision = decide_blame(&input, &attribution)?; */",
+  ])("rejects a decision without recorded attribution: %s", (replacement) => {
+    const replaced = HEALTHY[BLAME].replace(
+      "    let decision = decide_blame(&input, &attribution)?;",
+      replacement,
+    );
+    expect(failuresWith({ [BLAME]: replaced }).join(" ")).toContain(
+      "must decide through decide_blame",
+    );
+  });
+
+  it.each([
+    "chrono::Utc::now()",
+    "std::env::var(key)",
+    "Database::open(path)",
+    "get_commits_between(path)",
+  ])("rejects runtime access in the decision: %s", (expression) => {
+    const impure = HEALTHY[BLAME].replace(
+      "    let (new_issues, detector_changed)",
+      `    let forbidden = ${expression};\n    let (new_issues, detector_changed)`,
+    );
+    expect(failuresWith({ [BLAME]: impure }).join(" ")).toContain("decide_blame must stay pure");
   });
 });

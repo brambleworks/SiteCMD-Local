@@ -1,8 +1,10 @@
+import { constList } from "./guardrail-engine-lane-parsing.mjs";
+
 const COVERAGE = "apps/desktop/src-tauri/crates/engine/src/coverage.rs";
 const NORMALIZED = "apps/desktop/src-tauri/src/core/normalized_scan.rs";
 const PROJECTION = "apps/desktop/src-tauri/src/db/scan_run_projection.rs";
 const VERIFICATION = "apps/desktop/src-tauri/src/commands/scan/verification.rs";
-const SESSION = "apps/desktop/src-tauri/src/core/session_analysis.rs";
+const SESSION = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
 const AXE = "apps/desktop/src-tauri/crates/engine/src/checks/accessibility/axe.rs";
 const REGISTRY = "apps/desktop/src-tauri/src/core/code_scan/registry.rs";
 const MANIFEST = "apps/desktop/src-tauri/crates/engine/manifest/capability_manifest.json";
@@ -22,17 +24,6 @@ function functionBody(source, name) {
     }
   }
   return null;
-}
-
-// Read string entries from a Rust `= &[...]` constant.
-function constList(source, name) {
-  const start = source.indexOf(name);
-  if (start === -1) return null;
-  // Start after the type annotation's own brackets.
-  const open = source.indexOf("= &[", start);
-  const close = source.indexOf("]", open);
-  if (open === -1 || close === -1) return null;
-  return [...source.slice(open, close).matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 }
 
 function derivationFailures(read, failures) {

@@ -1,5 +1,8 @@
 //! Regression attribution tests.
 
+#[path = "regression_blame_trace_tests.rs"]
+mod trace_tests;
+
 use crate::checks::Severity;
 use crate::db::work_items::WorkItemMetadata;
 use std::fs;

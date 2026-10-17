@@ -1,0 +1,113 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 2 new issues appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"__proto__","severity":"critical","title":"Prototype critical"},{"check_id":"constructor","severity":"high","title":"Constructor high"}],
+          "score_drop": 4,
+          "severity": "critical",
+          "title": "Deploy introduced 2 new Code Scan findings"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"constructor","severity":"low","title":"Constructor low"},{"check_id":"constructor","severity":"high","title":"Constructor high"},{"check_id":"__proto__","severity":"medium","title":"Prototype medium"},{"check_id":"__proto__","severity":"critical","title":"Prototype critical"}],"current_score":86,"engine_release":"1.5.0","previous_score":90,"scan_kind":"code","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "prototype_named_checks_keep_their_highest_severity_findings",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"code_scan.new","severity":"high","title":"New finding"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Code Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":["code_scan.existing"],"current_issues":[{"check_id":"code_scan.existing","severity":"high","title":"Existing finding"},{"check_id":"code_scan.new","severity":"high","title":"New finding"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"code","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "an_active_check_still_present_is_not_counted_as_fixed",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 2 new issues appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"code_scan.first","severity":"high","title":"First finding"},{"check_id":"code_scan.second","severity":"high","title":"Second finding"}],
+          "score_drop": 4,
+          "severity": "warn",
+          "title": "Deploy introduced 2 new Code Scan findings"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"code_scan.first","severity":"high","title":"First finding"},{"check_id":"code_scan.second","severity":"high","title":"Second finding"}],"current_score":86,"engine_release":"1.5.0","previous_score":90,"scan_kind":"code","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "two_new_high_findings_below_five_points_take_the_plural_title",
+      "unattributable": []
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. 1 other finding comes from a check that changed in SiteCMD 1.5.0, so it is not attributed to these commits. The commit range is the blame window.",
+          "detector_changed_count": 1,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"code_scan.new","severity":"high","title":"New finding"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Code Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"code_scan.new","severity":"high","title":"New finding"},{"check_id":"code_scan.changed","severity":"low","title":"Changed check low"},{"check_id":"code_scan.changed","severity":"high","title":"Changed check high"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"code","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "two_occurrences_of_one_changed_check_count_as_one_held_back_finding",
+      "unattributable": ["code_scan.changed"]
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"code_scan.new","severity":"high","title":"New finding"}],
+          "score_drop": 10,
+          "severity": "warn",
+          "title": "Deploy dropped the Code Scan score by 10 points"
+        }
+      },
+      "input": {"active_check_ids":["code_scan.changed"],"current_issues":[{"check_id":"code_scan.new","severity":"high","title":"New finding"},{"check_id":"code_scan.changed","severity":"high","title":"Existing changed check"}],"current_score":80,"engine_release":"1.5.0","previous_score":90,"scan_kind":"code","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "an_active_changed_check_is_not_counted_as_held_back",
+      "unattributable": ["code_scan.changed"]
+    },
+    {
+      "expected": {
+        "decision": {
+          "commit_from": "0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d",
+          "commit_to": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "description": "3 commits landed between the last two scans (0f1e2d3..a1b2c3d). 1 new issue appeared and 0 resolved. The commit range is the blame window.",
+          "detector_changed_count": 0,
+          "fixed_check_ids": [],
+          "new_issues": [{"check_id":"code_scan.new","severity":"high","title":"New finding"}],
+          "score_drop": -4,
+          "severity": "warn",
+          "title": "Deploy introduced 1 new Code Scan finding"
+        }
+      },
+      "input": {"active_check_ids":[],"current_issues":[{"check_id":"code_scan.new","severity":"high","title":"New finding"}],"current_score":94,"engine_release":"1.5.0","previous_score":90,"scan_kind":"code","window":{"listed":3,"newest":"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678","oldest":"0f1e2d3c4b5a69788796a5b4c3d2e1f00a1b2c3d","total":3}},
+      "name": "a_score_rise_keeps_a_negative_drop_and_names_the_new_high_finding",
+      "unattributable": []
+    }
+  ],
+  "comment": "Expected blocks are written only by src/core/regression_blame_parity_tests.rs through its ignored regenerate test. regression_blame_boundaries.json holds check identity, active findings and held-back counts, with inputs written from src/core/regression_blame_parity_cases_tests.rs."
+}

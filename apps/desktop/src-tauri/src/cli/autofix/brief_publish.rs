@@ -11,6 +11,7 @@ use super::artifact::{BriefArtifact, Manifest};
 use super::brief::code_slug;
 use super::github_api::GitHubApi;
 use super::redact;
+use crate::cli::ConnectStop;
 use crate::connected_service::{
     ClaimedJob, ConnectedServiceClient, FindingOutcomeReport, ResultReport,
 };
@@ -206,7 +207,7 @@ pub fn render_issue(
         })
         .collect();
     let input = FixBriefInput {
-        attempt_id: i64::from(claimed.attempt),
+        attempt_id: claimed.attempt.to_string(),
         check_id: first.check_id.clone(),
         description: first.issue.description.clone(),
         detected_stack: stack,
@@ -234,12 +235,12 @@ pub fn render_issue(
 /// per-operation issue token, hand the token back, and report. A brief the
 /// checkout does not confirm is a reported refusal, not a failure that would
 /// leave the job waiting.
-pub async fn publish_brief(
+pub(crate) async fn publish_brief(
     root: &Path,
     claimed: &ClaimedJob,
     manifest: &Manifest,
     job_client: &ConnectedServiceClient,
-) -> Result<(u8, ResultReport), String> {
+) -> Result<(u8, ResultReport), ConnectStop> {
     let brief = manifest.brief.as_ref().ok_or("manifest carries no brief")?;
     // A failure code carries no finding outcomes: Connect reads each
     // finding's fate only from a decline or a published result.
@@ -260,7 +261,7 @@ pub async fn publish_brief(
     let minted = job_client
         .issue_token(&claimed.job_id)
         .await
-        .map_err(|error| format!("issue token refused: {} ({})", error.code, error.message))?;
+        .map_err(|error| ConnectStop::refused_as(&error, "issue token").unrecorded(""))?;
     let api = GitHubApi::new();
     let created = api
         .create_issue(&minted.token, &claimed.repository, &title, &body)

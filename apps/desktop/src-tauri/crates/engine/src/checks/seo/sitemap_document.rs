@@ -27,20 +27,9 @@ pub fn sitemap_candidate_urls(base: &str) -> Vec<String> {
 
 /// Parse `Sitemap:` directives; callers enforce origin and network policy.
 pub fn sitemap_urls_from_robots(body: &str) -> Vec<String> {
-    body.lines()
-        .filter_map(|line| {
-            let line = line.split('#').next().unwrap_or("").trim();
-            if line
-                .get(..8)
-                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("sitemap:"))
-            {
-                let url = line[8..].trim();
-                if !url.is_empty() {
-                    return Some(url.to_string());
-                }
-            }
-            None
-        })
+    super::robots_document::records(body)
+        .filter(|(name, value)| name.eq_ignore_ascii_case("sitemap") && !value.is_empty())
+        .map(|(_, value)| value.to_owned())
         .collect()
 }
 

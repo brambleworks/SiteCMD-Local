@@ -53,7 +53,7 @@ pub const HELP: &str = concat!(
     "  --check <SLUG>         Only findings for this rule, such as open-redirect\n",
     "  --path <PATH>          Checkout root (default: working directory)\n\n",
     "Exit codes:\n",
-    "  0  Completed\n",
+    "  0  Completed, or SiteCMD Connect said the account is inactive\n",
     "  1  A job reported a failure outcome\n",
     "  2  Usage or operational error\n\n",
     "Examples:\n",

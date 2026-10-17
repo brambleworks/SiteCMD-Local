@@ -50,12 +50,12 @@ export function desktopScannerBodySafetyFailures(read, listFiles) {
   const exposedFiles = read(
     "apps/desktop/src-tauri/crates/engine/src/checks/security/exposed_files.rs",
   );
-  const detector = read("apps/desktop/src-tauri/src/core/detector.rs");
+  const stackTests = read("apps/desktop/src-tauri/crates/engine/src/stack_tests.rs");
   if (
     !page.includes("self.body.to_ascii_lowercase()") ||
     !exposedFiles.includes("script_extraction_preserves_offsets_after_unicode_case_expansion") ||
     !exposedFiles.includes("secret_snippet_uses_valid_unicode_boundaries") ||
-    !detector.includes("generator_detection_preserves_offsets_after_unicode_case_expansion")
+    !stackTests.includes("generator_detection_preserves_offsets_after_unicode_case_expansion")
   ) {
     failures.push(
       "HTML offset parsing must preserve UTF-8 byte positions and keep Unicode regression coverage",

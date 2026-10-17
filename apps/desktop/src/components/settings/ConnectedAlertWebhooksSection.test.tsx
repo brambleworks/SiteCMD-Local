@@ -65,6 +65,11 @@ describe("ConnectedAlertWebhooksSection", () => {
 
     expect(await screen.findByText("shown-once-secret")).toBeInTheDocument();
     expect(screen.getByText(/one time it is readable/i)).toBeInTheDocument();
+    expect(screen.getByText(/whsec_ secret and any Standard Webhooks library/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/webhook-id, webhook-timestamp, and webhook-signature headers/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/X-SiteCMD-Signature/i)).not.toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("create_connected_alert_webhook", {
       projectId: 7,
       environmentScopeKey: "https://example.com",
@@ -118,6 +123,8 @@ describe("ConnectedAlertWebhooksSection", () => {
 
     expect(await screen.findByText("next-generation-secret")).toBeInTheDocument();
     expect(screen.getByText(/previous generation's signature too/)).toBeInTheDocument();
+    expect(screen.getByText(/webhook-signature carries the previous/)).toBeInTheDocument();
+    expect(screen.queryByText(/X-SiteCMD-Signature/i)).not.toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("rotate_connected_alert_webhook", {
       projectId: 7,
       environmentScopeKey: "https://example.com",

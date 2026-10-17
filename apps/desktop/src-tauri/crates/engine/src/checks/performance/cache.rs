@@ -14,11 +14,8 @@ impl Check for CacheHeadersCheck {
     }
 
     fn run(&self, ctx: &PageContext) -> Vec<CheckResult> {
-        let cache_control = ctx
-            .response_headers
-            .get("cache-control")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
+        let cache_control =
+            crate::header_lines::field_value(&ctx.response_headers, "cache-control");
 
         let has_etag = ctx.response_headers.contains_key("etag");
         let has_last_modified = ctx.response_headers.contains_key("last-modified");

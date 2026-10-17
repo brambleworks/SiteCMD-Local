@@ -221,7 +221,9 @@ and values are configured and rehearsed:
 - `release-tag-trust`: reviewed allowed signers
 - `release-signing`: required human reviewer and platform signing credentials
 - `release-updater-signing`: production updater key
-- `release-publish`: R2 and updater-manifest publication credentials
+- `release-publish`: R2 credentials; its jobs' OIDC tokens publish the updater
+  manifest
+- `npm-publish`: no secrets; each npm package's trusted publisher names it
 
 Repository-level copies of release secrets must be removed. Use short-lived
 provider identity where supported. Review environment access, rulesets, installed

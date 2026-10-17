@@ -36,9 +36,6 @@ pub(super) fn collect_route_security_issues(
     let has_storage_write = ctx.signals.has_storage_write;
     let has_user_controlled_storage_key = ctx.signals.has_user_controlled_storage_key;
     let has_scoped_storage_key = ctx.signals.has_scoped_storage_key;
-    let has_redirect_sink = ctx.signals.has_redirect_sink;
-    let has_user_controlled_redirect = ctx.signals.has_user_controlled_redirect;
-    let has_redirect_allowlist = ctx.signals.has_redirect_allowlist;
     let likely_public_endpoint = ctx.signals.likely_public_endpoint;
     let oauth_callback_like = ctx.oauth_callback_like;
     let one_time_token_handler = ctx.one_time_token_handler;
@@ -347,7 +344,7 @@ pub(super) fn collect_route_security_issues(
         ));
     }
 
-    if route_like && has_redirect_sink && has_user_controlled_redirect && !has_redirect_allowlist {
+    if let Some(line) = ctx.signals.open_redirect_line {
         issues.push(build_issue(
             "open-redirect",
             "security",
@@ -355,8 +352,7 @@ pub(super) fn collect_route_security_issues(
             "Possible request-derived redirect lacks recognized local allowlist",
             "This file contains both a request-derived redirect-style value and a redirect sink, but SiteCMD did not resolve full value flow or find a local same-origin/allowlist helper. Imported validation or a server-owned intermediate value may make the path safe. If an attacker-controlled absolute or scheme-relative target reaches the sink, a trusted application URL can redirect users to an attacker-chosen site.",
             file,
-            first_match_line(content, &USER_CONTROLLED_REDIRECT_PATTERNS)
-                .or_else(|| first_match_line(content, &REDIRECT_SINK_PATTERNS)),
+            Some(line),
             Some("A request-derived redirect-style field and redirect sink were detected in the same handler, but value flow was not proven and no recognized local safeRedirect, same-origin, or relative-path guard was found.".into()),
             Some("Trace the actual target into the sink. Prefer named routes or a server-owned map of return destinations. If URLs are required, parse and normalize with a maintained helper and allowlist exact origins or application paths after accounting for scheme-relative URLs, backslashes, encoding, user-info, and proxy origin handling.".into()),
             Some("In a route test, try approved paths plus absolute, scheme-relative, encoded, backslash, and user-info variants targeting example.invalid. Confirm only documented destinations survive the same normalization and proxy configuration used in production.".into()),

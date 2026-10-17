@@ -53,6 +53,17 @@ fn check_by_id(id: &str) -> Box<dyn Check> {
         "security.email_exposure" => Box::new(c::security::email_exposure::EmailExposureCheck),
         "security.vibe.csrf" => Box::new(c::security::csrf::CsrfCheck),
         "security.vibe.exposed_keys" => Box::new(c::security::exposed_keys::ExposedApiKeysCheck),
+        "seo.title" => Box::new(c::seo::meta::TitleTagCheck),
+        "seo.meta_description" => Box::new(c::seo::meta::MetaDescriptionCheck),
+        "seo.canonical" => Box::new(c::seo::meta::CanonicalCheck),
+        "seo.viewport" => Box::new(c::seo::meta::ViewportCheck),
+        "seo.open_graph" => Box::new(c::seo::meta::OpenGraphCheck),
+        "seo.og_image_relative" => Box::new(c::seo::meta::OgImageAbsoluteCheck),
+        "seo.charset" => Box::new(c::seo::meta::MetaCharsetCheck),
+        "seo.twitter_cards" => Box::new(c::seo::meta::TwitterCardCheck),
+        "seo.noindex" => Box::new(c::seo::meta::NoindexCheck),
+        "seo.hreflang" => Box::new(c::seo::meta::HreflangCheck),
+        "seo.duplicate_meta" => Box::new(c::seo::meta::DuplicateMetaCheck),
         other => panic!("no engine check registered for corpus id '{other}'"),
     }
 }
@@ -202,6 +213,39 @@ fn headline_verdicts_match_the_documented_checks() {
         status_of(&loopback, "config.localhost_refs"),
         CheckStatus::Warn
     );
+
+    let description = statuses("a_long_meta_description_needs_review");
+    assert_eq!(
+        status_of(&description, "seo.meta_description"),
+        CheckStatus::Warn
+    );
+
+    let canonical = statuses("a_page_with_no_canonical_link");
+    assert_eq!(status_of(&canonical, "seo.canonical"), CheckStatus::Warn);
+
+    let viewport = statuses("a_viewport_without_device_width");
+    assert_eq!(status_of(&viewport, "seo.viewport"), CheckStatus::Warn);
+
+    let open_graph = statuses("open_graph_without_an_image");
+    assert_eq!(status_of(&open_graph, "seo.open_graph"), CheckStatus::Warn);
+
+    let relative_image = statuses("a_relative_og_image");
+    assert_eq!(
+        status_of(&relative_image, "seo.og_image_relative"),
+        CheckStatus::Warn
+    );
+
+    let charset = statuses("no_declared_charset");
+    assert_eq!(status_of(&charset, "seo.charset"), CheckStatus::Fail);
+
+    let card = statuses("no_twitter_card_beside_complete_open_graph");
+    assert_eq!(status_of(&card, "seo.twitter_cards"), CheckStatus::Warn);
+
+    let noindex = statuses("an_x_robots_tag_noindex_header");
+    assert_eq!(status_of(&noindex, "seo.noindex"), CheckStatus::Warn);
+
+    let hreflang = statuses("hreflang_alternates_without_a_self_reference");
+    assert_eq!(status_of(&hreflang, "seo.hreflang"), CheckStatus::Warn);
 }
 
 // Regenerate stable check fixtures after an intentional verdict change.

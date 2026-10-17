@@ -3,12 +3,11 @@
 //! Plans are rederived from current outcomes. A grader requires at least one
 //! answered probe; transport failures are not observations about the site.
 
-use url::Url;
-
 use super::probes::ProbeContext;
+use super::{origin_reads, probe_dns};
 use crate::checks::compliance::legal_documents::{
-    evaluate_privacy_policy, evaluate_terms, has_terms_link, legal_path_request,
-    page_links_privacy_policy, LegalPathSweep, LegalPathWalk, PRIVACY_PATHS, TERMS_PATHS,
+    evaluate_privacy_policy, evaluate_terms, has_terms_link, page_links_privacy_policy,
+    PRIVACY_PATHS, TERMS_PATHS,
 };
 use crate::checks::config::alt_host::{alt_host_probe_request, alternate_host, evaluate_alt_host};
 use crate::checks::config::favicon::{
@@ -22,15 +21,13 @@ use crate::checks::config::web_manifest::{
     evaluate_web_manifest, manifest_request, plan_web_manifest, WebManifestStep,
 };
 use crate::checks::performance::redirects::{
-    evaluate_redirect_chain, redirect_chain_unrecorded_start, RedirectWalk, RedirectWalkStep,
-    RedirectWalker,
+    evaluate_redirect_chain, redirect_chain_unrecorded_start,
 };
 use crate::checks::security::cors::{
     evaluate_reflection, reflection_localhost_skip_result, reflection_probe_request,
 };
 use crate::checks::security::dns_email::{
-    dangling_cname, dkim, dmarc, domain_expiry, records, registrable_domain_for_url,
-    skipped_dns_failure, skipped_local_result, spf, DomainTarget,
+    domain_expiry, registrable_domain_for_url, skipped_local_result, DomainTarget,
 };
 use crate::checks::security::https_enforcement::{
     evaluate_http_downgrade, evaluate_https_availability, origin_root_request,
@@ -42,17 +39,28 @@ use crate::checks::security::open_redirect::{
 use crate::checks::security::vulnerable_libraries::{
     detect_libraries, evaluate_vulnerable_libraries,
 };
-use crate::checks::seo::links::{
-    head_needs_get, link_get_request, link_head_request, link_probe_result, no_link_targets_result,
-    observe_link, resolve_link_targets, summarize_link_probes, LinkScope, LinkTargets,
-    BROKEN_LINK_EXTERNAL_SAMPLE, BROKEN_LINK_INTERNAL_SAMPLE, EXTERNAL_CHECK_ID, INTERNAL_CHECK_ID,
+use crate::checks::seo::geo::{
+    ai_crawlers::evaluate_ai_crawler_blocking, sitemap_freshness::evaluate_sitemap_freshness,
 };
+use crate::checks::seo::links::{LinkScope, EXTERNAL_CHECK_ID, INTERNAL_CHECK_ID};
 use crate::checks::seo::redirects::{
     evaluate_temporary_redirect, temporary_redirect_unrecorded_start,
 };
+use crate::checks::seo::robots::evaluate_robots_txt;
+use crate::checks::seo::robots_directives::evaluate_sitemap_in_robots;
+use crate::checks::seo::sitemap::{evaluate_sitemap, SitemapProbe};
 use crate::page::origin_with_port;
 use crate::probe::ProbeRequest;
 use crate::vocab::{CheckResult, Severity};
+
+#[path = "probe_legal.rs"]
+mod probe_legal;
+#[path = "probe_links.rs"]
+mod probe_links;
+#[path = "probe_performance.rs"]
+mod probe_performance;
+#[path = "probe_redirects.rs"]
+mod probe_redirects;
 
 /// One probe-lane check: the ids it produces, the probes it still needs, and
 /// the verdict it grades once they arrive.
@@ -74,7 +82,7 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
     ProbeCheck {
         covers: &["compliance.privacy_policy"],
         plan: |ctx| {
-            legal_plan(
+            probe_legal::legal_plan(
                 ctx,
                 page_links_privacy_policy(ctx.page.body_lower()),
                 PRIVACY_PATHS,
@@ -82,15 +90,20 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
         },
         grade: |ctx| {
             let linked = page_links_privacy_policy(ctx.page.body_lower());
-            evaluate_privacy_policy(linked, &legal_sweep(ctx, linked, PRIVACY_PATHS))
+            evaluate_privacy_policy(
+                linked,
+                &probe_legal::legal_sweep(ctx, linked, PRIVACY_PATHS),
+            )
         },
     },
     ProbeCheck {
         covers: &["compliance.terms"],
-        plan: |ctx| legal_plan(ctx, has_terms_link(ctx.page.body_lower()), TERMS_PATHS),
+        plan: |ctx| {
+            probe_legal::legal_plan(ctx, has_terms_link(ctx.page.body_lower()), TERMS_PATHS)
+        },
         grade: |ctx| {
             let linked = has_terms_link(ctx.page.body_lower());
-            evaluate_terms(linked, &legal_sweep(ctx, linked, TERMS_PATHS))
+            evaluate_terms(linked, &probe_legal::legal_sweep(ctx, linked, TERMS_PATHS))
         },
     },
     ProbeCheck {
@@ -121,6 +134,11 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
         },
     },
     ProbeCheck {
+        covers: &["config.sitemap_in_robots"],
+        plan: |ctx| vec![origin_reads::robots_request(ctx)],
+        grade: |ctx| evaluate_sitemap_in_robots(&origin_reads::robots_fetch(ctx)),
+    },
+    ProbeCheck {
         covers: &["config.web_manifest"],
         plan: |ctx| match plan_web_manifest(&ctx.page.body, &ctx.page.url) {
             WebManifestStep::Done(_) => Vec::new(),
@@ -145,12 +163,32 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
         },
     },
     ProbeCheck {
+        covers: &[
+            "performance.asset_caching",
+            "performance.asset_weight",
+            "performance.broken_images",
+            "performance.images.heavy",
+        ],
+        plan: probe_performance::asset_plan,
+        grade: probe_performance::asset_grade,
+    },
+    ProbeCheck {
+        covers: &["performance.compression"],
+        plan: probe_performance::compression_plan,
+        grade: probe_performance::compression_grade,
+    },
+    ProbeCheck {
         covers: &["performance.redirect_chain"],
-        plan: redirect_plan,
-        grade: |ctx| match redirect_walk(ctx) {
+        plan: probe_redirects::redirect_plan,
+        grade: |ctx| match probe_redirects::redirect_walk(ctx) {
             Some((start, walk)) => vec![evaluate_redirect_chain(&start, &walk)],
             None => vec![redirect_chain_unrecorded_start()],
         },
+    },
+    ProbeCheck {
+        covers: &["performance.ttfb"],
+        plan: probe_performance::ttfb_plan,
+        grade: probe_performance::ttfb_grade,
     },
     ProbeCheck {
         covers: &["security.cors_reflection"],
@@ -174,7 +212,7 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
             "security.dns.spf",
         ],
         plan: |_| Vec::new(),
-        grade: resolver_grade,
+        grade: probe_dns::resolver_grade,
     },
     ProbeCheck {
         covers: &["security.domain_expiry"],
@@ -249,10 +287,19 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
     },
     // Literal ids keep the registry test independent from their constants.
     ProbeCheck {
-        covers: &["seo.broken_external_links"],
-        plan: |ctx| links_plan(ctx, LinkScope::External),
+        covers: &["seo.ai_crawler_blocking"],
+        plan: |ctx| vec![origin_reads::robots_request(ctx)],
         grade: |ctx| {
-            links_grade(
+            origin_reads::robots_fetch(ctx)
+                .body()
+                .map_or_else(Vec::new, evaluate_ai_crawler_blocking)
+        },
+    },
+    ProbeCheck {
+        covers: &["seo.broken_external_links"],
+        plan: |ctx| probe_links::links_plan(ctx, LinkScope::External),
+        grade: |ctx| {
+            probe_links::links_grade(
                 ctx,
                 LinkScope::External,
                 EXTERNAL_CHECK_ID,
@@ -262,184 +309,59 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
     },
     ProbeCheck {
         covers: &["seo.broken_links"],
-        plan: |ctx| links_plan(ctx, LinkScope::Internal),
-        grade: |ctx| links_grade(ctx, LinkScope::Internal, INTERNAL_CHECK_ID, Severity::High),
+        plan: |ctx| probe_links::links_plan(ctx, LinkScope::Internal),
+        grade: |ctx| {
+            probe_links::links_grade(ctx, LinkScope::Internal, INTERNAL_CHECK_ID, Severity::High)
+        },
+    },
+    ProbeCheck {
+        covers: &["seo.llms_txt"],
+        plan: |ctx| vec![origin_reads::llms_request(ctx)],
+        grade: origin_reads::llms_grade,
+    },
+    ProbeCheck {
+        covers: &["seo.og_image_status"],
+        plan: origin_reads::og_image_plan,
+        grade: origin_reads::og_image_grade,
+    },
+    ProbeCheck {
+        covers: &["seo.robots_txt"],
+        plan: |ctx| vec![origin_reads::robots_request(ctx)],
+        grade: |ctx| evaluate_robots_txt(&origin_reads::robots_fetch(ctx)),
+    },
+    ProbeCheck {
+        covers: &["seo.sitemap"],
+        plan: origin_reads::sitemap_plan,
+        grade: |ctx| {
+            let robots = origin_reads::robots_fetch(ctx);
+            evaluate_sitemap(
+                ctx.page,
+                &robots,
+                &origin_reads::sitemap_probe(ctx, &robots),
+            )
+        },
+    },
+    ProbeCheck {
+        covers: &["seo.sitemap_freshness"],
+        plan: origin_reads::sitemap_plan,
+        // As on the desktop: freshness is read only from a sitemap the walk found.
+        grade: |ctx| match origin_reads::sitemap_probe(ctx, &origin_reads::robots_fetch(ctx)) {
+            SitemapProbe::Found(found) => evaluate_sitemap_freshness(&found),
+            _ => Vec::new(),
+        },
     },
     ProbeCheck {
         covers: &["seo.temporary_redirect"],
         // The same walk `performance.redirect_chain` counts, read for its
         // statuses instead of its length. Both rows plan it identically, so
         // the key dedups them into one exchange per hop rather than two.
-        plan: redirect_plan,
-        grade: |ctx| match redirect_walk(ctx) {
+        plan: probe_redirects::redirect_plan,
+        grade: |ctx| match probe_redirects::redirect_walk(ctx) {
             Some((_, walk)) => vec![evaluate_temporary_redirect(&walk)],
             None => vec![temporary_redirect_unrecorded_start()],
         },
     },
 ];
-
-fn resolver_grade(ctx: &ProbeContext) -> Vec<CheckResult> {
-    let Some(facts) = ctx.resolver_facts else {
-        return Vec::new();
-    };
-    let domain = match registrable_domain_for_url(&ctx.page.url) {
-        DomainTarget::LocalOrIp => return local_dns_results(),
-        DomainTarget::Registrable(domain) => domain,
-    };
-    if facts.domain != domain {
-        return failed_dns_results(
-            &domain,
-            "the resolver facts belonged to a different registrable domain",
-        );
-    }
-
-    let mut results = records::evaluate_caa(&domain, facts.caa.clone());
-
-    results.extend(
-        match dangling_cname::evaluate_www_cname(&domain, facts.www_cname.clone()) {
-            dangling_cname::WwwAliasStep::Done(results) => results,
-            dangling_cname::WwwAliasStep::LookupTarget(probe) => {
-                let addresses = facts
-                    .www_target_addresses
-                    .as_ref()
-                    .filter(|answer| answer.target.eq_ignore_ascii_case(probe.target()))
-                    .map(|answer| answer.addresses.clone())
-                    .unwrap_or_else(|| {
-                        crate::dns::DnsOutcome::Failed(
-                            "the CNAME target address fact was not gathered".into(),
-                        )
-                    });
-                probe.evaluate(addresses)
-            }
-        },
-    );
-
-    results.extend(
-        match dkim::evaluate_dkim_gate(&domain, &facts.apex_mx, &facts.apex_txt) {
-            dkim::DkimStep::Done(results) => results,
-            dkim::DkimStep::Sweep(sweep) => {
-                let outcomes = sweep
-                    .probe_names()
-                    .into_iter()
-                    .map(|(selector, _)| {
-                        let txt = facts
-                            .dkim_txt
-                            .iter()
-                            .find(|answer| answer.selector.eq_ignore_ascii_case(selector))
-                            .map(|answer| answer.txt.clone())
-                            .unwrap_or_else(|| {
-                                crate::dns::DnsOutcome::Failed(
-                                    "the selector TXT fact was not gathered".into(),
-                                )
-                            });
-                        (selector.to_string(), txt)
-                    })
-                    .collect::<Vec<_>>();
-                sweep.evaluate(&outcomes)
-            }
-        },
-    );
-
-    results.extend(
-        match dmarc::evaluate_dmarc_txt(&domain, facts.dmarc_txt.clone()) {
-            dmarc::DmarcStep::Done(results) => results,
-            dmarc::DmarcStep::NeedsMx(pending) => pending.evaluate(&facts.apex_mx),
-        },
-    );
-    results.extend(records::evaluate_dnssec(&domain, facts.dnskey.clone()));
-    results.extend(records::evaluate_mx(&domain, facts.apex_mx.clone()));
-    results.extend(
-        match spf::evaluate_spf_txt(&domain, facts.apex_txt.clone()) {
-            spf::SpfStep::Done(results) => results,
-            spf::SpfStep::NeedsMx(pending) => pending.evaluate(&facts.apex_mx),
-        },
-    );
-    results
-}
-
-fn local_dns_results() -> Vec<CheckResult> {
-    [
-        (records::CAA_CHECK_ID, records::CAA_TITLE),
-        (dangling_cname::CHECK_ID, dangling_cname::TITLE),
-        (dkim::CHECK_ID, dkim::TITLE),
-        (dmarc::CHECK_ID, dmarc::TITLE),
-        (records::DNSSEC_CHECK_ID, records::DNSSEC_TITLE),
-        (records::MX_CHECK_ID, records::MX_TITLE),
-        (spf::CHECK_ID, spf::TITLE),
-    ]
-    .into_iter()
-    .map(|(id, title)| skipped_local_result(id, title))
-    .collect()
-}
-
-fn failed_dns_results(domain: &str, detail: &str) -> Vec<CheckResult> {
-    [
-        (records::CAA_CHECK_ID, records::CAA_TITLE),
-        (dangling_cname::CHECK_ID, dangling_cname::TITLE),
-        (dkim::CHECK_ID, dkim::TITLE),
-        (dmarc::CHECK_ID, dmarc::TITLE),
-        (records::DNSSEC_CHECK_ID, records::DNSSEC_TITLE),
-        (records::MX_CHECK_ID, records::MX_TITLE),
-        (spf::CHECK_ID, spf::TITLE),
-    ]
-    .into_iter()
-    .map(|(id, title)| skipped_dns_failure(id, title, domain, detail))
-    .collect()
-}
-
-/// State of the ordered, short-circuiting legal-path sweep.
-enum LegalStep {
-    Served(&'static str),
-    /// The next candidate and all evidence collected so far.
-    Probe(ProbeRequest, LegalPathWalk),
-    /// Every candidate path has an outcome and none served the document.
-    Exhausted(LegalPathWalk),
-}
-
-fn legal_step(ctx: &ProbeContext, paths: &'static [&'static str]) -> LegalStep {
-    let origin = origin_with_port(&ctx.page.url);
-    let mut walk = LegalPathWalk::default();
-    for path in paths {
-        let request = legal_path_request(&origin, path);
-        let Some(outcome) = ctx.outcomes.get(&request) else {
-            return LegalStep::Probe(request, walk);
-        };
-        if walk.observe(path, outcome) {
-            return LegalStep::Served(path);
-        }
-    }
-    LegalStep::Exhausted(walk)
-}
-
-fn legal_plan(
-    ctx: &ProbeContext,
-    link_in_page: bool,
-    paths: &'static [&'static str],
-) -> Vec<ProbeRequest> {
-    if link_in_page {
-        return Vec::new();
-    }
-    match legal_step(ctx, paths) {
-        LegalStep::Probe(request, _) => vec![request],
-        LegalStep::Served(_) | LegalStep::Exhausted(_) => Vec::new(),
-    }
-}
-
-/// Grade only answered candidate paths; unanswered probes are not absence evidence.
-fn legal_sweep(
-    ctx: &ProbeContext,
-    link_in_page: bool,
-    paths: &'static [&'static str],
-) -> LegalPathSweep {
-    if link_in_page {
-        // Both verdicts short-circuit when the page already links the document.
-        return LegalPathSweep::Unanswered;
-    }
-    match legal_step(ctx, paths) {
-        LegalStep::Served(path) => LegalPathSweep::Served(path),
-        LegalStep::Probe(_, walk) | LegalStep::Exhausted(walk) => walk.finish(),
-    }
-}
 
 /// `None` on a localhost preview, where the verdict is a skip and no request
 /// is made: local preview servers answer unknown paths with their own generic
@@ -473,123 +395,8 @@ fn alt_host_probe(ctx: &ProbeContext) -> (String, ProbeRequest) {
     (alternate, request)
 }
 
-/// Seeds a redirect walk from the requested URL. `page.url` is the response's
-/// final URL and would incorrectly erase already-followed redirects.
-fn redirect_start<'a>(ctx: &ProbeContext<'a>) -> Option<(&'a str, RedirectWalker)> {
-    let requested = ctx.requested_url?;
-    let start = Url::parse(requested).ok()?;
-    Some((requested, RedirectWalker::new(&start)))
-}
-
-/// The next hop with no answer yet, one at a time. A chain cannot be planned
-/// ahead: each hop's 3xx answer is what names the position after it.
-fn redirect_plan(ctx: &ProbeContext) -> Vec<ProbeRequest> {
-    let Some((_, mut walker)) = redirect_start(ctx) else {
-        return Vec::new();
-    };
-    loop {
-        let request = walker.request();
-        let Some(outcome) = ctx.outcomes.get(&request) else {
-            return vec![request];
-        };
-        match walker.observe(outcome) {
-            RedirectWalkStep::Continue(next) => walker = next,
-            RedirectWalkStep::Done(_) => return Vec::new(),
-        }
-    }
-}
-
-/// Walks only the available probe outcomes. A missing hop becomes a network
-/// failure so incomplete execution remains inconclusive.
-fn redirect_walk(ctx: &ProbeContext) -> Option<(String, RedirectWalk)> {
-    let (requested, mut walker) = redirect_start(ctx)?;
-    let start = requested.to_string();
-    loop {
-        let outcome = ctx.outcomes.owned(&walker.request());
-        match walker.observe(&outcome) {
-            RedirectWalkStep::Continue(next) => walker = next,
-            RedirectWalkStep::Done(walk) => return Some((start, walk)),
-        }
-    }
-}
-
 /// `None` on a localhost preview: dev servers are deliberately permissive
 /// about origins, so a reflection verdict there describes the dev server.
 fn reflection_probe(ctx: &ProbeContext) -> Option<ProbeRequest> {
     (!ctx.page.is_localhost).then(|| reflection_probe_request(ctx.page.url.as_str()))
-}
-
-/// Resolve anchor targets without transport policy; refused targets return as
-/// failed probes so every runtime plans the same work.
-fn link_targets(ctx: &ProbeContext) -> LinkTargets {
-    resolve_link_targets(ctx.page, |_| true)
-}
-
-/// The sampled destinations for one scope, with the eligible count and the
-/// cap the verdict reports.
-fn link_sample(targets: &LinkTargets, scope: LinkScope) -> (Vec<Url>, usize, usize) {
-    let (eligible, limit) = match scope {
-        LinkScope::Internal => (&targets.internal, BROKEN_LINK_INTERNAL_SAMPLE),
-        LinkScope::External => (&targets.external, BROKEN_LINK_EXTERNAL_SAMPLE),
-    };
-    (
-        eligible.iter().take(limit).cloned().collect(),
-        eligible.len(),
-        limit,
-    )
-}
-
-/// Probe links with HEAD, adding GET only when HEAD needs confirmation.
-fn links_plan(ctx: &ProbeContext, scope: LinkScope) -> Vec<ProbeRequest> {
-    let targets = link_targets(ctx);
-    let (sample, _, _) = link_sample(&targets, scope);
-    let mut requests = Vec::new();
-    for url in &sample {
-        let head = link_head_request(url);
-        let Some(observed) = ctx.outcomes.get(&head) else {
-            requests.push(head);
-            continue;
-        };
-        if head_needs_get(observed) {
-            let get = link_get_request(url);
-            if ctx.outcomes.get(&get).is_none() {
-                requests.push(get);
-            }
-        }
-    }
-    requests
-}
-
-fn links_grade(
-    ctx: &ProbeContext,
-    scope: LinkScope,
-    check_id: &str,
-    severity: Severity,
-) -> Vec<CheckResult> {
-    let targets = link_targets(ctx);
-    let (sample, eligible, limit) = link_sample(&targets, scope);
-    if sample.is_empty() {
-        return vec![no_link_targets_result(
-            check_id, severity, scope, &targets, limit,
-        )];
-    }
-    let observations = sample
-        .iter()
-        .map(|url| {
-            let head = ctx.outcomes.owned(&link_head_request(url));
-            let get = head_needs_get(&head).then(|| ctx.outcomes.owned(&link_get_request(url)));
-            observe_link(url, &head, get.as_ref())
-        })
-        .collect();
-    let summary = summarize_link_probes(sample.len(), observations);
-    vec![link_probe_result(
-        check_id,
-        severity,
-        scope,
-        &targets,
-        eligible,
-        sample.len(),
-        limit,
-        summary,
-    )]
 }

@@ -1,4 +1,4 @@
-//! The publish job's unit tests, plus the two that drive the command
+//! The publish job's unit tests, plus the ones that drive the command
 //! against a loopback double of the connected service.
 
 use super::*;
@@ -7,8 +7,12 @@ use crate::cli::autofix::artifact::{
     ARTIFACT_SCHEMA_VERSION,
 };
 use crate::cli::autofix::repo::{self, init_test_repo};
-use crate::connected_service::test_double::respond_in_sequence;
-use crate::connected_service::{ClaimedFinding, Committer};
+use crate::connected_service::test_double::{
+    request_line, respond_in_sequence, ACCOUNT_INACTIVE_PROBLEM, ENTITLEMENT_SUSPENDED_PROBLEM,
+};
+use crate::connected_service::{
+    ClaimedFinding, Committer, ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE,
+};
 
 const CHECK_ID: &str = "security.headers.x_content_type_options";
 const COMMITTER_NAME: &str = "sitecmd-loop[bot]";
@@ -731,5 +735,236 @@ fn the_unshallow_fetch_names_the_remote_it_pushes_to() {
             "--",
             "https://github.com/example-org/example-site.git",
         ]
+    );
+}
+
+/// The patch the fix job would leave for the header finding, made the same
+/// way and then reset, so the checkout is still at its base.
+fn header_patch(root: &std::path::Path) -> String {
+    let fixer = crate::core::fix_templates::fixer_for(CHECK_ID).unwrap();
+    let target = crate::core::fix_templates::hosts::detect(root).remove(0);
+    let patch = fixer
+        .plan(
+            &crate::core::fix_templates::Finding {
+                check_id: fixer.check_id().into(),
+                identity: "/".into(),
+            },
+            &target,
+            root,
+        )
+        .unwrap()
+        .unwrap();
+    crate::core::fix_templates::apply(&[patch], root).unwrap();
+    repo::stage(root, &["vercel.json".into()]).unwrap();
+    let diff = repo::staged_patch(root).unwrap();
+    crate::core::git::run_git_command(
+        root,
+        &["reset", "--hard", "-q"],
+        crate::constants::AUTOFIX_GIT_TIMEOUT,
+        None,
+    )
+    .unwrap();
+    diff
+}
+
+#[tokio::test]
+async fn an_inactive_account_opens_nothing_and_exits_zero() {
+    let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    write_artifact(
+        &artifact_dir,
+        &manifest(&head),
+        &header_patch(repo_dir.path()),
+    )
+    .unwrap();
+    let (origin, captured) = respond_in_sequence(vec![(
+        ACCOUNT_INACTIVE_PROBLEM.to_string(),
+        "403 Forbidden",
+    )])
+    .await;
+
+    let (code, summary) = run_with_witness(
+        &args(origin, &artifact_dir, repo_dir.path()),
+        "witness-token",
+        true,
+    )
+    .await
+    .expect("an inactive account is not a failure");
+
+    assert_eq!(code, 0);
+    assert!(summary.contains(ACCOUNT_INACTIVE_NOTICE), "{summary}");
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
+    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_suspended_subscription_still_fails_the_publish_claim() {
+    let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    write_artifact(&artifact_dir, &manifest(&head), "").unwrap();
+    let (origin, _captured) = respond_in_sequence(vec![(
+        ENTITLEMENT_SUSPENDED_PROBLEM.to_string(),
+        "403 Forbidden",
+    )])
+    .await;
+
+    let error = run_with_witness(
+        &args(origin, &artifact_dir, repo_dir.path()),
+        "witness-token",
+        true,
+    )
+    .await
+    .expect_err("a suspended subscription still fails the job");
+
+    assert_eq!(
+        error,
+        "publish claim refused: entitlement_suspended (This subscription cannot watch its sites.)"
+    );
+}
+
+#[tokio::test]
+async fn a_publish_token_refused_as_inactive_pushes_nothing_and_exits_zero() {
+    let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    write_artifact(
+        &artifact_dir,
+        &manifest(&head),
+        &header_patch(repo_dir.path()),
+    )
+    .unwrap();
+    let (origin, captured) = respond_in_sequence(vec![
+        (claim_body(&head), "200 OK"),
+        (ACCOUNT_INACTIVE_PROBLEM.to_string(), "403 Forbidden"),
+    ])
+    .await;
+
+    let (code, summary) = run_with_witness(
+        &args(origin, &artifact_dir, repo_dir.path()),
+        "witness-token",
+        true,
+    )
+    .await
+    .expect("an inactive account is not a failure");
+
+    assert_eq!(code, 0);
+    // The claim was accepted, so the job did run; only its result went unrecorded.
+    assert!(
+        summary.starts_with(ACCOUNT_INACTIVE_RESULT_NOTICE),
+        "{summary}"
+    );
+    // No token came back, so nothing reached GitHub and no result followed.
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(
+        request_line(&requests[1]),
+        "POST /v1/fix-jobs/job_0123456789abcdef/publish-token HTTP/1.1"
+    );
+}
+
+#[tokio::test]
+async fn an_issue_token_refused_as_inactive_opens_no_issue_and_exits_zero() {
+    let route = "export async function GET(request: Request) {\n  const { searchParams } = new URL(request.url);\n  const returnTo = searchParams.get(\"returnTo\") ?? \"/\";\n  return Response.redirect(new URL(returnTo, request.url), 302);\n}\n";
+    let (repo_dir, head) = init_test_repo(&[
+        ("package.json", "{\"name\":\"loop\"}"),
+        ("app/api/signin/route.ts", route),
+    ])
+    .unwrap();
+    let key = sitecmd_engine::sync::ProjectFingerprintKey::from_bytes([7_u8; 32]);
+    let identity = key.location_hash("open-redirect", "app/api/signin/route.ts");
+    let located = crate::cli::autofix::brief::locate_findings(
+        repo_dir.path(),
+        &key,
+        &[("code_scan.open-redirect".into(), identity.clone())],
+    )
+    .unwrap();
+    let mut brief_manifest = manifest(&head);
+    brief_manifest.brief = Some(crate::cli::autofix::brief::brief_artifact(
+        "job_0123456789abcdef",
+        1,
+        &located,
+    ));
+    brief_manifest.findings = vec![ManifestFinding {
+        check_id: "code_scan.open-redirect".into(),
+        identity: identity.clone(),
+        outcome: Some("issue_opened".into()),
+    }];
+    brief_manifest.write_set = Vec::new();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    write_artifact(&artifact_dir, &brief_manifest, "").unwrap();
+    let mut claim: serde_json::Value = serde_json::from_str(&claim_body(&head)).unwrap();
+    claim["findings"] = serde_json::json!([{
+        "category": "security",
+        "check_id": "code_scan.open-redirect",
+        "class": "agent-easy",
+        "fallback_class": null,
+        "identity": identity,
+    }]);
+    let (origin, captured) = respond_in_sequence(vec![
+        (claim.to_string(), "200 OK"),
+        (ACCOUNT_INACTIVE_PROBLEM.to_string(), "403 Forbidden"),
+    ])
+    .await;
+
+    let (code, summary) = run_with_witness(
+        &args(origin, &artifact_dir, repo_dir.path()),
+        "witness-token",
+        true,
+    )
+    .await
+    .expect("an inactive account is not a failure");
+
+    assert_eq!(code, 0);
+    // The claim was accepted, so the job did run; only its result went unrecorded.
+    assert!(
+        summary.starts_with(ACCOUNT_INACTIVE_RESULT_NOTICE),
+        "{summary}"
+    );
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(
+        request_line(&requests[1]),
+        "POST /v1/fix-jobs/job_0123456789abcdef/issue-token HTTP/1.1"
+    );
+}
+
+#[tokio::test]
+async fn a_result_refused_as_inactive_keeps_the_jobs_own_summary() {
+    let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let artifact_dir = workspace.path().join("artifact");
+    write_artifact(&artifact_dir, &manifest(&head), "").unwrap();
+    let (origin, captured) = respond_in_sequence(vec![
+        (claim_body(&head), "200 OK"),
+        (ACCOUNT_INACTIVE_PROBLEM.to_string(), "403 Forbidden"),
+    ])
+    .await;
+
+    let (code, summary) = run_with_witness(
+        &args(origin, &artifact_dir, repo_dir.path()),
+        "witness-token",
+        true,
+    )
+    .await
+    .expect("an inactive account is not a failure");
+
+    assert_eq!(code, 0);
+    assert!(
+        summary.starts_with(&format!(
+            "artifact carries nothing to publish\n{ACCOUNT_INACTIVE_RESULT_NOTICE}"
+        )),
+        "{summary}"
+    );
+    assert!(!summary.contains(ACCOUNT_INACTIVE_NOTICE), "{summary}");
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(
+        request_line(&requests[1]),
+        "POST /v1/fix-jobs/job_0123456789abcdef/result HTTP/1.1"
     );
 }

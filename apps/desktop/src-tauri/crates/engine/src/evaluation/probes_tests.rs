@@ -6,12 +6,16 @@ use crate::manifest::{capability_manifest, CheckScope};
 use crate::probe::{ProbeBody, ProbeFailure, ProbeFailureClass, ProbeResponse};
 use crate::vocab::{CheckResult, CheckStatus};
 
+// These two state nothing until robots.txt answers with a body or the walk
+// finds a sitemap, as on the desktop.
+const SILENT_WITHOUT_INPUT: [&str; 2] = ["seo.ai_crawler_blocking", "seo.sitemap_freshness"];
+
 // Page fixture that makes two checks request the same relative privacy path.
 const PAGE: &str = concat!(
     "<html><head>",
     "<link rel=\"icon\" href=\"/icon.png\">",
     "<link rel=\"manifest\" href=\"/app.webmanifest\">",
-    "</head><body>",
+    "</head><body><img src=\"/hero.png\" alt=\"Hero\">",
     "<a href=\"privacy\">Notice</a>",
     "<a href=\"https://elsewhere.example/doc\">Doc</a>",
     "</body></html>"
@@ -114,23 +118,8 @@ fn execute(planned: &PlannedProbe) -> ProbeOutcome {
     }
 }
 
-// Plan, execute, repeat, until the plan comes back empty. Returns the
-// request the verdicts are graded from and how many rounds it took.
-fn run_to_fixpoint(body: &str) -> (EvaluationRequest, usize) {
-    run_to_fixpoint_with(body, execute)
-}
-
-// [`run_to_fixpoint`] against an arbitrary transport, so a suite can drive
-// the same loop with a transport that answers nothing.
-fn run_to_fixpoint_with(
-    body: &str,
-    transport: impl Fn(&PlannedProbe) -> ProbeOutcome,
-) -> (EvaluationRequest, usize) {
-    drive_to_fixpoint(request(body), transport)
-}
-
-// [`run_to_fixpoint`] against an arbitrary REQUEST, so a suite can vary the
-// artifact as well as the transport.
+// Execute requests against any artifact and transport until no requests
+// remain. Returns the request the verdicts are graded from and the round count.
 fn drive_to_fixpoint(
     mut evaluation: EvaluationRequest,
     transport: impl Fn(&PlannedProbe) -> ProbeOutcome,
@@ -143,10 +132,7 @@ fn drive_to_fixpoint(
             return (evaluation, round);
         }
         for planned in &plan.probes {
-            gathered.push(ExecutedProbe {
-                key: planned.key.clone(),
-                outcome: transport(planned),
-            });
+            gathered.push(ExecutedProbe::new(planned.key.clone(), transport(planned)));
         }
     }
     panic!("the plan never reached a fixpoint; a probe is being planned after it was answered");
@@ -410,7 +396,7 @@ fn a_request_without_probe_outcomes_answers_as_it_did_before() {
 // Planning reaches a fixpoint and every covered check receives a verdict.
 #[test]
 fn executing_the_plan_moves_every_covered_check_to_a_verdict() {
-    let (evaluated, rounds) = run_to_fixpoint(PAGE);
+    let (evaluated, rounds) = drive_to_fixpoint(request(PAGE), execute);
     assert!(
         rounds > 1,
         "the sample page exercises a multi-round plan, not a single shot"
@@ -439,6 +425,9 @@ fn executing_the_plan_moves_every_covered_check_to_a_verdict() {
                 ));
                 continue;
             }
+            if SILENT_WITHOUT_INPUT.contains(id) {
+                continue;
+            }
             assert!(
                 response.results.iter().any(|row| &row.check_id == id),
                 "'{id}' produced a verdict row"
@@ -449,7 +438,7 @@ fn executing_the_plan_moves_every_covered_check_to_a_verdict() {
 
 #[test]
 fn one_shared_answer_is_read_by_each_check_in_its_own_terms() {
-    let (evaluated, _) = run_to_fixpoint(PAGE);
+    let (evaluated, _) = drive_to_fixpoint(request(PAGE), execute);
     let response = evaluate(&evaluated).expect("request evaluates");
     let row = |id: &str| {
         response
@@ -480,7 +469,7 @@ fn a_recorded_requested_url_is_what_makes_the_walk_real() {
         "http://example.com/" => response(302, None, None),
         _ => execute(planned),
     };
-    let (evaluated, _) = run_to_fixpoint_with(PAGE, temporary);
+    let (evaluated, _) = drive_to_fixpoint(request(PAGE), temporary);
     let response = evaluate(&evaluated).expect("request evaluates");
     let row = |id: &str| {
         response
@@ -747,13 +736,16 @@ fn a_lane_wide_transport_failure_produces_no_probe_lane_verdict() {
             detail: "connection refused".into(),
         })
     };
-    let (evaluated, _) = run_to_fixpoint_with(PAGE, failure);
+    let (evaluated, _) = drive_to_fixpoint(request(PAGE), failure);
     let response = evaluate(&evaluated).expect("request evaluates");
 
     let mut graded = 0;
     for check in PROBE_CHECKS {
         for id in check.covers {
             if !response.planned.iter().any(|row| &row.check == id) {
+                continue;
+            }
+            if SILENT_WITHOUT_INPUT.contains(id) {
                 continue;
             }
             assert!(

@@ -1,15 +1,11 @@
 //! Portable robots.txt parsing and sitemap-directive verdicts.
 
+use crate::checks::seo::robots_document::records;
 use crate::checks::{CheckResult, CheckStatus, ScanCategory, Severity};
 
 /// Return whether robots.txt contains a nonempty, uncommented `Sitemap:` directive.
 pub fn has_sitemap_directive(body: &str) -> bool {
-    body.lines().any(|raw| {
-        let line = raw.split('#').next().unwrap_or("").trim();
-        line.split_once(':').is_some_and(|(directive, value)| {
-            directive.trim().eq_ignore_ascii_case("sitemap") && !value.trim().is_empty()
-        })
-    })
+    records(body).any(|(name, value)| name.eq_ignore_ascii_case("sitemap") && !value.is_empty())
 }
 
 use crate::checks::seo::robots::RobotsTxtFetch;
@@ -25,7 +21,7 @@ pub fn evaluate_sitemap_in_robots(outcome: &RobotsTxtFetch) -> Vec<CheckResult> 
         NetworkError,
     }
     let fetch = match outcome {
-        RobotsTxtFetch::Found { body } => {
+        RobotsTxtFetch::Found { body } | RobotsTxtFetch::FoundWithHtmlType { body } => {
             if has_sitemap_directive(body) {
                 RobotsFetch::HasSitemap
             } else {

@@ -6,13 +6,16 @@ use super::*;
 
 /// Peer dependency names per directly installed package, keyed by lowercase
 /// package name. npm lockfile v2/v3 and pnpm record them; Yarn Classic does not.
+///
+/// `lockfile_dir` is the directory of the lockfile that covers the manifest,
+/// which for a workspace member is the workspace root, not the member.
 pub(in crate::core::code_scan) fn collect_lockfile_peer_dependencies(
-    manifest_dir: &Path,
+    lockfile_dir: &Path,
 ) -> HashMap<String, HashSet<String>> {
-    if let Some(peers) = parse_package_lock_peer_dependencies(manifest_dir) {
+    if let Some(peers) = parse_package_lock_peer_dependencies(lockfile_dir) {
         return peers;
     }
-    parse_pnpm_lock_peer_dependencies(manifest_dir).unwrap_or_default()
+    parse_pnpm_lock_peer_dependencies(lockfile_dir).unwrap_or_default()
 }
 
 fn parse_package_lock_peer_dependencies(dir: &Path) -> Option<HashMap<String, HashSet<String>>> {

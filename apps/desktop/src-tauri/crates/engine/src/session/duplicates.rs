@@ -1,16 +1,23 @@
 //! Pages that share a title, meta description, or H1 with another page.
 //!
-//! Split from `session_analysis.rs` to keep both files inside the Rust
+//! Split from `mod.rs` to keep both files inside the Rust
 //! maintainability line budget; the grouping rules and the copy that explains
 //! them are one subject and stay together here.
 
-use super::{
-    base_result, safe_page_url, truncate, ComparedPages, IssueConfidence, PageSignals, Severity,
-};
-use crate::checks::CheckResult;
+use super::compared::ComparedPages;
+use super::{base_result, safe_page_url, truncate, SessionPage};
+use crate::checks::{CheckResult, IssueConfidence, Severity};
 use std::collections::{HashMap, HashSet};
 
 /// Group pages by a normalized text field and report groups sharing a value.
+///
+/// An unknown page joins its value's group but is never kept. Two established
+/// kept pages make a duplicate whatever unknown members say. A group of two or
+/// more with an unknown member declines, after the duplicate row when one is
+/// found. This can decline a group that no unknown page could join or
+/// complete, or a group that is duplicated in every reading because a known
+/// page canonicalizes to an unknown member and different pages compete in its
+/// two readings.
 ///
 /// A repeated value is only a defect between pages that both ask to be indexed
 /// in their own right. A `noindex` page is not competing for the value, and a
@@ -18,21 +25,23 @@ use std::collections::{HashMap, HashSet};
 /// declared that member the representative, which is the intended pattern
 /// rather than a duplicate.
 pub(super) fn duplicate_field<'a>(
-    pages: &[&'a PageSignals],
+    pages: &[&'a SessionPage],
     compared: &ComparedPages<'_>,
     check_id: &str,
     label: &str,
-    field: impl Fn(&'a PageSignals) -> Option<&'a str>,
-) -> Vec<CheckResult> {
-    let mut groups: HashMap<String, Vec<&PageSignals>> = HashMap::new();
+    field: impl Fn(&'a SessionPage) -> Option<&'a str>,
+) -> Vec<(CheckResult, Vec<String>)> {
+    let mut groups: HashMap<String, Vec<&SessionPage>> = HashMap::new();
     let mut noindex_excluded = 0usize;
     for page in pages {
         if let Some(value) = field(page) {
             let key = value.trim().to_ascii_lowercase();
-            if key.is_empty() {
+            // A replacement character means the decode dropped bytes, so two
+            // values that read alike may not be alike; neither is compared.
+            if key.is_empty() || key.contains('\u{FFFD}') {
                 continue;
             }
-            if page.noindex {
+            if page.noindex == Some(true) {
                 noindex_excluded += 1;
                 continue;
             }
@@ -41,6 +50,7 @@ pub(super) fn duplicate_field<'a>(
     }
 
     let mut canonicalized_excluded = 0usize;
+    let mut undecided = false;
     let grouped: HashMap<String, Vec<&str>> = groups
         .into_iter()
         .map(|(key, members)| {
@@ -55,18 +65,30 @@ pub(super) fn duplicate_field<'a>(
                     if canonicalized_to_a_sibling {
                         canonicalized_excluded += 1;
                     }
-                    !canonicalized_to_a_sibling
+                    page.noindex.is_some() && !canonicalized_to_a_sibling
                 })
                 .map(|page| page.url.as_str())
                 .collect();
+            undecided |= members.len() >= 2 && members.iter().any(|page| page.noindex.is_none());
             (key, kept)
         })
         .collect();
 
     let mut duplicated: Vec<(&String, &Vec<&str>)> =
         grouped.iter().filter(|(_, urls)| urls.len() >= 2).collect();
+    let mut outcomes = if undecided {
+        vec![(
+            super::not_checked(
+                check_id,
+                format!("A page sharing its {label} with another compared page reached SiteCMD with its X-Robots-Tag lines combined, so whether it competes for that {label} could not be told."),
+            ),
+            Vec::new(),
+        )]
+    } else {
+        Vec::new()
+    };
     if duplicated.is_empty() {
-        return Vec::new();
+        return outcomes;
     }
     duplicated.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(b.0)));
 
@@ -94,11 +116,7 @@ pub(super) fn duplicate_field<'a>(
 
     let mut result = base_result(
         check_id,
-        format!(
-            "{} pages share the same {}",
-            total_pages,
-            label.to_ascii_lowercase()
-        ),
+        format!("{} pages share the same {}", total_pages, label),
         format!(
             "{} of the {} compared pages share the same normalized {} with at least one other page: {}{}. The comparison uses the {}. Pages that declare noindex, and pages whose canonical points at another page in the same group, are left out of these groups.{} It does not establish that the pages have the same purpose, that the value is inappropriate, or that a search engine will select a particular snippet or page.",
             total_pages,
@@ -154,5 +172,10 @@ pub(super) fn duplicate_field<'a>(
         "selected_urls_without_a_successful_response": compared.without_successful_response,
         "selected_urls_resolving_to_an_already_compared_page": compared.repeated_pages,
     }));
-    vec![result]
+    let named = duplicated
+        .iter()
+        .flat_map(|(_, urls)| urls.iter().map(|url| url.to_string()))
+        .collect();
+    outcomes.insert(0, (result, named));
+    outcomes
 }

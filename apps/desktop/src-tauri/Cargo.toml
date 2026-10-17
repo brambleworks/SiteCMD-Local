@@ -116,7 +116,7 @@ postgres = "0.19"
 tempfile = "3"
 tauri-plugin-dialog = { version = "2.7.1", optional = true }
 tauri-plugin-keyring = { version = "0.1.0", optional = true }
-tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-updater = { version = "2", optional = true, default-features = false, features = ["rustls-tls"] }
 base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 hostname = "0.4.2"
 whoami = "2.1.1"

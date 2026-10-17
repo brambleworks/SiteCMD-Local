@@ -1051,3 +1051,165 @@ fn peer_dependencies_of_used_packages_and_mix_browsersync_plugin_are_not_unused(
         ids
     );
 }
+
+#[test]
+fn peers_recorded_in_a_workspace_root_pnpm_lockfile_are_not_unused_in_a_member() {
+    let temp = TempDir::new().unwrap();
+    std::fs::create_dir_all(temp.path().join(".git")).unwrap();
+    write_file(
+        temp.path(),
+        "package.json",
+        r#"{ "name": "connect-workspace", "private": true, "packageManager": "pnpm@11.0.0" }"#,
+    );
+    write_file(
+        temp.path(),
+        "pnpm-workspace.yaml",
+        "packages:\n  - \"apps/*\"\n",
+    );
+    write_file(
+        temp.path(),
+        "apps/connect/package.json",
+        r#"
+                {
+                  "name": "connect",
+                  "private": true,
+                  "dependencies": {
+                    "bufferutil": "^4.0.9",
+                    "lodash": "^4.17.21",
+                    "ws": "^8.18.0"
+                  },
+                  "devDependencies": {
+                    "node-pg-migrate": "^9.0.0",
+                    "pg": "^8.23.0"
+                  }
+                }
+            "#,
+    );
+    write_file(
+        temp.path(),
+        "pnpm-lock.yaml",
+        "lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/connect:
+    dependencies:
+      bufferutil:
+        specifier: ^4.0.9
+        version: 4.0.9
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
+      ws:
+        specifier: ^8.18.0
+        version: 8.18.0(bufferutil@4.0.9)
+    devDependencies:
+      node-pg-migrate:
+        specifier: ^9.0.0
+        version: 9.0.0(pg@8.23.0)
+      pg:
+        specifier: ^8.23.0
+        version: 8.23.0
+
+packages:
+
+  bufferutil@4.0.9:
+    resolution: {integrity: sha512-a}
+    engines: {node: '>=6.14.2'}
+
+  lodash@4.17.21:
+    resolution: {integrity: sha512-b}
+
+  node-pg-migrate@9.0.0:
+    resolution: {integrity: sha512-c}
+    engines: {node: '>=20.11.0'}
+    hasBin: true
+    peerDependencies:
+      '@types/pg': '>=6.0.0 <9.0.0'
+      pg: '>=4.3.0 <9.0.0'
+    peerDependenciesMeta:
+      '@types/pg':
+        optional: true
+
+  pg@8.23.0:
+    resolution: {integrity: sha512-d}
+    engines: {node: '>= 16.0.0'}
+
+  ws@8.18.0:
+    resolution: {integrity: sha512-e}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
+snapshots:
+
+  bufferutil@4.0.9: {}
+
+  lodash@4.17.21: {}
+
+  node-pg-migrate@9.0.0(pg@8.23.0):
+    dependencies:
+      pg: 8.23.0
+
+  pg@8.23.0: {}
+
+  ws@8.18.0(bufferutil@4.0.9):
+    optionalDependencies:
+      bufferutil: 4.0.9
+",
+    );
+    write_file(
+        temp.path(),
+        "apps/connect/postgres/migrate.mjs",
+        "import { runner } from \"node-pg-migrate\";\nawait runner({ dir: \"postgres/migrations\" });\n",
+    );
+    write_file(
+        temp.path(),
+        "apps/connect/src/socket.ts",
+        "import { WebSocket } from \"ws\";\nexport const open = (url: string) => new WebSocket(url);\n",
+    );
+
+    let report = audit_project(temp.path()).unwrap();
+    let ids = report.issues.iter().map(|i| &i.id).collect::<Vec<_>>();
+    assert!(
+        !ids.iter().any(|id| id.starts_with("lockfile-missing:")),
+        "the workspace-root lockfile covers the member, got {:?}",
+        ids
+    );
+    assert!(
+        !ids.iter()
+            .any(|id| id.as_str() == "unused-dependency:apps/connect/package.json:node-pg-migrate"),
+        "node-pg-migrate is imported, got {:?}",
+        ids
+    );
+    assert!(
+        !ids.iter()
+            .any(|id| id.as_str() == "unused-dependency:apps/connect/package.json:pg"),
+        "a required peer of an imported package is used through it, got {:?}",
+        ids
+    );
+    assert!(
+        !ids.iter()
+            .any(|id| id.as_str() == "unused-dependency:apps/connect/package.json:bufferutil"),
+        "a declared optional peer of an imported package is used through it, got {:?}",
+        ids
+    );
+    assert!(
+        ids.iter()
+            .any(|id| id.as_str() == "unused-dependency:apps/connect/package.json:lodash"),
+        "negative control: a package nobody imports or peers on is still reported, got {:?}",
+        ids
+    );
+}

@@ -715,7 +715,7 @@ fn every_emitted_slug_is_registered_and_every_registered_slug_is_emitted() {
         assert!(
             super::descriptor(slug).is_some(),
             "emit site(s) {files:?} use unregistered slug {slug:?}: register it in \
-             registry.rs or fix the typo (unknown slugs clamp Critical to High and \
+             crates/engine/src/code_rules.rs or fix the typo (unknown slugs clamp Critical to High and \
              misclassify domain)"
         );
     }

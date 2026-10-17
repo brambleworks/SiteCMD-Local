@@ -705,7 +705,7 @@
           "confidence": "high",
           "description": "2 render-blocking resources in <head> (1 script, 1 stylesheet). These delay the first paint of your page.",
           "fixPrompt": null,
-          "manualFix": "Move each blocking resource into one of these buckets:\n\u2022 Scripts that don't need to run before paint: add `defer` (preserves order) or `async` (order doesn't matter)\n\u2022 Scripts that aren't needed on this page at all: remove the `<script>` or load it from a user gesture\n\u2022 CSS that's needed for the above-the-fold render: inline it in `<head>` and ship the rest as a normal `<link rel=\"stylesheet\">`\n\u2022 CSS that's not needed for the initial route: code-split it into a per-route bundle your framework loads on demand\nSkip the `media=\"print\" + onload swap` trick - it's brittle and Lighthouse no longer recommends it.",
+          "manualFix": "Move each blocking resource into one of these buckets:\n• Scripts that don't need to run before paint: add `defer` (preserves order) or `async` (order doesn't matter)\n• Scripts that aren't needed on this page at all: remove the `<script>` or load it from a user gesture\n• CSS that's needed for the above-the-fold render: inline it in `<head>` and ship the rest as a normal `<link rel=\"stylesheet\">`\n• CSS that's not needed for the initial route: code-split it into a per-route bundle your framework loads on demand\nSkip the `media=\"print\" + onload swap` trick - it's brittle and Lighthouse no longer recommends it.",
           "rawData": {
             "blocking_scripts": ["/app.js"],
             "blocking_stylesheets": ["/all.css"],
@@ -1619,32 +1619,517 @@
       }
     },
     {
-      "name": "empty_external_script_before_json_ld_is_not_inline_code",
       "check": "performance.unminified",
-      "page": {
-        "url": "http://127.0.0.1:8766/clean.html",
-        "status_code": 200,
-        "headers": [],
-        "body": "<html lang=\"en\"><head>\n<link rel=\"stylesheet\" href=\"/css/clean.css\">\n<script defer src=\"/js/app.js\"></script>\n<script type=\"application/ld+json\">{\n  \"@context\": \"https://schema.org\",\n  \"@graph\": [\n    {\"@type\": \"WebSite\", \"name\": \"Fixture Site\", \"url\": \"http://127.0.0.1:8766/\"},\n    {\"@type\": \"Organization\", \"name\": \"Fixture Org\", \"url\": \"http://127.0.0.1:8766/\",\n     \"logo\": \"http://127.0.0.1:8766/img/og.png\", \"sameAs\": [\"http://localhost:8766/clean.html\"]},\n    {\"@type\": \"Article\", \"headline\": \"Clean control page\", \"image\": \"http://127.0.0.1:8766/img/og.png\",\n     \"author\": {\"@type\": \"Person\", \"name\": \"Fixture Author\"},\n     \"datePublished\": \"2026-08-01T10:00:00Z\", \"dateModified\": \"2026-09-01T10:00:00Z\",\n     \"publisher\": {\"@type\": \"Organization\", \"name\": \"Fixture Org\"}}\n  ]\n}</script>\n</head><body><p>Control page body.</p></body></html>",
-        "evaluation_time": "2026-08-05T00:00:00Z",
-        "is_localhost": false,
-        "is_strict_localhost": false,
-        "http_version": "HTTP/1.1"
-      },
       "expected": [
         {
-          "checkId": "performance.unminified",
           "category": "performance",
-          "title": "Inline code formatting",
+          "checkId": "performance.unminified",
+          "confidence": "high",
           "description": "No executable inline script or style block of at least 500 bytes matched this check's whitespace heuristic.",
-          "status": "pass",
-          "severity": "low",
           "fixPrompt": null,
           "manualFix": null,
           "rawData": null,
-          "confidence": "high"
+          "severity": "low",
+          "status": "pass",
+          "title": "Inline code formatting"
         }
-      ]
+      ],
+      "name": "empty_external_script_before_json_ld_is_not_inline_code",
+      "page": {
+        "body": "<html lang=\"en\"><head>\n<link rel=\"stylesheet\" href=\"/css/clean.css\">\n<script defer src=\"/js/app.js\"></script>\n<script type=\"application/ld+json\">{\n  \"@context\": \"https://schema.org\",\n  \"@graph\": [\n    {\"@type\": \"WebSite\", \"name\": \"Fixture Site\", \"url\": \"http://127.0.0.1:8766/\"},\n    {\"@type\": \"Organization\", \"name\": \"Fixture Org\", \"url\": \"http://127.0.0.1:8766/\",\n     \"logo\": \"http://127.0.0.1:8766/img/og.png\", \"sameAs\": [\"http://localhost:8766/clean.html\"]},\n    {\"@type\": \"Article\", \"headline\": \"Clean control page\", \"image\": \"http://127.0.0.1:8766/img/og.png\",\n     \"author\": {\"@type\": \"Person\", \"name\": \"Fixture Author\"},\n     \"datePublished\": \"2026-08-01T10:00:00Z\", \"dateModified\": \"2026-09-01T10:00:00Z\",\n     \"publisher\": {\"@type\": \"Organization\", \"name\": \"Fixture Org\"}}\n  ]\n}</script>\n</head><body><p>Control page body.</p></body></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [],
+        "http_version": "HTTP/1.1",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "http://127.0.0.1:8766/clean.html"
+      }
+    },
+    {
+      "check": "seo.title",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.title",
+          "confidence": "needs_review",
+          "confidenceReason": "Character count is directly observed, but rendered width, query context, title-link rewriting, and whether the wording is sufficiently descriptive require review.",
+          "description": "The title contains 4 characters. Length alone does not establish quality, but a very short title may be too generic or fail to distinguish this page. Review the rendered title and page intent rather than padding it to a quota.",
+          "fixPrompt": null,
+          "manualFix": "Review the page intent and the title shown in the rendered document. If the wording is generic or ambiguous, replace it with a concise, page-specific label; include the brand only when it helps users distinguish the result. Do not add filler solely to reach a character target.",
+          "rawData": {
+            "length": 4,
+            "rendered_title_inspected": false,
+            "source": "initial_html",
+            "title": "Home",
+            "title_evidence_truncated": false
+          },
+          "severity": "high",
+          "status": "warn",
+          "title": "Short title tag needs review",
+          "whyItMatters": "If the title is generic or too wide in the actual search/browser context, users may receive a less useful or rewritten label. The count alone does not establish that outcome."
+        }
+      ],
+      "name": "two_titles_grade_the_first_as_the_document_title",
+      "page": {
+        "body": "<html><head><title>Home</title><title>A much longer second title for the page</title></head><body></body></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.title",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.title",
+          "confidence": "high",
+          "description": "No non-empty document <title> was found in the fetched HTML. Browsers use this element for tabs and bookmarks, and search systems commonly use it as one input when generating a title link, although they may derive or rewrite that label.",
+          "fixPrompt": null,
+          "manualFix": "Add one real `<title>` tag in `<head>` that states what this page is for and, if helpful, includes the brand. Keep it specific to the page instead of reusing the site-wide name everywhere.",
+          "rawData": null,
+          "severity": "high",
+          "status": "fail",
+          "title": "Missing title tag",
+          "whyItMatters": "Pages without titles are harder to understand in browser tabs, bookmarks, and search result snippets."
+        }
+      ],
+      "name": "an_svg_title_is_not_a_document_title",
+      "page": {
+        "body": "<html><head></head><body><svg><title>Icon</title></svg></body></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.meta_description",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.meta_description",
+          "confidence": "needs_review",
+          "confidenceReason": "The length is directly observed, but usefulness, query fit, device rendering, and search-engine snippet selection are contextual.",
+          "description": "The meta description contains 265 characters. Search snippets vary by query and device and may be rewritten, so the tail may not be shown; this count does not prove truncation.",
+          "fixPrompt": null,
+          "manualFix": "Review the description in representative search contexts. Move the most useful page-specific information earlier and remove redundant wording that may not add value when a snippet is shortened; do not assume a fixed character limit or that a search system will use the supplied text.",
+          "rawData": {
+            "description": "The corner bakery on Main Street sells sourdough, rye and seeded loaves, bakes croissants before dawn, and closes early on weekends. The corner bakery on Main Street sells sourdough, rye and seeded loaves, bakes croissants before dawn, and closes early on weekends.",
+            "description_evidence_truncated": false,
+            "length": 265,
+            "rendered_head_inspected": false,
+            "source": "initial_html"
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "Long meta description needs review",
+          "whyItMatters": "A consumer may omit the tail of a long authored summary, but displayed length, usefulness, and click-through impact cannot be inferred from character count alone."
+        }
+      ],
+      "name": "a_long_meta_description_needs_review",
+      "page": {
+        "body": "<html><head><meta name=\"description\" content=\"The corner bakery on Main Street sells sourdough, rye and seeded loaves, bakes croissants before dawn, and closes early on weekends. The corner bakery on Main Street sells sourdough, rye and seeded loaves, bakes croissants before dawn, and closes early on weekends.\"></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.canonical",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.canonical",
+          "confidence": "needs_review",
+          "confidenceReason": "Absence in the fetched HTML is direct, but duplicate URL exposure, HTTP-header canonicals, framework/runtime injection, and search-engine canonical selection are outside this presence check.",
+          "description": "No rel=canonical declaration was found in the fetched HTML. Search engines can infer a canonical without the tag; an explicit declaration is most useful when this content is reachable through duplicate or parameterized URLs.",
+          "fixPrompt": null,
+          "manualFix": "If this page has duplicate, parameterized, or alternate URL variants, add one canonical link in `<head>` that points to the final public URL you prefer for indexing. Verify the absolute/relative URL resolves correctly in production and is itself crawlable and suitable for indexing; do not add a self-canonical solely to silence the check when it adds no value.",
+          "rawData": null,
+          "severity": "low",
+          "status": "warn",
+          "title": "Missing canonical URL",
+          "whyItMatters": "Duplicate URL variants make it harder for crawlers to understand which page should be treated as the preferred version."
+        }
+      ],
+      "name": "a_page_with_no_canonical_link",
+      "page": {
+        "body": "<html><head><title>Example</title></head><body></body></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.viewport",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.viewport",
+          "confidence": "needs_review",
+          "confidenceReason": "Viewport declaration state is directly observed in the initial HTML, but specialized client intent, runtime changes, and rendered behavior were not measured by this source check.",
+          "description": "A viewport meta tag is present, but its content does not include width=device-width. Fixed, empty, or unusual viewport rules may be intentional for a specialized document, so verify the target devices and rendered layout before changing it.",
+          "fixPrompt": null,
+          "manualFix": "For an ordinary responsive web page, keep exactly one `<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">` in `<head>`, remove conflicting duplicates, then test representative narrow, zoomed, large-text, and orientation states. Preserve a specialized fixed viewport only when the product explicitly requires it and the target clients are documented.",
+          "rawData": {
+            "has_device_width": false,
+            "responsive_layout_verified": false,
+            "viewport_content": "width=1024",
+            "viewport_contents": ["width=1024"],
+            "viewport_tag_count": 1
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "Viewport configuration needs review",
+          "whyItMatters": "Without an appropriate viewport for the target devices, a page can render at an unintended virtual width and require horizontal panning or excessive zoom. Actual impact must be confirmed in the rendered layout."
+        }
+      ],
+      "name": "a_viewport_without_device_width",
+      "page": {
+        "body": "<html><head><meta name=\"viewport\" content=\"width=1024\"></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.open_graph",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.open_graph",
+          "confidence": "needs_review",
+          "confidenceReason": "The fields are directly absent or empty in the fetched HTML, but whether Open Graph metadata is required depends on the site's sharing channels and each client's fallback behavior.",
+          "description": "Missing Open Graph tag: og:image. Compatible link-preview clients may fall back to the document title, description, another image, or a reduced preview when these fields are absent.",
+          "fixPrompt": null,
+          "manualFix": "Add OG tags in <head>: <meta property=\"og:title\" content=\"...\"> <meta property=\"og:description\" content=\"...\"> <meta property=\"og:image\" content=\"...\">",
+          "rawData": {
+            "og_description": "What Example does.",
+            "og_image": null,
+            "og_title": "Example"
+          },
+          "severity": "low",
+          "status": "warn",
+          "title": "Missing Open Graph tag",
+          "whyItMatters": "Open Graph fields let compatible clients choose an intentional title, summary, and image; exact rendering and caching remain platform-specific."
+        }
+      ],
+      "name": "open_graph_without_an_image",
+      "page": {
+        "body": "<html><head><meta property=\"og:title\" content=\"Example\"><meta property=\"og:description\" content=\"What Example does.\"></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.og_image_relative",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.og_image_relative",
+          "confidence": "high",
+          "description": "These Open Graph tags carry relative, protocol-relative, or non-HTTP(S) URL values: og:image=\"/social/card.png\". They do not meet the protocol's full-URL shape; platform resolution and fallback behavior varies, so preview failure is not asserted from syntax alone.",
+          "fixPrompt": null,
+          "manualFix": "Emit a canonical absolute HTTPS URL, including the intended host and path, for og:image and og:url. Configure the framework's current canonical-site/metadata base when available, then inspect the deployed HTML, fetch the image logged out, and test supported platforms with their preview tools.",
+          "rawData": {
+            "relative_values": [
+              {
+                "tag": "og:image",
+                "value": "/social/card.png"
+              }
+            ]
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "Open Graph URL values are not absolute",
+          "whyItMatters": "Non-absolute Open Graph URLs are less portable because consumers are not required to infer the page origin. Some platforms may recover, but supported previews should be verified rather than assumed."
+        }
+      ],
+      "name": "a_relative_og_image",
+      "page": {
+        "body": "<html><head><meta property=\"og:image\" content=\"/social/card.png\"></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.charset",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.charset",
+          "confidence": "high",
+          "description": "Neither the Content-Type header nor a <meta charset> tag declares the page encoding. Browsers fall back to guessing, which garbles accented characters, quotes, and non-Latin text unpredictably.",
+          "fixPrompt": null,
+          "manualFix": "Put <meta charset=\"utf-8\"> as the first element inside <head>, before <title> and any other tags, or add `; charset=utf-8` to the Content-Type response header.",
+          "rawData": {
+            "header_declares_charset": false,
+            "meta_charset_byte_offset": null
+          },
+          "severity": "low",
+          "status": "fail",
+          "title": "No character encoding declared",
+          "whyItMatters": "An undeclared or late encoding shows up as mojibake - garbled quotes and accents - on real pages."
+        }
+      ],
+      "name": "no_declared_charset",
+      "page": {
+        "body": "<html><head><title>Example</title></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.twitter_cards",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.twitter_cards",
+          "confidence": "high",
+          "description": "No twitter:card type was found. Complete Open Graph fields are present and can supply fallback values, but an explicit card type is needed to request a particular X/Twitter card format; final rendering remains platform-controlled.",
+          "fixPrompt": null,
+          "manualFix": "Add an explicit <meta name=\"twitter:card\" content=\"summary\"> or content=\"summary_large_image\"> based on the image treatment you intend, and provide valid title, description, and image values through twitter:* tags or their supported Open Graph fallbacks. Verify the production URL after the platform recrawls it.",
+          "rawData": {
+            "has_complete_open_graph_fallback": true,
+            "twitter_card": null
+          },
+          "severity": "low",
+          "status": "warn",
+          "title": "Missing Twitter Card type",
+          "whyItMatters": "An explicit card type documents the intended X/Twitter presentation. Open Graph can provide field-level fallbacks, but it does not guarantee a particular card layout or that a preview will render."
+        }
+      ],
+      "name": "no_twitter_card_beside_complete_open_graph",
+      "page": {
+        "body": "<html><head><meta property=\"og:title\" content=\"Example\"><meta property=\"og:description\" content=\"What Example does.\"><meta property=\"og:image\" content=\"https://example.com/card.png\"></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.noindex",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.noindex",
+          "confidence": "needs_review",
+          "confidenceReason": "The noindex directive is directly observed, but whether excluding this specific URL is a defect depends on the page's intended search visibility.",
+          "description": "A robots meta tag or X-Robots-Tag instructs supporting search crawlers not to index this page after they can crawl and process the directive. That can be correct for account, duplicate, staging, or private-workflow pages; confirm whether this URL is intended to appear in search.",
+          "fixPrompt": null,
+          "manualFix": "First confirm which named crawlers, if any, should index this URL. If the observed exclusion is unintended, remove noindex only from the applicable robots meta tag or X-Robots-Tag scope, keep the URL crawlable so that crawler can see the change, then inspect and request recrawling in the relevant search-console tool. Keep intentional exclusions and do not broaden a crawler-specific rule merely to clear this finding.",
+          "rawData": {
+            "general_nofollow": false,
+            "general_noindex": true,
+            "nofollow": false,
+            "noindex": true,
+            "noindex_sources": ["x_robots_tag:unscoped"],
+            "scoped_nofollow_agents": [],
+            "scoped_noindex_agents": []
+          },
+          "severity": "high",
+          "status": "warn",
+          "title": "Page is marked noindex",
+          "whyItMatters": "For a page intended to acquire search traffic, a processed general noindex directive removes it from supporting search engines' results. It is harmless and often desirable on pages that should stay out of search."
+        }
+      ],
+      "name": "an_x_robots_tag_noindex_header",
+      "page": {
+        "body": "<html><head><title>Example</title></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [
+          ["content-type", "text/html; charset=utf-8"],
+          ["x-robots-tag", "noindex"]
+        ],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.hreflang",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.hreflang",
+          "confidence": "needs_review",
+          "confidenceReason": "The HTML attributes are directly observed, but SiteCMD did not validate the language values, alternate targets, equivalent content, other annotation channels, or target-consumer processing.",
+          "description": "Observed 2 HTML hreflang annotations; the HTML set has no language-specific self-reference. Google Search documents fully qualified alternate URLs and a self-reference in each HTML language set. x-default is optional and is not the reason for this finding. This check did not validate BCP 47 meaning, target responses/canonicals, return links, HTTP-header annotations, or sitemap annotations.",
+          "fixPrompt": null,
+          "manualFix": "Review the emitted HTML alternate set for this exact page. Give every annotation a supported BCP 47 language/region value (or x-default), a fully qualified canonical final HTTP(S) URL, and include the current page under its own language value. Generate corresponding return annotations from one locale map, then verify the production HTML, target responses, canonicals, and the target search engine's current requirements. Do not add x-default solely to clear this finding.",
+          "rawData": {
+            "html_annotation_count": 2,
+            "http_header_annotations_inspected": false,
+            "incomplete_annotation_count": 0,
+            "language_self_reference_present": false,
+            "languages": ["de", "fr"],
+            "non_absolute_href_count": 0,
+            "return_links_inspected_here": false,
+            "sitemap_annotations_inspected": false,
+            "target_responses_inspected": false,
+            "x_default_present": false
+          },
+          "severity": "low",
+          "status": "warn",
+          "title": "Hreflang HTML annotations need review",
+          "whyItMatters": "A malformed or incomplete HTML alternate set may be ignored or misinterpreted by consumers that process hreflang. The actual effect depends on the target consumer and any annotations delivered through other supported channels."
+        }
+      ],
+      "name": "hreflang_alternates_without_a_self_reference",
+      "page": {
+        "body": "<html><head><link rel=\"alternate\" hreflang=\"de\" href=\"https://example.com/de/\"><link rel=\"alternate\" hreflang=\"fr\" href=\"https://example.com/fr/\"></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.duplicate_meta",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.duplicate_title",
+          "confidence": "high",
+          "description": "Found 2 document <title> elements in the scannable initial HTML after excluding comments, scripts, styles, and inline SVG title elements. HTML documents have one document title; SiteCMD did not execute client-side head management or determine which value a browser/search consumer ultimately uses.",
+          "fixPrompt": null,
+          "manualFix": "Trace every framework, layout, CMS/plugin, template, and client head-management source, then emit one coherent document <title> for the route. Inspect both the production response and rendered head across navigation, fallback, locale, and error states.",
+          "rawData": {
+            "document_title_element_count": 2,
+            "rendered_head_inspected": false,
+            "source": "initial_html"
+          },
+          "severity": "medium",
+          "status": "fail",
+          "title": "Multiple document title elements observed",
+          "whyItMatters": "Conflicting document-title declarations make the intended title ambiguous to browsers, assistive technology, and crawlers; downstream consumers can apply their own selection or rewriting behavior."
+        },
+        {
+          "category": "seo",
+          "checkId": "seo.duplicate_description",
+          "confidence": "high",
+          "description": "Found 2 <meta name=\"description\"> elements in the scannable initial HTML. The intended summary is ambiguous; parsers and search engines can select, ignore, or rewrite these declarations, and SiteCMD did not inspect client-side head changes.",
+          "fixPrompt": null,
+          "manualFix": "Trace framework, layout, CMS/plugin, template, and client head-management sources, then emit one coherent meta description when the page needs one. Inspect the production response and rendered head across navigation, fallback, locale, and error states.",
+          "rawData": {
+            "meta_description_element_count": 2,
+            "rendered_head_inspected": false,
+            "source": "initial_html"
+          },
+          "severity": "medium",
+          "status": "fail",
+          "title": "Duplicate meta descriptions",
+          "whyItMatters": "Conflicting description declarations make the page's intended summary ambiguous to crawlers and link-preview consumers; actual search snippets are selected by the search engine."
+        }
+      ],
+      "name": "two_titles_and_two_descriptions_on_one_page",
+      "page": {
+        "body": "<html><head><title>One</title><title>Two</title><meta name=\"description\" content=\"One\"><meta name=\"description\" content=\"Two\"></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "check": "seo.duplicate_meta",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.duplicate_title",
+          "confidence": "high",
+          "description": "No more than one document <title> element was found in the scannable initial HTML after excluding comments, scripts, styles, and inline SVG title elements. This pass does not inspect client-side head changes or compare titles across pages.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": null,
+          "severity": "medium",
+          "status": "pass",
+          "title": "No repeated document title element"
+        },
+        {
+          "category": "seo",
+          "checkId": "seo.duplicate_description",
+          "confidence": "high",
+          "description": "No more than one <meta name=\"description\"> element was found in the scannable initial HTML. This pass does not inspect client-side head changes or compare descriptions across pages.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": null,
+          "severity": "medium",
+          "status": "pass",
+          "title": "No repeated meta description element"
+        },
+        {
+          "category": "seo",
+          "checkId": "seo.duplicate_meta",
+          "confidence": "high",
+          "description": "No repeated document <title> or <meta name=\"description\"> elements were found in the scannable initial HTML. This pass does not inspect client-side head changes or compare values across pages.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": null,
+          "severity": "low",
+          "status": "pass",
+          "title": "Duplicate meta tags"
+        }
+      ],
+      "name": "one_title_and_one_description_pass_each_duplicate",
+      "page": {
+        "body": "<html><head><title>One</title><meta name=\"description\" content=\"One\"></head></html>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [["content-type", "text/html; charset=utf-8"]],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
     }
   ],
   "comment": "Cross-runtime golden check-verdict fixtures: page artifacts paired with the full expected CheckResult rows under a frozen evaluation_time (hosted scanner spec, parity harness). Embedded via include_str! so the SAME bytes run natively in desktop CI and through the wasm artifact in the hosted runner's CI. Regenerate expected blocks after an INTENTIONAL verdict change: cargo test -p sitecmd-engine --test golden_checks -- --ignored regenerate"

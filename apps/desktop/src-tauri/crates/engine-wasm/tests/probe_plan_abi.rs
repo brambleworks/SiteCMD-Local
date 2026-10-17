@@ -2,34 +2,27 @@
 //!
 //! Planning must converge after callers append each probe outcome.
 
+#[path = "support/abi.rs"]
+mod abi;
+
 use sitecmd_engine::evaluation::{
-    evaluate, probe_plan, EvaluationRequest, EvaluationResponse, ExecutedProbe, PageArtifact,
-    PlannedProbe, ProbePlan, PROBE_CHECKS,
+    evaluate, EvaluationRequest, EvaluationResponse, ExecutedProbe, PageArtifact, PlannedProbe,
+    ProbePlan, RouteSession, PROBE_CHECKS,
 };
 use sitecmd_engine::manifest::{capability_manifest, HostedLane, RuntimeFact};
 use sitecmd_engine::probe::{ProbeOutcome, ProbeResponse};
-use sitecmd_engine_wasm::{engine_evaluate, engine_probe_plan, scorer_alloc, scorer_free};
+use sitecmd_engine_wasm::{engine_route_evaluate, engine_route_open, engine_route_plan};
 
-fn call_through_abi(
-    entry: unsafe extern "C" fn(*mut u8, u32) -> *const u8,
-    request: &[u8],
-) -> Vec<u8> {
-    unsafe {
-        let input = scorer_alloc(request.len() as u32);
-        core::ptr::copy_nonoverlapping(request.as_ptr(), input, request.len());
-        let frame = entry(input, request.len() as u32) as *mut u8;
-        let mut length_bytes = [0u8; 4];
-        core::ptr::copy_nonoverlapping(frame, length_bytes.as_mut_ptr(), 4);
-        let payload_length = u32::from_le_bytes(length_bytes) as usize;
-        let payload = core::slice::from_raw_parts(frame.add(4), payload_length).to_vec();
-        scorer_free(frame, (4 + payload_length) as u32);
-        payload
-    }
-}
+// These two state nothing until robots.txt answers with a body or the walk
+// finds a sitemap, as on the desktop.
+const SILENT_WITHOUT_INPUT: [&str; 2] = ["seo.ai_crawler_blocking", "seo.sitemap_freshness"];
 
-fn plan_through_abi(request: &EvaluationRequest) -> ProbePlan {
-    let bytes = serde_json::to_vec(request).expect("request serializes");
-    let payload = call_through_abi(engine_probe_plan, &bytes);
+/// Record `fresh` on this thread's open route and answer its plan.
+fn plan_through_abi(fresh: &[ExecutedProbe]) -> ProbePlan {
+    let payload = abi::call_json(
+        engine_route_plan,
+        &serde_json::json!({ "probe_outcomes": fresh }),
+    );
     serde_json::from_slice(&payload).unwrap_or_else(|error| {
         panic!(
             "payload is a ProbePlan, not {error}: {}",
@@ -38,10 +31,9 @@ fn plan_through_abi(request: &EvaluationRequest) -> ProbePlan {
     })
 }
 
-fn evaluate_through_abi(request: &EvaluationRequest) -> EvaluationResponse {
-    let bytes = serde_json::to_vec(request).expect("request serializes");
-    let payload = call_through_abi(engine_evaluate, &bytes);
-    serde_json::from_slice(&payload).expect("payload is an EvaluationResponse")
+fn evaluate_through_abi() -> EvaluationResponse {
+    serde_json::from_slice(&abi::call(engine_route_evaluate, b"{}"))
+        .expect("payload is an EvaluationResponse")
 }
 
 fn artifact() -> PageArtifact {
@@ -87,21 +79,22 @@ fn execute(planned: &PlannedProbe) -> ProbeOutcome {
     })
 }
 
-fn run_to_fixpoint() -> (EvaluationRequest, usize) {
-    let mut evaluation = request();
+/// Drive the route's plan to its fixpoint through the ABI, recording each
+/// batch with the next call; answers every outcome executed, and the calls made.
+fn run_to_fixpoint() -> (Vec<ExecutedProbe>, usize) {
+    abi::open(&artifact());
     let mut gathered: Vec<ExecutedProbe> = Vec::new();
-    for round in 1..=8 {
-        evaluation.probe_outcomes = Some(gathered.clone());
-        let plan = plan_through_abi(&evaluation);
+    let mut fresh: Vec<ExecutedProbe> = Vec::new();
+    for call in 1..=8 {
+        let plan = plan_through_abi(&std::mem::take(&mut fresh));
         assert_eq!(plan.manifest_digest, capability_manifest().digest());
         if plan.probes.is_empty() {
-            return (evaluation, round);
+            return (gathered, call);
         }
         for planned in &plan.probes {
-            gathered.push(ExecutedProbe {
-                key: planned.key.clone(),
-                outcome: execute(planned),
-            });
+            let executed = ExecutedProbe::new(planned.key.clone(), execute(planned));
+            gathered.push(executed.clone());
+            fresh.push(executed);
         }
     }
     panic!("the plan never reached a fixpoint through the ABI");
@@ -109,26 +102,29 @@ fn run_to_fixpoint() -> (EvaluationRequest, usize) {
 
 #[test]
 fn the_framed_plan_equals_the_in_process_plan() {
-    let request = request();
-    let native =
-        serde_json::to_value(probe_plan(&request).expect("plans in process")).expect("serializes");
-    let framed = serde_json::to_value(plan_through_abi(&request)).expect("serializes");
+    abi::open(&artifact());
+    let mut route = RouteSession::open(artifact()).expect("opens in process");
+    route.record(Some(Vec::new()));
+    let native = serde_json::to_value(route.plan()).expect("serializes");
+    let framed = serde_json::to_value(plan_through_abi(&[])).expect("serializes");
     assert_eq!(framed, native);
 }
 
 #[test]
 fn identical_requests_produce_identical_plan_payloads() {
-    let bytes = serde_json::to_vec(&request()).expect("request serializes");
+    abi::open(&artifact());
+    let bytes = b"{\"probe_outcomes\": []}";
     assert_eq!(
-        call_through_abi(engine_probe_plan, &bytes),
-        call_through_abi(engine_probe_plan, &bytes)
+        abi::call(engine_route_plan, bytes),
+        abi::call(engine_route_plan, bytes)
     );
 }
 
 #[test]
 fn every_plan_partitions_the_probe_lane() {
     let manifest = capability_manifest();
-    let plan = plan_through_abi(&request());
+    abi::open(&artifact());
+    let plan = plan_through_abi(&[]);
     let lane = manifest
         .entries
         .iter()
@@ -141,16 +137,16 @@ fn every_plan_partitions_the_probe_lane() {
 
 #[test]
 fn executing_the_framed_plan_produces_framed_verdicts() {
-    let (evaluated, rounds) = run_to_fixpoint();
-    assert!(
-        rounds >= 2,
-        "at least one round of probes, then an empty one"
-    );
-
-    let before = evaluate_through_abi(&request());
+    abi::open(&artifact());
+    let before = evaluate_through_abi();
     assert_eq!(before.facts_present, vec![RuntimeFact::PageArtifact]);
 
-    let after = evaluate_through_abi(&evaluated);
+    let (gathered, calls) = run_to_fixpoint();
+    assert!(
+        calls >= 2,
+        "at least one batch of probes, then an empty one"
+    );
+    let after = evaluate_through_abi();
     assert_eq!(
         after.facts_present,
         vec![
@@ -176,6 +172,9 @@ fn executing_the_framed_plan_produces_framed_verdicts() {
                 ));
                 continue;
             }
+            if SILENT_WITHOUT_INPUT.contains(id) {
+                continue;
+            }
             assert!(
                 after.results.iter().any(|row| &row.check_id == id),
                 "'{id}' produced a verdict row through the ABI"
@@ -188,31 +187,33 @@ fn executing_the_framed_plan_produces_framed_verdicts() {
     }
     assert_eq!(
         serde_json::to_value(&after).expect("serializes"),
-        serde_json::to_value(evaluate(&evaluated).expect("evaluates in process"))
-            .expect("serializes")
+        serde_json::to_value(
+            evaluate(&EvaluationRequest {
+                page: artifact(),
+                probe_outcomes: Some(gathered),
+                ..request()
+            })
+            .expect("evaluates in process")
+        )
+        .expect("serializes")
     );
 }
 
 #[test]
 fn a_malformed_plan_request_returns_an_error_payload() {
-    let payload = call_through_abi(engine_probe_plan, b"{ not json");
-    let value: serde_json::Value = serde_json::from_slice(&payload).expect("error frame is JSON");
-    assert!(!value["error"]
-        .as_str()
+    abi::open(&artifact());
+    let payload = abi::call(engine_route_plan, b"{ not json");
+    assert!(!abi::refusal(&payload)
         .expect("error carries a message")
         .is_empty());
 }
 
 #[test]
 fn an_unparseable_page_url_returns_an_error_payload() {
-    let mut broken = request();
-    broken.page.url = "not a url".into();
-    let bytes = serde_json::to_vec(&broken).expect("request serializes");
-    let value: serde_json::Value =
-        serde_json::from_slice(&call_through_abi(engine_probe_plan, &bytes))
-            .expect("error frame is JSON");
-    assert!(value["error"]
-        .as_str()
+    let mut broken = artifact();
+    broken.url = "not a url".into();
+    let payload = abi::call_json(engine_route_open, &serde_json::json!({ "page": broken }));
+    assert!(abi::refusal(&payload)
         .expect("error carries a message")
         .contains("url"));
 }

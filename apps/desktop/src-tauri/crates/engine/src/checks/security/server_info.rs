@@ -113,8 +113,8 @@ impl Check for ServerInfoCheck {
         }
 
         // X-Powered-By header
-        let powered_by = headers.get("x-powered-by").and_then(|v| v.to_str().ok());
-        if let Some(value) = powered_by {
+        let powered_by = crate::header_lines::field_value(headers, "x-powered-by");
+        if let Some(value) = powered_by.as_deref() {
             results.push(CheckResult {
                 check_id: "security.server_info.x_powered_by".into(),
                 category: ScanCategory::Security,

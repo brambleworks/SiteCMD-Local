@@ -1,17 +1,23 @@
+import path from "node:path";
+
 import {
-  attributeBlock,
   claimedChecks,
+  constList,
   excludedChecks,
   isFetchPlannable,
   laneCoverageFailures,
   runnerDispatches,
 } from "./guardrail-engine-lane-parsing.mjs";
+import { routeAbiFailures } from "./guardrail-engine-route-abi-rules.mjs";
 
 const WASM_LIB = "apps/desktop/src-tauri/crates/engine-wasm/src/lib.rs";
+const WASM_SRC = "apps/desktop/src-tauri/crates/engine-wasm/src";
 const WASM_MANIFEST = "apps/desktop/src-tauri/crates/engine-wasm/Cargo.toml";
 const RUNNERS = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners.rs";
+const RUNNERS_SEO = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners_seo.rs";
 const PROBE_CHECKS = "apps/desktop/src-tauri/crates/engine/src/evaluation/probe_checks.rs";
 const PROBE_SCHEMA = "apps/desktop/src-tauri/crates/engine/src/evaluation/probes.rs";
+const SESSION = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
 const SCHEMA = "apps/desktop/src-tauri/crates/engine/src/evaluation/mod.rs";
 const GOLDEN_TEST = "apps/desktop/src-tauri/crates/engine/tests/golden_checks.rs";
 const MANIFEST = "apps/desktop/src-tauri/crates/engine/manifest/capability_manifest.json";
@@ -39,15 +45,20 @@ const REQUIRED_PROVENANCE = [
   "profile",
   "artifact_sha256",
   "corpus_sha256",
+  "session_corpus_sha256",
   "browser_assets_sha256",
   "manifest_digest",
 ];
 
-export function engineArtifactFailures(read) {
+export function engineArtifactFailures(read, listFiles) {
   const failures = [];
-  const wasmLib = read(WASM_LIB);
+  const sources = listFiles(WASM_SRC, (file) => file.endsWith(".rs")).map((file) => [
+    file,
+    read(file),
+  ]);
   const wasmManifest = read(WASM_MANIFEST);
   const runners = read(RUNNERS);
+  const runnersSeo = read(RUNNERS_SEO);
   const probeChecks = read(PROBE_CHECKS);
   const probeSchema = read(PROBE_SCHEMA);
   const schema = read(SCHEMA);
@@ -55,7 +66,7 @@ export function engineArtifactFailures(read) {
   const scorerScript = read(SCORER_SCRIPT);
 
   for (const symbol of SCORER_ABI) {
-    if (!wasmLib.includes(`extern "C" fn ${symbol}(`)) {
+    if (!sources.some(([, source]) => source.includes(`extern "C" fn ${symbol}(`))) {
       failures.push(
         `${WASM_LIB} no longer exports \`${symbol}\`; the connect worker resolves that symbol by ` +
           `name from its vendored artifact, and renaming it breaks a worker in another repository`,
@@ -63,17 +74,7 @@ export function engineArtifactFailures(read) {
     }
   }
 
-  for (const symbol of ["engine_evaluate", "engine_probe_plan"]) {
-    const exportedAt = wasmLib.indexOf(`extern "C" fn ${symbol}(`);
-    if (exportedAt === -1) {
-      failures.push(`${WASM_LIB} no longer exports \`${symbol}\`; the scan worker calls it`);
-    } else if (!attributeBlock(wasmLib, exportedAt).includes('#[cfg(feature = "checks")]')) {
-      failures.push(
-        `${WASM_LIB}: \`${symbol}\` is not behind \`#[cfg(feature = "checks")]\`; an exported ` +
-          `symbol is a link root, so an ungated one pulls the whole check tree into connect's artifact`,
-      );
-    }
-  }
+  failures.push(...routeAbiFailures(read, listFiles));
 
   if (!/\bdefault\s*=\s*\[\s*\]/.test(wasmManifest)) {
     failures.push(
@@ -92,11 +93,13 @@ export function engineArtifactFailures(read) {
     if (!schema.includes(type)) {
       failures.push(`${SCHEMA} no longer defines \`${type}\`; it is the shared wire definition`);
     }
-    if (wasmLib.includes(type)) {
-      failures.push(
-        `${WASM_LIB} defines \`${type}\` itself; the schema is authored in the engine crate so the ` +
-          `desktop and the hosted runner cannot read two definitions of one request`,
-      );
+    for (const [file, source] of sources) {
+      if (source.includes(type)) {
+        failures.push(
+          `${file} defines \`${type}\` itself; the schema is authored in the engine crate so the ` +
+            `desktop and the hosted runner cannot read two definitions of one request`,
+        );
+      }
     }
   }
   if (!schema.includes("enum NotEvaluatedReason")) {
@@ -112,21 +115,26 @@ export function engineArtifactFailures(read) {
           `probe plan and of the outcomes a caller hands back`,
       );
     }
-    if (wasmLib.includes(type)) {
-      failures.push(
-        `${WASM_LIB} defines \`${type}\` itself; the schema is authored in the engine crate so the ` +
-          `desktop and the hosted runner cannot read two definitions of one plan`,
-      );
+    for (const [file, source] of sources) {
+      if (source.includes(type)) {
+        failures.push(
+          `${file} defines \`${type}\` itself; the schema is authored in the engine crate so the ` +
+            `desktop and the hosted runner cannot read two definitions of one plan`,
+        );
+      }
     }
   }
 
-  const claimed = claimedChecks(runners, "pub const RUNNERS");
-  const excluded = excludedChecks(runners, "pub const EXCLUDED_ARTIFACT_CHECKS");
+  const sharedClaims = claimedChecks(runners, "pub const RUNNERS");
+  const seoClaims = claimedChecks(runnersSeo, "pub const SEO_RUNNERS");
+  const claimed =
+    sharedClaims === null || seoClaims === null ? null : [...sharedClaims, ...seoClaims];
+  const excluded = excludedChecks(runnersSeo, "pub const EXCLUDED_ARTIFACT_CHECKS");
   const planned = claimedChecks(probeChecks, "pub const PROBE_CHECKS");
   const probeExcluded = excludedChecks(probeSchema, "pub const EXCLUDED_PROBE_CHECKS");
   if (claimed === null || excluded === null) {
     failures.push(
-      `${RUNNERS} no longer declares \`RUNNERS\` and \`EXCLUDED_ARTIFACT_CHECKS\`; update these rules with it`,
+      `${RUNNERS} or ${RUNNERS_SEO} no longer declares \`RUNNERS\`, \`SEO_RUNNERS\` or \`EXCLUDED_ARTIFACT_CHECKS\`; update these rules with them`,
     );
   }
   if (planned === null || probeExcluded === null) {
@@ -147,10 +155,12 @@ export function engineArtifactFailures(read) {
     failures.push(
       ...laneCoverageFailures({
         lane: "artifact",
-        entries: entries.filter((entry) => entry.hosted === "artifact"),
+        entries: entries.filter(
+          (entry) => entry.hosted === "artifact" && entry.scope !== "session",
+        ),
         claimed,
         excluded,
-        table: RUNNERS,
+        table: `${RUNNERS} and ${RUNNERS_SEO}`,
         subject: "runner",
       }),
     );
@@ -170,18 +180,92 @@ export function engineArtifactFailures(read) {
     );
   }
 
-  const embedded = /include_str!\("([^"]+)"\)/.exec(read(GOLDEN_TEST));
-  if (embedded === null) {
-    failures.push(`${GOLDEN_TEST} no longer embeds a corpus with include_str!`);
+  // The cross-page checks are produced once per scan by the engine's analysis,
+  // so the analysis's own list and the manifest's session checks must agree.
+  const analyzed = constList(read(SESSION), "SESSION_CHECK_IDS");
+  if (analyzed === null) {
+    failures.push(
+      `${SESSION} no longer declares \`SESSION_CHECK_IDS\`; update these rules with it`,
+    );
   } else {
-    // Normalize Rust include paths before matching JavaScript path segments.
-    const wanted = embedded[1].split("/").filter((segment) => segment !== "..");
-    const corpusLine = /const corpusPath = ([^;]*);/.exec(checksScript);
-    const joined = corpusLine === null ? "" : corpusLine[1];
-    const missing = wanted.filter((segment) => !joined.includes(`"${segment}"`));
-    if (missing.length > 0) {
+    const sessionChecks = entries
+      .filter((entry) => entry.scope === "session")
+      .map((entry) => entry.check);
+    const unproduced = sessionChecks.filter((check) => !analyzed.includes(check));
+    const unlisted = analyzed.filter((check) => !sessionChecks.includes(check));
+    if (unproduced.length > 0 || unlisted.length > 0) {
       failures.push(
-        `${CHECKS_SCRIPT} does not vendor the corpus ${GOLDEN_TEST} embeds (${embedded[1]}); two ` +
+        `${SESSION}'s SESSION_CHECK_IDS and the manifest's session checks disagree (` +
+          `${[...unproduced, ...unlisted].sort().join(", ")}); a session check nothing produces is a ` +
+          `check a hosted scan claims and never grades`,
+      );
+    }
+  }
+
+  for (const [test, script, source, variable] of [
+    [GOLDEN_TEST, CHECKS_SCRIPT, checksScript, "corpusPath"],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/golden_session.rs",
+      CHECKS_SCRIPT,
+      checksScript,
+      "sessionCorpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine-wasm/tests/session_abi.rs",
+      CHECKS_SCRIPT,
+      checksScript,
+      "sessionCorpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/golden_score.rs",
+      SCORER_SCRIPT,
+      scorerScript,
+      "corpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine-wasm/tests/abi.rs",
+      SCORER_SCRIPT,
+      scorerScript,
+      "corpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/golden_severity.rs",
+      SCORER_SCRIPT,
+      scorerScript,
+      "severityCorpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine-wasm/tests/severity_abi.rs",
+      SCORER_SCRIPT,
+      scorerScript,
+      "severityCorpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/evaluation_policy_facts.rs",
+      CHECKS_SCRIPT,
+      checksScript,
+      "stackCorpusPath",
+    ],
+    [
+      "apps/desktop/src-tauri/crates/engine/tests/golden_stack.rs",
+      CHECKS_SCRIPT,
+      checksScript,
+      "stackCorpusPath",
+    ],
+  ]) {
+    const embedded = /include_str!\("([^"]+)"\)/.exec(read(test));
+    if (embedded === null) {
+      failures.push(`${test} no longer embeds a corpus with include_str!`);
+      continue;
+    }
+    const declaration = new RegExp(`const ${variable} = ([^;]*);`).exec(source);
+    const joined = declaration === null ? "" : declaration[1];
+    const segments = [...joined.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    const vendored = path.posix.join("apps/desktop/src-tauri", ...segments);
+    const wanted = path.posix.join(path.posix.dirname(test), embedded[1]);
+    if (!/path\.join\(\s*cargoRoot\s*,/.test(joined) || vendored !== wanted) {
+      failures.push(
+        `${script} does not vendor the corpus ${test} embeds (${embedded[1]}); two ` +
           `corpora means the hosted parity test and the native one are testing different things`,
       );
     }
@@ -227,7 +311,7 @@ export function engineArtifactFailures(read) {
   }
 
   for (const field of REQUIRED_PROVENANCE) {
-    if (!checksScript.includes(`${field}:`)) {
+    if (!new RegExp(`\\b${field}:`).test(checksScript)) {
       failures.push(
         `${CHECKS_SCRIPT}: the vendored record no longer carries \`${field}\`; the record is the ` +
           `only thing between a reviewer and a wasm blob of unknown origin`,
@@ -235,20 +319,22 @@ export function engineArtifactFailures(read) {
     }
   }
 
-  if (!checksScript.includes("engineTreeSuffix(")) {
-    failures.push(
-      `${CHECKS_SCRIPT} no longer refuses a dirty engine tree; vendoring from an edited working ` +
-        `tree records a commit the artifact does not match`,
-    );
-  }
-
   const registered = REGISTRATION_SOURCES.map((file) => read(file)).join("\n");
-  const dispatches = runnerDispatches(runners, "pub const RUNNERS");
+  const tables = [
+    runnerDispatches(runners, "pub const RUNNERS"),
+    runnerDispatches(runnersSeo, "pub const SEO_RUNNERS"),
+  ];
+  const dispatches = tables.includes(null)
+    ? null
+    : {
+        types: tables.flatMap((table) => table.types),
+        invocations: tables.reduce((total, table) => total + table.invocations, 0),
+      };
   if (dispatches !== null) {
     if (dispatches.types.length !== dispatches.invocations) {
       failures.push(
-        `${RUNNERS}: the runner-extraction pattern reads ${dispatches.types.length} of the ` +
-          `${dispatches.invocations} check invocations in \`RUNNERS\`, so the rows it cannot read ` +
+        `${RUNNERS} and ${RUNNERS_SEO}: the runner-extraction pattern reads ${dispatches.types.length} of the ` +
+          `${dispatches.invocations} check invocations in \`RUNNERS\` and \`SEO_RUNNERS\`, so the rows it cannot read ` +
           `are exempt from the desktop-registration parity check; teach the pattern the new ` +
           `formatting rather than leaving those runners unchecked`,
       );
@@ -258,7 +344,7 @@ export function engineArtifactFailures(read) {
     ].filter((type) => !new RegExp(`Box::new\\([\\w:]*::${type}\\)`).test(registered));
     if (unregistered.length > 0) {
       failures.push(
-        `${RUNNERS}: these checks run in the hosted artifact but are not registered in any desktop ` +
+        `${RUNNERS} and ${RUNNERS_SEO}: these checks run in the hosted artifact but are not registered in any desktop ` +
           `scan (${unregistered.sort().join(", ")}); a hosted-only check produces findings no ` +
           `desktop scan can reproduce, which is a parity break the manifest cannot express`,
       );

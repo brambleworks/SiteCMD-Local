@@ -3,8 +3,12 @@
 
 use super::*;
 use crate::cli::autofix::repo::init_test_repo;
-use crate::connected_service::test_double::respond_in_sequence;
-use crate::connected_service::{ClaimedFinding, ClaimedJob};
+use crate::connected_service::test_double::{
+    request_line, respond_in_sequence, ACCOUNT_INACTIVE_PROBLEM, ENTITLEMENT_SUSPENDED_PROBLEM,
+};
+use crate::connected_service::{
+    ClaimedFinding, ClaimedJob, ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE,
+};
 use sitecmd_engine::sync::ProjectFingerprintKey;
 
 const CLAIM: &str = r#"{"job_id":"job_0123456789abcdef","attempt":1,"purpose":"execute","job_token":"sitecmd_job_execute_00000000000000000000000000000000","expires_at":"2026-09-20T10:30:00.000Z","base_sha":"0123456789abcdef0123456789abcdef01234567","site_url":"https://loop.example.com","repository":"example-org/example-site","default_branch":"main","agent":"claude","findings":[{"check_id":"security.headers.x_content_type_options","identity":"/","class":"template","category":"security","fallback_class":null}]}"#;
@@ -277,7 +281,7 @@ async fn a_job_that_already_moved_on_does_nothing_and_succeeds() {
     let artifact_dir = workspace.path().join("artifact");
     let outputs = workspace.path().join("outputs.txt");
     let (origin, captured) = respond_in_sequence(vec![(
-        r#"{"error":{"code":"job_state_conflict","message":"the job is not waiting for an execute claim"}}"#
+        r#"{"type":"about:blank","title":"Conflict","status":409,"detail":"the job is not waiting for an execute claim","code":"job_state_conflict","request_id":"req_0123456789abcdef"}"#
             .to_string(),
         "409 Conflict",
     )])
@@ -311,5 +315,159 @@ async fn a_job_that_already_moved_on_does_nothing_and_succeeds() {
             .starts_with("post /v1/fix-jobs/job_0123456789abcdef/claim http/1.1"),
         "{}",
         requests[0]
+    );
+}
+
+fn job_args(origin: String, workspace: &std::path::Path, checkout: &std::path::Path) -> RunJobArgs {
+    RunJobArgs {
+        artifact_dir: workspace.join("artifact"),
+        connect_origin: origin,
+        export: ExportSource::Env("SITECMD_TEST_RUN_JOB_MISSING_EXPORT".into()),
+        job_id: "job_0123456789abcdef".into(),
+        outputs: Some(workspace.join("outputs.txt")),
+        passphrase_env: "SITECMD_TEST_RUN_JOB_MISSING_PASSPHRASE".into(),
+        path: checkout.to_path_buf(),
+    }
+}
+
+#[tokio::test]
+async fn an_inactive_account_claims_nothing_publishes_nothing_and_exits_zero() {
+    let (repo, _head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let (origin, captured) = respond_in_sequence(vec![(
+        ACCOUNT_INACTIVE_PROBLEM.to_string(),
+        "403 Forbidden",
+    )])
+    .await;
+    let args = job_args(origin, workspace.path(), repo.path());
+
+    let (code, summary) = run_with_witness(&args, "witness-token", true)
+        .await
+        .expect("an inactive account is not a failure");
+
+    assert_eq!(code, 0);
+    assert!(summary.contains(ACCOUNT_INACTIVE_NOTICE), "{summary}");
+    assert_eq!(
+        std::fs::read_to_string(workspace.path().join("outputs.txt")).expect("outputs"),
+        "publish=false\n"
+    );
+    assert!(!workspace.path().join("artifact/manifest.json").exists());
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 1, "{requests:?}");
+}
+
+#[tokio::test]
+async fn a_suspended_subscription_still_fails_the_claim() {
+    let (repo, _head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let (origin, _captured) = respond_in_sequence(vec![(
+        ENTITLEMENT_SUSPENDED_PROBLEM.to_string(),
+        "403 Forbidden",
+    )])
+    .await;
+    let args = job_args(origin, workspace.path(), repo.path());
+
+    let error = run_with_witness(&args, "witness-token", true)
+        .await
+        .expect_err("a suspended subscription still fails the job");
+
+    assert_eq!(
+        error,
+        "claim refused: entitlement_suspended (This subscription cannot watch its sites.)"
+    );
+    assert!(!workspace.path().join("outputs.txt").exists());
+}
+
+#[tokio::test]
+async fn a_result_refused_as_inactive_keeps_the_missing_secret_reason() {
+    let (repo, _head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let (origin, captured) = respond_in_sequence(vec![
+        (CLAIM.to_string(), "200 OK"),
+        (ACCOUNT_INACTIVE_PROBLEM.to_string(), "403 Forbidden"),
+    ])
+    .await;
+    let args = job_args(origin, workspace.path(), repo.path());
+
+    let (code, summary) = run_with_witness(&args, "witness-token", true)
+        .await
+        .expect("an inactive account is not a failure");
+
+    assert_eq!(code, 0);
+    assert!(
+        summary.starts_with(&format!(
+            "{MISSING_SECRETS_SUMMARY}\nSITECMD_TEST_RUN_JOB_MISSING_EXPORT is missing or empty\n{ACCOUNT_INACTIVE_RESULT_NOTICE}"
+        )),
+        "{summary}"
+    );
+    assert!(!summary.contains(ACCOUNT_INACTIVE_NOTICE), "{summary}");
+    assert_eq!(
+        std::fs::read_to_string(workspace.path().join("outputs.txt")).expect("outputs"),
+        "publish=false\n"
+    );
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(
+        request_line(&requests[1]),
+        "POST /v1/fix-jobs/job_0123456789abcdef/result HTTP/1.1"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_result_refused_as_inactive_keeps_the_build_failure() {
+    let (repo, head) = init_test_repo(&[
+        ("vercel.json", "{}\n"),
+        (
+            "package.json",
+            "{\"scripts\":{\"build\":\"node -e \\\"console.error('refused'); process.exit(1)\\\"\"}}",
+        ),
+    ])
+    .unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let passphrase = "correct horse battery staple";
+    let export = crate::connected_export::encrypt_site_connection(
+        "site_run_job",
+        "https://loop.example.com",
+        1,
+        [7_u8; 32],
+        passphrase,
+    )
+    .unwrap();
+    std::env::set_var("SITECMD_TEST_RUN_JOB_BUILD_EXPORT", export);
+    std::env::set_var("SITECMD_TEST_RUN_JOB_BUILD_PASSPHRASE", passphrase);
+    let claim = CLAIM.replace("0123456789abcdef0123456789abcdef01234567", &head);
+    let (origin, captured) = respond_in_sequence(vec![
+        (claim, "200 OK"),
+        (ACCOUNT_INACTIVE_PROBLEM.to_string(), "403 Forbidden"),
+    ])
+    .await;
+    let args = RunJobArgs {
+        export: ExportSource::Env("SITECMD_TEST_RUN_JOB_BUILD_EXPORT".into()),
+        passphrase_env: "SITECMD_TEST_RUN_JOB_BUILD_PASSPHRASE".into(),
+        ..job_args(origin, workspace.path(), repo.path())
+    };
+
+    let (code, summary) = run_with_witness(&args, "witness-token", true)
+        .await
+        .expect("an inactive account is not a failure");
+
+    assert_eq!(code, 0);
+    assert!(
+        summary.starts_with(&format!(
+            "Build failed at build with exit status 1; see the Actions log\n{ACCOUNT_INACTIVE_RESULT_NOTICE}"
+        )),
+        "{summary}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(workspace.path().join("outputs.txt")).expect("outputs"),
+        "publish=false\n"
+    );
+    let requests = captured.await.expect("capture");
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(
+        requests[1].contains(r#""outcome_code":"build_failed""#),
+        "{}",
+        requests[1]
     );
 }

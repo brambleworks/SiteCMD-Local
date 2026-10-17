@@ -1,20 +1,13 @@
 //! Registry mapping compiled verdicts to manifest IDs.
 //!
-//! Every artifact-lane entry has exactly one runner or an explicit exclusion,
-//! and no runner may claim an unpublished ID.
+//! Every page- and origin-scoped artifact-lane entry has exactly
+//! one runner, here or in `runners_seo.rs`, or an explicit exclusion
+//! there, and no runner may claim an unpublished ID.
 
-use crate::checks::security::tls::TlsFacts;
+use super::EvaluationInputs;
+use crate::checks::seo::robots_conflicts::MetaRobotsConflictCheck;
 use crate::checks::Check;
-use crate::evaluation::BrowserFacts;
-use crate::page::PageContext;
 use crate::vocab::CheckResult;
-
-/// Shared input shape for every artifact runner.
-pub struct EvaluationInputs<'a> {
-    pub page: &'a PageContext,
-    pub tls_facts: Option<&'a TlsFacts>,
-    pub browser_facts: Option<&'a BrowserFacts>,
-}
 
 /// One compiled verdict and the manifest ids it is the sole producer of.
 pub struct Runner {
@@ -26,17 +19,6 @@ pub struct Runner {
     /// same artifact differ.
     pub run: fn(&EvaluationInputs) -> Vec<CheckResult>,
 }
-
-/// Artifact-lane manifest entries intentionally excluded from runner coverage,
-/// paired with the required reason.
-pub const EXCLUDED_ARTIFACT_CHECKS: &[(&str, &str)] = &[
-    // Heading-order review stays with accessibility.headings; the H1 count
-    // runs separately as the SEO-owned seo.headings.h1.
-    (
-        "seo.headings.hierarchy",
-        "HeadingCheck is unregistered on the desktop; accessibility.headings owns heading order",
-    ),
-];
 
 /// Runner table in deterministic response order.
 pub const RUNNERS: &[Runner] = &[
@@ -186,7 +168,7 @@ pub const RUNNERS: &[Runner] = &[
     },
     Runner {
         covers: &["seo.meta_conflicts"],
-        run: |inputs| crate::checks::seo::canonical_meta::MetaRobotsConflictCheck.run(inputs.page),
+        run: |inputs| MetaRobotsConflictCheck::evaluate(inputs.page, inputs.header_lines),
     },
     Runner {
         covers: &["seo.page_speed_hints"],

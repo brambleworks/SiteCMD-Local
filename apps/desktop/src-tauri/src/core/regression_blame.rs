@@ -3,8 +3,9 @@
 //! Findings are eligible only when their check contracts are comparable across
 //! the two recorded engine releases.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
 use sitecmd_engine::release::{comparability, Comparability};
 
 use crate::checks::Severity;
@@ -39,11 +40,71 @@ pub struct PreviousScan {
 }
 
 /// Canonical current failure; duplicate check ids collapse to highest severity.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CurrentIssue {
+    /// Canonical check identity.
     pub check_id: String,
+    /// Finding title reported by the check.
     pub title: String,
+    /// Current finding severity.
     pub severity: Severity,
+}
+
+/// Commit identities for the named oldest and newest ends, with window counts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommitWindow {
+    /// Newest listed commit id, in ASCII hex.
+    pub newest: String,
+    /// Oldest listed commit id, in ASCII hex even when capped.
+    pub oldest: String,
+    /// Number of commits in the supplied list.
+    pub listed: u32,
+    /// Total commits between the two scans.
+    pub total: u32,
+}
+
+/// Facts needed to attribute findings without git or database access.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlameInput {
+    /// Scan kind, either web or code.
+    pub scan_kind: String,
+    /// Score of the previous scan.
+    pub previous_score: i64,
+    /// Score of the current scan.
+    pub current_score: i64,
+    /// Current findings, including duplicate check identities.
+    pub current_issues: Vec<CurrentIssue>,
+    /// Check identities active before the current scan.
+    pub active_check_ids: BTreeSet<String>,
+    /// Current engine release, when recorded.
+    pub engine_release: Option<String>,
+    /// Listed commit window, absent when there are no listed commits.
+    pub window: Option<CommitWindow>,
+}
+
+/// Attributable findings and the exact deploy-regression copy.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BlameDecision {
+    /// First highest-severity finding per new check, sorted by check identity.
+    pub new_issues: Vec<CurrentIssue>,
+    /// Appearing checks withheld because the detector changed.
+    pub detector_changed_count: usize,
+    /// Attributable checks no longer failing, sorted by check identity.
+    pub fixed_check_ids: Vec<String>,
+    /// Previous score minus the current score.
+    pub score_drop: i64,
+    /// Alert severity, critical or warn.
+    pub severity: String,
+    /// Alert title.
+    pub title: String,
+    /// Alert description explaining the commit window and findings.
+    pub description: String,
+    /// Oldest listed commit hash.
+    pub commit_from: String,
+    /// Newest listed commit hash.
+    pub commit_to: String,
 }
 
 /// Returned to the (commands-layer) caller so it can fire the desktop
@@ -142,6 +203,170 @@ impl Attribution {
     }
 }
 
+/// Whether a check difference may be attributed to the deploy.
+pub trait BlameAttribution {
+    fn attributable(&self, check_id: &str) -> bool;
+}
+
+impl BlameAttribution for Attribution {
+    fn attributable(&self, check_id: &str) -> bool {
+        Attribution::attributable(self, check_id)
+    }
+}
+
+fn appearing_issues(input: &BlameInput) -> Vec<&CurrentIssue> {
+    dedup_by_check_id(
+        input
+            .current_issues
+            .iter()
+            .filter(|issue| !input.active_check_ids.contains(&issue.check_id))
+            .collect(),
+    )
+}
+
+fn withheld_check_count(input: &BlameInput, attribution: &impl BlameAttribution) -> usize {
+    appearing_issues(input)
+        .into_iter()
+        .filter(|issue| !attribution.attributable(&issue.check_id))
+        .count()
+}
+
+/// Decide whether this scan's commits are held to its new findings, and say so.
+pub fn decide_blame(
+    input: &BlameInput,
+    attribution: &impl BlameAttribution,
+) -> Option<BlameDecision> {
+    let window = input.window.as_ref()?;
+    let current_ids: HashSet<&str> = input
+        .current_issues
+        .iter()
+        .map(|issue| issue.check_id.as_str())
+        .collect();
+    // Dedup keeps the headline, detail, and junction records on one per-check_id set.
+    let appeared = appearing_issues(input);
+    // A check added or changed by the scanner explains its own appearance.
+    let (new_issues, detector_changed): (Vec<&CurrentIssue>, Vec<&CurrentIssue>) = appeared
+        .into_iter()
+        .partition(|issue| attribution.attributable(&issue.check_id));
+    let detector_changed_count = detector_changed.len();
+    let fixed_check_ids: Vec<String> = input
+        .active_check_ids
+        .iter()
+        .filter(|check_id| !current_ids.contains(check_id.as_str()))
+        // Retired checks stop reporting without the deploy fixing them.
+        .filter(|check_id| attribution.attributable(check_id))
+        .cloned()
+        .collect();
+    let score_drop = input.previous_score - input.current_score;
+    let new_critical = new_issues
+        .iter()
+        .any(|issue| issue.severity == Severity::Critical);
+    let new_critical_or_high = new_critical
+        || new_issues
+            .iter()
+            .any(|issue| issue.severity == Severity::High);
+    if !should_blame(
+        score_drop,
+        new_issues.len(),
+        window.total,
+        new_critical_or_high,
+    ) {
+        return None;
+    }
+    let mut new_sorted: Vec<CurrentIssue> = new_issues.into_iter().cloned().collect();
+    new_sorted.sort_by(|a, b| a.check_id.cmp(&b.check_id));
+    let (title, description) = blame_copy(
+        input,
+        window,
+        &new_sorted,
+        fixed_check_ids.len(),
+        detector_changed_count,
+        score_drop,
+    );
+    Some(BlameDecision {
+        new_issues: new_sorted,
+        detector_changed_count,
+        fixed_check_ids,
+        score_drop,
+        severity: blame_severity(score_drop, new_critical).to_string(),
+        title,
+        description,
+        commit_from: window.oldest.clone(),
+        commit_to: window.newest.clone(),
+    })
+}
+
+fn blame_copy(
+    input: &BlameInput,
+    window: &CommitWindow,
+    new_issues: &[CurrentIssue],
+    fixed_count: usize,
+    withheld_count: usize,
+    score_drop: i64,
+) -> (String, String) {
+    let scan_label = if input.scan_kind == "web" {
+        "Web Scan"
+    } else {
+        "Code Scan"
+    };
+    let title = if score_drop >= BLAME_SCORE_DROP_THRESHOLD {
+        format!("Deploy dropped the {scan_label} score by {score_drop} points")
+    } else {
+        format!(
+            "Deploy introduced {} new {scan_label} {}",
+            new_issues.len(),
+            if new_issues.len() == 1 {
+                "finding"
+            } else {
+                "findings"
+            }
+        )
+    };
+    let short_from = &window.oldest[..window.oldest.len().min(7)];
+    let short_to = &window.newest[..window.newest.len().min(7)];
+    // A capped list names how many of the counted commits it covers.
+    let capped_note = if window.total > window.listed {
+        format!(" (newest {} shown)", window.listed)
+    } else {
+        String::new()
+    };
+    // Explain why a count smaller than the issue list is a decision rather than an inconsistency.
+    let withheld_note = match (withheld_count, input.engine_release.as_deref()) {
+        (0, _) => String::new(),
+        (count, Some(release)) => format!(
+            " {} other {} {} from {} that changed in SiteCMD {}, so {} not attributed to these commits.",
+            count,
+            if count == 1 { "finding" } else { "findings" },
+            if count == 1 { "comes" } else { "come" },
+            if count == 1 { "a check" } else { "checks" },
+            release,
+            if count == 1 { "it is" } else { "they are" },
+        ),
+        (count, None) => format!(
+            " {} other {} {} from {} that changed between the two scans, so {} not attributed to these commits.",
+            count,
+            if count == 1 { "finding" } else { "findings" },
+            if count == 1 { "comes" } else { "come" },
+            if count == 1 { "a check" } else { "checks" },
+            if count == 1 { "it is" } else { "they are" },
+        ),
+    };
+    let description = format!(
+        "{} {} landed between the last two scans ({}..{}){}. {} new {} appeared and {} resolved.{} The commit range is the blame window.",
+        window.total,
+        if window.total == 1 { "commit" } else { "commits" },
+        short_from,
+        short_to,
+        capped_note,
+        new_issues.len(),
+        if new_issues.len() == 1 { "issue" } else { "issues" },
+        fixed_count,
+        withheld_note,
+    );
+
+    (title, description)
+}
+
 /// Keep the highest-severity finding for each canonical check ID.
 fn dedup_by_check_id(issues: Vec<&CurrentIssue>) -> Vec<&CurrentIssue> {
     let mut best: HashMap<&str, &CurrentIssue> = HashMap::new();
@@ -185,69 +410,36 @@ pub fn emit_regression_blame(
     let previous = snapshot.previous.as_ref()?;
     let project_path = ctx.project_path?;
 
-    let current_ids: HashSet<&str> = ctx
-        .current_issues
-        .iter()
-        .map(|issue| issue.check_id.as_str())
-        .collect();
-    // Dedup before counting: the headline count, detail list, and junction
-    // rows must all describe the same per-check_id set.
-    let appeared: Vec<&CurrentIssue> = dedup_by_check_id(
-        ctx.current_issues
-            .iter()
-            .filter(|issue| !snapshot.active_check_ids.contains(&issue.check_id))
-            .collect(),
-    );
-    // Split what the deploy can be held to from what the scanner did to
-    // itself. A check the previous run's build could not produce, or produced
-    // under a different meaning, explains its own appearance.
     let attribution = Attribution::between(ctx.db, previous.scan_id, ctx.scan_id);
-    let (new_issues, detector_changed): (Vec<&CurrentIssue>, Vec<&CurrentIssue>) = appeared
-        .into_iter()
-        .partition(|issue| attribution.attributable(&issue.check_id));
-    if !detector_changed.is_empty() {
+    let (commits, commit_count) =
+        get_commits_between(project_path, &previous.timestamp, ctx.current_timestamp);
+    let window = match (commits.first(), commits.last()) {
+        (Some(newest), Some(oldest)) => Some(CommitWindow {
+            newest: newest.hash.clone(),
+            oldest: oldest.hash.clone(),
+            listed: u32::try_from(commits.len()).unwrap_or(u32::MAX),
+            total: commit_count,
+        }),
+        _ => None,
+    };
+    let input = BlameInput {
+        scan_kind: ctx.scan_kind.to_string(),
+        previous_score: previous.overall_score,
+        current_score: ctx.current_score,
+        current_issues: ctx.current_issues.to_vec(),
+        active_check_ids: snapshot.active_check_ids.iter().cloned().collect(),
+        engine_release: attribution.engine_release().map(str::to_string),
+        window,
+    };
+    let held_back = withheld_check_count(&input, &attribution);
+    if held_back > 0 {
         tracing::info!(
-            held_back = detector_changed.len(),
+            held_back,
             "findings withheld from deploy blame: their checks changed between the two runs"
         );
     }
-    let mut fixed_check_ids: Vec<&String> = snapshot
-        .active_check_ids
-        .iter()
-        .filter(|check_id| !current_ids.contains(check_id.as_str()))
-        // A retired or re-contracted check stops producing findings. That is
-        // the scanner shrinking, and counting it as fixed would credit a
-        // deploy for work nobody did.
-        .filter(|check_id| attribution.attributable(check_id))
-        .collect();
-    fixed_check_ids.sort();
-
-    let score_drop = previous.overall_score - ctx.current_score;
-    let (commits, commit_count) =
-        get_commits_between(project_path, &previous.timestamp, ctx.current_timestamp);
-    let new_critical = new_issues
-        .iter()
-        .any(|issue| issue.severity == Severity::Critical);
-    let new_critical_or_high = new_critical
-        || new_issues
-            .iter()
-            .any(|issue| issue.severity == Severity::High);
-
-    if !should_blame(
-        score_drop,
-        new_issues.len(),
-        commit_count,
-        new_critical_or_high,
-    ) {
-        return None;
-    }
-
-    // git log prints newest first.
-    let commit_to = commits.first().map(|c| c.hash.clone())?;
-    // Known v1 limitation: when the window is capped (commit_count >
-    // commits.len), commit_from is the oldest STORED commit, not the
-    // window's true oldest.
-    let commit_from = commits.last().map(|c| c.hash.clone())?;
+    let decision = decide_blame(&input, &attribution)?;
+    let new_refs: Vec<&CurrentIssue> = decision.new_issues.iter().collect();
     let stored: Vec<&GitCommit> = commits.iter().take(STORED_COMMITS_MAX).collect();
     let commits_json = serde_json::to_string(
         &stored
@@ -265,8 +457,6 @@ pub fn emit_regression_blame(
     )
     .unwrap_or_else(|_| "[]".to_string());
 
-    let mut new_sorted: Vec<&CurrentIssue> = new_issues.clone();
-    new_sorted.sort_by(|a, b| a.check_id.cmp(&b.check_id));
     let now = chrono::Utc::now().timestamp_millis();
 
     let regression_id = match ctx.db.insert_regression(RegressionInput {
@@ -277,12 +467,16 @@ pub fn emit_regression_blame(
         scan_id: ctx.scan_id,
         prev_score: previous.overall_score,
         score: ctx.current_score,
-        commit_from: commit_from.clone(),
-        commit_to: commit_to.clone(),
+        commit_from: decision.commit_from.clone(),
+        commit_to: decision.commit_to.clone(),
         commit_count: commit_count as i64,
         commits_json: commits_json.clone(),
-        new_check_ids: new_sorted.iter().map(|i| i.check_id.clone()).collect(),
-        fixed_check_ids_json: serde_json::to_string(&fixed_check_ids)
+        new_check_ids: decision
+            .new_issues
+            .iter()
+            .map(|i| i.check_id.clone())
+            .collect(),
+        fixed_check_ids_json: serde_json::to_string(&decision.fixed_check_ids)
             .unwrap_or_else(|_| "[]".to_string()),
         created_at: now,
     }) {
@@ -299,89 +493,26 @@ pub fn emit_regression_blame(
         regression_id,
         previous_score: previous.overall_score,
         current_score: ctx.current_score,
-        score_drop,
-        new_issues: &new_sorted,
-        fixed_count: fixed_check_ids.len(),
-        detector_changed_count: detector_changed.len(),
+        score_drop: decision.score_drop,
+        new_issues: &new_refs,
+        fixed_count: decision.fixed_check_ids.len(),
+        detector_changed_count: decision.detector_changed_count,
         engine_release: attribution.engine_release(),
-        commit_from: &commit_from,
-        commit_to: &commit_to,
+        commit_from: &decision.commit_from,
+        commit_to: &decision.commit_to,
         commit_count,
         commits_json: &commits_json,
         env_url: ctx.env_url,
     });
 
-    let scan_label = if ctx.scan_kind == "web" {
-        "Web Scan"
-    } else {
-        "Code Scan"
-    };
-    let title = if score_drop >= BLAME_SCORE_DROP_THRESHOLD {
-        format!("Deploy dropped the {scan_label} score by {score_drop} points")
-    } else {
-        format!(
-            "Deploy introduced {} new {scan_label} {}",
-            new_sorted.len(),
-            if new_sorted.len() == 1 {
-                "finding"
-            } else {
-                "findings"
-            }
-        )
-    };
-    let short_from = &commit_from[..commit_from.len().min(7)];
-    let short_to = &commit_to[..commit_to.len().min(7)];
-    // Honest copy when the window outgrew the stored list: name how many of
-    // the counted commits the range actually covers.
-    let capped_note = if commit_count as usize > commits.len() {
-        format!(" (newest {} shown)", commits.len())
-    } else {
-        String::new()
-    };
-    // Say what was held back and why, so a count smaller than the issues list
-    // reads as a decision rather than an inconsistency.
-    let withheld_note = match (detector_changed.len(), attribution.engine_release()) {
-        (0, _) => String::new(),
-        (count, Some(release)) => format!(
-            " {} other {} {} from {} that changed in SiteCMD {}, so {} not attributed to these commits.",
-            count,
-            if count == 1 { "finding" } else { "findings" },
-            if count == 1 { "comes" } else { "come" },
-            if count == 1 { "a check" } else { "checks" },
-            release,
-            if count == 1 { "it is" } else { "they are" },
-        ),
-        (count, None) => format!(
-            " {} other {} {} from {} that changed between the two scans, so {} not attributed to these commits.",
-            count,
-            if count == 1 { "finding" } else { "findings" },
-            if count == 1 { "comes" } else { "come" },
-            if count == 1 { "a check" } else { "checks" },
-            if count == 1 { "it is" } else { "they are" },
-        ),
-    };
-    let description = format!(
-        "{} {} landed between the last two scans ({}..{}){}. {} new {} appeared and {} resolved.{} The commit range is the blame window.",
-        commit_count,
-        if commit_count == 1 { "commit" } else { "commits" },
-        short_from,
-        short_to,
-        capped_note,
-        new_sorted.len(),
-        if new_sorted.len() == 1 { "issue" } else { "issues" },
-        fixed_check_ids.len(),
-        withheld_note,
-    );
-
-    let severity = blame_severity(score_drop, new_critical);
     let alert = AlertInput {
         project_id: ctx.project_id,
         env_url: Some(ctx.env_url.to_string()),
         source: SITECMD_ALERT_SOURCE.to_string(),
         alert_id: format!("deploy-regression:{}:{}", ctx.scan_kind, ctx.scan_id),
-        severity: severity.to_string(),
-        title: title.clone(),
-        description,
+        severity: decision.severity,
+        title: decision.title.clone(),
+        description: decision.description,
         detail_json: Some(detail),
         occurred_at: now,
         observed_at: now,
@@ -393,11 +524,11 @@ pub fn emit_regression_blame(
 
     Some(RegressionNotice {
         regression_id,
-        title,
+        title: decision.title,
         body: format!(
             "{} new {} after {} {} on {}",
-            new_sorted.len(),
-            if new_sorted.len() == 1 {
+            decision.new_issues.len(),
+            if decision.new_issues.len() == 1 {
                 "issue"
             } else {
                 "issues"
@@ -465,3 +596,7 @@ fn build_detail_json(args: DetailArgs<'_>) -> String {
 #[cfg(test)]
 #[path = "regression_blame_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "regression_blame_parity_tests.rs"]
+mod parity_tests;

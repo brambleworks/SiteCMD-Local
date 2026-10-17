@@ -19,6 +19,22 @@ import {
 
 // Vendor the exact corpus replayed by the native engine tests.
 const corpusPath = path.join(cargoRoot, "crates", "engine", "fixtures", "checks", "golden.json");
+const stackCorpusPath = path.join(
+  cargoRoot,
+  "crates",
+  "engine",
+  "fixtures",
+  "stack",
+  "golden.json",
+);
+const sessionCorpusPath = path.join(
+  cargoRoot,
+  "crates",
+  "engine",
+  "fixtures",
+  "session",
+  "golden.json",
+);
 const manifestPath = path.join(
   cargoRoot,
   "crates",
@@ -33,13 +49,15 @@ const SIZE_NOTICE_BYTES = 5 * 1024 * 1024;
 
 const args = process.argv.slice(2);
 const allowDirty = args.includes("--allow-dirty");
-const outDir = outDirFrom(args, ["SiteCMD-Web", "apps", "sitecmd-scan", "src", "engine"]);
+const outDir = outDirFrom(args, ["SiteCMD-Connect", "apps", "sitecmd-scan", "src", "engine"]);
 
-const dirtySuffix = engineTreeSuffix(allowDirty);
+const dirtySuffix = engineTreeSuffix(allowDirty, ["apps/desktop/src-tauri", "tools/scripts"]);
 const artifactPath = buildWasmArtifact({ features: ["checks"] });
 
 const artifact = readFileSync(artifactPath);
 const corpus = readFileSync(corpusPath);
+const stackCorpus = readFileSync(stackCorpusPath);
+const sessionCorpus = readFileSync(sessionCorpusPath);
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const axeCore = readFileSync(path.join(browserPath, "axe.min.js"), "utf8");
 const cwvObserver = readFileSync(path.join(browserPath, "cwv_observer.js"), "utf8");
@@ -78,6 +96,8 @@ const provenance = {
   profile: WASM_PROFILE,
   artifact_sha256: sha256(artifact),
   corpus_sha256: sha256(corpus),
+  stack_corpus_sha256: sha256(stackCorpus),
+  session_corpus_sha256: sha256(sessionCorpus),
   browser_assets_sha256: sha256(browserAssets),
   manifest_digest: manifest.manifest_digest,
 };
@@ -87,6 +107,8 @@ vendorSet({
   files: [
     { name: "checks.wasm", bytes: artifact },
     { name: "golden.json", bytes: corpus },
+    { name: "stack-golden.json", bytes: stackCorpus },
+    { name: "session-golden.json", bytes: sessionCorpus },
     { name: "browser-assets.json", bytes: browserAssets },
   ],
   record: provenance,
@@ -102,6 +124,6 @@ if (artifact.length > SIZE_NOTICE_BYTES) {
       1024
     ).toFixed(
       0,
-    )} MB review threshold. Workers enforce a bundle ceiling; decide what to do about it deliberately rather than by trimming checks.`,
+    )} MB notice threshold. Workers enforce a bundle ceiling; decide what to do about it deliberately rather than by trimming checks.`,
   );
 }

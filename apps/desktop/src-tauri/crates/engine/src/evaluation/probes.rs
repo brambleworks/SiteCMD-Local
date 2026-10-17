@@ -4,24 +4,31 @@
 //! callers repeat plan and execute rounds until no probes remain.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
 use super::probe_checks::PROBE_CHECKS;
+use super::sitemap_children::ChildSitemaps;
 use super::{
     CheckLayer, EvaluationError, EvaluationRequest, NotEvaluated, NotEvaluatedReason, PlannedCheck,
     MANIFEST,
 };
+use crate::checks::seo::links::LinkTargets;
 use crate::manifest::{HostedLane, RuntimeFact};
 use crate::page::PageContext;
 use crate::probe::{
-    BodyPolicy, ProbeFailure, ProbeFailureClass, ProbeMethod, ProbeOutcome, ProbeRequest,
-    RedirectPolicy,
+    BodyLimit, BodyPolicy, ContentCoding, ProbeFailure, ProbeFailureClass, ProbeMeasure,
+    ProbeMethod, ProbeOutcome, ProbeRequest, RedirectPolicy,
 };
 
 /// Non-printable separator for collision-resistant probe keys whose fields may
 /// contain any printable character.
 const KEY_SEPARATOR: char = '\u{1f}';
+
+/// The key field a child sitemap's request carries, by which a route reads
+/// the answer as it records it.
+const SITEMAP_CHILD_FIELD: &str = "limit=sitemap_child";
 
 /// One probe the caller must execute and every manifest check it serves.
 /// Exact comparisons use serialized boundary bytes, so this type intentionally
@@ -36,11 +43,25 @@ pub struct PlannedProbe {
     pub checks: Vec<String>,
 }
 
-/// One executed probe, keyed back to the plan that asked for it.
+/// One executed probe, keyed back to the plan that asked for it, with what the
+/// runtime measured executing it when the request asked for a measurement.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutedProbe {
     pub key: String,
     pub outcome: ProbeOutcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measure: Option<ProbeMeasure>,
+}
+
+impl ExecutedProbe {
+    /// An executed probe that measured nothing beyond its outcome.
+    pub fn new(key: String, outcome: ProbeOutcome) -> Self {
+        Self {
+            key,
+            outcome,
+            measure: None,
+        }
+    }
 }
 
 /// One route's probe plan: what to fetch, which checks that unlocks, and
@@ -68,6 +89,7 @@ pub fn probe_key(request: &ProbeRequest) -> String {
         BodyPolicy::SuccessOnly => "body=success_only",
         BodyPolicy::Always => "body=always",
         BodyPolicy::None => "body=none",
+        BodyPolicy::Count => "body=count",
     };
     let redirects = match request.redirects {
         RedirectPolicy::Follow => "redirects=follow",
@@ -79,6 +101,25 @@ pub fn probe_key(request: &ProbeRequest) -> String {
         key.push(KEY_SEPARATOR);
         key.push_str(field);
     }
+    match request.limit {
+        BodyLimit::Sitemap => {
+            key.push(KEY_SEPARATOR);
+            key.push_str("limit=sitemap");
+        }
+        BodyLimit::SitemapChild => {
+            key.push(KEY_SEPARATOR);
+            key.push_str(SITEMAP_CHILD_FIELD);
+        }
+        BodyLimit::Probe => {}
+    }
+    if request.coding == ContentCoding::Raw {
+        key.push(KEY_SEPARATOR);
+        key.push_str("coding=raw");
+    }
+    if let Some(sample) = request.timed {
+        key.push(KEY_SEPARATOR);
+        key.push_str(&format!("timed={sample}"));
+    }
     for (name, value) in &request.headers {
         key.push(KEY_SEPARATOR);
         key.push_str(&name.to_ascii_lowercase());
@@ -86,6 +127,12 @@ pub fn probe_key(request: &ProbeRequest) -> String {
         key.push_str(value);
     }
     key
+}
+
+/// Whether a probe key is a child sitemap's request, as `probe_key` writes it.
+pub(super) fn is_sitemap_child_key(key: &str) -> bool {
+    key.rsplit_once(KEY_SEPARATOR)
+        .is_some_and(|(_, field)| field == SITEMAP_CHILD_FIELD)
 }
 
 /// Represent a planned but unexecuted probe as a transport failure.
@@ -98,7 +145,7 @@ pub fn unexecuted_probe() -> ProbeOutcome {
 
 /// The executed probes, indexed for lookup by request.
 pub struct ProbeOutcomes<'a> {
-    by_key: HashMap<&'a str, &'a ProbeOutcome>,
+    by_key: HashMap<&'a str, &'a ExecutedProbe>,
 }
 
 impl<'a> ProbeOutcomes<'a> {
@@ -106,14 +153,17 @@ impl<'a> ProbeOutcomes<'a> {
     pub fn index(executed: &'a [ExecutedProbe]) -> Self {
         let mut by_key = HashMap::with_capacity(executed.len());
         for entry in executed {
-            by_key.insert(entry.key.as_str(), &entry.outcome);
+            by_key.insert(entry.key.as_str(), entry);
         }
         Self { by_key }
     }
 
     /// The outcome for one planned request, or `None` when it was not run.
     pub fn get(&self, request: &ProbeRequest) -> Option<&'a ProbeOutcome> {
-        self.by_key.get(probe_key(request).as_str()).copied()
+        self.by_key
+            .get(probe_key(request).as_str())
+            .copied()
+            .map(|entry| &entry.outcome)
     }
 
     /// Whether a key already has an answer. The plan's own short-circuit:
@@ -128,11 +178,19 @@ impl<'a> ProbeOutcomes<'a> {
     pub fn owned(&self, request: &ProbeRequest) -> ProbeOutcome {
         self.get(request).cloned().unwrap_or_else(unexecuted_probe)
     }
+
+    /// What the runtime measured executing one planned request, if anything.
+    pub fn measure(&self, request: &ProbeRequest) -> Option<ProbeMeasure> {
+        self.by_key
+            .get(probe_key(request).as_str())
+            .and_then(|entry| entry.measure)
+    }
 }
 
-/// Everything a probe-lane plan or verdict may read: the document, the answers
-/// gathered so far, and what the caller recorded asking for. No client, no
-/// clock, no cache.
+/// Everything a probe-lane plan or verdict may read: the document, the answers gathered so far,
+/// what the caller recorded asking for, the kept anchor resolution and asset sample,
+/// and the index sitemap's children this route reads.
+/// No client, no clock.
 pub struct ProbeContext<'a> {
     pub page: &'a PageContext,
     pub outcomes: &'a ProbeOutcomes<'a>,
@@ -141,38 +199,18 @@ pub struct ProbeContext<'a> {
     pub resolver_facts: Option<&'a crate::dns::ResolverFacts>,
     pub vulnerability_facts:
         Option<&'a crate::checks::security::vulnerable_libraries::AdvisoryLookup>,
+    /// The page's anchor destinations, resolved by the first link planner or
+    /// verdict that asks.
+    pub link_targets: &'a OnceLock<LinkTargets>,
+    /// An index sitemap's children this route reads, and what they gave.
+    pub sitemap_children: &'a ChildSitemaps,
+    /// The asset sample's addresses, resolved by the first asset planner that
+    /// asks.
+    pub asset_sample: &'a OnceLock<Vec<url::Url>>,
 }
 
 /// Probe entries not yet planned by this crate, paired with the required reason.
 pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[
-    (
-        "config.sitemap_in_robots",
-        "the robots.txt fetch is still planned by the desktop's per-scan probe cache",
-    ),
-    (
-        "performance.asset_caching",
-        "the subresource collection and fetch loop are still in the desktop shell",
-    ),
-    (
-        "performance.asset_weight",
-        "the subresource collection and fetch loop are still in the desktop shell",
-    ),
-    (
-        "performance.broken_images",
-        "the image collection and fetch loop are still in the desktop shell",
-    ),
-    (
-        "performance.compression",
-        "needs a raw Content-Encoding observation the probe vocabulary does not carry yet",
-    ),
-    (
-        "performance.images.heavy",
-        "the image collection and fetch loop are still in the desktop shell",
-    ),
-    (
-        "performance.ttfb",
-        "a measured timing, not a document; the probe vocabulary carries no timing",
-    ),
     (
         "security.directory_listing",
         "the candidate-path sweep is still planned by the desktop shell",
@@ -192,30 +230,6 @@ pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[
     (
         "security.security_txt",
         "the well-known path sweep is still planned by the desktop shell",
-    ),
-    (
-        "seo.ai_crawler_blocking",
-        "the robots.txt fetch is still planned by the desktop's per-scan probe cache",
-    ),
-    (
-        "seo.llms_txt",
-        "the well-known path sweep is still planned by the desktop shell",
-    ),
-    (
-        "seo.og_image_status",
-        "the og:image target fetch is still planned by the desktop shell",
-    ),
-    (
-        "seo.robots_txt",
-        "the robots.txt fetch is still planned by the desktop's per-scan probe cache",
-    ),
-    (
-        "seo.sitemap",
-        "the bounded sitemap candidate walk is still planned by the desktop shell",
-    ),
-    (
-        "seo.sitemap_freshness",
-        "the bounded sitemap candidate walk is still planned by the desktop shell",
     ),
 ];
 
@@ -240,27 +254,22 @@ pub(super) fn probe_check_index() -> HashMap<&'static str, usize> {
     index
 }
 
-/// Plan remaining probes for one route. Repeat until the plan is empty before
-/// calling [`super::evaluate`].
+/// Plan remaining probes for one route from its whole request. Repeat until
+/// the plan is empty before calling [`super::evaluate`].
 pub fn probe_plan(request: &EvaluationRequest) -> Result<ProbePlan, EvaluationError> {
-    let page = request.page.page_context()?;
-    let executed = request.probe_outcomes.as_deref().unwrap_or(&[]);
-    let outcomes = ProbeOutcomes::index(executed);
-    let context = ProbeContext {
-        page: &page,
-        outcomes: &outcomes,
-        requested_url: request.page.requested_url.as_deref(),
-        resolver_facts: request.resolver_facts.as_ref(),
-        vulnerability_facts: request.vulnerability_facts.as_ref(),
-    };
+    let mut route = super::RouteSession::open(request.page.clone())?;
+    route.record(request.probe_outcomes.clone());
+    Ok(route.plan())
+}
 
+pub(super) fn plan_probes(context: &ProbeContext) -> ProbePlan {
     // Probes in check-table order, then in each check's own order, merged by
     // key. `position` is a lookup only: the output order comes from the walk,
     // never from the map.
     let mut probes: Vec<PlannedProbe> = Vec::new();
     let mut position: HashMap<String, usize> = HashMap::new();
     for check in PROBE_CHECKS {
-        for request in (check.plan)(&context) {
+        for request in (check.plan)(context) {
             let key = probe_key(&request);
             // Deduplicate already-answered requests centrally so individual
             // checks can state their complete needs.
@@ -326,12 +335,12 @@ pub fn probe_plan(request: &EvaluationRequest) -> Result<ProbePlan, EvaluationEr
         }
     }
 
-    Ok(ProbePlan {
+    ProbePlan {
         manifest_digest: MANIFEST.digest().to_string(),
         probes,
         planned,
         not_planned,
-    })
+    }
 }
 
 /// Add a second claimant's ids to a probe already planned, without

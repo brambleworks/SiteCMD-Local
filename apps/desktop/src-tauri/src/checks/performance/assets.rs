@@ -1,10 +1,9 @@
-//! Asset-sampler transport with page-subresource policy and bounded fetching.
-
-mod measure;
+//! Asset-sampler shell: the desktop's page-subresource policy and fetch
+//! concurrency over the engine's requests, sent through the raw probe seam.
 
 use std::future::Future;
 
-use crate::checks::{AsyncCheck, CheckContext, CheckResult, ScanCategory};
+use crate::checks::{probe_raw, AsyncCheck, CheckContext, CheckResult, ScanCategory};
 use futures_util::{stream, StreamExt};
 use sitecmd_engine::checks::performance::assets;
 use sitecmd_engine::checks::performance::assets::MeasuredAsset;
@@ -37,21 +36,24 @@ impl AsyncCheck for AssetSamplerCheck {
             |target| {
                 crate::network_policy::validate_page_subresource_target(target, policy).is_ok()
             },
-            crate::constants::ASSET_SAMPLE_LIMIT,
+            assets::ASSET_SAMPLE_LIMIT,
         );
-
-        let client = measurement_client(ctx.is_strict_localhost);
+        let strict_local = ctx.is_strict_localhost;
         let measured = collect_measurements(
             collection
                 .sampled
                 .clone()
                 .into_iter()
-                .map(move |asset| measure::fetch_asset(client.clone(), asset)),
+                .map(move |asset| measure_asset(strict_local, asset)),
         )
         .await;
-
         assets::evaluate_asset_sample(ctx.body.len() as u64, &collection, &measured)
     }
+}
+
+async fn measure_asset(is_strict_local: bool, asset: assets::CollectedAsset) -> MeasuredAsset {
+    let (outcome, measure) = probe_raw(is_strict_local, assets::asset_request(&asset.url)).await;
+    assets::measured_asset(&asset, &outcome, measure)
 }
 
 async fn collect_measurements<F>(fetches: impl IntoIterator<Item = F>) -> Vec<MeasuredAsset>
@@ -66,14 +68,6 @@ where
         .await;
     measured.sort_unstable_by_key(|(index, _)| *index);
     measured.into_iter().map(|(_, asset)| asset).collect()
-}
-
-/// The sampler reports transfer size, so it fetches through the client that
-/// does not auto-decompress. The shared client negotiates gzip and brotli;
-/// decoding drops `Content-Length` and leaves the decoded byte count, which
-/// would be reported as the asset's weight on the wire.
-fn measurement_client(is_strict_local: bool) -> &'static reqwest::Client {
-    crate::http_client::no_decompress_client(is_strict_local)
 }
 
 #[cfg(test)]
@@ -96,7 +90,7 @@ mod tests {
 
         let started = Cell::new(0);
         let running = Cell::new(0);
-        let fetches = (0..crate::constants::ASSET_SAMPLE_LIMIT).map(|_| async {
+        let fetches = (0..assets::ASSET_SAMPLE_LIMIT).map(|_| async {
             started.set(started.get() + 1);
             running.set(running.get() + 1);
             let _running = RunningFetch(&running);
@@ -133,7 +127,7 @@ mod tests {
                 group: 0,
             })
         };
-        let (mut senders, receivers): (Vec<_>, Vec<_>) = (0..crate::constants::ASSET_SAMPLE_LIMIT)
+        let (mut senders, receivers): (Vec<_>, Vec<_>) = (0..assets::ASSET_SAMPLE_LIMIT)
             .map(|_| {
                 let (sender, receiver) = tokio::sync::oneshot::channel();
                 (Some(sender), receiver)
@@ -176,7 +170,7 @@ mod tests {
         let Poll::Ready(measured) = sampler.as_mut().poll(&mut context) else {
             panic!("all asset requests completed");
         };
-        let expected: Vec<_> = (0..crate::constants::ASSET_SAMPLE_LIMIT)
+        let expected: Vec<_> = (0..assets::ASSET_SAMPLE_LIMIT)
             .map(|index| measured_asset(index).url)
             .collect();
         assert_eq!(
@@ -284,20 +278,122 @@ mod tests {
         assert_eq!(public.skipped_unsupported, 1);
     }
 
-    #[test]
-    fn the_sampler_never_measures_through_a_decompressing_client() {
-        for is_strict_local in [false, true] {
-            let sampler = measurement_client(is_strict_local) as *const reqwest::Client;
-            assert_eq!(
-                sampler,
-                crate::http_client::no_decompress_client(is_strict_local) as *const reqwest::Client,
-                "transfer size must be measured on the raw wire response"
-            );
-            assert_ne!(
-                sampler,
-                crate::http_client::for_url(is_strict_local) as *const reqwest::Client,
-                "the shared client negotiates gzip and brotli; measuring through it would report decoded bytes as transfer weight"
-            );
+    /// Serve one asset answer and hand back the request head it read, so a
+    /// case can check what the sampler asked for as well as what it graded.
+    async fn asset_origin(answer: &'static str) -> (String, tokio::task::JoinHandle<String>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind asset origin");
+        let addr = listener.local_addr().expect("asset origin address");
+        let served = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept asset request");
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut buffer).await.expect("read request head");
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..read]);
+            }
+            stream
+                .write_all(answer.as_bytes())
+                .await
+                .expect("write asset answer");
+            stream.shutdown().await.expect("close asset answer");
+            String::from_utf8_lossy(&request).to_ascii_lowercase()
+        });
+        (format!("http://{addr}"), served)
+    }
+
+    fn asset_context(origin: &str, body: String) -> CheckContext {
+        CheckContext {
+            page: crate::checks::PageContext {
+                evaluation_time: chrono::Utc::now(),
+                url: url::Url::parse(&format!("{origin}/")).expect("origin url"),
+                response_headers: reqwest::header::HeaderMap::new(),
+                status_code: 200,
+                body,
+                is_localhost: true,
+                is_strict_localhost: true,
+                http_version: Some("HTTP/1.1".to_string()),
+                body_lower_cache: std::sync::OnceLock::new(),
+            },
+            client: crate::http_client::for_url(true).clone(),
+            probe_cache: Default::default(),
         }
+    }
+
+    #[tokio::test]
+    async fn a_sampled_asset_is_requested_and_measured_through_the_raw_seam() {
+        // The request must carry the one-byte range and the identity coding,
+        // and a read through the decoding seam would be refused unsent,
+        // leaving the image unsized.
+        let (origin, served) = asset_origin(
+            "HTTP/1.1 206 Partial Content\r\nContent-Type: image/jpeg\r\nContent-Range: bytes 0-0/900000\r\nContent-Length: 1\r\nConnection: close\r\n\r\nx",
+        )
+        .await;
+        let ctx = asset_context(
+            &origin,
+            format!("<html><body><img src=\"{origin}/hero.jpg\" alt=\"h\"></body></html>"),
+        );
+        let results = AssetSamplerCheck.run(&ctx).await;
+        let heavy = results
+            .iter()
+            .find(|row| row.check_id == "performance.images.heavy")
+            .expect("heavy row");
+        // Checked before the head is awaited: a request refused unsent would
+        // leave the origin waiting for a connection that never comes.
+        assert_eq!(heavy.status, CheckStatus::Warn);
+        let head = served.await.expect("asset origin");
+        assert!(head.contains("\r\nrange: bytes=0-0\r\n"), "{head}");
+        assert!(head.contains("\r\naccept-encoding: identity\r\n"), "{head}");
+    }
+
+    #[tokio::test]
+    async fn a_sampled_unsized_stylesheet_keeps_its_counted_bytes() {
+        // Dropping the raw seam's measure leaves the stylesheet's bytes unmeasured.
+        let (origin, served) = asset_origin(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
+        )
+        .await;
+        let ctx = asset_context(
+            &origin,
+            format!("<link rel=\"stylesheet\" href=\"{origin}/app.css\">"),
+        );
+        let results = AssetSamplerCheck.run(&ctx).await;
+        let weight = results
+            .iter()
+            .find(|row| row.check_id == "performance.asset_weight")
+            .expect("weight row");
+        assert_eq!(
+            weight.raw_data.as_ref().expect("weight data")["measured_asset_bytes"],
+            5
+        );
+        served.await.expect("asset origin");
+    }
+
+    #[tokio::test]
+    async fn an_asset_keeps_every_cache_control_line() {
+        // Reading only the first cache line misses the no-store directive on the second.
+        let (origin, served) = asset_origin(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nCache-Control: max-age=60\r\nCache-Control: no-store\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        )
+        .await;
+        let asset = assets::CollectedAsset {
+            url: url::Url::parse(&format!("{origin}/app.css")).expect("asset url"),
+            kind: assets::AssetKind::Style,
+            has_srcset: false,
+            group: 0,
+        };
+        let (outcome, measure) = probe_raw(true, assets::asset_request(&asset.url)).await;
+        served.await.expect("asset origin");
+        assert_eq!(
+            assets::measured_asset(&asset, &outcome, measure)
+                .cache_control
+                .as_deref(),
+            Some("max-age=60, no-store")
+        );
     }
 }

@@ -470,6 +470,77 @@ describe("release pipeline probe and CRLF rules", () => {
     expect(failures.join("\n")).toContain("validate-publish-key");
   });
 
+  it("catches a probe that can no longer mint its OIDC token", () => {
+    const failures = run((file, source) =>
+      file.includes("release.yml")
+        ? source.replace(
+            "      # audience, minted in release-publish on a v* tag of this repository.\n      id-token: write\n",
+            "      # audience, minted in release-publish on a v* tag of this repository.\n",
+          )
+        : source,
+    );
+    expect(failures.join("\n")).toContain("validate-publish-key");
+  });
+
+  it("catches a probe that authenticates with anything but the OIDC token", () => {
+    const failures = run((file, source) =>
+      file.includes("release.yml")
+        ? source.replace(
+            "-w '%{http_code}' -X POST \\\n            -H \"Authorization: Bearer ${token}\"",
+            "-w '%{http_code}' -X POST \\\n            -H \"Authorization: Bearer ${RELEASE_ADMIN_KEY}\"",
+          )
+        : source,
+    );
+    expect(failures.join("\n")).toContain("validate-publish-key");
+  });
+
+  it("catches a manifest advance that stopped presenting the OIDC token", () => {
+    const failures = run((file, source) =>
+      file.includes("release.yml")
+        ? source.replace(
+            '-H "Authorization: Bearer ${token}" \\\n            -H "Content-Type: application/json" \\\n            --data-binary',
+            '-H "Authorization: Bearer ${RELEASE_ADMIN_KEY}" \\\n            -H "Content-Type: application/json" \\\n            --data-binary',
+          )
+        : source,
+    );
+    expect(failures.join("\n")).toContain("releases-audience OIDC token (id-token: write)");
+  });
+
+  it("catches a manifest advance that hides the worker's refusal reason", () => {
+    const failures = run((file, source) =>
+      file.includes("release.yml")
+        ? source.replace("curl --fail-with-body -sS -X POST", "curl --fail -sS -X POST")
+        : source,
+    );
+    expect(failures.join("\n")).toContain("curl --fail-with-body");
+  });
+
+  it("catches a token request that no longer fails on a token-service error", () => {
+    const failures = run((file, source) =>
+      file.includes("release.yml")
+        ? source.replaceAll(
+            'response=$(curl --fail-with-body -sS -H "Authorization: bearer',
+            'response=$(curl -sS -H "Authorization: bearer',
+          )
+        : source,
+    );
+    expect(failures.join("\n")).toContain("validate-publish-key");
+  });
+
+  it("catches a releases-audience token requested by a third step", () => {
+    const tokenLine =
+      '          response=$(curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com")\n';
+    const failures = run((file, source) =>
+      file.includes("release.yml")
+        ? source.replace(
+            "      - name: Smoke test the public release surface\n",
+            `      - name: Smoke test the public release surface\n        run: |\n${tokenLine}`,
+          )
+        : source,
+    );
+    expect(failures.join("\n")).toContain("validate-publish-key");
+  });
+
   it("catches a publish job missing the AWS region", () => {
     const failures = run((file, source) =>
       file.includes("release.yml")

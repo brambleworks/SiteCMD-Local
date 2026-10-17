@@ -330,7 +330,10 @@ mod tests {
             code: "destination_in_use".into(),
             message: "Sites still deliver to this destination.".into(),
             request_id: None,
-            details: Some(serde_json::json!({ "sites": ["site_a", "site_b"] })),
+            details: Some(Box::new(
+                serde_json::json!({ "sites": ["site_a", "site_b"] }),
+            )),
+            retry_after: None,
         };
         assert_eq!(destination_in_use_sites(&in_use), ["site_a", "site_b"]);
 
@@ -339,7 +342,8 @@ mod tests {
             code: "admin_required".into(),
             message: "Only an admin installation may change this account.".into(),
             request_id: None,
-            details: Some(serde_json::json!({ "sites": ["site_a"] })),
+            details: Some(Box::new(serde_json::json!({ "sites": ["site_a"] }))),
+            retry_after: None,
         };
         assert!(destination_in_use_sites(&unrelated).is_empty());
     }
@@ -351,7 +355,8 @@ mod tests {
             code: "stale_revision".into(),
             message: "The settings changed since this revision was read.".into(),
             request_id: None,
-            details: Some(serde_json::json!({ "current_revision": 7 })),
+            details: Some(Box::new(serde_json::json!({ "current_revision": 7 }))),
+            retry_after: None,
         };
         assert_eq!(stale_revision_current(&stale), Some(7));
 

@@ -104,6 +104,24 @@ fn blocked_probe_result(status_code: u16) -> CheckResult {
     }
 }
 
+/// Grade a confirmed 404 without inferring the size of an unread body.
+fn unread_404_result() -> CheckResult {
+    CheckResult {
+        check_id: "config.custom_404".into(),
+        category: ScanCategory::Polish,
+        title: "404 status; response body not read".into(),
+        description: "The generated missing-looking path returned HTTP 404. The response body was not read, so its size and content were not evaluated and it is not treated as a short body.".into(),
+        status: CheckStatus::Pass,
+        severity: Severity::Low,
+        fix_prompt: None,
+        manual_fix: None,
+        raw_data: Some(serde_json::json!({"status_code": 404, "body_read": false})),
+        confidence: crate::checks::IssueConfidence::High,
+        confidence_reason: None,
+        why_it_matters: None,
+    }
+}
+
 /// Grade the missing-page probe outcome.
 pub fn evaluate_missing_page(outcome: ProbeOutcome) -> Vec<CheckResult> {
     let ProbeOutcome::Response(response) = outcome else {
@@ -124,6 +142,9 @@ pub fn evaluate_missing_page(outcome: ProbeOutcome) -> Vec<CheckResult> {
     };
 
     let status_code = response.status;
+    if status_code == 404 && response.body.is_none() {
+        return vec![unread_404_result()];
+    }
     let body_len = response.body.as_ref().map_or(0, |body| body.text.len());
     let kind = missing_page_kind(status_code, body_len);
     if kind == MissingPageKind::Blocked {
@@ -290,6 +311,31 @@ mod tests {
             !result.title.contains("error page"),
             "body length does not establish that the response is an error page"
         );
+    }
+
+    #[test]
+    fn an_unread_404_body_is_neither_minimal_nor_measured() {
+        let outcome = ProbeOutcome::Response(crate::probe::ProbeResponse {
+            status: 404,
+            final_url: "https://example.com/x".into(),
+            content_type: Some("text/html".into()),
+            content_length: Some(524_289),
+            headers: Vec::new(),
+            body: None,
+        });
+        let result = evaluate_missing_page(outcome).remove(0);
+        assert_ne!(result.title, "404 response body is minimal");
+        assert_eq!(result.status, CheckStatus::Pass);
+        assert_eq!(result.title, "404 status; response body not read");
+        assert!(result.description.contains("body was not read"));
+        assert!(result.description.contains("not treated as a short body"));
+        assert!(!result.title.contains("byte"));
+        assert!(!result.description.contains("byte"));
+        assert_eq!(
+            result.raw_data,
+            Some(serde_json::json!({"status_code": 404, "body_read": false}))
+        );
+        assert!(result.manual_fix.is_none());
     }
 
     #[test]

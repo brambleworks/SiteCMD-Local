@@ -14,6 +14,22 @@ pub(super) struct CspEvaluation {
     pub(super) issues: Vec<String>,
 }
 
+/// Every enforced policy the response declares, following CSP Level 3's
+/// serialized policy list parse: commas separate policies, and a token with
+/// no directives is ignored on both lanes.
+pub(super) fn enforced_policies(headers: &http::HeaderMap) -> Vec<String> {
+    crate::header_lines::field_value(headers, "content-security-policy")
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|policy| !parse_csp_directives(policy).is_empty())
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub(super) fn parse_csp_directives(value: &str) -> HashMap<String, Vec<String>> {
     let mut directives: HashMap<String, Vec<String>> = HashMap::new();
     for directive in value.split(';') {

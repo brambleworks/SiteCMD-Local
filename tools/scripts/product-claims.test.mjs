@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { deriveHostedCheckCounts } from "./lib/hosted-check-counts.mjs";
 import {
   PRODUCT_FACTS_FILE,
   deriveCheckCounts,
@@ -98,9 +99,9 @@ describe("check-id extraction", () => {
       }),
       "apps/desktop/src-tauri/src/checks/polish/mod.rs":
         "pub fn run_all_signals(ctx: &Ctx) -> Vec<Signal> {\n    vec![\n        signals::one(ctx),\n    ]\n}",
-      "apps/desktop/src-tauri/src/core/code_scan/registry.rs": '    d("example-rule"),',
+      "apps/desktop/src-tauri/crates/engine/src/code_rules.rs": '    d("example-rule"),',
     };
-    const fakeRead = (file) => sources[file] ?? "";
+    const fakeRead = (file) => sources[file] ?? read(file);
     const fakeList = (dir) =>
       Object.keys(sources).filter((file) => file.startsWith(dir) && file.endsWith(".rs"));
 
@@ -136,7 +137,7 @@ describe("published product facts", () => {
   });
 });
 
-describe("the scanner identity SiteCMD-Web publishes at /scanner", () => {
+describe("the scanner identity published at /scanner", () => {
   const AGENT = "apps/desktop/src-tauri/crates/engine/src/agent.rs";
   const EXPOSED = "apps/desktop/src-tauri/crates/engine/src/checks/security/exposed_files.rs";
 
@@ -168,5 +169,208 @@ describe("the scanner identity SiteCMD-Web publishes at /scanner", () => {
       source.replace(/format!\("[^"]+"\)/, "String::from(version)"),
     );
     expect(() => productFacts(rewritten, listFiles)).toThrow(/User-Agent format/);
+  });
+});
+
+describe("the hosted check count", () => {
+  const facts = productFacts(read, listFiles);
+  const INVENTORY = "apps/desktop/src-tauri/check-inventory.json";
+  const MANIFEST = "apps/desktop/src-tauri/crates/engine/manifest/capability_manifest.json";
+  const RUNNERS_SEO = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners_seo.rs";
+  const PROBES = "apps/desktop/src-tauri/crates/engine/src/evaluation/probes.rs";
+  const SITEMAP = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap.rs";
+  const SITEMAP_DOCUMENT =
+    "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap_document.rs";
+  const CONSTANTS = "apps/desktop/src-tauri/src/constants.rs";
+  const tree = {
+    [INVENTORY]: JSON.stringify({
+      web: [
+        "seo.a",
+        "seo.b",
+        "seo.bb",
+        "seo.browser",
+        "seo.c",
+        "seo.d",
+        "security.exposed_files.x",
+      ],
+    }),
+    [MANIFEST]: JSON.stringify({
+      entries: [
+        { check: "accessibility.axe.", hosted: "browser", scope: "page", family: true },
+        { check: "security.exposed_files.", hosted: "probe_adapter", scope: "page", family: true },
+        { check: "seo.a", hosted: "artifact", scope: "page" },
+        { check: "seo.b", hosted: "probe_adapter", scope: "origin" },
+        { check: "seo.bb", hosted: "probe_adapter", scope: "origin" },
+        { check: "seo.browser", hosted: "browser", scope: "page" },
+        { check: "seo.c", hosted: "unsupported", scope: "page" },
+        { check: "seo.d", hosted: "artifact", scope: "session" },
+        { check: "seo.group", hosted: "artifact", scope: "page" },
+      ],
+    }),
+    [RUNNERS_SEO]: "pub const EXCLUDED_ARTIFACT_CHECKS: &[(&str, &str)] = &[\n];",
+    [PROBES]: [
+      "pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[",
+      '    ("security.exposed_files.", "the desktop shell owns the candidate-path sweep"),',
+      "];",
+    ].join("\n"),
+  };
+  const counts = (overrides = {}) =>
+    deriveHostedCheckCounts(
+      (file) => ({ ...tree, ...overrides })[file] ?? "",
+      facts.checkCounts.axe,
+    );
+  const manifest = (entries) => ({ [MANIFEST]: JSON.stringify({ entries }) });
+
+  it("counts the web checks a hosted lane produces, with the axe rules", () => {
+    expect(counts()).toEqual({
+      web: 5,
+      crossPage: 1,
+      axe: facts.checkCounts.axe,
+      total: 5 + facts.checkCounts.axe,
+    });
+  });
+
+  it("leaves out a check whose producer this build excludes", () => {
+    const excluded = [
+      "pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[",
+      '    ("security.exposed_files.", "the desktop shell owns the candidate-path sweep"),',
+      '    ("seo.b", "the desktop shell owns the robots.txt fetch"),',
+      "];",
+    ].join("\n");
+    expect(counts({ [PROBES]: excluded })).toEqual({
+      web: 4,
+      crossPage: 1,
+      axe: facts.checkCounts.axe,
+      total: 4 + facts.checkCounts.axe,
+    });
+  });
+
+  it("leaves out an artifact check whose producer this build excludes", () => {
+    expect(
+      counts({
+        [RUNNERS_SEO]:
+          'pub const EXCLUDED_ARTIFACT_CHECKS: &[(&str, &str)] = &[\n    ("seo.d", "this build has no producer"),\n];',
+      }),
+    ).toEqual({
+      web: 4,
+      crossPage: 0,
+      axe: facts.checkCounts.axe,
+      total: 4 + facts.checkCounts.axe,
+    });
+  });
+
+  it("refuses to count when an exclusion table or a manifest entry is missing", () => {
+    expect(() => counts({ [PROBES]: "" })).toThrow(/EXCLUDED_PROBE_CHECKS/);
+    expect(() => counts({ [RUNNERS_SEO]: "" })).toThrow(/EXCLUDED_ARTIFACT_CHECKS/);
+    expect(() => counts({ [INVENTORY]: JSON.stringify({ web: ["seo.unregistered"] }) })).toThrow(
+      /seo\.unregistered/,
+    );
+    expect(() => counts({ [INVENTORY]: JSON.stringify({ web: ["seo.group.x"] }) })).toThrow(
+      /seo\.group\.x/,
+    );
+  });
+
+  it("uses an exact entry before its longest matching family", () => {
+    const entries = [
+      { check: "seo.", hosted: "unsupported", scope: "page", family: true },
+      { check: "seo.group.", hosted: "artifact", scope: "session", family: true },
+      { check: "seo.group.exact", hosted: "unsupported", scope: "page" },
+    ];
+    expect(
+      counts({
+        ...manifest(entries),
+        [INVENTORY]: JSON.stringify({ web: ["seo.group.exact", "seo.group.other"] }),
+      }),
+    ).toEqual({ web: 1, crossPage: 1, axe: 0, total: 1 });
+  });
+
+  it("omits axe rules when their family has no hosted lane", () => {
+    const { entries } = JSON.parse(tree[MANIFEST]);
+    expect(
+      counts(
+        manifest(
+          entries.map((entry) =>
+            entry.check === "accessibility.axe." ? { ...entry, hosted: "unsupported" } : entry,
+          ),
+        ),
+      ),
+    ).toEqual({ web: 5, crossPage: 1, axe: 0, total: 5 });
+  });
+
+  it("derives the published hosted count from the inventory", () => {
+    const inventory = JSON.parse(read(INVENTORY));
+    expect(inventory.web).toContain("seo.title");
+    const changed = productFacts(
+      (file) =>
+        file === INVENTORY
+          ? JSON.stringify({ ...inventory, web: inventory.web.filter((id) => id !== "seo.title") })
+          : read(file),
+      listFiles,
+    );
+    expect(changed.hostedCheckCounts.web).toBe(facts.hostedCheckCounts.web - 1);
+  });
+
+  it("publishes the count beside the total, never above it", () => {
+    const hosted = facts.hostedCheckCounts;
+    expect(hosted.total).toBe(hosted.web + hosted.axe);
+    expect(hosted.crossPage).toBeLessThan(hosted.web);
+    expect(hosted.total).toBeLessThan(facts.checkCounts.total);
+  });
+
+  it("publishes the sitemap walk the engine makes", () => {
+    const { sitemapWalk, limits } = facts.scannerIdentity;
+    expect(sitemapWalk.candidatePaths[0]).toBe("/sitemap.xml");
+    expect(sitemapWalk.declaredLimit).toBeGreaterThan(0);
+    expect(limits.sitemapBodyMaxBytes).toBeGreaterThan(limits.probeBodyMaxBytes);
+  });
+
+  it("follows changed sitemap constants and candidate paths", () => {
+    const { sitemapWalk, limits } = JSON.parse(read(PRODUCT_FACTS_FILE)).scannerIdentity;
+    const declaredLimit = sitemapWalk.declaredLimit * 2;
+    const sitemapBodyMaxBytes = limits.sitemapBodyMaxBytes + 1;
+    const sources = {
+      [SITEMAP]: read(SITEMAP).replace(
+        /(SITEMAP_DECLARATION_PROBE_LIMIT: usize = )\d+/,
+        `$1${declaredLimit}`,
+      ),
+      [SITEMAP_DOCUMENT]: read(SITEMAP_DOCUMENT).replace("/sitemap.xml", "/custom-sitemap.xml"),
+      [CONSTANTS]: read(CONSTANTS).replace(
+        /(MAX_SITEMAP_SIZE: u64 = )[^;]+/,
+        `$1${sitemapBodyMaxBytes}`,
+      ),
+    };
+    const changed = productFacts((file) => sources[file] ?? read(file), listFiles).scannerIdentity;
+    expect(changed.sitemapWalk).toEqual({
+      declaredLimit,
+      candidatePaths: sitemapWalk.candidatePaths.map((candidate) =>
+        candidate === "/sitemap.xml" ? "/custom-sitemap.xml" : candidate,
+      ),
+    });
+    expect(changed.limits.sitemapBodyMaxBytes).toBe(sitemapBodyMaxBytes);
+  });
+
+  it("refuses to publish sitemap facts when their constants disappear", () => {
+    for (const [file, name] of [
+      [SITEMAP, "SITEMAP_DECLARATION_PROBE_LIMIT"],
+      [SITEMAP_DOCUMENT, "SITEMAP_CANDIDATE_PATHS"],
+      [CONSTANTS, "MAX_SITEMAP_SIZE"],
+    ]) {
+      expect(() =>
+        productFacts(
+          (asked) =>
+            asked === file ? read(asked).replaceAll(name, "MISSING_CONSTANT") : read(asked),
+          listFiles,
+        ),
+      ).toThrow(name);
+    }
+    expect(() =>
+      productFacts(
+        (file) =>
+          file === SITEMAP_DOCUMENT
+            ? read(file).replace(/(SITEMAP_CANDIDATE_PATHS: \[&str; \d+\] = \[)[\s\S]*?\];/, "$1];")
+            : read(file),
+        listFiles,
+      ),
+    ).toThrow(/no SITEMAP_CANDIDATE_PATHS/);
   });
 });

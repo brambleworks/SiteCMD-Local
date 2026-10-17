@@ -2011,7 +2011,7 @@ fn one_crypto_provider_and_one_root_store_remain() {
 
 /// Total `#[tracing::instrument]` attributes in src/. Lower as trivial getters
 /// and hot paths lose theirs; it must never rise without a reviewed reason.
-const TRACING_INSTRUMENT_BUDGET: usize = 609;
+const TRACING_INSTRUMENT_BUDGET: usize = 605;
 
 #[test]
 fn tracing_instrument_count_only_decreases() {

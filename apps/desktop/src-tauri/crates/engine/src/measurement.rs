@@ -63,6 +63,35 @@ pub fn from_result_raw_data(check: &str, raw: &Value) -> Option<(f64, Measuremen
     (value.is_finite() && value >= 0.0).then_some((value, unit))
 }
 
+/// The sample one probe-lane result row carries, under its check: only for a
+/// check whose manifest lane is the probe lane, so a browser timing graded
+/// into a row is never counted a second time.
+pub fn from_probe_row(row: &crate::vocab::CheckResult) -> Option<(String, f64, MeasurementUnit)> {
+    let entry = MANIFEST.entry(&row.check_id)?;
+    if entry.hosted != HostedLane::ProbeAdapter {
+        return None;
+    }
+    let (value, unit) = from_result_raw_data(&row.check_id, row.raw_data.as_ref()?)?;
+    Some((row.check_id.clone(), value, unit))
+}
+
+/// A route's numeric samples: what its browser navigation observed, then the
+/// timings its probe-lane rows graded.
+pub fn route_samples(
+    vitals: Option<&CoreWebVitals>,
+    probe_rows: &[crate::vocab::CheckResult],
+) -> Vec<crate::evaluation::EvaluationMeasurement> {
+    let browser = vitals
+        .map(from_browser_vitals)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|sample| (sample.check.to_string(), sample.value, sample.unit));
+    browser
+        .chain(probe_rows.iter().filter_map(from_probe_row))
+        .map(|(check, value, unit)| crate::evaluation::EvaluationMeasurement { check, value, unit })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,5 +138,89 @@ mod tests {
         assert!(samples
             .iter()
             .all(|sample| sample.check != "performance.ttfb"));
+    }
+
+    fn row(check: &str, raw: serde_json::Value) -> crate::vocab::CheckResult {
+        crate::vocab::CheckResult {
+            check_id: check.into(),
+            category: crate::vocab::ScanCategory::Performance,
+            title: String::new(),
+            description: String::new(),
+            status: crate::vocab::CheckStatus::Pass,
+            severity: crate::vocab::Severity::Low,
+            fix_prompt: None,
+            manual_fix: None,
+            raw_data: Some(raw),
+            confidence: crate::vocab::IssueConfidence::High,
+            confidence_reason: None,
+            why_it_matters: None,
+        }
+    }
+
+    #[test]
+    fn a_probe_timing_row_is_a_sample() {
+        assert_eq!(
+            from_probe_row(&row(
+                "performance.ttfb",
+                serde_json::json!({ "ttfb_ms": 120 })
+            )),
+            Some((
+                "performance.ttfb".to_string(),
+                120.0,
+                MeasurementUnit::Milliseconds
+            ))
+        );
+    }
+
+    #[test]
+    fn a_browser_measurement_row_is_no_probe_sample() {
+        assert_eq!(
+            from_probe_row(&row(
+                "performance.lcp",
+                serde_json::json!({ "value": 900.0 })
+            )),
+            None
+        );
+        assert_eq!(
+            from_probe_row(&row("performance.compression", serde_json::json!({}))),
+            None
+        );
+    }
+
+    #[test]
+    fn a_route_counts_its_timing_once_whichever_lanes_reported_one() {
+        // Reversed samples or a duplicate browser TTFB change the complete
+        // ordered list.
+        let vitals = CoreWebVitals {
+            lcp_ms: Some(1_200.0),
+            cls: None,
+            fcp_ms: None,
+            ttfb_ms: Some(320.0),
+            observed_long_task_blocking_ms: None,
+            js_errors: vec![],
+            js_error_count: None,
+        };
+        let samples = route_samples(
+            Some(&vitals),
+            &[row(
+                "performance.ttfb",
+                serde_json::json!({ "ttfb_ms": 120 }),
+            )],
+        );
+        assert_eq!(
+            samples,
+            vec![
+                crate::evaluation::EvaluationMeasurement {
+                    check: "performance.lcp".into(),
+                    value: 1_200.0,
+                    unit: MeasurementUnit::Milliseconds,
+                },
+                crate::evaluation::EvaluationMeasurement {
+                    check: "performance.ttfb".into(),
+                    value: 120.0,
+                    unit: MeasurementUnit::Milliseconds,
+                },
+            ]
+        );
     }
 }

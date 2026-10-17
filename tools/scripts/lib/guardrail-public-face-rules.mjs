@@ -46,6 +46,11 @@ const INTENT_PHRASES =
   /SiteCMD should|treat that as product feedback|should make (?:that|the) [a-z-]+ (?:step )?obvious/i;
 // Plain-text names of private records are allowed; deferring a rule to one is not.
 const PRIVATE_RECORD_DEFERRAL = /commercial (?:terms )?spec|RFC's economics section/i;
+// Connect seals stored payloads as jose JWE and signs outgoing webhooks in the
+// Standard Webhooks format, so a spec must not send implementers back to the
+// hand-built nonce allocator, AES-GCM envelope, or body-only HMAC they replaced.
+const RETIRED_CONNECT_CRYPTO =
+  /MAX_ENCRYPTIONS_PER_KID|allocator reservation|\{envelope_version, algorithm, kid, nonce, ciphertext\}|existing `sha256=` lowercase-hex HMAC contract|desktop's exact\s+format|adopts this wire format verbatim/;
 // desktop-repo-public-face plan Task 8 rewrites this walkthrough; exclude it here until then.
 const WALKTHROUGH_PENDING_TASK_8 = `${PRODUCT_DOCS}/get-value-in-5-minutes.md`;
 
@@ -84,6 +89,12 @@ export function publicFaceFailures(read, exists, listFiles) {
     if (hit) {
       failures.push(
         `${file} defers to a private record ("${hit[0]}"); state the rule in place, or say the value is set outside this specification.`,
+      );
+    }
+    const retired = RETIRED_CONNECT_CRYPTO.exec(read(file));
+    if (retired) {
+      failures.push(
+        `${file} specifies a retired Connect crypto contract ("${retired[0]}"); stored payloads are jose flattened JWE (dir, A256GCM, random IV) and outgoing webhooks use Standard Webhooks.`,
       );
     }
   }

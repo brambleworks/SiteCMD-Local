@@ -1,3 +1,5 @@
+import { workflowJobEnvironments } from "./guardrail-text-utils.mjs";
+
 export function releaseArtifactSafetyFailures(read, exists, listFiles) {
   const failures = [];
   const check = (condition, message) => {
@@ -50,12 +52,55 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
       !nonPublisherWorkflow.includes("${{ secrets.R2_ACCESS_KEY_ID }}") &&
       !nonPublisherWorkflow.includes("${{ secrets.R2_SECRET_ACCESS_KEY }}") &&
       !nonPublisherWorkflow.includes("${{ secrets.R2_ACCOUNT_ID }}") &&
-      !nonPublisherWorkflow.includes("${{ secrets.RELEASE_ADMIN_KEY }}") &&
+      !nonPublisherWorkflow.includes("audience=https://releases.sitecmd.com") &&
       publishProbeJob.includes("name: release-publish") &&
       !publishProbeJob.includes("${{ secrets.R2_ACCESS_KEY_ID }}") &&
       !publishProbeJob.includes("${{ secrets.R2_SECRET_ACCESS_KEY }}") &&
       !publishProbeJob.includes("${{ secrets.R2_ACCOUNT_ID }}"),
-    "release.yml must keep R2 and manifest-promotion credentials in the checkout-free publish-release job, after secretless verification, and hash-compare any existing object before upload; RELEASE_ADMIN_KEY alone may also appear in the release-publish-environment validate-publish-key probe, which must hold no R2 credentials.",
+    "release.yml must keep R2 credentials and the releases-audience OIDC token request in the checkout-free publish-release job, after secretless verification, and hash-compare any existing object before upload; only the release-publish-environment validate-publish-key probe may also request that token, and it must hold no R2 credentials.",
+  );
+
+  // The releases worker accepts any OIDC token minted in release-publish on a
+  // v* tag, so membership of that environment is now the publish credential,
+  // and a stored key would be a second, longer-lived way to move `latest`.
+  const staticPublishKeyFiles = listFiles(".github", () => true).filter((file) =>
+    read(file).includes("RELEASE_ADMIN_KEY"),
+  );
+  check(
+    staticPublishKeyFiles.length === 0,
+    `RELEASE_ADMIN_KEY must not return to the release pipeline (found in ${staticPublishKeyFiles.join(", ")}); publishing authenticates with the job's GitHub Actions OIDC token for https://releases.sitecmd.com.`,
+  );
+  // Any workflow can be dispatched against a tag ref, and an expression could
+  // resolve to either publish environment, so both count as membership.
+  const workflowFiles = listFiles(".github/workflows", (file) => /\.ya?ml$/.test(file));
+  const environmentJobs = (name) =>
+    workflowFiles
+      .flatMap((file) =>
+        workflowJobEnvironments(read(file))
+          .filter(({ block }) => block.includes(name) || block.includes("${{"))
+          .map(({ job }) => `${file}#${job}`),
+      )
+      .sort();
+  const releaseJobs = (...jobs) => jobs.map((job) => `.github/workflows/release.yml#${job}`);
+  const releasePublishJobs = environmentJobs("release-publish");
+  check(
+    releasePublishJobs.join(",") ===
+      releaseJobs("publish-release", "validate-publish-key").join(","),
+    `Only release.yml's validate-publish-key and publish-release jobs may use the release-publish environment (found: ${releasePublishJobs.join(", ")}); every job there can mint the OIDC token the releases worker accepts, and an expression environment could resolve to it.`,
+  );
+  // npm trusted publishing accepts an OIDC token from release.yml in
+  // npm-publish, so membership of that environment is the npm credential.
+  const npmPublishJobs = environmentJobs("npm-publish");
+  check(
+    npmPublishJobs.join(",") === releaseJobs("publish-npm").join(","),
+    `Only release.yml's publish-npm job may use the npm-publish environment, and it must use no other (found: ${npmPublishJobs.join(", ")}); npm's trusted publisher accepts an OIDC token from any job there, and an expression environment could resolve to it.`,
+  );
+  const storedNpmTokenFiles = listFiles(".github", () => true).filter((file) =>
+    /\b(?:NPM_TOKEN|NODE_AUTH_TOKEN)\b/.test(read(file)),
+  );
+  check(
+    storedNpmTokenFiles.length === 0,
+    `A stored npm token must not return to the release pipeline (found in ${storedNpmTokenFiles.join(", ")}); publish-npm authenticates through npm trusted publishing with its GitHub Actions OIDC token.`,
   );
   check(
     signedReleaseTag &&

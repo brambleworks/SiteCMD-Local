@@ -63,22 +63,12 @@ pub fn code_issue_to_work_item_input(
     }
 }
 
-/// Return check IDs that worsened since the previous scan for this environment.
-/// `None` means no regressions.
-pub fn compute_regressed_check_ids_from_map(
-    db: &Arc<Database>,
-    env_url: &str,
-    current_scan_id: i64,
-    current_severities: &HashMap<String, &'static str>,
-    source: &str,
-) -> Result<Option<Vec<String>>, DbError> {
-    if current_severities.is_empty() {
-        return Ok(None);
-    }
-
-    let prior = db.get_prior_scan_check_severities(env_url, current_scan_id, source)?;
-
-    let mut regressed: Vec<String> = current_severities
+/// Return sorted ids whose current impact exceeds the prior impact, or `None`.
+pub fn regressed_check_ids(
+    current: &HashMap<String, &'static str>,
+    prior: &HashMap<String, String>,
+) -> Option<Vec<String>> {
+    let mut regressed: Vec<String> = current
         .iter()
         .filter(|(cid, current_sev)| {
             let prior_rank = prior
@@ -91,23 +81,32 @@ pub fn compute_regressed_check_ids_from_map(
         .collect();
 
     if regressed.is_empty() {
-        return Ok(None);
+        return None;
     }
 
-    regressed.sort(); // deterministic ordering for tests
-    Ok(Some(regressed))
+    regressed.sort();
+    Some(regressed)
 }
 
-/// Compute regressed check_ids from a web_scan `ScanResult` issues slice.
-pub fn compute_regressed_check_ids(
+/// Return check ids that worsened since the previous scan for this environment.
+pub fn compute_regressed_check_ids_from_map(
     db: &Arc<Database>,
     env_url: &str,
     current_scan_id: i64,
-    current_issues: &[CheckResult],
+    current_severities: &HashMap<String, &'static str>,
     source: &str,
 ) -> Result<Option<Vec<String>>, DbError> {
+    if current_severities.is_empty() {
+        return Ok(None);
+    }
+    let prior = db.get_prior_scan_check_severities(env_url, current_scan_id, source)?;
+    Ok(regressed_check_ids(current_severities, &prior))
+}
+
+/// Return the highest failing or warning severity for each canonical Web check.
+pub fn current_web_severities(results: &[CheckResult]) -> HashMap<String, &'static str> {
     let mut current_severities: HashMap<String, &'static str> = HashMap::new();
-    for issue in current_issues
+    for issue in results
         .iter()
         .filter(|issue| !matches!(issue.status, CheckStatus::Pass | CheckStatus::Skipped))
     {
@@ -124,7 +123,24 @@ pub fn compute_regressed_check_ids(
             })
             .or_insert(severity);
     }
-    compute_regressed_check_ids_from_map(db, env_url, current_scan_id, &current_severities, source)
+    current_severities
+}
+
+/// Compute regressed check_ids from a web_scan `ScanResult` issues slice.
+pub fn compute_regressed_check_ids(
+    db: &Arc<Database>,
+    env_url: &str,
+    current_scan_id: i64,
+    current_issues: &[CheckResult],
+    source: &str,
+) -> Result<Option<Vec<String>>, DbError> {
+    compute_regressed_check_ids_from_map(
+        db,
+        env_url,
+        current_scan_id,
+        &current_web_severities(current_issues),
+        source,
+    )
 }
 
 /// Convert a result into a page-scoped work-item occurrence.
@@ -220,6 +236,10 @@ fn check_result_to_scoped_work_item_input(
         },
     }
 }
+
+#[cfg(test)]
+#[path = "work_item_projection_parity_tests.rs"]
+mod parity_tests;
 
 #[cfg(test)]
 mod tests {

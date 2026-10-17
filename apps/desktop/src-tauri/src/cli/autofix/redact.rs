@@ -48,7 +48,7 @@ pub fn summary(root: &Path, text: &str) -> String {
 }
 
 /// SiteCMD's own credentials are `sitecmd_<kind>_<opaque>`: a job token, a
-/// connection access token, a hook secret. `redact_secrets` knows the
+/// personal token, a hook secret. `redact_secrets` knows the
 /// providers' shapes and not ours, so one of ours that reached a tool's output
 /// is masked here first. Two underscores after the prefix is the whole shape,
 /// the opaque half runs to the first character no base64url tail can carry,
@@ -156,7 +156,7 @@ mod tests {
     fn hides_paths_code_frames_and_credentials_and_bounds_the_length() {
         let root = std::path::Path::new("/home/runner/work/loop/loop");
         let text = format!(
-            "error in /home/runner/work/loop/loop/app/page.tsx with token ghp_abcdefghijklmnopqrstuvwxyz0123456789\n  12 | const value = readSecret(process.env.TOKEN);\n     |       ^^^^^\nsee next.config.js and ./lib/util.ts, then vercel.json\nclaimed with sitecmd_job_execute_0123456789abcdef0123456789abcdef\nsigned with sitecmd_whs_ab-cd_ef\n{}",
+            "error in /home/runner/work/loop/loop/app/page.tsx with token ghp_abcdefghijklmnopqrstuvwxyz0123456789\n  12 | const value = readSecret(process.env.TOKEN);\n     |       ^^^^^\nsee next.config.js and ./lib/util.ts, then vercel.json\nclaimed with sitecmd_job_0123456789ABCDEFGHIJKLMNOPQRST2QclQQ\nsigned with sitecmd_whs_ab-cd_ef\n{}",
             "x".repeat(5000)
         );
         let redacted = summary(root, &text);
@@ -172,7 +172,7 @@ mod tests {
             "next.config.js",
             "lib/util.ts",
             "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
-            "sitecmd_job_execute_0123456789abcdef0123456789abcdef",
+            "sitecmd_job_0123456789ABCDEFGHIJKLMNOPQRST2QclQQ",
             "sitecmd_whs_ab-cd_ef",
         ] {
             assert!(!redacted.contains(leaked), "{leaked} survived: {redacted}");
