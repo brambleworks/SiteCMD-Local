@@ -280,27 +280,6 @@
     },
     {
       "ecosystem": "cargo",
-      "name": "arbitrary",
-      "version": "1.4.2",
-      "license": "MIT OR Apache-2.0",
-      "repository": "https://github.com/rust-fuzz/arbitrary/",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scopes": [
-        "desktop-rust"
-      ],
-      "licenseFiles": [
-        {
-          "name": "LICENSE-APACHE",
-          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
-        },
-        {
-          "name": "LICENSE-MIT",
-          "sha256": "15656cc11a8331f28c0986b8ab97220d3e76f98e60ed388b5ffad37dfac4710c"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
       "name": "arboard",
       "version": "3.6.1",
       "license": "MIT OR Apache-2.0",
@@ -2284,27 +2263,6 @@
         {
           "name": "LICENSE-MIT",
           "sha256": "231c837c45eb53f108fb48929e488965bc4fcc14e9ea21d35f50e6b99d98685b"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
-      "name": "derive_arbitrary",
-      "version": "1.4.2",
-      "license": "MIT OR Apache-2.0",
-      "repository": "https://github.com/rust-fuzz/arbitrary",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scopes": [
-        "desktop-rust"
-      ],
-      "licenseFiles": [
-        {
-          "name": "LICENSE-APACHE",
-          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
-        },
-        {
-          "name": "LICENSE-MIT",
-          "sha256": "15656cc11a8331f28c0986b8ab97220d3e76f98e60ed388b5ffad37dfac4710c"
         }
       ]
     },
@@ -14030,23 +13988,6 @@
         {
           "name": "LICENSE",
           "sha256": "f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
-      "name": "zip",
-      "version": "4.6.1",
-      "license": "MIT",
-      "repository": "https://github.com/zip-rs/zip2.git",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scopes": [
-        "desktop-rust"
-      ],
-      "licenseFiles": [
-        {
-          "name": "LICENSE",
-          "sha256": "13f16f8435b4242f494f038d761bd99c5af70395aa39274bd287d22c4d35c3b7"
         }
       ]
     },
