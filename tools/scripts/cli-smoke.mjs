@@ -52,7 +52,7 @@ const HELP_SNAPSHOTS = [
   {
     label: "sitecmd autofix --help",
     args: ["autofix", "--help"],
-    sha256: "d458f2b48246f0780e1e9aabe108ced17388854507351a91330424dcaa82611e",
+    sha256: "8044affcd81042d91f442901662bec44265e014f13d1e4f22197eb87c062dd5a",
   },
   {
     label: "sitecmd scan --help",
@@ -87,7 +87,7 @@ const HELP_SNAPSHOTS = [
   {
     label: "sitecmd gate --help",
     args: ["gate", "--help"],
-    sha256: "770613872e83810d19f67463ca7d06cceb20001e2e0822ab8c2e0dd364cb35b1",
+    sha256: "1515c077c2f826a53f2978372d7ada30902ee26c851b5d841345ba818eec8c50",
   },
 ];
 
