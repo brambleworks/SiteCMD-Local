@@ -12,8 +12,10 @@
 //! `probe_outcomes` may be absent, null or an array. Every reference is an object containing
 //! only `at` and `len`, both unsigned integers.
 //!
-//! Sitemap ranges use `decode_sitemap_body`, keeping no text for invalid UTF-8; other ranges
-//! use `decode_probe_body`. A probe keeps the whole `ProbeBody`, the page its text.
+//! An outcome's `key` selects the body decoder: `is_sitemap_probe_key` recognizes a
+//! `limit=sitemap` or `limit=sitemap_child` field. Those bodies use `decode_sitemap_body`,
+//! keeping no text for invalid UTF-8. Every other body and `page.body` use
+//! `decode_probe_body`. A probe keeps the whole `ProbeBody`, the page its text.
 //! A buffer shorter than its prefix, a JSON length past the buffer,
 //! a reference outside the region and a body given inline each answer the
 //! error frame. The request is freed before the engine computes its answer.

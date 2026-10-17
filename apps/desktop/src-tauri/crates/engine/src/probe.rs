@@ -223,6 +223,7 @@ impl ProbeResponse {
 }
 
 /// A response body's decoded text, raw byte length, and UTF-8 validity.
+/// A sitemap response that is not valid UTF-8 keeps no text.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProbeBody {
     pub text: String,

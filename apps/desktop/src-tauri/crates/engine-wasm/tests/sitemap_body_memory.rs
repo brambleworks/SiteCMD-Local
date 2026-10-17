@@ -7,7 +7,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 use serde_json::json;
-use sitecmd_engine::checks::seo::sitemap_walk::sitemap_request;
+use sitecmd_engine::checks::seo::sitemap_walk::{sitemap_child_request, sitemap_request};
 use sitecmd_engine::evaluation::{probe_key, PageArtifact};
 use sitecmd_engine_wasm::engine_route_plan;
 
@@ -35,7 +35,7 @@ unsafe impl GlobalAlloc for CountingAllocator {
 static ALLOCATOR: CountingAllocator = CountingAllocator;
 
 #[test]
-fn invalid_sitemap_batch_uses_less_than_eight_mib_above_the_caller_frame() {
+fn invalid_sitemap_batch_including_child_stays_within_request_copy_headroom() {
     let page: PageArtifact = serde_json::from_value(json!({
         "url": "https://example.com/", "status_code": 200, "headers": [],
         "body": "", "evaluation_time": "2026-10-16T00:00:00Z"
@@ -43,12 +43,13 @@ fn invalid_sitemap_batch_uses_less_than_eight_mib_above_the_caller_frame() {
     .expect("page");
     abi::open(&page);
     abi::call(engine_route_plan, b"{}");
-    let mut region = Vec::with_capacity(3 * 2_097_152);
+    let mut region = Vec::with_capacity(4 * 2_097_152);
     let mut outcomes = Vec::new();
-    for (path, root, entry) in [
-        ("sitemap.xml", "html", "p"),
-        ("declared.xml", "urlset", "url"),
-        ("index.xml", "sitemapindex", "sitemap"),
+    for (path, root, entry, child) in [
+        ("sitemap.xml", "html", "p", false),
+        ("declared.xml", "urlset", "url", false),
+        ("index.xml", "sitemapindex", "sitemap", false),
+        ("child.xml", "urlset", "url", true),
     ] {
         let at = region.len();
         let prefix =
@@ -58,12 +59,15 @@ fn invalid_sitemap_batch_uses_less_than_eight_mib_above_the_caller_frame() {
         region.resize(at + 2_097_152 - suffix.len(), 0xff);
         region.extend_from_slice(suffix.as_bytes());
         let url = format!("https://example.com/{path}");
-        outcomes.push(
-            json!({"key": probe_key(&sitemap_request(&url)), "outcome": {
-                "kind": "response", "status": 200, "final_url": url,
-                "content_type": "application/xml", "body": {"at": at, "len": 2_097_152}
-            }}),
-        );
+        let request = if child {
+            sitemap_child_request(&url)
+        } else {
+            sitemap_request(&url)
+        };
+        outcomes.push(json!({"key": probe_key(&request), "outcome": {
+            "kind": "response", "status": 200, "final_url": url,
+            "content_type": "application/xml", "body": {"at": at, "len": 2_097_152}
+        }}));
     }
     let json = serde_json::to_vec(&json!({"probe_outcomes": outcomes})).expect("JSON");
     let frame = abi::frame(&json, &region);
@@ -73,10 +77,16 @@ fn invalid_sitemap_batch_uses_less_than_eight_mib_above_the_caller_frame() {
     PEAK.store(before, Relaxed);
     let answer = abi::call_raw(engine_route_plan, &frame);
     let peak = PEAK.load(Relaxed).saturating_sub(before);
-    eprintln!("peak invalid sitemap batch bytes: {peak}");
+    let beyond_request_copy = peak
+        .checked_sub(frame.len())
+        .expect("peak includes the request copy");
+    eprintln!(
+        "request copy: {}; peak: {peak}; beyond request copy: {beyond_request_copy}",
+        frame.len()
+    );
     assert!(abi::refusal(&answer).is_none());
     assert!(
-        peak < 8_388_608,
-        "invalid sitemap batch allocated {peak} bytes"
+        beyond_request_copy < 2_097_152,
+        "invalid sitemap batch allocated {beyond_request_copy} bytes beyond the request copy"
     );
 }

@@ -108,8 +108,8 @@ pub fn walk_sitemap_candidates<'a>(
 /// One candidate's answer, as the walk reads it.
 enum Candidate {
     Found(SitemapFetch),
-    /// Read in full and not a usable sitemap: a 404 or 410, or a body the
-    /// grammar refuses. Says nothing about a sitemap elsewhere.
+    /// Read in full and not a usable sitemap: a 404 or 410, a body that is not
+    /// valid UTF-8, or a body the grammar refuses. Says nothing about a sitemap elsewhere.
     Missing(String),
     /// No conclusive answer: the request failed, its body could not be read,
     /// or its status was neither a success nor a not-found.
