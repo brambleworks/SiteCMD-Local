@@ -208,7 +208,7 @@ export function workflowJobEnvironments(workflow) {
   const indent = (line) => line.length - line.trimStart().length;
   const meaningful = (line) => line.trim() !== "" && !line.trimStart().startsWith("#");
   const found = [];
-  const start = lines.findIndex((line) => /^jobs:\s*(?:#.*)?$/.test(line));
+  const start = lines.findIndex((line) => /^jobs:\s*(?:#|$)/.test(line));
   if (start === -1) return found;
   let [job, jobIndent, keyIndent] = [null, null, null];
   for (let i = start + 1; i < lines.length; i += 1) {
