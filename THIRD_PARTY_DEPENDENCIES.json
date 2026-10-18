@@ -4326,7 +4326,7 @@
     {
       "ecosystem": "cargo",
       "name": "hickory-net",
-      "version": "0.26.1",
+      "version": "0.26.3",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/hickory-dns/hickory-dns",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -4348,7 +4348,7 @@
     {
       "ecosystem": "cargo",
       "name": "hickory-proto",
-      "version": "0.26.1",
+      "version": "0.26.3",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/hickory-dns/hickory-dns",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -4370,7 +4370,7 @@
     {
       "ecosystem": "cargo",
       "name": "hickory-resolver",
-      "version": "0.26.1",
+      "version": "0.26.3",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/hickory-dns/hickory-dns",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -12278,6 +12278,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12342,6 +12343,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12406,6 +12408,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12449,6 +12452,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12513,6 +12517,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12577,6 +12582,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12641,6 +12647,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12705,6 +12712,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12899,6 +12907,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12985,6 +12994,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -13028,6 +13038,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -13071,6 +13082,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -13157,6 +13169,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -13178,6 +13191,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -13264,6 +13278,7 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
