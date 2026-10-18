@@ -153,10 +153,10 @@ impl RobotsRules {
     }
 
     pub(super) fn allowed(&self, path_and_query: &str) -> bool {
-        if path_and_query == "/robots.txt" {
+        let path = normalized(path_and_query, false);
+        if path == "/robots.txt" {
             return true;
         }
-        let path = normalized(path_and_query, false);
         self.rules
             .iter()
             .filter(|rule| rule.matches(&path))

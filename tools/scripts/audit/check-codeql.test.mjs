@@ -35,7 +35,7 @@ function installFakeCodeql() {
       "// FAKE_CODEQL_FAIL names the subcommand that should report failure.",
       "if (process.env.FAKE_CODEQL_FAIL === args[1]) process.exit(9);",
       'if (args[1] === "create") {',
-      `  fs.appendFileSync(${JSON.stringify(filtersLog)}, String(process.env.LGTM_INDEX_FILTERS ?? "") + "\\n");`,
+      `  fs.appendFileSync(${JSON.stringify(filtersLog)}, String(process.env.LGTM_INDEX_EXCLUDE ?? "") + "\\n");`,
       "  fs.mkdirSync(args[2], { recursive: true });",
       "  process.exit(0);",
       "}",
@@ -203,11 +203,13 @@ describe("check-codeql extraction filters", () => {
   it("keeps the extractor out of the Rust build directory", () => {
     // cli-build writes that tree in the same gate tier, and a cargo artifact
     // removed mid-walk aborts database creation instead of failing a check.
+    // LGTM_INDEX_EXCLUDE prunes the walk; LGTM_INDEX_FILTERS only filters the
+    // files a walk already visited.
     const result = runGate({ SITECMD_CODEQL_BASE: "HEAD~1" });
 
     expect(result.status).toBe(0);
     expect(fs.readFileSync(filtersLog, "utf8").trim().split("\n")).toContain(
-      "exclude:apps/desktop/src-tauri/target",
+      "apps/desktop/src-tauri/target",
     );
   });
 });

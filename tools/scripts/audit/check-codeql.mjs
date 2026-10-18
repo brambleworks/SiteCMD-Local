@@ -56,11 +56,10 @@ function positiveInteger(value) {
  * of files, and the gate's cli-build step writes it in the same tier: cargo
  * removing an incremental artifact mid-walk aborts database creation with a
  * NoSuchFileException. Excluding it also spares the walk 22G of build output.
+ * The JavaScript extractor prunes the directories LGTM_INDEX_EXCLUDE lists;
+ * LGTM_INDEX_FILTERS only filters the files a walk has already visited.
  */
 const EXTRACTION_EXCLUDES = ["apps/desktop/src-tauri/target"];
-
-/** The JavaScript extractor reads its path filters from this variable. */
-const INDEX_FILTERS = EXTRACTION_EXCLUDES.map((directory) => `exclude:${directory}`).join("\n");
 
 /** An hour is far longer than a run takes, so this only sees abandoned work. */
 const STALE_MS = 60 * 60 * 1000;
@@ -263,7 +262,7 @@ function main() {
         `--ram=${RAM_MB}`,
         "--overwrite",
       ],
-      { env: { LGTM_INDEX_FILTERS: INDEX_FILTERS } },
+      { env: { LGTM_INDEX_EXCLUDE: EXTRACTION_EXCLUDES.join("\n") } },
     );
     if (created.status !== 0) die("check-codeql: database creation failed.");
 
