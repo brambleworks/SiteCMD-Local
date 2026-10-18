@@ -62,6 +62,11 @@ pub(super) fn discover(
     if !(200..300).contains(&page.status_code) {
         return DiscoveryResponse { routes: None };
     }
+    if limit == 0 {
+        return DiscoveryResponse {
+            routes: Some(Vec::new()),
+        };
+    }
     let origin = origin_with_port(&page.url);
     let requested = context
         .requested_url
@@ -83,6 +88,11 @@ pub(super) fn discover(
         if let Some(reached) = page_a_link_reaches(context.outcomes, &link) {
             chosen.offer(&reached);
         }
+        if chosen.routes.len() >= limit {
+            return DiscoveryResponse {
+                routes: Some(chosen.routes),
+            };
+        }
     }
     let (locations, complete) = sitemap_pages(context, &origin);
     // At most the walk's URL limit, the bound every reader of one sitemap keeps.
@@ -92,6 +102,11 @@ pub(super) fn discover(
             .and_then(|url| page_a_link_reaches(context.outcomes, &url))
         {
             chosen.offer(&reached);
+        }
+        if chosen.routes.len() >= limit {
+            return DiscoveryResponse {
+                routes: Some(chosen.routes),
+            };
         }
     }
     // A sitemap the walk could not finish, or a child of it that did not
@@ -105,6 +120,9 @@ pub(super) fn discover(
             {
                 chosen.offer(&reached);
             }
+            if chosen.routes.len() >= limit {
+                break;
+            }
         }
     }
     DiscoveryResponse {
@@ -112,7 +130,7 @@ pub(super) fn discover(
     }
 }
 
-/// The routes kept so far, every route already weighed, and the cut.
+/// The kept routes, entry route exclusions, and fixed selection context.
 struct Chosen {
     routes: Vec<String>,
     seen: HashSet<String>,
@@ -136,15 +154,18 @@ impl Chosen {
     }
 
     fn offer_route(&mut self, route: &str, url: &url::Url) {
-        if self.routes.len() >= self.limit || !self.seen.insert(route.to_string()) {
+        if self.routes.len() >= self.limit || self.seen.contains(route) {
             return;
         }
+        // Rejection depends only on the route and this run's fixed context,
+        // so weighing a rejected route again gives the same answer.
         if !names_a_cached_file(route)
             && storable(route, &self.origin)
             && self
                 .robots
                 .allowed(&url[url::Position::BeforePath..url::Position::AfterQuery])
         {
+            self.seen.insert(route.to_string());
             self.routes.push(route.to_string());
         }
     }
@@ -212,18 +233,18 @@ fn is_search_path(route: &str) -> bool {
         .is_some_and(|first| first.eq_ignore_ascii_case("search"))
 }
 
-/// The same-origin addresses the document's anchors name, in document order:
-/// resolved against its `<base href>`, the fragment dropped, and a
+/// The same-origin addresses the document's anchors name, resolved lazily in
+/// document order against its `<base href>`, the fragment dropped, and a
 /// visitor-written `rel="ugc"` anchor left out, as the cross-page facts leave
 /// it out. `tag_slices` passes over comments, scripts and styles, which are
 /// not navigation, and reads the page's one shared lowercase copy.
-fn page_links(page: &PageContext, origin: &str) -> Vec<url::Url> {
+fn page_links<'a>(page: &'a PageContext, origin: &'a str) -> impl Iterator<Item = url::Url> + 'a {
     let base = effective_base_url(page);
     tag_slices(&page.body, page.body_lower(), "a")
         .into_iter()
         .filter(|tag| !attr_value(tag, "rel").is_some_and(|rel| rel_has(&rel, "ugc")))
         .filter_map(|tag| attr_value(tag, "href"))
-        .filter_map(|href| {
+        .filter_map(move |href| {
             let href = decode_url_character_references(&href);
             let href = href.trim();
             if href.is_empty() || href.starts_with('#') {
@@ -233,7 +254,6 @@ fn page_links(page: &PageContext, origin: &str) -> Vec<url::Url> {
             url.set_fragment(None);
             (origin_with_port(&url) == origin && !is_reserved_path(url.path())).then_some(url)
         })
-        .collect()
 }
 
 /// The address a link reaches, as the link check's own probe of it found:
