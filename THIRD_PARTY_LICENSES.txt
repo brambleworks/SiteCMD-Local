@@ -8881,7 +8881,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 ================================================================================
 SHA-256: 62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3
-Packages: cargo:hickory-net@0.26.1, cargo:hickory-proto@0.26.1, cargo:hickory-resolver@0.26.1
+Packages: cargo:hickory-net@0.26.3, cargo:hickory-proto@0.26.3, cargo:hickory-resolver@0.26.3
 Upstream files: LICENSE-APACHE
 ================================================================================
                                  Apache License
@@ -20701,7 +20701,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 SHA-256: dc470946f0a127507a9e577a20da1eb19eae0abc383b2be1f786f6427944f06c
-Packages: cargo:hickory-net@0.26.1, cargo:hickory-proto@0.26.1, cargo:hickory-resolver@0.26.1
+Packages: cargo:hickory-net@0.26.3, cargo:hickory-proto@0.26.3, cargo:hickory-resolver@0.26.3
 Upstream files: LICENSE-MIT
 ================================================================================
 Copyright (c) 2015 The Hickory DNS Developers
