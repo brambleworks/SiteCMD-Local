@@ -113,8 +113,6 @@ const TIERS = [
       cmd: "cargo nextest run --no-fail-fast --workspace",
       cwd: "apps/desktop/src-tauri",
     },
-    // nextest excludes doctests.
-    { name: "rust-doctest", cmd: "cargo test --doc --workspace", cwd: "apps/desktop/src-tauri" },
     {
       name: "rust-clippy",
       cmd: "cargo clippy --workspace --all-targets -- -D warnings",
@@ -146,6 +144,12 @@ const TIERS = [
       cmd: "cargo check -p sitecmd-engine-wasm --target wasm32-unknown-unknown --features checks",
       cwd: "apps/desktop/src-tauri",
     },
+  ],
+  [
+    // nextest excludes doctests. Both build the workspace's libraries in the test
+    // profile, so the doctests run after nextest rather than beside it, where one
+    // could read a library the other is still writing.
+    { name: "rust-doctest", cmd: "cargo test --doc --workspace", cwd: "apps/desktop/src-tauri" },
   ],
   [{ name: "perf-baseline", cmd: "pnpm run perf:baseline" }],
   [
