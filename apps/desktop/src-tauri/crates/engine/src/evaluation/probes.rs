@@ -135,6 +135,13 @@ pub(super) fn is_sitemap_child_key(key: &str) -> bool {
         .is_some_and(|(_, field)| field == SITEMAP_CHILD_FIELD)
 }
 
+/// Whether a probe key names a sitemap body limit, as `probe_key` writes it.
+pub fn is_sitemap_probe_key(key: &str) -> bool {
+    key.split(KEY_SEPARATOR)
+        .skip(4)
+        .any(|field| matches!(field, "limit=sitemap" | SITEMAP_CHILD_FIELD))
+}
+
 /// Represent a planned but unexecuted probe as a transport failure.
 pub fn unexecuted_probe() -> ProbeOutcome {
     ProbeOutcome::Failure(ProbeFailure {
@@ -356,3 +363,21 @@ fn attach_checks(held: &mut Vec<String>, covers: &[&'static str]) {
 #[cfg(test)]
 #[path = "probes_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn sitemap_keys_match_only_sitemap_body_limits() {
+    use crate::checks::seo::sitemap_walk::{sitemap_child_request, sitemap_request};
+
+    let url = url::Url::parse("https://example.com/sitemap.xml").expect("URL");
+    let sitemap = sitemap_request(url.as_str());
+    let child = sitemap_child_request(url.as_str());
+    let robots = ProbeRequest::get("https://example.com/robots.txt");
+    let link = crate::checks::seo::links::link_head_request(&url);
+    assert!([sitemap, child]
+        .iter()
+        .all(|request| is_sitemap_probe_key(&probe_key(request))));
+    assert!([robots, link]
+        .iter()
+        .all(|request| !is_sitemap_probe_key(&probe_key(request))));
+}

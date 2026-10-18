@@ -12,9 +12,12 @@
 //! `probe_outcomes` may be absent, null or an array. Every reference is an object containing
 //! only `at` and `len`, both unsigned integers.
 //!
-//! Each referenced range is copied once out of the request and decoded with `decode_probe_body`:
-//! a probe keeps the whole `ProbeBody`, the page its text. A buffer shorter than its prefix, a JSON
-//! length past the buffer, a reference outside the region and a body given inline each answer the
+//! An outcome's `key` selects the body decoder: `is_sitemap_probe_key` recognizes a
+//! `limit=sitemap` or `limit=sitemap_child` field. Those bodies use `decode_sitemap_body`,
+//! keeping no text for invalid UTF-8. Every other body and `page.body` use
+//! `decode_probe_body`. A probe keeps the whole `ProbeBody`, the page its text.
+//! A buffer shorter than its prefix, a JSON length past the buffer,
+//! a reference outside the region and a body given inline each answer the
 //! error frame. The request is freed before the engine computes its answer.
 //! References may share bytes but together read no more than the region holds.
 //! Malformed, inline and out-of-range references answer the fixed message
@@ -22,7 +25,8 @@
 
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
-use sitecmd_engine::probe::{decode_probe_body, ProbeBody};
+use sitecmd_engine::evaluation::is_sitemap_probe_key;
+use sitecmd_engine::probe::{decode_probe_body, decode_sitemap_body, ProbeBody};
 
 const INVALID_BODY_REFERENCE: &str = "invalid body reference";
 
@@ -84,7 +88,7 @@ fn decode_page(value: &mut Value, region: &[u8], remaining: &mut usize) -> Resul
     let body = value
         .pointer_mut("/page/body")
         .ok_or(INVALID_BODY_REFERENCE)?;
-    *body = Value::String(decode(body, region, remaining)?.text);
+    *body = Value::String(decode(body, region, remaining, false)?.text);
     Ok(())
 }
 
@@ -92,6 +96,7 @@ fn decode(
     reference: &mut Value,
     region: &[u8],
     remaining: &mut usize,
+    sitemap: bool,
 ) -> Result<ProbeBody, String> {
     if !reference.is_object() {
         return Err(INVALID_BODY_REFERENCE.into());
@@ -108,7 +113,11 @@ fn decode(
     *remaining = remaining
         .checked_sub(reference.len)
         .ok_or(INVALID_BODY_REFERENCE)?;
-    Ok(decode_probe_body(bytes.to_vec()))
+    Ok(if sitemap {
+        decode_sitemap_body(bytes)
+    } else {
+        decode_probe_body(bytes.to_vec())
+    })
 }
 
 fn decode_probes(value: &mut Value, region: &[u8], remaining: &mut usize) -> Result<(), String> {
@@ -125,6 +134,10 @@ fn decode_probes(value: &mut Value, region: &[u8], remaining: &mut usize) -> Res
         let probe = probe
             .as_object_mut()
             .ok_or("probe outcome must be an object")?;
+        let sitemap = probe
+            .get("key")
+            .and_then(Value::as_str)
+            .is_some_and(is_sitemap_probe_key);
         let outcome = probe
             .get_mut("outcome")
             .and_then(Value::as_object_mut)
@@ -137,7 +150,7 @@ fn decode_probes(value: &mut Value, region: &[u8], remaining: &mut usize) -> Res
                 text,
                 bytes,
                 utf8_valid,
-            } = decode(body, region, remaining)?;
+            } = decode(body, region, remaining, sitemap)?;
             let mut fields = Map::new();
             // Owned values move the decoded text into the engine without another body copy.
             fields.insert("text".into(), Value::String(text));

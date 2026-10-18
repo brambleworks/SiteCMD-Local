@@ -20,8 +20,8 @@ pub use discovery::DiscoveryResponse;
 pub use inputs::EvaluationInputs;
 pub use probe_checks::{ProbeCheck, PROBE_CHECKS};
 pub use probes::{
-    probe_key, probe_plan, unexecuted_probe, ExecutedProbe, PlannedProbe, ProbeContext,
-    ProbeOutcomes, ProbePlan, EXCLUDED_PROBE_CHECKS,
+    is_sitemap_probe_key, probe_key, probe_plan, unexecuted_probe, ExecutedProbe, PlannedProbe,
+    ProbeContext, ProbeOutcomes, ProbePlan, EXCLUDED_PROBE_CHECKS,
 };
 pub use route_session::{
     RouteCall, RouteDiscoverRequest, RouteEvaluationRequest, RouteFacts, RouteOpenRequest,

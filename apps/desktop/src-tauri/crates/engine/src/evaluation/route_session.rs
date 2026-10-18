@@ -10,7 +10,8 @@ use super::artifact::facts_in_order;
 use super::discovery::{discover, DiscoveryResponse};
 use super::origin_reads::found_index;
 use super::probes::{
-    is_sitemap_child_key, plan_probes, ExecutedProbe, ProbeContext, ProbeOutcomes, ProbePlan,
+    is_sitemap_child_key, is_sitemap_probe_key, plan_probes, ExecutedProbe, ProbeContext,
+    ProbeOutcomes, ProbePlan,
 };
 use super::session_facts::{page_facts, SessionPageFacts};
 use super::sitemap_children::ChildSitemaps;
@@ -162,11 +163,17 @@ impl RouteSession {
     /// as a whole request's index keeps the last. A child sitemap's first answer
     /// is the one read. A joined session restores each response's field lines.
     /// A child sitemap's answer is kept without its body, once its page addresses are read.
+    /// Invalid sitemap encodings retain their byte count and validity flag, without text.
     pub fn record(&mut self, outcomes: Option<Vec<ExecutedProbe>>) {
         if let Some(mut outcomes) = outcomes {
-            if self.header_lines == HeaderLines::Joined {
-                for executed in &mut outcomes {
-                    if let ProbeOutcome::Response(response) = &mut executed.outcome {
+            for executed in &mut outcomes {
+                if let ProbeOutcome::Response(response) = &mut executed.outcome {
+                    if is_sitemap_probe_key(&executed.key) {
+                        if let Some(body) = response.body.as_mut().filter(|body| !body.utf8_valid) {
+                            body.text = String::new();
+                        }
+                    }
+                    if self.header_lines == HeaderLines::Joined {
                         split_probe_lines(response);
                     }
                 }

@@ -8,16 +8,16 @@ const ALLOWED_WARNING_ADVISORIES = new Map([
     "RUSTSEC-2024-0370",
     {
       reason:
-        "proc-macro-error is pulled transitively through GTK3 macro tooling in Tauri's Linux stack.",
-      reviewedAt: "2026-05-18",
+        "proc-macro-error is pulled transitively through GTK3 macro tooling in Tauri's Linux stack; Tauri 2.12 still requires gtk 0.18.",
+      reviewedAt: "2026-10-18",
     },
   ],
   [
     "RUSTSEC-2024-0429",
     {
       reason:
-        "Linux-only glib is pulled transitively through Tauri/Wry's GTK3 stack; SiteCMD does not call the affected VariantStrIter API, and removal depends on the upstream GTK4 migration.",
-      reviewedAt: "2026-06-14",
+        "Linux-only glib is pulled transitively through Tauri/Wry's GTK3 stack; SiteCMD does not call the affected VariantStrIter API, and removal depends on the upstream GTK4 migration, and Tauri 2.12 still requires gtk 0.18.",
+      reviewedAt: "2026-10-18",
     },
   ],
   ...[
@@ -30,8 +30,16 @@ const ALLOWED_WARNING_ADVISORIES = new Map([
     id,
     {
       reason:
-        "rust-unic crates are pulled transitively through Tauri urlpattern; revisit on next Tauri upgrade.",
-      reviewedAt: "2026-05-18",
+        "rust-unic crates are pulled transitively through tauri-utils 2.9's urlpattern 0.3; tauri-utils 2.10 moves to urlpattern 0.6, which drops them, so the next Tauri upgrade removes these.",
+      reviewedAt: "2026-10-18",
+    },
+  ]),
+  ...["RUSTSEC-2026-0370", "RUSTSEC-2026-0371", "RUSTSEC-2026-0372"].map((id) => [
+    id,
+    {
+      reason:
+        "zbus 5's zvariant, zbus_names and zvariant_derive are pulled transitively through tauri-plugin-notification (notify-rust) and tauri-plugin-single-instance for Linux D-Bus; they merged into zbus 6.0, and no release of those plugins uses it yet.",
+      reviewedAt: "2026-10-18",
     },
   ]),
 ]);

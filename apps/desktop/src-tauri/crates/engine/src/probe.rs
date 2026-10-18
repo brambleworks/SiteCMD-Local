@@ -222,7 +222,8 @@ impl ProbeResponse {
     }
 }
 
-/// A successful response body after the shared lossy-UTF-8 decode.
+/// A response body's decoded text, raw byte length, and UTF-8 validity.
+/// A sitemap response that is not valid UTF-8 keeps no text.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProbeBody {
     pub text: String,
@@ -300,7 +301,20 @@ pub fn looks_like_html_shell(content_type: &str, body: &str) -> bool {
     head.starts_with("<!doctype") || head.starts_with("<html")
 }
 
-/// The one lossy-UTF-8 decode both runtimes use for probe bodies.
+/// Decode a UTF-8 sitemap without retaining text for an invalid encoding.
+pub fn decode_sitemap_body(bytes: &[u8]) -> ProbeBody {
+    let (text, utf8_valid) = match std::str::from_utf8(bytes) {
+        Ok(text) => (text, true),
+        Err(_) => ("", false),
+    };
+    ProbeBody {
+        text: text.to_owned(),
+        bytes: bytes.len(),
+        utf8_valid,
+    }
+}
+
+/// Decode a general response body with UTF-8 replacement for invalid bytes.
 pub fn decode_probe_body(bytes: Vec<u8>) -> ProbeBody {
     let raw_len = bytes.len();
     match String::from_utf8(bytes) {

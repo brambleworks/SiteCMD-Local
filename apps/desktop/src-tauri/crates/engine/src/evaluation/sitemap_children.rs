@@ -151,7 +151,7 @@ impl ChildSitemaps {
     /// read, and a success keeps its bounded locations unless it is an index,
     /// whose children are not read. A document the strict grammar refuses
     /// still gives the locations it holds, as the desktop's reading of an
-    /// index's children does.
+    /// index's children does. Invalid UTF-8 leaves the child unread.
     fn read(&mut self, outcome: &ProbeOutcome) -> bool {
         let ProbeOutcome::Response(response) = outcome else {
             return false;
@@ -166,6 +166,9 @@ impl ChildSitemaps {
         else {
             return false;
         };
+        if !body.utf8_valid {
+            return false;
+        }
         let parsed = parse_sitemap_document(&body.text);
         if !parsed.lists_child_sitemaps() {
             let room = SITEMAP_URL_LIMIT.saturating_sub(self.pages.len());

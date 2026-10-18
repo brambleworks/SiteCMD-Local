@@ -146,6 +146,21 @@ describe("push-gate resource isolation", () => {
     expect(desktopTier).not.toContain('name: "rust-clippy"');
   });
 
+  it("runs doctests after nextest, since both build the same test-profile libraries", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("./verify-push.mjs", import.meta.url)),
+      "utf8",
+    );
+    const doctest = source.indexOf('name: "rust-doctest"');
+    expect(doctest).toBeGreaterThan(-1);
+    const tierStart = source.lastIndexOf("  [", doctest);
+    const tierEnd = source.indexOf("\n  ],", doctest);
+    expect(tierStart).toBeGreaterThan(-1);
+    expect(tierEnd).toBeGreaterThan(doctest);
+    expect(source.slice(tierStart, tierEnd)).not.toContain('name: "rust-nextest"');
+    expect(source.indexOf('name: "rust-nextest"')).toBeLessThan(tierStart);
+  });
+
   it("mirrors dependency policy and the declared Rust MSRV", () => {
     const source = readFileSync(
       fileURLToPath(new URL("./verify-push.mjs", import.meta.url)),
