@@ -80,6 +80,19 @@ fn groups_ignore_other_records_and_rules_outside_groups() {
 }
 
 #[test]
+fn robots_txt_exemption_normalizes_unreserved_escapes() {
+    let rules = RobotsRules::parse("User-agent: *\nDisallow: /", "SiteCMD");
+    for path in [
+        "/robot%73.txt",
+        "/robots%2Etxt",
+        "/robots%2etxt",
+        "/robots.txt",
+    ] {
+        assert!(rules.allowed(path), "{path}");
+    }
+}
+
+#[test]
 fn wildcard_end_anchor_does_not_allow_a_trailing_suffix() {
     let rules = RobotsRules::parse("User-agent: *\nDisallow: /private/*/end$", "SiteCMD");
     assert!(!rules.allowed("/private/a/end"));

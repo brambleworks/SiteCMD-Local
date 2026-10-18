@@ -62,11 +62,6 @@ pub(super) fn discover(
     if !(200..300).contains(&page.status_code) {
         return DiscoveryResponse { routes: None };
     }
-    if limit == 0 {
-        return DiscoveryResponse {
-            routes: Some(Vec::new()),
-        };
-    }
     let origin = origin_with_port(&page.url);
     let requested = context
         .requested_url
