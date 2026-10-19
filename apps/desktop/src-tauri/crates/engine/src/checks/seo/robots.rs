@@ -6,7 +6,7 @@ use crate::checks::seo::robots_document::records;
 use crate::checks::{
     looks_like_html_shell, CheckResult, CheckStatus, IssueConfidence, ScanCategory, Severity,
 };
-use crate::probe::ProbeOutcome;
+use crate::probe::{ProbeOutcome, ProbeResponse};
 
 /// Outcome of the shared per-scan robots.txt fetch. Several checks inspect
 /// robots.txt with different semantics (content, missing, unreachable), so
@@ -44,6 +44,14 @@ pub fn robots_txt_url(page_url: &url::Url) -> String {
     format!("{}/robots.txt", crate::checks::origin_with_port(page_url))
 }
 
+/// Whether a non-success response was intercepted before robots.txt answered.
+pub(super) fn robots_response_is_challenged(response: &ProbeResponse) -> bool {
+    !(200..300).contains(&response.status)
+        && response
+            .header("cf-mitigated")
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("challenge"))
+}
+
 /// Classify a completed robots.txt probe. A read failure (timeout mid-body
 /// or exceeding the probe size cap) must not collapse into an empty `Found`.
 /// A genuinely empty 2xx body still resolves to `Found`.
@@ -75,11 +83,7 @@ pub fn robots_fetch_from_probe(outcome: ProbeOutcome) -> RobotsTxtFetch {
                 ),
             }
         }
-        ProbeOutcome::Response(response)
-            if response
-                .header("cf-mitigated")
-                .is_some_and(|value| value.trim().eq_ignore_ascii_case("challenge")) =>
-        {
+        ProbeOutcome::Response(response) if robots_response_is_challenged(&response) => {
             RobotsTxtFetch::Challenged(response.status)
         }
         ProbeOutcome::Response(response) => RobotsTxtFetch::Status(response.status),

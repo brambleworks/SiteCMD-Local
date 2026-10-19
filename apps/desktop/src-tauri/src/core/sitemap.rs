@@ -108,7 +108,7 @@ pub async fn discover_sitemap(
     }
 }
 
-/// The declared sitemap URLs and whether a transient robots.txt failure leaves
+/// The declared sitemap URLs and whether a robots.txt failure or challenge leaves
 /// the set partial; a body-cap refusal answered with unknown declarations.
 async fn robots_sitemap_urls(client: &Client, base: &str) -> (Vec<String>, Option<String>) {
     let outcome = crate::checks::probe_with_timeout(

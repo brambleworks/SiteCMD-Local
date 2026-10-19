@@ -4,7 +4,7 @@
 //! the first well-formed document in that order wins. A runtime asks for the
 //! request the walk names, hands back its answer, and walks again.
 
-use crate::checks::seo::robots::RobotsTxtFetch;
+use crate::checks::seo::robots::{robots_response_is_challenged, RobotsTxtFetch};
 use crate::checks::seo::sitemap::{
     parse_sitemap_document, sitemap_candidate_urls, sitemap_urls_from_robots, url_is_same_origin,
     SitemapFetch, SitemapParse, SitemapProbe, SitemapProbeObservation,
@@ -20,12 +20,14 @@ pub const SITEMAP_URL_LIMIT: usize = 5000;
 pub const SITEMAP_WALK_INCOMPLETE_REASON: &str = "robots.txt or an earlier sitemap did not answer";
 
 /// Whether robots.txt answered for its sitemap set: a body-cap refusal answered
-/// with unknown declarations; other failures, HTTP 429 and HTTP 5xx are transient
-/// and leave the set partial.
+/// with unknown declarations; challenges, other failures, HTTP 429 and HTTP 5xx
+/// leave the set partial.
 pub fn robots_was_read(outcome: &ProbeOutcome) -> bool {
     match outcome {
         ProbeOutcome::Failure(failure) => failure.class == ProbeFailureClass::BodyCapExceeded,
-        ProbeOutcome::Response(response) => !matches!(response.status, 429 | 500..=599),
+        ProbeOutcome::Response(response) => {
+            !robots_response_is_challenged(response) && !matches!(response.status, 429 | 500..=599)
+        }
     }
 }
 

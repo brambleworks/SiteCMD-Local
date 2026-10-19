@@ -19,6 +19,13 @@ struct TestSite {
 
 impl TestSite {
     async fn new(answers: impl FnOnce(&str) -> Vec<Reply>) -> Self {
+        Self::with_robots_headers(answers, "").await
+    }
+
+    async fn with_robots_headers(
+        answers: impl FnOnce(&str) -> Vec<Reply>,
+        robots_headers: &'static str,
+    ) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind listener");
@@ -38,8 +45,13 @@ impl TestSite {
                     .find(|(route, _, _, _)| *route == path)
                     .map(|(_, status, content_type, body)| (*status, *content_type, body.as_str()))
                     .unwrap_or(("404 Not Found", "text/plain", ""));
+                let extra_headers = if path == "/robots.txt" {
+                    robots_headers
+                } else {
+                    ""
+                };
                 let response = format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n{extra_headers}Connection: close\r\n\r\n{body}",
                     body.len()
                 );
                 let _ = stream.write_all(response.as_bytes()).await;
@@ -349,3 +361,6 @@ async fn robots_line_endings_agree_in_both_sitemap_comparisons() {
         compare(&site, CheckStatus::Pass).await;
     }
 }
+
+#[path = "sitemap_challenge_tests.rs"]
+mod challenge_tests;
