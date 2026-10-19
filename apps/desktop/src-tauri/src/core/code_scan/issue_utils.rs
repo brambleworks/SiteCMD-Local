@@ -152,7 +152,7 @@ pub(super) fn has_any(content: &str, patterns: &[regex::Regex]) -> bool {
 
 #[path = "issue_utils/sink_context.rs"]
 mod sink_context;
-pub(super) use sink_context::{has_any_unquoted, is_executable_sink};
+pub(super) use sink_context::{executable_sink_matches, has_any_unquoted};
 
 pub(super) fn count_matches(content: &str, patterns: &[regex::Regex]) -> usize {
     patterns

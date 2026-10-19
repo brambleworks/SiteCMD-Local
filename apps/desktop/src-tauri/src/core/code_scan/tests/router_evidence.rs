@@ -42,14 +42,14 @@ export const deleteAccount = (c) => remove(c);
 }
 
 #[test]
-fn identity_refusals_must_follow_the_lookup_in_a_bounded_window() {
+fn a_router_with_an_imported_late_refusal_still_reports_auth() {
     let module = format!("export async function deleteAccount(c) {{ const session = await loadSession(c); {} return c.redirect('/login'); }}", "doWork();".repeat(60));
     let report = inspect("src/index.ts", "import { startCheckout } from './pages/billing'; import { deleteAccount } from './pages/account'; app.post('/billing', startCheckout); app.post('/account/delete', deleteAccount);", &[("src/pages/account.ts", &module)]);
     assert!(reports(&report, "sensitive-auth", "src/index.ts"));
 }
 
 #[test]
-fn imported_logging_middleware_does_not_borrow_a_sibling_limiter() {
+fn a_router_mounting_an_imported_logger_reports_a_rate_limit_finding() {
     for mount in ["app.use(\"*\", logger);", "app.use(logger);"] {
         let report = inspect(
             "src/index.ts",
@@ -74,7 +74,7 @@ export const limitApi = async (c, next) => { await c.env.API_RATE_LIMIT.limit({ 
 }
 
 #[test]
-fn reexported_limiters_are_not_proven_local_middleware() {
+fn a_router_mounting_reexported_middleware_reports_a_rate_limit_finding() {
     let report = inspect("src/index.ts", "import { logger } from './middleware'; app.use('*', logger); app.post('/auth/login', login);", &[("src/middleware.ts", "export { logger } from './logger'; export const limitApi = async (c) => c.env.API_RATE_LIMIT.limit({ key: 'k' });")]);
     assert!(reports(
         &report,

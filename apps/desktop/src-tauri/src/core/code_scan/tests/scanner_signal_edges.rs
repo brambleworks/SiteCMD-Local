@@ -1,5 +1,43 @@
 use super::*;
 
+fn unsafe_php_output_reports(source: &str) -> bool {
+    let temp = TempDir::new().unwrap();
+    write_file(temp.path(), "templates/link.php", source);
+    audit_project(temp.path())
+        .unwrap()
+        .issues
+        .iter()
+        .any(|issue| issue.id.starts_with("unsafe-html:templates/link.php:"))
+}
+
+#[test]
+fn php_output_after_url_path_words_is_a_live_sink() {
+    let missing = [
+        r#"<a href="/print/<?= $_GET['id'] ?>">Print</a>"#,
+        r#"<a href="/print?id=<?php echo $_GET['id']; ?>">Print</a>"#,
+        r#"<a href="/echo/<?= $_GET['id'] ?>">Print</a>"#,
+        r#"<a href="/echo?id=<?php echo $_GET['id']; ?>">Print</a>"#,
+    ]
+    .into_iter()
+    .filter(|source| !unsafe_php_output_reports(source))
+    .collect::<Vec<_>>();
+    assert!(missing.is_empty(), "{missing:?}");
+}
+
+#[test]
+fn quoted_output_words_do_not_hide_later_php_sinks() {
+    let missing = [
+        r#"<a href="print.php?id=<?= $_GET['id'] ?>">Print</a>"#,
+        r#"<a href="print.php?id=<?php echo $_GET['id']; ?>">Print</a>"#,
+        r#"<a href="echo.php?id=<?php echo $_GET['id']; ?>">Print</a>"#,
+        r#"<a href="print.php?id={!! $_GET['id'] !!}">Print</a>"#,
+    ]
+    .into_iter()
+    .filter(|source| !unsafe_php_output_reports(source))
+    .collect::<Vec<_>>();
+    assert!(missing.is_empty(), "{missing:?}");
+}
+
 #[test]
 fn inner_html_assignment_regex_literals_are_data() {
     let temp = TempDir::new().unwrap();

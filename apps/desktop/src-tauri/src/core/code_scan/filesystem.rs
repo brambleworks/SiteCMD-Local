@@ -158,10 +158,9 @@ pub(super) fn is_symlink_entry(entry: &fs::DirEntry) -> bool {
         .unwrap_or(true)
 }
 
-#[path = "source_extensions.rs"]
-mod extensions;
-pub(super) use extensions::JS_SOURCE_EXTENSIONS;
-use extensions::SOURCE_EXTENSIONS;
+static SOURCE_EXTENSIONS: &[&str] = &[
+    "js", "jsx", "ts", "tsx", "mjs", "cjs", "py", "php", "rb", "go", "rs",
+];
 
 /// Live framework config files that remain scan inputs even when gitignored.
 static DEPLOYED_CONFIG_BASENAMES: &[&str] = &[
@@ -177,6 +176,8 @@ fn is_deployed_config_basename(file_name: &str) -> bool {
         .iter()
         .any(|candidate| file_name.eq_ignore_ascii_case(candidate))
 }
+
+pub(super) static JS_SOURCE_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "mjs", "cjs"];
 
 #[cfg(test)]
 pub(super) fn collect_source_files(

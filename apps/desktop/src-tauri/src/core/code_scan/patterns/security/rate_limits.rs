@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 static UPSTREAM_LIMIT_HEADER: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"["'`](?i:x-ratelimit-|ratelimit-)[^"'`\r\n]*["'`]"#)
+    regex::Regex::new(r#"["'`](?i:x-ratelimit-(?:limit|remaining|reset|used)(?:-[a-z0-9_]+)*|ratelimit(?:-(?:policy|limit|remaining|reset))?)["'`]"#)
         .expect("static upstream limit-header regex") // allow-expect: compile-time literal regex
 });
 

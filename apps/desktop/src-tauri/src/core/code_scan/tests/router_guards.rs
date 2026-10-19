@@ -65,7 +65,7 @@ app.get("/billing", (c) => c.redirect("/account/billing"));
 }
 
 #[test]
-fn unprotected_sensitive_registrations_keep_auth_findings() {
+fn routers_with_ungated_sensitive_handlers_report_auth_findings() {
     for registration in [
         "app.post(\"/account/delete\", deleteAccount);",
         "app.post(\"/admin/purge\", async (c) => { await db.purge(); return c.text('ok'); });",
@@ -107,7 +107,7 @@ app.get("/auth/callback", (c) => c.text("ok"));
 }
 
 #[test]
-fn unrelated_or_path_scoped_middleware_keeps_public_endpoint_findings() {
+fn routers_with_imported_or_scoped_middleware_report_rate_limit_findings() {
     for mount in [
         "app.use(\"/api/*\", limitApi);",
         "app.use(\"*\", passThrough);",
@@ -195,7 +195,7 @@ app.post("/billing/checkout", (c) => c.text("ok"));"#,
 }
 
 #[test]
-fn rate_limit_middleware_on_another_router_does_not_cover_the_endpoint() {
+fn a_limiter_imported_on_another_router_leaves_a_rate_limit_finding() {
     let report = router_report(
         r#"import { limitApi } from "./limits";
 router.use("*", limitApi);
@@ -205,7 +205,7 @@ app.get("/auth/callback", (c) => c.text("ok"));"#,
 }
 
 #[test]
-fn session_reads_without_refusal_do_not_authenticate_delegated_routes() {
+fn a_router_importing_a_session_only_handler_reports_sensitive_auth() {
     let temp = TempDir::new().unwrap();
     write_file(
         temp.path(),
@@ -263,7 +263,7 @@ app.post(
 }
 
 #[test]
-fn a_trailing_comma_does_not_protect_an_ungated_handler() {
+fn a_router_with_a_trailing_comma_and_an_ungated_handler_reports_auth() {
     let report = router_report(
         r#"import { deleteAccount } from "./pages/account";
 import { startCheckout } from "./pages/billing";

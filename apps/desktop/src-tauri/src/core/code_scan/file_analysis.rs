@@ -274,7 +274,13 @@ fn is_oauth_authorization_server_file(file: &SourceFile, content: &str, parses_b
 }
 
 fn is_js_or_ts_file(path: &str) -> bool {
-    is_js_source_path(path)
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".ts")
+        || lower.ends_with(".tsx")
+        || lower.ends_with(".js")
+        || lower.ends_with(".jsx")
+        || lower.ends_with(".mjs")
+        || lower.ends_with(".cjs")
 }
 
 fn is_next_config_file(path: &str) -> bool {

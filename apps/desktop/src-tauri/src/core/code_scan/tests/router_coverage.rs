@@ -38,7 +38,7 @@ pub(super) fn reports(report: &CodeScanReport, rule: &str, path: &str) -> bool {
 }
 
 #[test]
-fn sensitive_paths_outside_cleared_registrations_keep_auth_findings() {
+fn routers_with_ungated_sensitive_routes_report_auth_findings() {
     for extra in [
         r#"app.post("/billing/checkout", startCheckout).post("/admin/purge", async (c) => { await c.env.DB.prepare("DELETE FROM users").run(); return c.text("ok"); });"#,
         r#"app.post("/billing/checkout", startCheckout); const admin = new Hono(); admin.post("/purge", async (c) => { await c.env.DB.exec("DELETE FROM users"); return c.text("ok"); }); app.route("/admin", admin);"#,
@@ -64,7 +64,7 @@ fn sensitive_paths_outside_cleared_registrations_keep_auth_findings() {
 }
 
 #[test]
-fn public_routes_on_unobserved_routers_keep_rate_limit_findings() {
+fn an_unlimited_secondary_router_reports_a_rate_limit_finding() {
     let report = inspect(
         "src/index.ts",
         r#"import { limitApi } from "./limits";
@@ -81,7 +81,7 @@ api.post("/auth/login", login);"#,
 }
 
 #[test]
-fn content_sensitive_path_words_keep_ungated_routes() {
+fn sensitive_routes_named_in_content_report_auth_findings() {
     for path in [
         "/subscriptions/:id/cancel",
         "/payments/:id/refund",
@@ -102,7 +102,7 @@ app.post("{path}", async (c) => {{ await stripe.subscriptions.cancel(c.req.param
 }
 
 #[test]
-fn sensitive_router_paths_make_every_registration_sensitive() {
+fn an_admin_router_with_an_ungated_write_reports_sensitive_auth() {
     let report = inspect("src/routes/admin.ts", r#"import { Router } from "express";
 import { showSettings } from "../pages/settings";
 const router = Router();
@@ -113,7 +113,7 @@ export default router;"#, &[("src/pages/settings.ts", "export async function sho
 }
 
 #[test]
-fn global_limiters_mounted_after_routes_do_not_cover_them() {
+fn a_router_with_a_late_imported_limiter_reports_a_rate_limit_finding() {
     let report = inspect(
         "src/index.ts",
         r#"import { limitApi } from "./limits";
@@ -129,7 +129,7 @@ app.use("*", limitApi);"#,
 }
 
 #[test]
-fn computed_paths_on_unparsed_registrations_keep_auth_findings() {
+fn routers_with_computed_paths_or_extra_handlers_report_sensitive_auth() {
     let mut missing = Vec::new();
     for registration in [
         "api.post(path, purge);",

@@ -16,8 +16,7 @@ const RAW_HTML_SINK_WINDOW: usize = 240;
 pub(in crate::core::code_scan) fn unsafe_html_sink_offsets(content: &str) -> Vec<usize> {
     let mut sinks = DANGEROUS_HTML_PATTERNS
         .iter()
-        .flat_map(|pattern| pattern.find_iter(content))
-        .filter(|matched| is_executable_sink(content, matched))
+        .flat_map(|pattern| executable_sink_matches(content, pattern))
         .map(|matched| matched.start())
         .collect::<Vec<_>>();
     sinks.sort_unstable();

@@ -34,6 +34,14 @@ fn headers_and_comments_are_not_local_rate_limits() {
             "res.headers.get('ratelimit-remaining');",
             "res.headers.get(`x-ratelimit-reset`);",
             "res.headers.get('X-ratelimit-remaining');",
+            "res.headers.get('x-ratelimit-limit');",
+            "res.headers.get('x-ratelimit-used');",
+            "res.headers.get('x-ratelimit-remaining-requests');",
+            "res.headers.get('x-ratelimit-limit-tokens');",
+            "res.headers.get('ratelimit');",
+            "res.headers.get('ratelimit-policy');",
+            "res.headers.get('ratelimit-limit');",
+            "res.headers.get('ratelimit-reset');",
             "// TODO: add rate limiting",
             "/* add rate limiting */",
             "/** rate-limit callers */",
@@ -59,4 +67,57 @@ fn headers_and_comments_are_not_local_rate_limits() {
         }
     }
     assert!(missing.is_empty(), "{missing:?}");
+}
+
+#[test]
+fn custom_counter_keys_remain_rate_limit_evidence() {
+    let mut unexpected = Vec::new();
+    for ai in [false, true] {
+        let rule = if ai {
+            "ai-rate-limit"
+        } else {
+            "public-endpoint-rate-limit"
+        };
+        for prefix in [
+            "ratelimit-",
+            "ratelimit-user:",
+            "x-ratelimit-counter:",
+            "ratelimit-policy-custom:",
+        ] {
+            let temp = TempDir::new().unwrap();
+            let response = if ai {
+                "return c.json(await openai.chat.completions.create({ model, messages: [] }));"
+            } else {
+                "return c.json({ ok: true });"
+            };
+            let import = if ai {
+                "import OpenAI from 'openai';"
+            } else {
+                ""
+            };
+            write_file(
+                temp.path(),
+                "src/routes/chat.ts",
+                &format!(
+                    r#"{import}
+app.post("/auth/login", async (c) => {{
+  const ip = c.req.header("x-forwarded-for");
+  const key = "{prefix}" + ip;
+  const hits = await c.env.COUNTS.increment(key);
+  if (hits > MAX) return c.text("slow down", 429);
+  {response}
+}});"#
+                ),
+            );
+            let report = audit_project(temp.path()).unwrap();
+            if report
+                .issues
+                .iter()
+                .any(|issue| issue.id == format!("{rule}:src/routes/chat.ts"))
+            {
+                unexpected.push(format!("{rule}: {prefix}"));
+            }
+        }
+    }
+    assert!(unexpected.is_empty(), "{unexpected:?}");
 }
