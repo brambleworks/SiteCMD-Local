@@ -140,6 +140,21 @@ fn headline_verdicts_match_each_cases_pages() {
                 assert_eq!(verdict("seo.orphan_pages").status, CheckStatus::Warn);
                 assert_eq!(verdict("seo.orphan_pages").pages, [4]);
             }
+            "a_challenged_robots_answer_withholds_sitemap_comparison" => {
+                let sitemap = facts(0).sitemap.as_ref().expect("sitemap");
+                assert_eq!(
+                    sitemap.partial_causes,
+                    [SessionSitemapCause::UnfinishedWalk]
+                );
+                assert_eq!(
+                    sitemap.partial_because().as_deref(),
+                    Some("robots.txt or an earlier sitemap did not answer")
+                );
+                for id in ["seo.orphan_pages", "seo.noindex_in_sitemap"] {
+                    assert_eq!(verdict(id).status, CheckStatus::Skipped);
+                    assert!(verdict(id).pages.is_empty());
+                }
+            }
             "a_sitemap_page_left_out_withholds_orphan_grading" => {
                 assert_eq!(verdict("seo.orphan_pages").status, CheckStatus::Skipped);
                 assert!(verdict("seo.orphan_pages").pages.is_empty());
@@ -289,14 +304,23 @@ fn headline_verdicts_match_each_cases_pages() {
                 );
                 assert_eq!(facts(1).page, "r2");
             }
-            "discovery_keeps_planned_stand_ins_after_pages_read_when_robots_did_not_answer" => {
+            "discovery_keeps_only_planned_routes_when_robots_did_not_answer" => {
                 assert_eq!(
                     discovered(),
-                    Some(vec!["/pricing".into(), "/about".into(), "/listed".into()])
+                    Some(vec!["/listed".into(), "/pricing".into()])
                 );
                 assert_eq!(
                     facts(0).sitemap.as_ref().expect("sitemap").partial_causes,
                     [SessionSitemapCause::UnfinishedWalk]
+                );
+            }
+            "discovery_adopts_none_when_robots_answers_503_on_a_first_scan" => {
+                assert_eq!(discovered(), Some(vec![]));
+            }
+            "discovery_keeps_only_planned_routes_when_robots_answers_429" => {
+                assert_eq!(
+                    discovered(),
+                    Some(vec!["/listed".into(), "/pricing".into()])
                 );
             }
             "discovery_keeps_no_planned_stand_ins_when_the_sitemap_is_missing" => {

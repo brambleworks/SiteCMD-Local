@@ -62,6 +62,12 @@ pub(super) fn discover(
     if !(200..300).contains(&page.status_code) {
         return DiscoveryResponse { routes: None };
     }
+    let robots = RobotsRules::from_context(context);
+    if !robots.known {
+        return DiscoveryResponse {
+            routes: Some(planned.to_vec()),
+        };
+    }
     let origin = origin_with_port(&page.url);
     let requested = context
         .requested_url
@@ -77,7 +83,7 @@ pub(super) fn discover(
             .collect(),
         origin: origin.clone(),
         limit,
-        robots: RobotsRules::from_context(context),
+        robots,
     };
     for link in page_links(page, &origin) {
         if let Some(reached) = page_a_link_reaches(context.outcomes, &link) {

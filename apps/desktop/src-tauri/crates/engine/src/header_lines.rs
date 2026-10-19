@@ -56,6 +56,7 @@ pub const FIELD_READINGS: &[(&str, FieldReading)] = &[
     ("alt-svc", FieldReading::EveryLine),
     ("cache-control", FieldReading::EveryLine),
     ("cf-cache-status", FieldReading::Presence),
+    ("cf-mitigated", FieldReading::FirstLine),
     ("cf-ray", FieldReading::Presence),
     ("content-encoding", FieldReading::EveryLine),
     ("content-range", FieldReading::FirstLine),

@@ -1274,7 +1274,7 @@ fn headline_verdicts_match_the_documented_checks() {
     );
     for name in [
         "confirmed_missing_robots_file_is_a_skip",
-        "server_error_robots_endpoint_is_not_evaluated",
+        "rate_limited_robots_endpoint_is_not_evaluated",
         "failed_robots_request_makes_no_policy_claim",
     ] {
         assert_eq!(status(name), CheckStatus::Skipped, "{name}");

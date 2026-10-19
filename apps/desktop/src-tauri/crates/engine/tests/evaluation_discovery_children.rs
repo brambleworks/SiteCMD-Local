@@ -129,12 +129,12 @@ fn a_complete_index_after_robots_failed_keeps_the_planned_routes() {
     let page = artifact(&home("<a href='/pricing'>Plans</a>"), 200, "/");
     assert_eq!(
         discovered(page, site(&pages), &["/listed"], LIMIT),
-        routes(&["/pricing", "/posts/first", "/about", "/listed"])
+        routes(&["/listed"])
     );
 }
 
 #[test]
-fn an_oversized_robots_answer_leaves_the_found_sitemap_complete() {
+fn an_oversized_robots_answer_keeps_only_planned_routes_despite_a_sitemap() {
     let mut pages = with_sitemap(&["https://example.com/about"]).to_vec();
     pages.push((
         "https://example.com/robots.txt",
@@ -146,12 +146,12 @@ fn an_oversized_robots_answer_leaves_the_found_sitemap_complete() {
     let page = artifact(&home("<a href='/pricing'>Plans</a>"), 200, "/");
     assert_eq!(
         discovered(page, site(&pages), &["/listed"], LIMIT),
-        routes(&["/pricing", "/about"])
+        routes(&["/listed"])
     );
 }
 
 #[test]
-fn an_oversized_robots_answer_with_no_sitemap_keeps_no_planned_routes() {
+fn an_oversized_robots_answer_with_no_sitemap_keeps_the_planned_routes() {
     let answer = |request: &ProbeRequest| match request.url.as_str() {
         "https://example.com/robots.txt" => ProbeOutcome::Failure(ProbeFailure {
             class: ProbeFailureClass::BodyCapExceeded,
@@ -161,5 +161,8 @@ fn an_oversized_robots_answer_with_no_sitemap_keeps_no_planned_routes() {
         url => response(url, 200, "text/html", ""),
     };
     let page = artifact(&home(""), 200, "/");
-    assert_eq!(discovered(page, answer, &["/listed"], LIMIT), routes(&[]));
+    assert_eq!(
+        discovered(page, answer, &["/listed"], LIMIT),
+        routes(&["/listed"])
+    );
 }

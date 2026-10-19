@@ -2,6 +2,21 @@ import { describe, expect, it } from "vitest";
 import { getEffortLabel, getFixGuide, normalizeFixGuideKey } from "./fix-guides";
 
 describe("getFixGuide", () => {
+  it("covers server errors, wildcard blocks, and HTML robots responses", () => {
+    const guide = getFixGuide("seo.robots_txt");
+    expect(guide?.lead).toBe(
+      "Your robots.txt has a problem that affects how search engines crawl your site.",
+    );
+    expect(guide?.steps.join(" ")).toBe(
+      [
+        "Open your site's deployed /robots.txt and check which of these applies.",
+        "If it answers a server error (a 5xx status): Make /robots.txt answer HTTP 200 with the file, or 404 if the site has no crawl rules. Check the server, CDN or framework route that serves it.",
+        "If its `User-agent: *` group has `Disallow: /`: Confirm the block is intentional. If the site should be crawled, remove it or narrow it to the paths that should not be crawled. robots.txt is not access control.",
+        "If it is served as text/html: Serve robots.txt with a Content-Type header of text/plain.",
+      ].join(" "),
+    );
+  });
+
   it("returns null for an unknown check ID", () => {
     expect(getFixGuide("nonexistent.check")).toBeNull();
   });

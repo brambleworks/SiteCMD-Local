@@ -2369,15 +2369,41 @@
         {
           "category": "seo",
           "checkId": "seo.robots_txt",
+          "confidence": "high",
+          "description": "robots.txt answered HTTP 503. While it answers a server error, crawlers that follow the robots.txt standard (RFC 9309) treat every page on the site as disallowed, and Google pauses crawling the site.",
+          "fixPrompt": null,
+          "manualFix": "Make /robots.txt answer HTTP 200 with the file, or 404 if the site has no crawl rules. Check the server, CDN or framework route that serves it.",
+          "rawData": {
+            "robots_policy_evaluated": false,
+            "server_error": true,
+            "status_code": 503
+          },
+          "severity": "high",
+          "status": "fail",
+          "title": "robots.txt answers a server error",
+          "whyItMatters": "Search engines that follow the robots.txt standard stop crawling the site while robots.txt answers a server error, so new and changed pages are not picked up."
+        }
+      ],
+      "input": {
+        "status": 503
+      },
+      "name": "server_error_robots_endpoint_fails"
+    },
+    {
+      "check": "seo.robots_txt",
+      "expected": [
+        {
+          "category": "seo",
+          "checkId": "seo.robots_txt",
           "confidence": "needs_review",
           "confidenceReason": "The endpoint did not return a readable robots.txt body, so rules could not be parsed.",
-          "description": "robots.txt returned a non-success response (HTTP 503); no robots policy conclusion was made. Re-run when the endpoint is readable.",
+          "description": "robots.txt returned a non-success response (HTTP 429); no robots policy conclusion was made. Re-run when the endpoint is readable.",
           "fixPrompt": null,
           "manualFix": null,
           "rawData": {
             "probe_conclusive": false,
             "robots_policy_evaluated": false,
-            "status_code": 503
+            "status_code": 429
           },
           "severity": "low",
           "status": "skipped",
@@ -2385,9 +2411,9 @@
         }
       ],
       "input": {
-        "status": 503
+        "status": 429
       },
-      "name": "server_error_robots_endpoint_is_not_evaluated"
+      "name": "rate_limited_robots_endpoint_is_not_evaluated"
     },
     {
       "check": "seo.robots_txt",

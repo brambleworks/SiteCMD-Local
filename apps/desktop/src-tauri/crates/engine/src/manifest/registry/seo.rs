@@ -30,7 +30,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry::new("seo.open_graph"),
     Entry::new("seo.organization_identity"),
     Entry::new("seo.page_speed_hints"),
-    Entry::new("seo.robots_txt").probe().origin(),
+    Entry::new("seo.robots_txt").probe().origin().revision(2),
     Entry::new("seo.semantic_html"),
     Entry::new("seo.sitemap").probe().origin(),
     Entry::new("seo.sitemap_freshness").probe().origin(),
@@ -53,6 +53,6 @@ pub const ENTRIES: &[Entry] = &[
     Entry::new("seo.duplicate_h1").session(),
     Entry::new("seo.duplicate_title_across_pages").session(),
     Entry::new("seo.hreflang_reciprocity").session(),
-    Entry::new("seo.noindex_in_sitemap").session().revision(2),
-    Entry::new("seo.orphan_pages").session().revision(2),
+    Entry::new("seo.noindex_in_sitemap").session().revision(3),
+    Entry::new("seo.orphan_pages").session().revision(3),
 ];

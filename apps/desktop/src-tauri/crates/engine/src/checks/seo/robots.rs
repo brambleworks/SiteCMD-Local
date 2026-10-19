@@ -6,7 +6,7 @@ use crate::checks::seo::robots_document::records;
 use crate::checks::{
     looks_like_html_shell, CheckResult, CheckStatus, IssueConfidence, ScanCategory, Severity,
 };
-use crate::probe::ProbeOutcome;
+use crate::probe::{ProbeOutcome, ProbeResponse};
 
 /// Outcome of the shared per-scan robots.txt fetch. Several checks inspect
 /// robots.txt with different semantics (content, missing, unreachable), so
@@ -19,6 +19,8 @@ pub enum RobotsTxtFetch {
     FoundWithHtmlType { body: String },
     /// Reachable but non-2xx.
     Status(u16),
+    /// A non-2xx response intercepted by a bot challenge.
+    Challenged(u16),
     /// A 2xx response whose body is an HTML page rather than a robots.txt: a
     /// catch-all route answered for the path. The endpoint responded, so this
     /// is not a network failure and re-running will not change it.
@@ -40,6 +42,14 @@ impl RobotsTxtFetch {
 /// The canonical robots.txt probe URL for a scanned page.
 pub fn robots_txt_url(page_url: &url::Url) -> String {
     format!("{}/robots.txt", crate::checks::origin_with_port(page_url))
+}
+
+/// Whether a non-success response was intercepted before robots.txt answered.
+pub(super) fn robots_response_is_challenged(response: &ProbeResponse) -> bool {
+    !(200..300).contains(&response.status)
+        && response
+            .header("cf-mitigated")
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("challenge"))
 }
 
 /// Classify a completed robots.txt probe. A read failure (timeout mid-body
@@ -72,6 +82,9 @@ pub fn robots_fetch_from_probe(outcome: ProbeOutcome) -> RobotsTxtFetch {
                     "could not read /robots.txt (the response body was unavailable)".into(),
                 ),
             }
+        }
+        ProbeOutcome::Response(response) if robots_response_is_challenged(&response) => {
+            RobotsTxtFetch::Challenged(response.status)
         }
         ProbeOutcome::Response(response) => RobotsTxtFetch::Status(response.status),
         ProbeOutcome::Failure(failure) => RobotsTxtFetch::Error(failure.detail),
@@ -221,7 +234,9 @@ pub fn evaluate_robots_txt(fetch: &RobotsTxtFetch) -> Vec<CheckResult> {
                 },
             }]
         }
-        RobotsTxtFetch::Status(code) if matches!(*code, 404 | 410) => {
+        RobotsTxtFetch::Status(code) | RobotsTxtFetch::Challenged(code)
+            if matches!(*code, 404 | 410) =>
+        {
             let mut result = missing_robots_result();
             result.raw_data = Some(serde_json::json!({
                 "robots_policy_evaluated": false,
@@ -232,10 +247,15 @@ pub fn evaluate_robots_txt(fetch: &RobotsTxtFetch) -> Vec<CheckResult> {
             result.confidence_reason = None;
             vec![result]
         }
-        RobotsTxtFetch::Status(code) => vec![robots_unavailable_result(
-            Some(*code),
-            "robots.txt returned a non-success response",
-        )],
+        RobotsTxtFetch::Status(code) if (500..600).contains(code) => {
+            vec![robots_server_error_result(*code)]
+        }
+        RobotsTxtFetch::Status(code) | RobotsTxtFetch::Challenged(code) => {
+            vec![robots_unavailable_result(
+                Some(*code),
+                "robots.txt returned a non-success response",
+            )]
+        }
         RobotsTxtFetch::HtmlShell => vec![robots_html_shell_result()],
         RobotsTxtFetch::Error(_) => vec![robots_unavailable_result(
             None,
@@ -332,6 +352,25 @@ fn robots_unavailable_result(status_code: Option<u16>, observation: &str) -> Che
                 .into(),
         ),
         why_it_matters: None,
+    }
+}
+
+fn robots_server_error_result(code: u16) -> CheckResult {
+    CheckResult {
+        check_id: "seo.robots_txt".into(),
+        category: ScanCategory::Seo,
+        title: "robots.txt answers a server error".into(),
+        description: format!("robots.txt answered HTTP {code}. While it answers a server error, crawlers that follow the robots.txt standard (RFC 9309) treat every page on the site as disallowed, and Google pauses crawling the site."),
+        status: CheckStatus::Fail,
+        severity: Severity::High,
+        fix_prompt: None,
+        manual_fix: Some("Make /robots.txt answer HTTP 200 with the file, or 404 if the site has no crawl rules. Check the server, CDN or framework route that serves it.".into()),
+        raw_data: Some(serde_json::json!({
+            "robots_policy_evaluated": false, "status_code": code, "server_error": true,
+        })),
+        confidence: IssueConfidence::High,
+        confidence_reason: None,
+        why_it_matters: Some("Search engines that follow the robots.txt standard stop crawling the site while robots.txt answers a server error, so new and changed pages are not picked up.".into()),
     }
 }
 

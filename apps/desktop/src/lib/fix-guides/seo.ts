@@ -60,9 +60,10 @@ export const SEO_FIX_GUIDES: Record<string, FixGuideEntry> = {
   "seo.robots_txt": {
     effort: "quick",
     effortMinutes: 3,
-    lead: "Your robots.txt file broadly blocks crawling by default, though a more specific crawler group could still override it.",
+    lead: "Your robots.txt has a problem that affects how search engines crawl your site.",
     default: [
-      "Fetch the deployed `/robots.txt` and confirm whether the root-wide `Disallow` policy is intentional; a missing robots.txt is optional and normally means no crawl restrictions, so do not create one solely to clear this finding. If the site should be crawled, remove the wildcard disallow or narrow it to the exact low-value or unsafe-to-crawl paths, and treat robots rules as public crawl guidance, not authentication or guaranteed de-indexing.",
+      "Open your site's deployed /robots.txt and check which of these applies.",
+      "If it answers a server error (a 5xx status): Make /robots.txt answer HTTP 200 with the file, or 404 if the site has no crawl rules. Check the server, CDN or framework route that serves it. If its `User-agent: *` group has `Disallow: /`: Confirm the block is intentional. If the site should be crawled, remove it or narrow it to the paths that should not be crawled. robots.txt is not access control. If it is served as text/html: Serve robots.txt with a Content-Type header of text/plain.",
     ],
   },
   "seo.sitemap": {

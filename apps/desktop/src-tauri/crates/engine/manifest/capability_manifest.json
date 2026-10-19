@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "manifest_digest": "a144343d94413ad9",
+  "manifest_digest": "b598a8f6ddb1aaff",
   "entries": [
     {
       "check": "accessibility.aria_usage",
@@ -1317,7 +1317,7 @@
     },
     {
       "check": "seo.noindex_in_sitemap",
-      "contract": "a9faac3cef170d00",
+      "contract": "de78290256757b0f",
       "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",
@@ -1362,7 +1362,7 @@
     },
     {
       "check": "seo.orphan_pages",
-      "contract": "8c863601950da755",
+      "contract": "f7bbf584238f94f0",
       "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",
@@ -1380,7 +1380,7 @@
     },
     {
       "check": "seo.robots_txt",
-      "contract": "d068be686b957a46",
+      "contract": "84cf101d62d5479b",
       "hosted": "probe_adapter",
       "class": "deterministic",
       "scope": "origin",
