@@ -150,6 +150,10 @@ fn an_empty_complete_sitemap_skips_orphan_grading() {
 fn noindex_matches_a_sitemap_listing_the_same_site_www_twins() {
     let mut pages = pages();
     pages[1].noindex = Some(true);
+    pages[2].noindex = None;
+    pages[2].url = pages[2]
+        .url
+        .replace("https://example.com", "https://www.example.com");
     let urls: Vec<_> = pages
         .iter()
         .map(|p| {
@@ -164,7 +168,20 @@ fn noindex_matches_a_sitemap_listing_the_same_site_www_twins() {
             partial_because: None,
         }),
     );
-    let noindex = verdict(&analysis, "seo.noindex_in_sitemap");
+    let noindex_outcomes: Vec<_> = analysis
+        .verdicts
+        .iter()
+        .filter(|v| v.result.check_id == "seo.noindex_in_sitemap")
+        .collect();
+    let noindex = noindex_outcomes
+        .iter()
+        .find(|v| v.result.status == CheckStatus::Warn)
+        .expect("noindex warning");
+    let skipped = noindex_outcomes
+        .iter()
+        .find(|v| v.result.status == CheckStatus::Skipped)
+        .expect("undecided noindex outcome");
+    assert_eq!(skipped.result.description, "A page listed in the sitemap reached SiteCMD with its X-Robots-Tag lines combined, so whether it is noindex could not be told.");
     assert_eq!(noindex.result.status, CheckStatus::Warn);
     assert_eq!(noindex.pages, [1]);
 }

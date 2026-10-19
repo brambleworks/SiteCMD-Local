@@ -19,6 +19,8 @@ pub(super) struct ComparedPages<'a> {
     /// The compared page the scan started from, when it was comparable. Orphan
     /// analysis exempts it, and cannot run honestly without it.
     pub(super) entry_page: Option<&'a str>,
+    /// The first input URL anchors sitemap twins even when its response failed.
+    pub(super) sitemap_origin: Option<&'a str>,
     pub(super) selected: usize,
     pub(super) without_successful_response: usize,
     pub(super) repeated_pages: usize,
@@ -62,6 +64,7 @@ impl<'a> ComparedPages<'a> {
             positions,
             aliases,
             entry_page,
+            sitemap_origin: pages.first().map(|page| page.url.as_str()),
             selected: pages.len(),
             without_successful_response,
             repeated_pages,

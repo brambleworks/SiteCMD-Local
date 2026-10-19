@@ -387,7 +387,7 @@ fn raw_strings(result: &CheckResult, key: &str) -> Vec<String> {
 }
 
 #[test]
-fn review_normalize_page_url_collapses_only_fragment_host_case_default_port_and_trailing_slash() {
+fn normalize_page_url_collapses_only_fragment_host_case_default_port_and_trailing_slash() {
     // Collapsed into one identity.
     assert_eq!(normalize_page_url("https://A.com/x/"), "https://a.com/x");
     assert_eq!(normalize_page_url("https://a.com/x#top"), "https://a.com/x");
@@ -411,7 +411,7 @@ fn review_normalize_page_url_collapses_only_fragment_host_case_default_port_and_
 }
 
 #[test]
-fn review_defect_one_page_reached_twice_is_reported_as_its_own_duplicate() {
+fn one_page_reached_twice_is_compared_once() {
     // The scope keeps `/about` and `/about/` as two routes (the engine's
     // canonical_path preserves a trailing slash), and a stale sitemap keeps
     // `/old` beside `/new` after `/old` starts redirecting. Both selections
@@ -441,7 +441,7 @@ fn review_defect_one_page_reached_twice_is_reported_as_its_own_duplicate() {
 }
 
 #[test]
-fn review_site_wide_title_suffix_and_blank_titles_are_not_duplicates() {
+fn site_wide_title_suffix_and_blank_titles_are_not_duplicates() {
     let mut a = page("https://a.com/1");
     a.title = Some("Home | Acme".into());
     let mut b = page("https://a.com/2");
@@ -461,7 +461,7 @@ fn review_site_wide_title_suffix_and_blank_titles_are_not_duplicates() {
 }
 
 #[test]
-fn review_noindex_and_canonicalized_pages_are_left_out_of_duplicate_groups() {
+fn noindex_and_canonicalized_pages_are_left_out_of_duplicate_groups() {
     // A print view that canonicalizes to the product page has already named
     // its representative, and a noindex thank-you page is not competing for
     // the title. Neither is a duplicate-title defect, so the group holding
@@ -505,7 +505,7 @@ fn two_indexable_pages_that_do_not_canonicalize_to_each_other_still_group() {
 }
 
 #[test]
-fn review_inbound_links_count_nofollow_template_noscript_and_same_site_scheme_or_host_twins() {
+fn inbound_links_count_nofollow_template_noscript_and_same_site_scheme_or_host_twins() {
     // A site reached at https://a.com links to itself as http://a.com/... and
     // https://www.a.com/... . Those are the same pages, so the twins are folded
     // onto the scanned origin and the pages they point at are linked pages. An
@@ -554,7 +554,7 @@ fn review_inbound_links_count_nofollow_template_noscript_and_same_site_scheme_or
 }
 
 #[test]
-fn review_a_page_listed_only_in_the_sitemap_is_still_an_orphan() {
+fn a_page_listed_only_in_the_sitemap_is_still_an_orphan() {
     let mut home = page("https://a.com/");
     home.internal_links = vec![
         "https://a.com/x".into(),
@@ -586,7 +586,7 @@ fn review_a_page_listed_only_in_the_sitemap_is_still_an_orphan() {
 }
 
 #[test]
-fn review_a_redirected_page_no_scanned_page_links_to_is_still_an_orphan() {
+fn a_redirected_page_no_scanned_page_links_to_is_still_an_orphan() {
     // /old redirects to /new and the scan reached the page at /new. A redirect
     // alone does not make a page linked: no scanned page publishes a link to
     // either URL, so it is a genuine orphan. The case where a scanned page does
@@ -618,7 +618,7 @@ fn review_a_redirected_page_no_scanned_page_links_to_is_still_an_orphan() {
 }
 
 #[test]
-fn review_relative_canonicals_resolve_against_the_page_before_loop_detection() {
+fn relative_canonicals_resolve_against_the_page_before_loop_detection() {
     let a = signals_for("https://a.com/docs/a", r#"<link rel="canonical" href="b">"#);
     let b = signals_for(
         "https://a.com/docs/b/",
@@ -636,7 +636,7 @@ fn review_relative_canonicals_resolve_against_the_page_before_loop_detection() {
 }
 
 #[test]
-fn review_canonicals_leaving_the_scanned_set_produce_a_bounded_pass() {
+fn canonicals_leaving_the_scanned_set_produce_a_bounded_pass() {
     let mut a = page("https://a.com/a");
     a.canonical = Some("https://a.com/unscanned".into());
     let mut b = page("https://a.com/b");
@@ -654,7 +654,7 @@ fn review_canonicals_leaving_the_scanned_set_produce_a_bounded_pass() {
 }
 
 #[test]
-fn review_hreflang_reciprocity_ignores_language_code_and_resolves_relative_hrefs() {
+fn hreflang_reciprocity_ignores_language_code_and_resolves_relative_hrefs() {
     let en = signals_for(
         "https://a.com/en/",
         r#"<link rel="alternate" hreflang="EN-us" href="/en/">
@@ -688,7 +688,7 @@ fn review_hreflang_reciprocity_ignores_language_code_and_resolves_relative_hrefs
 }
 
 #[test]
-fn review_noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers() {
+fn noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers() {
     use crate::core::page_signals::extract_page_signals_with_headers;
 
     fn with_header(url: &str, value: &'static str) -> PageSignals {
@@ -759,7 +759,7 @@ fn review_noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers(
 }
 
 #[test]
-fn review_defect_an_inline_svg_title_is_not_the_document_title() {
+fn an_inline_svg_title_is_not_the_document_title() {
     let body = r#"<html><head></head><body>
         <svg viewBox="0 0 24 24"><title>Menu icon</title><path d="M0 0h24v24H0z"/></svg>
         <h1>Page</h1></body></html>"#;
@@ -773,7 +773,7 @@ fn review_defect_an_inline_svg_title_is_not_the_document_title() {
     assert_eq!(signals_for("https://a.com/x", body).title, None);
 }
 
-// Error responses and repeated selections are excluded from page comparisons.
+// Session coverage handles failed responses, aliases and incomplete sitemaps.
 
 #[test]
 fn an_error_status_page_is_not_compared_against_the_pages_that_answered() {
@@ -992,10 +992,9 @@ fn a_partial_sitemap_still_reports_the_contradictions_it_did_observe() {
 
 #[test]
 fn a_repeated_selection_keeps_the_url_it_was_reached_through() {
-    // Defect 2's own motivating shape: a stale sitemap still lists /old beside
-    // /new, /old now redirects onto /new, and the home page still links to
-    // /old. Collapsing the two selections into one page must not throw away
-    // the /old alias, or the page the site does link to becomes an orphan.
+    // A stale sitemap lists /old beside /new, /old redirects onto /new, and
+    // the home page links to /old. Collapsing the selections must retain /old
+    // as an alias or the linked page becomes an orphan.
     let mut home = page("https://a.com/");
     home.internal_links = vec![
         "https://a.com/old".into(),

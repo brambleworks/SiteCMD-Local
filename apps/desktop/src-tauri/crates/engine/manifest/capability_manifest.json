@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "manifest_digest": "a2534cc71b9e4a4c",
+  "manifest_digest": "a144343d94413ad9",
   "entries": [
     {
       "check": "accessibility.aria_usage",
@@ -1362,7 +1362,7 @@
     },
     {
       "check": "seo.orphan_pages",
-      "contract": "f7bbf584238f94f0",
+      "contract": "8c863601950da755",
       "hosted": "artifact",
       "class": "deterministic",
       "scope": "session",

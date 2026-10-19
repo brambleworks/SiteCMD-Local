@@ -54,5 +54,5 @@ pub const ENTRIES: &[Entry] = &[
     Entry::new("seo.duplicate_title_across_pages").session(),
     Entry::new("seo.hreflang_reciprocity").session(),
     Entry::new("seo.noindex_in_sitemap").session().revision(2),
-    Entry::new("seo.orphan_pages").session().revision(3),
+    Entry::new("seo.orphan_pages").session().revision(2),
 ];

@@ -319,7 +319,7 @@ fn unread_declared_sitemaps_skip_noindex_on_both_lanes() {
 }
 
 #[test]
-fn an_error_entry_keeps_the_sitemap_on_both_lanes() {
+fn an_error_entry_keeps_a_twin_listed_noindex_page_on_both_lanes() {
     let scan = Scan {
         routes: vec![
             "https://example.com/",
@@ -342,14 +342,18 @@ fn an_error_entry_keeps_the_sitemap_on_both_lanes() {
         robots: None,
         sitemaps: vec![(
             "https://example.com/sitemap.xml",
-            "<urlset><url><loc>https://example.com/private</loc></url></urlset>",
+            "<urlset><url><loc>https://www.example.com/private</loc></url></urlset>",
         )],
     };
-    for verdicts in [desktop(&scan), hosted(&scan)] {
+    for (lane, verdicts) in [("hosted", hosted(&scan)), ("native", desktop(&scan))] {
         let verdict = verdicts
             .iter()
             .find(|(id, ..)| id == "seo.noindex_in_sitemap")
             .expect("verdict");
-        assert_eq!((verdict.1, &verdict.3), (CheckStatus::Warn, &vec![2]));
+        assert_eq!(
+            (verdict.1, &verdict.3),
+            (CheckStatus::Warn, &vec![2]),
+            "{lane}"
+        );
     }
 }

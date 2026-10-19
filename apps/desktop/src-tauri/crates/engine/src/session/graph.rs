@@ -123,7 +123,7 @@ pub(super) fn orphan_sitemap_skip_reason(
         return Some("This site's sitemap lists no pages, so this scan cannot tell whether the pages it compared are all of the site's pages.".into());
     }
     let origin = compared
-        .entry_page
+        .sitemap_origin
         .and_then(|url| url::Url::parse(url).ok());
     let alias_key = |raw: &str| sitemap_alias_key(raw, origin.as_ref());
     let aliases: HashSet<_> = compared
@@ -162,7 +162,7 @@ pub(super) fn noindex_in_sitemap(
     sitemap: SessionSitemap<'_>,
 ) -> Vec<(CheckResult, Vec<String>)> {
     let origin = compared
-        .entry_page
+        .sitemap_origin
         .and_then(|url| url::Url::parse(url).ok());
     let key = |raw: &str| sitemap_alias_key(raw, origin.as_ref());
     let sitemap_set: HashSet<String> = sitemap.urls.iter().map(|url| key(url)).collect();
