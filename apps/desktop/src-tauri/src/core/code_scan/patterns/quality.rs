@@ -40,9 +40,9 @@ pub(in crate::core::code_scan) static HARDCODED_SECRET_PATTERNS: LazyLock<Vec<re
             regex::Regex::new(r#"(?i)("|')glpat-[a-zA-Z0-9\-_]{20,}("|')"#).unwrap(),
             regex::Regex::new(r#"(?i)("|')xox[bprs]-[a-zA-Z0-9\-]{10,}("|')"#).unwrap(),
             regex::Regex::new(r#"(?i)("|')SG\.[a-zA-Z0-9\-_]{22,}("|')"#).unwrap(),
-            // Match unambiguous PEM armor across quoted, heredoc, template, and
+            // Match PEM key material across quoted, heredoc, template, and
             // escaped-newline representations.
-            regex::Regex::new(r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY(?: BLOCK)?-----")
+            regex::Regex::new(r"(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----[\s\S-]{64,}?KEY(?: BLOCK)?-----")
                 .expect("static PEM armor regex"), // allow-expect: compile-time literal regex
             // Google API key (also matched by the web-side exposed_keys check;
             // the source path was blind to it).
@@ -332,24 +332,6 @@ mod tests {
     }
 
     #[test]
-    fn pem_private_key_armor_headers_are_secrets() {
-        assert!(matches_secret("-----BEGIN PRIVATE KEY-----")); // gitleaks:allow
-        assert!(matches_secret("-----BEGIN RSA PRIVATE KEY-----")); // gitleaks:allow
-        assert!(matches_secret("-----BEGIN OPENSSH PRIVATE KEY-----")); // gitleaks:allow
-        assert!(matches_secret("-----BEGIN ENCRYPTED PRIVATE KEY-----")); // gitleaks:allow
-        assert!(matches_secret("-----BEGIN PGP PRIVATE KEY BLOCK-----")); // gitleaks:allow
-
-        // The \n-joined private_key field of a committed service-account JSON.
-        assert!(matches_secret(
-            r#""private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg""#
-        ));
-        // Public halves and certificates are fine to commit.
-        assert!(!matches_secret("-----BEGIN PUBLIC KEY-----"));
-        assert!(!matches_secret("-----BEGIN CERTIFICATE-----"));
-        assert!(!matches_secret("-----BEGIN RSA PUBLIC KEY-----"));
-    }
-
-    #[test]
     fn expanded_provider_key_formats_are_secrets() {
         // Formats the web-side exposed_keys check knew but the source path
         // did not.
@@ -423,3 +405,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "quality/private_keys_tests.rs"]
+mod private_keys;

@@ -20,9 +20,11 @@ pub(in crate::core::code_scan) static DANGEROUS_HTML_PATTERNS: LazyLock<Vec<rege
             // Escaped output also matches, but the sanitization patterns
             // suppress the check for those files.
             regex::Regex::new(
-                r"(?:\becho\b|\bprint\b|<\?=|\{!!)[^;]{0,160}\$_(?:GET|POST|REQUEST|COOKIE|SERVER)",
+                r"\b(?:echo|print)\b[^;]{0,160}\$_(?:GET|POST|REQUEST|COOKIE|SERVER)",
             )
             .expect("static PHP pattern regex"), // allow-expect: compile-time literal regex
+            regex::Regex::new(r"(?:<\?=|\{!!)[^;]{0,160}\$_(?:GET|POST|REQUEST|COOKIE|SERVER)")
+                .expect("static PHP pattern regex"), // allow-expect: compile-time literal regex
         ]
     });
 
