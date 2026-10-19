@@ -407,5 +407,5 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "quality/private_keys.rs"]
+#[path = "quality/private_keys_tests.rs"]
 mod private_keys;
