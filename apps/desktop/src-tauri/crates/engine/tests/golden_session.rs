@@ -6,7 +6,7 @@ use sitecmd_engine::CheckStatus;
 
 #[path = "support/session_corpus.rs"]
 mod corpus;
-use corpus::{assert_orphan_skip_reason, run_case, Case, Corpus};
+use corpus::{assert_native_matches, assert_orphan_skip_reason, run_case, Case, Corpus};
 
 const CORPUS: &str = include_str!("../fixtures/session/golden.json");
 
@@ -144,6 +144,18 @@ fn headline_verdicts_match_each_cases_pages() {
                 assert_eq!(verdict("seo.orphan_pages").status, CheckStatus::Skipped);
                 assert!(verdict("seo.orphan_pages").pages.is_empty());
                 assert_orphan_skip_reason(case);
+            }
+            "apex_routes_landing_on_www_leave_unread_sitemap_pages_uncompared" => {
+                assert_eq!(facts(0).requested, ELSEWHERE);
+                assert_eq!(verdict("seo.orphan_pages").status, CheckStatus::Skipped);
+                assert_native_matches(case, &actual);
+            }
+            "a_www_listed_sitemap_matches_apex_pages" => {
+                assert_eq!(verdict("seo.orphan_pages").status, CheckStatus::Warn);
+                assert_eq!(verdict("seo.orphan_pages").pages, [4]);
+                assert_eq!(verdict("seo.noindex_in_sitemap").status, CheckStatus::Warn);
+                assert_eq!(verdict("seo.noindex_in_sitemap").pages, [4]);
+                assert_native_matches(case, &actual);
             }
             "a_noindex_page_listed_in_the_sitemap" => {
                 assert_eq!(facts(0).sitemap.as_ref().expect("sitemap").entries, ["r1"]);

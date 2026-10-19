@@ -23,7 +23,9 @@ use crate::checks::seo::sitemap::{
 };
 use crate::checks::seo::sitemap_walk::{SITEMAP_URL_LIMIT, SITEMAP_WALK_INCOMPLETE_REASON};
 use crate::header_lines::HeaderLines;
-use crate::session::signals::{extract_page_signals_with_lines, normalize_page_url};
+use crate::session::signals::{
+    extract_page_signals_with_lines, normalize_page_url, same_site_link,
+};
 
 /// The key of an address no scanned page can be.
 pub const ELSEWHERE: &str = "x";
@@ -320,7 +322,15 @@ fn sitemap_facts(context: &ProbeContext, keys: &RouteKeys) -> Option<SessionSite
         entries: pages
             .iter()
             .take(SITEMAP_URL_LIMIT)
-            .map(|loc| keys.key(&normalize_page_url(loc)))
+            .map(|loc| {
+                let folded = url::Url::parse(loc)
+                    .ok()
+                    .and_then(|url| same_site_link(&url, &context.page.url));
+                keys.key(&folded.map_or_else(
+                    || normalize_page_url(loc),
+                    |url| normalize_page_url(url.as_str()),
+                ))
+            })
             .collect(),
         partial_causes,
     })

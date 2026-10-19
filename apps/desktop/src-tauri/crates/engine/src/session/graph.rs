@@ -114,44 +114,44 @@ pub(super) fn orphan_sitemap_skip_reason(
         return Some("No sitemap was found for this site, so this scan cannot tell whether the pages it compared are all of the site's pages.".into());
     };
     if let Some(reason) = sitemap.partial_because {
-        return Some(super::partial_sitemap_reason(reason));
+        return Some(super::partial_sitemap_reason(
+            reason,
+            "this scan cannot tell whether the pages it compared are all of the site's pages",
+        ));
+    }
+    if sitemap.urls.is_empty() {
+        return Some("This site's sitemap lists no pages, so this scan cannot tell whether the pages it compared are all of the site's pages.".into());
     }
     let origin = compared
         .entry_page
         .and_then(|url| url::Url::parse(url).ok());
-    let alias_key = |raw: &str| {
-        origin
-            .as_ref()
-            .and_then(|origin| {
-                url::Url::parse(raw)
-                    .ok()
-                    .and_then(|url| same_site_link(&url, origin))
-            })
-            .map_or_else(
-                || normalize_page_url(raw),
-                |url| normalize_page_url(url.as_str()),
-            )
-    };
+    let alias_key = |raw: &str| sitemap_alias_key(raw, origin.as_ref());
     let aliases: HashSet<_> = compared
         .pages
         .iter()
         .flat_map(|page| compared.aliases_of(page))
         .map(alias_key)
         .collect();
-    let urls: HashSet<_> = sitemap
-        .urls
-        .iter()
-        .map(|url| normalize_page_url(url))
-        .collect();
+    let urls: HashSet<_> = sitemap.urls.iter().map(|url| alias_key(url)).collect();
     let n = urls.len();
-    let c = urls
-        .iter()
-        .filter(|url| aliases.contains(&alias_key(url)))
-        .count();
+    let c = urls.iter().filter(|url| aliases.contains(*url)).count();
     (c < n).then(|| format!(
         "This scan compared {c} of the {n} page{} this site's sitemap lists, so a page with no link from a compared page may be linked from a page the scan did not read.",
         if n == 1 { "" } else { "s" },
     ))
+}
+
+fn sitemap_alias_key(raw: &str, origin: Option<&url::Url>) -> String {
+    origin
+        .and_then(|origin| {
+            url::Url::parse(raw)
+                .ok()
+                .and_then(|url| same_site_link(&url, origin))
+        })
+        .map_or_else(
+            || normalize_page_url(raw),
+            |url| normalize_page_url(url.as_str()),
+        )
 }
 
 /// Pages that are noindex AND listed in the sitemap: the sitemap invites
@@ -161,18 +161,22 @@ pub(super) fn noindex_in_sitemap(
     compared: &ComparedPages<'_>,
     sitemap: SessionSitemap<'_>,
 ) -> Vec<(CheckResult, Vec<String>)> {
-    let sitemap_set: HashSet<String> = sitemap.urls.iter().map(|u| normalize_page_url(u)).collect();
+    let origin = compared
+        .entry_page
+        .and_then(|url| url::Url::parse(url).ok());
+    let key = |raw: &str| sitemap_alias_key(raw, origin.as_ref());
+    let sitemap_set: HashSet<String> = sitemap.urls.iter().map(|url| key(url)).collect();
 
     let contradictions: Vec<&str> = pages
         .iter()
-        .filter(|p| p.noindex == Some(true) && sitemap_set.contains(&p.url))
+        .filter(|p| p.noindex == Some(true) && sitemap_set.contains(&key(&p.url)))
         .map(|p| p.url.as_str())
         .collect();
 
     // A listed page whose noindex is unknown may be a contradiction.
     let undecided = pages
         .iter()
-        .any(|p| p.noindex.is_none() && sitemap_set.contains(&p.url));
+        .any(|p| p.noindex.is_none() && sitemap_set.contains(&key(&p.url)));
     let mut outcomes = if undecided {
         vec![(
             super::not_checked(
@@ -192,7 +196,7 @@ pub(super) fn noindex_in_sitemap(
             outcomes.push((
                 super::not_checked(
                     "seo.noindex_in_sitemap",
-                    super::partial_sitemap_reason(reason),
+                    super::partial_sitemap_reason(reason, super::NOINDEX_PARTIAL_CONSEQUENCE),
                 ),
                 Vec::new(),
             ));

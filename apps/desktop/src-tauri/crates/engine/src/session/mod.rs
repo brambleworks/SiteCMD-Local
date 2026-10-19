@@ -15,6 +15,8 @@ use duplicates::duplicate_field;
 /// Minimum scanned pages before orphan analysis says anything. On tiny scan
 /// sets "no other scanned page links here" is noise, not signal.
 const ORPHAN_MIN_PAGES: usize = 5;
+const NOINDEX_PARTIAL_CONSEQUENCE: &str =
+    "a noindex page listed in the part it did not read would not have been seen";
 
 /// Session evidence needs the path so a user can identify the page, but URL
 /// credentials, query values, fragments, and token-looking path segments must
@@ -185,7 +187,7 @@ fn unreported_outcomes(
                 ),
                 "seo.noindex_in_sitemap" => sitemap
                     .and_then(|sitemap| sitemap.partial_because)
-                    .map(partial_sitemap_reason),
+                    .map(|reason| partial_sitemap_reason(reason, NOINDEX_PARTIAL_CONSEQUENCE)),
                 "seo.hreflang_reciprocity" if compared.hreflang_truncated => Some(
                     "A compared page declares more hreflang alternates than SiteCMD keeps for one page, so a missing return link could not be told apart from one it did not keep."
                         .to_string(),
@@ -209,10 +211,8 @@ fn unreported_outcomes(
         .collect()
 }
 
-fn partial_sitemap_reason(reason: &str) -> String {
-    format!(
-        "SiteCMD read only part of this site's sitemap ({reason}), so a noindex page listed in the part it did not read would not have been seen."
-    )
+fn partial_sitemap_reason(reason: &str, consequence: &str) -> String {
+    format!("SiteCMD read only part of this site's sitemap ({reason}), so {consequence}.")
 }
 
 /// The row of a check that reached no verdict, saying why.

@@ -75,19 +75,29 @@ pub(super) fn run_case(case: &Case) -> Expected {
     }
 }
 
-pub(super) fn assert_orphan_skip_reason(case: &Case) {
+fn native_case(case: &Case) -> sitecmd_engine::session::SessionAnalysis {
     use sitecmd_engine::checks::seo::sitemap::parse_sitemap_document;
     use sitecmd_engine::probe::ProbeOutcome;
-    use sitecmd_engine::session::signals::extract_page_signals;
+    use sitecmd_engine::session::signals::extract_page_signals_with_headers;
     use sitecmd_engine::session::{analyze_session, SessionSitemap};
 
     let pages: Vec<_> = case
         .pages
         .iter()
         .map(|input| {
-            extract_page_signals(
+            extract_page_signals_with_headers(
                 &url::Url::parse(&input.page.url).expect("page URL"),
+                &url::Url::parse(
+                    input
+                        .page
+                        .requested_url
+                        .as_deref()
+                        .unwrap_or(&input.page.url),
+                )
+                .expect("requested URL"),
+                input.page.status_code,
                 &input.page.body,
+                &http::HeaderMap::new(),
             )
             .session_page()
         })
@@ -106,13 +116,17 @@ pub(super) fn assert_orphan_skip_reason(case: &Case) {
         })
         .flatten()
         .collect();
-    let analysis = analyze_session(
+    analyze_session(
         &pages,
         Some(SessionSitemap {
             urls: &urls,
             partial_because: None,
         }),
-    );
+    )
+}
+
+pub(super) fn assert_orphan_skip_reason(case: &Case) {
+    let analysis = native_case(case);
     let orphan = analysis
         .verdicts
         .iter()
@@ -122,4 +136,62 @@ pub(super) fn assert_orphan_skip_reason(case: &Case) {
         Some(&orphan.result.description),
         case.orphan_skip_reason.as_ref()
     );
+}
+
+pub(super) fn assert_native_matches(case: &Case, actual: &Expected) {
+    let native = native_case(case);
+    for row in &actual.response.verdicts {
+        let found = native
+            .verdicts
+            .iter()
+            .find(|v| v.result.check_id == row.check_id)
+            .expect("native verdict");
+        assert_eq!(
+            (found.result.status, found.result.severity, &found.pages),
+            (row.status, row.severity, &row.pages),
+            "{}: {}",
+            case.name,
+            row.check_id
+        );
+    }
+}
+
+fn case_named(name: &str) -> Case {
+    let corpus: Corpus = serde_json::from_str(super::CORPUS).expect("corpus");
+    corpus
+        .cases
+        .into_iter()
+        .find(|case| case.name == name)
+        .expect("case")
+}
+
+#[test]
+fn unread_sitemap_entries_do_not_match_elsewhere_requests() {
+    let case = case_named("apex_routes_landing_on_www_leave_unread_sitemap_pages_uncompared");
+    let actual = run_case(&case);
+    let orphan = actual
+        .response
+        .verdicts
+        .iter()
+        .find(|row| row.check_id == "seo.orphan_pages")
+        .expect("orphan row");
+    assert_eq!(orphan.status, sitecmd_engine::CheckStatus::Skipped);
+    assert_native_matches(&case, &actual);
+}
+
+#[test]
+fn native_and_hosted_match_www_listed_sitemaps() {
+    let case = case_named("a_www_listed_sitemap_matches_apex_pages");
+    let actual = run_case(&case);
+    for id in ["seo.orphan_pages", "seo.noindex_in_sitemap"] {
+        let row = actual
+            .response
+            .verdicts
+            .iter()
+            .find(|row| row.check_id == id)
+            .expect("row");
+        assert_eq!(row.status, sitecmd_engine::CheckStatus::Warn, "{id}");
+        assert_eq!(row.pages, [4]);
+    }
+    assert_native_matches(&case, &actual);
 }

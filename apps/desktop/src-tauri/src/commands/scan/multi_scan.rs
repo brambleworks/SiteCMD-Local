@@ -199,9 +199,9 @@ pub(crate) async fn scan_multi_for_execution(
         // Persist no completed score as NULL, not zero.
         let session_score = session_average(&completed_scores);
 
-        // Cross-page analysis over the collected page signals. One optional
-        // sitemap fetch feeds the noindex-in-sitemap contradiction check; no
-        // page is re-fetched.
+        // One optional sitemap fetch feeds the orphan coverage gate and the
+        // noindex-in-sitemap contradiction check over collected page signals;
+        // no page is re-fetched.
         let mut site_issues: Vec<crate::checks::CheckResult> = Vec::new();
         let session_analyzed =
             should_analyze_session(loop_status, urls.len(), session_signals.len());

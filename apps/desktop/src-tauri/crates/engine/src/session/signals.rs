@@ -100,7 +100,7 @@ fn header_noindex(headers: &http::HeaderMap, lines: HeaderLines) -> Option<bool>
 /// the twins as foreign origins made the pages they point at look unlinked.
 /// Only the scheme and a leading `www.` may differ: an explicit port and the
 /// rest of the host must match, so a genuinely different host stays foreign.
-pub(super) fn same_site_link(resolved: &url::Url, page_url: &url::Url) -> Option<url::Url> {
+pub(crate) fn same_site_link(resolved: &url::Url, page_url: &url::Url) -> Option<url::Url> {
     if !matches!(resolved.scheme(), "http" | "https") {
         return None;
     }

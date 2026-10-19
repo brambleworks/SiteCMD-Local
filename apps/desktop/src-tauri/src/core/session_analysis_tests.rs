@@ -42,6 +42,11 @@ fn whole_sitemap(urls: &[String]) -> SessionSitemap<'_> {
     }
 }
 
+fn compare_with_whole_sitemap(pages: &[PageSignals]) -> Vec<CheckResult> {
+    let urls: Vec<_> = pages.iter().map(|page| page.url.clone()).collect();
+    analyze_session(pages, Some(whole_sitemap(&urls)))
+}
+
 #[test]
 fn single_page_sessions_emit_nothing() {
     let pages = vec![page("https://a.com")];
@@ -114,7 +119,7 @@ fn orphans_need_minimum_pages_and_skip_entry_page() {
     let y = page("https://a.com/y");
     let z = page("https://a.com/z");
     let orphan = page("https://a.com/lost");
-    let results = analyze_session(&[home, x, y, z, orphan], None);
+    let results = compare_with_whole_sitemap(&[home, x, y, z, orphan]);
     let finding = results
         .iter()
         .find(|r| r.check_id == "seo.orphan_pages")
@@ -224,7 +229,7 @@ fn session_evidence_removes_query_values_but_keeps_useful_page_paths() {
     let y = page("https://a.com/y");
     let z = page("https://a.com/z");
     let orphan = page("https://a.com/lost?token=secret#fragment");
-    let finding = analyze_session(&[home, x, y, z, orphan], None)
+    let finding = compare_with_whole_sitemap(&[home, x, y, z, orphan])
         .into_iter()
         .find(|result| result.check_id == "seo.orphan_pages")
         .expect("orphan finding");
@@ -366,15 +371,7 @@ fn a_supplied_sitemap_with_no_contradiction_reports_pass() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Task 7 review evidence (scanner accuracy plan, 2026-09-02). These tests pin
-// the observed behavior of the session checks and their inputs. The tests
-// named `review_defect_*` were written ignored, failing on purpose, as proof
-// of a defect; task 13 fixed those defects and un-ignored them, so they now
-// pass and stand as the regression guardrails. Where a fix removed the exact
-// behavior a test pinned, the fixture was kept and the assertion inverted
-// rather than the test deleted.
-// ---------------------------------------------------------------------------
+// Session signals preserve page identity and observed HTML navigation.
 
 fn signals_for(url: &str, body: &str) -> PageSignals {
     crate::core::page_signals::extract_page_signals(&url::Url::parse(url).unwrap(), body)
@@ -548,7 +545,7 @@ fn review_inbound_links_count_nofollow_template_noscript_and_same_site_scheme_or
         page("https://a.com/www-twin"),
         page("https://a.com/footer"),
     ];
-    let results = analyze_session(&pages, None);
+    let results = compare_with_whole_sitemap(&pages);
 
     assert_eq!(
         outcome(&results, "seo.orphan_pages").status,
@@ -609,7 +606,7 @@ fn review_a_redirected_page_no_scanned_page_links_to_is_still_an_orphan() {
         redirected_page("https://a.com/old", "https://a.com/new"),
     ];
 
-    let finding = analyze_session(&pages, None)
+    let finding = compare_with_whole_sitemap(&pages)
         .into_iter()
         .find(|result| result.check_id == "seo.orphan_pages")
         .expect("orphan finding");
@@ -733,7 +730,7 @@ fn review_noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers(
         "https://a.com/c".to_string(),
         "https://a.com/d".to_string(),
         "https://a.com/e".to_string(),
-        // Listed under the www host: the same page, but never matched.
+        // The www listing identifies the same noindex page.
         "https://www.a.com/f".to_string(),
     ];
     let results = analyze_session(
@@ -752,7 +749,12 @@ fn review_noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers(
     assert_eq!(finding.status, CheckStatus::Warn);
     assert_eq!(
         raw_strings(finding, "pages"),
-        vec!["https://a.com/a", "https://a.com/b", "https://a.com/d"]
+        vec![
+            "https://a.com/a",
+            "https://a.com/b",
+            "https://a.com/d",
+            "https://a.com/f"
+        ]
     );
 }
 
@@ -771,11 +773,7 @@ fn review_defect_an_inline_svg_title_is_not_the_document_title() {
     assert_eq!(signals_for("https://a.com/x", body).title, None);
 }
 
-// ---------------------------------------------------------------------------
-// Task 13 fixes (scanner accuracy plan, 2026-09-02). Each of these fails on the
-// pre-fix code; together they are the regression guardrails for the session
-// defects the task-7 review found.
-// ---------------------------------------------------------------------------
+// Error responses and repeated selections are excluded from page comparisons.
 
 #[test]
 fn an_error_status_page_is_not_compared_against_the_pages_that_answered() {
@@ -931,7 +929,7 @@ fn a_page_linked_only_through_the_url_the_scan_requested_is_not_an_orphan() {
         redirected_page("https://a.com/old", "https://a.com/new"),
     ];
 
-    let results = analyze_session(&pages, None);
+    let results = compare_with_whole_sitemap(&pages);
 
     assert_eq!(
         outcome(&results, "seo.orphan_pages").status,
@@ -990,9 +988,7 @@ fn a_partial_sitemap_still_reports_the_contradictions_it_did_observe() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Task 13 review fixes. Each fails on the first-round code.
-// ---------------------------------------------------------------------------
+// Redirect aliases and the scan entry determine inbound-link coverage.
 
 #[test]
 fn a_repeated_selection_keeps_the_url_it_was_reached_through() {
@@ -1017,7 +1013,7 @@ fn a_repeated_selection_keeps_the_url_it_was_reached_through() {
         redirected_page("https://a.com/old", "https://a.com/new"),
     ];
 
-    let results = analyze_session(&pages, None);
+    let results = compare_with_whole_sitemap(&pages);
     let finding = outcome(&results, "seo.orphan_pages");
 
     assert_eq!(finding.status, CheckStatus::Pass, "{}", finding.description);
@@ -1077,7 +1073,7 @@ fn the_scan_entry_page_is_the_one_exempted_from_orphan_reporting() {
         page("https://a.com/y"),
     ];
 
-    let results = analyze_session(&pages, None);
+    let results = compare_with_whole_sitemap(&pages);
     let finding = outcome(&results, "seo.orphan_pages");
 
     assert_eq!(finding.status, CheckStatus::Warn);

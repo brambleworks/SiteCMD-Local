@@ -36,7 +36,7 @@ fn a_partial_sitemap_skips_orphan_grading_before_testing_its_pages() {
     assert_skipped(
         &pages,
         Some(SessionSitemap { urls: &[], partial_because: Some("a child sitemap did not answer") }),
-        "SiteCMD read only part of this site's sitemap (a child sitemap did not answer), so a noindex page listed in the part it did not read would not have been seen.",
+        "SiteCMD read only part of this site's sitemap (a child sitemap did not answer), so this scan cannot tell whether the pages it compared are all of the site's pages.",
     );
 }
 
@@ -45,6 +45,14 @@ fn an_uncompared_sitemap_page_skips_orphan_grading_and_counts_sitemap_urls() {
     let mut pages = pages();
     let mut urls: Vec<_> = pages.iter().map(|page| page.url.clone()).collect();
     urls.push("https://example.com/archive".into());
+    urls.extend(
+        [
+            "https://example.com/menu/",
+            "https://example.com/menu#x",
+            "http://www.example.com/menu",
+        ]
+        .map(String::from),
+    );
     for all_linked in [false, true] {
         if all_linked {
             let menu = pages[1].url.clone();
@@ -58,7 +66,7 @@ fn an_uncompared_sitemap_page_skips_orphan_grading_and_counts_sitemap_urls() {
     }
     assert_skipped(
         &pages,
-        Some(SessionSitemap { urls: &urls[5..], partial_because: None }),
+        Some(SessionSitemap { urls: &urls[5..6], partial_because: None }),
         "This scan compared 0 of the 1 page this site's sitemap lists, so a page with no link from a compared page may be linked from a page the scan did not read.",
     );
 }
@@ -127,4 +135,36 @@ fn entry_and_minimum_page_skips_precede_sitemap_skips() {
         None,
         "This check needs at least 5 scanned pages to tell an unlinked page from a small scan; this scan compared 4.",
     );
+}
+
+#[test]
+fn an_empty_complete_sitemap_skips_orphan_grading() {
+    assert_skipped(
+        &pages(),
+        Some(SessionSitemap { urls: &[], partial_because: None }),
+        "This site's sitemap lists no pages, so this scan cannot tell whether the pages it compared are all of the site's pages.",
+    );
+}
+
+#[test]
+fn noindex_matches_a_sitemap_listing_the_same_site_www_twins() {
+    let mut pages = pages();
+    pages[1].noindex = Some(true);
+    let urls: Vec<_> = pages
+        .iter()
+        .map(|p| {
+            p.url
+                .replace("https://example.com", "https://www.example.com")
+        })
+        .collect();
+    let analysis = analyze_session(
+        &pages,
+        Some(SessionSitemap {
+            urls: &urls,
+            partial_because: None,
+        }),
+    );
+    let noindex = verdict(&analysis, "seo.noindex_in_sitemap");
+    assert_eq!(noindex.result.status, CheckStatus::Warn);
+    assert_eq!(noindex.pages, [1]);
 }
