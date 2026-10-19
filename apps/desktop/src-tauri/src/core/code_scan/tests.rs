@@ -123,6 +123,7 @@ mod redirect_guards;
 mod release_age_policy;
 mod reporting;
 mod route_detection;
+mod router_guards;
 mod runtime_eol_detection;
 mod scan_precision;
 mod scan_scope_rules;

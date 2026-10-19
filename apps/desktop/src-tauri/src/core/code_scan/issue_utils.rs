@@ -150,23 +150,9 @@ pub(super) fn has_any(content: &str, patterns: &[regex::Regex]) -> bool {
     patterns.iter().any(|pattern| pattern.is_match(content))
 }
 
-/// Match sinks outside quoted rule definitions and documentation.
-/// PHP and Blade markup sinks may follow an HTML attribute quote, so only a
-/// preceding backtick excludes those matches.
-pub(super) fn has_any_unquoted(content: &str, patterns: &[regex::Regex]) -> bool {
-    patterns.iter().any(|pattern| {
-        pattern.find_iter(content).any(|found| {
-            let matched = found.as_str();
-            let markup_delimited = matched.starts_with("<?=") || matched.starts_with("{!!");
-            let preceding = content[..found.start()].chars().next_back();
-            if markup_delimited {
-                !matches!(preceding, Some('`'))
-            } else {
-                !matches!(preceding, Some('"' | '\'' | '`'))
-            }
-        })
-    })
-}
+#[path = "issue_utils/sink_context.rs"]
+mod sink_context;
+pub(super) use sink_context::{has_any_unquoted, is_executable_sink};
 
 pub(super) fn count_matches(content: &str, patterns: &[regex::Regex]) -> usize {
     patterns

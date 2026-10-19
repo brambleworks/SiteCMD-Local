@@ -32,17 +32,6 @@ pub(in crate::core::code_scan) fn unsafe_html_sink_offsets(content: &str) -> Vec
     sinks
 }
 
-fn is_executable_sink(content: &str, matched: &regex::Match<'_>) -> bool {
-    let markup_delimited =
-        matched.as_str().starts_with("<?=") || matched.as_str().starts_with("{!!");
-    let preceding = content[..matched.start()].chars().next_back();
-    if markup_delimited {
-        !matches!(preceding, Some('`'))
-    } else {
-        !matches!(preceding, Some('"' | '\'' | '`'))
-    }
-}
-
 fn is_static_raw_html_sink_at(content: &str, start: usize) -> bool {
     let window = sink_window(content, start, &[]);
     if content[start..].starts_with(REACT_RAW_HTML_SINK) {

@@ -303,3 +303,64 @@ export const isPlaceholder = (v: string) => PLACEHOLDERS.includes(v);
     assert_no_issue_under(&report, "src/validator.ts");
     assert_issue_fires(&report, "weak-default-credential:src/config.ts");
 }
+
+#[test]
+fn runtime_pem_armor_is_not_a_hardcoded_secret() {
+    let temp = TempDir::new().unwrap();
+    write_file(
+        temp.path(),
+        "src/test-support/keys.ts",
+        r#"
+export async function testKeyPair() {
+  const body = "generated";
+  return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`; // gitleaks:allow
+}
+"#,
+    );
+    write_file(
+        temp.path(),
+        "src/key.ts",
+        &format!(
+            "export const pem = `-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----`;",
+            "A".repeat(64)
+        ),
+    ); // gitleaks:allow
+    let report = audit_project(temp.path()).unwrap();
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| issue.id == "hardcoded-secret:src/key.ts"));
+    assert!(!report
+        .issues
+        .iter()
+        .any(|issue| issue.id == "hardcoded-secret:src/test-support/keys.ts"));
+}
+
+#[test]
+fn regex_literal_sink_names_in_rule_tables_are_not_live_sinks() {
+    let temp = TempDir::new().unwrap();
+    write_file(
+        temp.path(),
+        "tools/rules.mjs",
+        r#"
+export const RULES = [
+  [/dangerouslySetInnerHTML/, isScript, "render as text"],
+  [/\binnerHTML\s*=/, isScript, "render as text"],
+];
+"#,
+    );
+    write_file(
+        temp.path(),
+        "src/bio.tsx",
+        "export const Bio = ({ user }) => <div dangerouslySetInnerHTML={{ __html: user.bio }} />;",
+    );
+    let report = audit_project(temp.path()).unwrap();
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| issue.id.starts_with("unsafe-html:src/bio.tsx:")));
+    assert!(!report
+        .issues
+        .iter()
+        .any(|issue| issue.id.starts_with("unsafe-html:tools/rules.mjs:")));
+}

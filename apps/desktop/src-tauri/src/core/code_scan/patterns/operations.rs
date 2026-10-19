@@ -55,7 +55,7 @@ pub(in crate::core::code_scan) static STRUCTURED_LOGGING_PATTERNS: LazyLock<Vec<
             regex::Regex::new(r"\blogrus\b").unwrap(),
             regex::Regex::new(r"console\.error\s*\(\s*\{").unwrap(),
             regex::Regex::new(
-                r"(?s)\bfunction\s+logEvent\b.{0,1000}JSON\.stringify\s*\(\s*\{[^}]*\bevent\b",
+                r"(?s)\bfunction\s+logEvent\b(?:.{0,1000}JSON\.stringify\s*\(\s*\{[^}]*\bevent\b|.{0,1000}?=\s*\{\s*event\b[^}]*\}.{0,600}?JSON\.stringify\s*\(\s*[A-Za-z_$][\w$]*\s*\))",
             )
             .expect("structured logging regex is valid"), // allow-expect: compile-time literal regex
         ]

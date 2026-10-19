@@ -1,5 +1,9 @@
 use std::sync::LazyLock;
 
+#[path = "local_outbound.rs"]
+mod local_outbound;
+pub(in crate::core::code_scan) use local_outbound::*;
+
 pub(in crate::core::code_scan) static REQUEST_BODY_PATTERNS: LazyLock<Vec<regex::Regex>> =
     LazyLock::new(|| {
         vec![
@@ -123,7 +127,7 @@ pub(in crate::core::code_scan) static OUTBOUND_HTTP_RETRY_SKIP_PATTERNS: LazyLoc
 pub(in crate::core::code_scan) static RATE_LIMIT_PATTERNS: LazyLock<Vec<regex::Regex>> =
     LazyLock::new(|| {
         vec![
-            regex::Regex::new(r"rate[-_ ]?limit").unwrap(),
+            regex::Regex::new(r"(?i)rate[-_ ]?limit").unwrap(),
             regex::Regex::new(r"ratelimit").unwrap(),
             regex::Regex::new(r"express-rate-limit").unwrap(),
             regex::Regex::new(r"upstash/ratelimit").unwrap(),
@@ -243,19 +247,6 @@ pub(in crate::core::code_scan) static CLIENT_MODULE_PATTERNS: LazyLock<Vec<regex
             regex::Regex::new(r"\buse(?:query|mutation|infinitequery|suspensequery)\s*[(<]")
                 .expect("static client module regex"), // allow-expect: compile-time literal regex
             regex::Regex::new(r#"(?m)^\s*["']use client["']"#).expect("static client module regex"), // allow-expect: compile-time literal regex
-        ]
-    });
-
-/// Calls that look outbound but stay inside the process: a Stripe webhook
-/// signature check and a bundled-asset URL load. Removed from the content
-/// before outbound-HTTP matching so a file that also makes a real remote call
-/// still counts as outbound.
-pub(in crate::core::code_scan) static LOCAL_ONLY_OUTBOUND_PATTERNS: LazyLock<Vec<regex::Regex>> =
-    LazyLock::new(|| {
-        vec![
-            regex::Regex::new(r"\bstripe\.webhooks\.\w*\s*\(").expect("static local-only regex"), // allow-expect: compile-time literal regex
-            regex::Regex::new(r#"(?s)\bfetch\s*\(\s*new\s+URL\s*\(\s*["'`]\.{1,2}/"#)
-                .expect("static local-only regex"), // allow-expect: compile-time literal regex
         ]
     });
 

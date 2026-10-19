@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "router_guards.rs"]
+mod router_guards;
+
 #[derive(Debug, Default, Clone)]
 
 pub(in crate::core::code_scan) struct NextMiddlewareProtection {
@@ -30,6 +33,7 @@ pub(in crate::core::code_scan) fn apply_framework_auth_overrides(
     files: &[SourceFile],
     issues: &mut Vec<CodeIssue>,
 ) {
+    router_guards::apply_router_guard_overrides(files, issues);
     let middleware_protection = if framework == Some("Next.js") {
         collect_next_middleware_protection(files)
     } else {
