@@ -107,9 +107,15 @@ fn selected_groups_filter_at_capacity_and_become_unknown_above_it() {
         "User-agent: SiteCMD\n{rules}User-agent: SiteCMD\n{rules}User-agent: Other\n{}",
         "Disallow: /public\n".repeat(super::ROBOTS_PIECE_LIMIT + 1)
     );
-    assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
+    let at_capacity = RobotsRules::parse(&body, "SiteCMD");
+    assert!(at_capacity.known);
+    assert!(!at_capacity.allowed("/private"));
     body.push_str("User-agent: SiteCMD\nDisallow: /private\n");
-    assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
+    COMPILED_RULES.set(0);
+    let above_capacity = RobotsRules::parse(&body, "SiteCMD");
+    assert!(!above_capacity.known);
+    assert!(!above_capacity.allowed("/private"));
+    assert_eq!(COMPILED_RULES.get(), 0);
 }
 
 #[test]
@@ -184,9 +190,15 @@ fn selected_groups_are_bounded_by_their_merged_pieces() {
         "User-agent: SiteCMD\nDisallow: {pattern}\nUser-agent: Other\nDisallow: /public{}\nUser-agent: SiteCMD\nDisallow: {pattern}",
         "*".repeat(super::ROBOTS_PIECE_LIMIT)
     );
-    assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
+    let at_capacity = RobotsRules::parse(&body, "SiteCMD");
+    assert!(at_capacity.known);
+    assert!(!at_capacity.allowed("/private"));
     let above = body.replacen("Disallow: /private", "Disallow: /private*", 1);
-    assert!(!RobotsRules::parse(&above, "SiteCMD").allowed("/private"));
+    COMPILED_RULES.set(0);
+    let above_capacity = RobotsRules::parse(&above, "SiteCMD");
+    assert!(!above_capacity.known);
+    assert!(!above_capacity.allowed("/private"));
+    assert_eq!(COMPILED_RULES.get(), 0);
 }
 
 #[test]
@@ -216,9 +228,15 @@ fn selected_groups_filter_at_the_star_limit_and_become_unknown_above_it() {
         "User-agent: SiteCMD\n{first}{plain}User-agent: Other\n{}User-agent: SiteCMD\n{second}",
         "Disallow: /public*\n".repeat(limit + 1)
     );
-    assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
+    let at_capacity = RobotsRules::parse(&body, "SiteCMD");
+    assert!(at_capacity.known);
+    assert!(!at_capacity.allowed("/private"));
     body.push_str("Disallow: /private*\n");
-    assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
+    COMPILED_RULES.set(0);
+    let above_capacity = RobotsRules::parse(&body, "SiteCMD");
+    assert!(!above_capacity.known);
+    assert!(!above_capacity.allowed("/private"));
+    assert_eq!(COMPILED_RULES.get(), 0);
 }
 
 #[test]

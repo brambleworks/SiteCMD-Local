@@ -19,6 +19,8 @@ pub enum RobotsTxtFetch {
     FoundWithHtmlType { body: String },
     /// Reachable but non-2xx.
     Status(u16),
+    /// A non-2xx response intercepted by a bot challenge.
+    Challenged(u16),
     /// A 2xx response whose body is an HTML page rather than a robots.txt: a
     /// catch-all route answered for the path. The endpoint responded, so this
     /// is not a network failure and re-running will not change it.
@@ -74,10 +76,11 @@ pub fn robots_fetch_from_probe(outcome: ProbeOutcome) -> RobotsTxtFetch {
             }
         }
         ProbeOutcome::Response(response)
-            if (500..600).contains(&response.status)
-                && response.header("cf-mitigated") == Some("challenge") =>
+            if response
+                .header("cf-mitigated")
+                .is_some_and(|value| value.trim().eq_ignore_ascii_case("challenge")) =>
         {
-            RobotsTxtFetch::Error("robots.txt was answered by a bot challenge".into())
+            RobotsTxtFetch::Challenged(response.status)
         }
         ProbeOutcome::Response(response) => RobotsTxtFetch::Status(response.status),
         ProbeOutcome::Failure(failure) => RobotsTxtFetch::Error(failure.detail),
@@ -227,7 +230,9 @@ pub fn evaluate_robots_txt(fetch: &RobotsTxtFetch) -> Vec<CheckResult> {
                 },
             }]
         }
-        RobotsTxtFetch::Status(code) if matches!(*code, 404 | 410) => {
+        RobotsTxtFetch::Status(code) | RobotsTxtFetch::Challenged(code)
+            if matches!(*code, 404 | 410) =>
+        {
             let mut result = missing_robots_result();
             result.raw_data = Some(serde_json::json!({
                 "robots_policy_evaluated": false,
@@ -241,10 +246,12 @@ pub fn evaluate_robots_txt(fetch: &RobotsTxtFetch) -> Vec<CheckResult> {
         RobotsTxtFetch::Status(code) if (500..600).contains(code) => {
             vec![robots_server_error_result(*code)]
         }
-        RobotsTxtFetch::Status(code) => vec![robots_unavailable_result(
-            Some(*code),
-            "robots.txt returned a non-success response",
-        )],
+        RobotsTxtFetch::Status(code) | RobotsTxtFetch::Challenged(code) => {
+            vec![robots_unavailable_result(
+                Some(*code),
+                "robots.txt returned a non-success response",
+            )]
+        }
         RobotsTxtFetch::HtmlShell => vec![robots_html_shell_result()],
         RobotsTxtFetch::Error(_) => vec![robots_unavailable_result(
             None,

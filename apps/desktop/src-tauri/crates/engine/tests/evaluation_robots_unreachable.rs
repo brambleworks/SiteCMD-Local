@@ -4,9 +4,12 @@
 mod support;
 pub use support::*;
 
-use sitecmd_engine::checks::seo::robots::{evaluate_robots_txt, robots_fetch_from_probe};
-use sitecmd_engine::evaluation::{ExecutedProbe, RouteSession};
-use sitecmd_engine::probe::{ProbeFailure, ProbeFailureClass, ProbeOutcome};
+use sitecmd_engine::checks::seo::robots::{
+    evaluate_robots_txt, robots_fetch_from_probe, RobotsTxtFetch,
+};
+use sitecmd_engine::checks::seo::robots_directives::evaluate_sitemap_in_robots;
+use sitecmd_engine::evaluation::{probe_key, ExecutedProbe, RouteSession};
+use sitecmd_engine::probe::{ProbeFailure, ProbeFailureClass, ProbeOutcome, ProbeRequest};
 use sitecmd_engine::{CheckStatus, IssueConfidence, Severity};
 
 fn keeps_planned(robots: ProbeOutcome) {
@@ -28,7 +31,7 @@ fn keeps_planned(robots: ProbeOutcome) {
 
 #[test]
 fn server_errors_and_rate_limits_adopt_no_new_routes() {
-    for status in [500, 503, 599, 429, 302] {
+    for status in [500, 503, 599, 429] {
         keeps_planned(response(
             &format!("{ORIGIN}/robots.txt"),
             status,
@@ -71,7 +74,13 @@ fn an_unmade_or_refused_robots_request_keeps_the_plan_unchanged() {
     let planned = vec!["/old/".to_string(), "/kept".to_string()];
     for refused in [false, true] {
         if refused {
-            session.record(None);
+            session.record(Some(vec![ExecutedProbe::new(
+                probe_key(&ProbeRequest::get(format!("{ORIGIN}/robots.txt"))),
+                ProbeOutcome::Failure(ProbeFailure {
+                    class: ProbeFailureClass::Transport,
+                    detail: "probe_budget_exhausted".into(),
+                }),
+            )]));
         }
         assert_eq!(session.discover(&planned, 1).routes, Some(planned.clone()));
     }
@@ -93,7 +102,7 @@ fn policies_above_either_parser_limit_adopt_no_new_routes() {
 }
 
 #[test]
-fn server_error_rows_ship_the_signed_off_copy_and_rate_limits_stay_skipped() {
+fn server_error_rows_carry_the_server_error_copy_and_rate_limits_stay_skipped() {
     for code in [500, 502, 503, 599] {
         let rows = evaluate_robots_txt(&robots_fetch_from_probe(response(
             &format!("{ORIGIN}/robots.txt"),
@@ -204,4 +213,87 @@ fn session_corpus_first_scan_with_a_503_adopts_no_routes() {
 #[test]
 fn session_corpus_429_keeps_only_planned_routes() {
     assert_session_case("discovery_keeps_only_planned_routes_when_robots_answers_429");
+}
+
+fn challenged(status: u16, marker: &str) -> ProbeOutcome {
+    let ProbeOutcome::Response(mut robots) =
+        response(&format!("{ORIGIN}/robots.txt"), status, "text/html", "")
+    else {
+        unreachable!()
+    };
+    robots.body = None;
+    robots.headers.push(("cf-mitigated".into(), marker.into()));
+    ProbeOutcome::Response(robots)
+}
+
+#[test]
+fn a_challenged_503_keeps_the_sitemap_directive_status_row() {
+    let actual = evaluate_sitemap_in_robots(&robots_fetch_from_probe(challenged(503, "challenge")));
+    let expected = evaluate_sitemap_in_robots(&RobotsTxtFetch::Status(503));
+    assert_eq!(
+        serde_json::to_vec(&actual).unwrap(),
+        serde_json::to_vec(&expected).unwrap()
+    );
+}
+
+#[test]
+fn a_challenged_503_keeps_the_robots_http_status_evidence() {
+    let rows = evaluate_robots_txt(&robots_fetch_from_probe(challenged(503, "challenge")));
+    assert_eq!(rows[0].raw_data.as_ref().unwrap()["status_code"], 503);
+}
+
+#[test]
+fn a_challenged_403_adopts_no_new_routes() {
+    keeps_planned(challenged(403, "challenge"));
+}
+
+#[test]
+fn challenge_markers_ignore_case_and_surrounding_whitespace() {
+    for status in [503, 403] {
+        let outcome = challenged(status, " \tChAlLeNgE \t");
+        let rows = evaluate_robots_txt(&robots_fetch_from_probe(outcome.clone()));
+        assert_eq!(rows[0].status, CheckStatus::Skipped);
+        assert_eq!(rows[0].raw_data.as_ref().unwrap()["status_code"], status);
+        keeps_planned(outcome);
+    }
+}
+
+#[test]
+fn challenged_non_successes_keep_both_checks_status_rows() {
+    for status in [301, 403, 404, 410, 429, 500, 503, 599] {
+        let outcome = challenged(status, "challenge");
+        let fetch = robots_fetch_from_probe(outcome.clone());
+        let mut expected = evaluate_robots_txt(&RobotsTxtFetch::Status(if status >= 500 {
+            429
+        } else {
+            status
+        }));
+        if status >= 500 {
+            expected[0].description = expected[0].description.replace("429", &status.to_string());
+            expected[0].raw_data.as_mut().unwrap()["status_code"] = status.into();
+        }
+        assert_eq!(
+            serde_json::to_vec(&evaluate_robots_txt(&fetch)).unwrap(),
+            serde_json::to_vec(&expected).unwrap(),
+            "{status}"
+        );
+        assert_eq!(
+            serde_json::to_vec(&evaluate_sitemap_in_robots(&fetch)).unwrap(),
+            serde_json::to_vec(&evaluate_sitemap_in_robots(&RobotsTxtFetch::Status(status)))
+                .unwrap(),
+            "{status}"
+        );
+        assert!(fetch.body().is_none());
+        keeps_planned(outcome);
+    }
+}
+
+#[test]
+fn a_final_redirect_without_a_destination_adopts_no_new_routes() {
+    keeps_planned(response(
+        &format!("{ORIGIN}/robots.txt"),
+        302,
+        "text/plain",
+        "",
+    ));
 }

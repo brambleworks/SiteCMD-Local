@@ -28,7 +28,9 @@ pub fn evaluate_sitemap_in_robots(outcome: &RobotsTxtFetch) -> Vec<CheckResult> 
                 RobotsFetch::NoSitemap
             }
         }
-        RobotsTxtFetch::Status(code) => RobotsFetch::Status(*code),
+        RobotsTxtFetch::Status(code) | RobotsTxtFetch::Challenged(code) => {
+            RobotsFetch::Status(*code)
+        }
         RobotsTxtFetch::HtmlShell => RobotsFetch::HtmlShell,
         RobotsTxtFetch::Error(_) => RobotsFetch::NetworkError,
     };

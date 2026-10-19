@@ -98,7 +98,7 @@ fn repeated_matching_groups_are_combined_and_other_agents_do_not_apply() {
 }
 
 #[test]
-fn unavailable_robots_allows_discovery_except_when_rate_limited() {
+fn unavailable_robots_allows_discovery() {
     for status in [400, 401, 403, 404, 410, 499] {
         let pages = [(
             "https://example.com/robots.txt",
