@@ -16,8 +16,8 @@ use sitecmd_engine::session::signals::MAX_INTERNAL_LINKS_PER_PAGE;
 use sitecmd_engine::CheckStatus;
 use support::{desktop, desktop_reason, hosted, hosted_facts, page, Scan, Verdicts, NOINDEX};
 
-/// Two noindex pages, and a sitemap that lists them by a trailing slash, the
-/// www twin and a query: only the first spelling is a scanned page's.
+/// Two noindex pages listed with trailing slashes and www twins; a query
+/// identifies a different URL.
 fn twin_spellings() -> Scan {
     Scan {
         routes: vec![
@@ -241,7 +241,7 @@ fn a_canonical_loop_through_a_redirected_page_fails_on_both_lanes() {
 }
 
 #[test]
-fn a_sitemap_reaches_both_lanes_and_names_the_same_noindex_page() {
+fn a_sitemap_reaches_both_lanes_and_names_the_same_noindex_pages() {
     let named = |verdicts: Verdicts| {
         verdicts
             .into_iter()
@@ -249,8 +249,8 @@ fn a_sitemap_reaches_both_lanes_and_names_the_same_noindex_page() {
             .map(|(_, status, _, pages)| (status, pages))
     };
     let scan = twin_spellings();
-    assert_eq!(named(desktop(&scan)), Some((CheckStatus::Warn, vec![1])));
-    assert_eq!(named(hosted(&scan)), Some((CheckStatus::Warn, vec![1])));
+    assert_eq!(named(desktop(&scan)), Some((CheckStatus::Warn, vec![1, 2])));
+    assert_eq!(named(hosted(&scan)), Some((CheckStatus::Warn, vec![1, 2])));
 }
 
 #[test]
@@ -319,7 +319,7 @@ fn unread_declared_sitemaps_skip_noindex_on_both_lanes() {
 }
 
 #[test]
-fn an_error_entry_keeps_the_sitemap_on_both_lanes() {
+fn an_error_entry_keeps_a_twin_listed_noindex_page_on_both_lanes() {
     let scan = Scan {
         routes: vec![
             "https://example.com/",
@@ -342,14 +342,18 @@ fn an_error_entry_keeps_the_sitemap_on_both_lanes() {
         robots: None,
         sitemaps: vec![(
             "https://example.com/sitemap.xml",
-            "<urlset><url><loc>https://example.com/private</loc></url></urlset>",
+            "<urlset><url><loc>https://www.example.com/private</loc></url></urlset>",
         )],
     };
-    for verdicts in [desktop(&scan), hosted(&scan)] {
+    for (lane, verdicts) in [("hosted", hosted(&scan)), ("native", desktop(&scan))] {
         let verdict = verdicts
             .iter()
             .find(|(id, ..)| id == "seo.noindex_in_sitemap")
             .expect("verdict");
-        assert_eq!((verdict.1, &verdict.3), (CheckStatus::Warn, &vec![2]));
+        assert_eq!(
+            (verdict.1, &verdict.3),
+            (CheckStatus::Warn, &vec![2]),
+            "{lane}"
+        );
     }
 }

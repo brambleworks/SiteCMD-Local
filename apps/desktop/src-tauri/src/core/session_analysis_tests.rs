@@ -42,6 +42,11 @@ fn whole_sitemap(urls: &[String]) -> SessionSitemap<'_> {
     }
 }
 
+fn compare_with_whole_sitemap(pages: &[PageSignals]) -> Vec<CheckResult> {
+    let urls: Vec<_> = pages.iter().map(|page| page.url.clone()).collect();
+    analyze_session(pages, Some(whole_sitemap(&urls)))
+}
+
 #[test]
 fn single_page_sessions_emit_nothing() {
     let pages = vec![page("https://a.com")];
@@ -114,7 +119,7 @@ fn orphans_need_minimum_pages_and_skip_entry_page() {
     let y = page("https://a.com/y");
     let z = page("https://a.com/z");
     let orphan = page("https://a.com/lost");
-    let results = analyze_session(&[home, x, y, z, orphan], None);
+    let results = compare_with_whole_sitemap(&[home, x, y, z, orphan]);
     let finding = results
         .iter()
         .find(|r| r.check_id == "seo.orphan_pages")
@@ -224,7 +229,7 @@ fn session_evidence_removes_query_values_but_keeps_useful_page_paths() {
     let y = page("https://a.com/y");
     let z = page("https://a.com/z");
     let orphan = page("https://a.com/lost?token=secret#fragment");
-    let finding = analyze_session(&[home, x, y, z, orphan], None)
+    let finding = compare_with_whole_sitemap(&[home, x, y, z, orphan])
         .into_iter()
         .find(|result| result.check_id == "seo.orphan_pages")
         .expect("orphan finding");
@@ -366,15 +371,7 @@ fn a_supplied_sitemap_with_no_contradiction_reports_pass() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Task 7 review evidence (scanner accuracy plan, 2026-09-02). These tests pin
-// the observed behavior of the session checks and their inputs. The tests
-// named `review_defect_*` were written ignored, failing on purpose, as proof
-// of a defect; task 13 fixed those defects and un-ignored them, so they now
-// pass and stand as the regression guardrails. Where a fix removed the exact
-// behavior a test pinned, the fixture was kept and the assertion inverted
-// rather than the test deleted.
-// ---------------------------------------------------------------------------
+// Session signals preserve page identity and observed HTML navigation.
 
 fn signals_for(url: &str, body: &str) -> PageSignals {
     crate::core::page_signals::extract_page_signals(&url::Url::parse(url).unwrap(), body)
@@ -390,7 +387,7 @@ fn raw_strings(result: &CheckResult, key: &str) -> Vec<String> {
 }
 
 #[test]
-fn review_normalize_page_url_collapses_only_fragment_host_case_default_port_and_trailing_slash() {
+fn normalize_page_url_collapses_only_fragment_host_case_default_port_and_trailing_slash() {
     // Collapsed into one identity.
     assert_eq!(normalize_page_url("https://A.com/x/"), "https://a.com/x");
     assert_eq!(normalize_page_url("https://a.com/x#top"), "https://a.com/x");
@@ -414,7 +411,7 @@ fn review_normalize_page_url_collapses_only_fragment_host_case_default_port_and_
 }
 
 #[test]
-fn review_defect_one_page_reached_twice_is_reported_as_its_own_duplicate() {
+fn one_page_reached_twice_is_compared_once() {
     // The scope keeps `/about` and `/about/` as two routes (the engine's
     // canonical_path preserves a trailing slash), and a stale sitemap keeps
     // `/old` beside `/new` after `/old` starts redirecting. Both selections
@@ -444,7 +441,7 @@ fn review_defect_one_page_reached_twice_is_reported_as_its_own_duplicate() {
 }
 
 #[test]
-fn review_site_wide_title_suffix_and_blank_titles_are_not_duplicates() {
+fn site_wide_title_suffix_and_blank_titles_are_not_duplicates() {
     let mut a = page("https://a.com/1");
     a.title = Some("Home | Acme".into());
     let mut b = page("https://a.com/2");
@@ -464,7 +461,7 @@ fn review_site_wide_title_suffix_and_blank_titles_are_not_duplicates() {
 }
 
 #[test]
-fn review_noindex_and_canonicalized_pages_are_left_out_of_duplicate_groups() {
+fn noindex_and_canonicalized_pages_are_left_out_of_duplicate_groups() {
     // A print view that canonicalizes to the product page has already named
     // its representative, and a noindex thank-you page is not competing for
     // the title. Neither is a duplicate-title defect, so the group holding
@@ -508,7 +505,7 @@ fn two_indexable_pages_that_do_not_canonicalize_to_each_other_still_group() {
 }
 
 #[test]
-fn review_inbound_links_count_nofollow_template_noscript_and_same_site_scheme_or_host_twins() {
+fn inbound_links_count_nofollow_template_noscript_and_same_site_scheme_or_host_twins() {
     // A site reached at https://a.com links to itself as http://a.com/... and
     // https://www.a.com/... . Those are the same pages, so the twins are folded
     // onto the scanned origin and the pages they point at are linked pages. An
@@ -548,7 +545,7 @@ fn review_inbound_links_count_nofollow_template_noscript_and_same_site_scheme_or
         page("https://a.com/www-twin"),
         page("https://a.com/footer"),
     ];
-    let results = analyze_session(&pages, None);
+    let results = compare_with_whole_sitemap(&pages);
 
     assert_eq!(
         outcome(&results, "seo.orphan_pages").status,
@@ -557,7 +554,7 @@ fn review_inbound_links_count_nofollow_template_noscript_and_same_site_scheme_or
 }
 
 #[test]
-fn review_a_page_listed_only_in_the_sitemap_is_still_an_orphan() {
+fn a_page_listed_only_in_the_sitemap_is_still_an_orphan() {
     let mut home = page("https://a.com/");
     home.internal_links = vec![
         "https://a.com/x".into(),
@@ -589,7 +586,7 @@ fn review_a_page_listed_only_in_the_sitemap_is_still_an_orphan() {
 }
 
 #[test]
-fn review_a_redirected_page_no_scanned_page_links_to_is_still_an_orphan() {
+fn a_redirected_page_no_scanned_page_links_to_is_still_an_orphan() {
     // /old redirects to /new and the scan reached the page at /new. A redirect
     // alone does not make a page linked: no scanned page publishes a link to
     // either URL, so it is a genuine orphan. The case where a scanned page does
@@ -609,7 +606,7 @@ fn review_a_redirected_page_no_scanned_page_links_to_is_still_an_orphan() {
         redirected_page("https://a.com/old", "https://a.com/new"),
     ];
 
-    let finding = analyze_session(&pages, None)
+    let finding = compare_with_whole_sitemap(&pages)
         .into_iter()
         .find(|result| result.check_id == "seo.orphan_pages")
         .expect("orphan finding");
@@ -621,7 +618,7 @@ fn review_a_redirected_page_no_scanned_page_links_to_is_still_an_orphan() {
 }
 
 #[test]
-fn review_relative_canonicals_resolve_against_the_page_before_loop_detection() {
+fn relative_canonicals_resolve_against_the_page_before_loop_detection() {
     let a = signals_for("https://a.com/docs/a", r#"<link rel="canonical" href="b">"#);
     let b = signals_for(
         "https://a.com/docs/b/",
@@ -639,7 +636,7 @@ fn review_relative_canonicals_resolve_against_the_page_before_loop_detection() {
 }
 
 #[test]
-fn review_canonicals_leaving_the_scanned_set_produce_a_bounded_pass() {
+fn canonicals_leaving_the_scanned_set_produce_a_bounded_pass() {
     let mut a = page("https://a.com/a");
     a.canonical = Some("https://a.com/unscanned".into());
     let mut b = page("https://a.com/b");
@@ -657,7 +654,7 @@ fn review_canonicals_leaving_the_scanned_set_produce_a_bounded_pass() {
 }
 
 #[test]
-fn review_hreflang_reciprocity_ignores_language_code_and_resolves_relative_hrefs() {
+fn hreflang_reciprocity_ignores_language_code_and_resolves_relative_hrefs() {
     let en = signals_for(
         "https://a.com/en/",
         r#"<link rel="alternate" hreflang="EN-us" href="/en/">
@@ -691,7 +688,7 @@ fn review_hreflang_reciprocity_ignores_language_code_and_resolves_relative_hrefs
 }
 
 #[test]
-fn review_noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers() {
+fn noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers() {
     use crate::core::page_signals::extract_page_signals_with_headers;
 
     fn with_header(url: &str, value: &'static str) -> PageSignals {
@@ -733,7 +730,7 @@ fn review_noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers(
         "https://a.com/c".to_string(),
         "https://a.com/d".to_string(),
         "https://a.com/e".to_string(),
-        // Listed under the www host: the same page, but never matched.
+        // The www listing identifies the same noindex page.
         "https://www.a.com/f".to_string(),
     ];
     let results = analyze_session(
@@ -752,12 +749,17 @@ fn review_noindex_sources_cover_comma_lists_googlebot_meta_and_x_robots_headers(
     assert_eq!(finding.status, CheckStatus::Warn);
     assert_eq!(
         raw_strings(finding, "pages"),
-        vec!["https://a.com/a", "https://a.com/b", "https://a.com/d"]
+        vec![
+            "https://a.com/a",
+            "https://a.com/b",
+            "https://a.com/d",
+            "https://a.com/f"
+        ]
     );
 }
 
 #[test]
-fn review_defect_an_inline_svg_title_is_not_the_document_title() {
+fn an_inline_svg_title_is_not_the_document_title() {
     let body = r#"<html><head></head><body>
         <svg viewBox="0 0 24 24"><title>Menu icon</title><path d="M0 0h24v24H0z"/></svg>
         <h1>Page</h1></body></html>"#;
@@ -771,11 +773,7 @@ fn review_defect_an_inline_svg_title_is_not_the_document_title() {
     assert_eq!(signals_for("https://a.com/x", body).title, None);
 }
 
-// ---------------------------------------------------------------------------
-// Task 13 fixes (scanner accuracy plan, 2026-09-02). Each of these fails on the
-// pre-fix code; together they are the regression guardrails for the session
-// defects the task-7 review found.
-// ---------------------------------------------------------------------------
+// Session coverage handles failed responses, aliases and incomplete sitemaps.
 
 #[test]
 fn an_error_status_page_is_not_compared_against_the_pages_that_answered() {
@@ -931,7 +929,7 @@ fn a_page_linked_only_through_the_url_the_scan_requested_is_not_an_orphan() {
         redirected_page("https://a.com/old", "https://a.com/new"),
     ];
 
-    let results = analyze_session(&pages, None);
+    let results = compare_with_whole_sitemap(&pages);
 
     assert_eq!(
         outcome(&results, "seo.orphan_pages").status,
@@ -990,16 +988,13 @@ fn a_partial_sitemap_still_reports_the_contradictions_it_did_observe() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Task 13 review fixes. Each fails on the first-round code.
-// ---------------------------------------------------------------------------
+// Redirect aliases and the scan entry determine inbound-link coverage.
 
 #[test]
 fn a_repeated_selection_keeps_the_url_it_was_reached_through() {
-    // Defect 2's own motivating shape: a stale sitemap still lists /old beside
-    // /new, /old now redirects onto /new, and the home page still links to
-    // /old. Collapsing the two selections into one page must not throw away
-    // the /old alias, or the page the site does link to becomes an orphan.
+    // A stale sitemap lists /old beside /new, /old redirects onto /new, and
+    // the home page links to /old. Collapsing the selections must retain /old
+    // as an alias or the linked page becomes an orphan.
     let mut home = page("https://a.com/");
     home.internal_links = vec![
         "https://a.com/old".into(),
@@ -1017,7 +1012,7 @@ fn a_repeated_selection_keeps_the_url_it_was_reached_through() {
         redirected_page("https://a.com/old", "https://a.com/new"),
     ];
 
-    let results = analyze_session(&pages, None);
+    let results = compare_with_whole_sitemap(&pages);
     let finding = outcome(&results, "seo.orphan_pages");
 
     assert_eq!(finding.status, CheckStatus::Pass, "{}", finding.description);
@@ -1077,7 +1072,7 @@ fn the_scan_entry_page_is_the_one_exempted_from_orphan_reporting() {
         page("https://a.com/y"),
     ];
 
-    let results = analyze_session(&pages, None);
+    let results = compare_with_whole_sitemap(&pages);
     let finding = outcome(&results, "seo.orphan_pages");
 
     assert_eq!(finding.status, CheckStatus::Warn);

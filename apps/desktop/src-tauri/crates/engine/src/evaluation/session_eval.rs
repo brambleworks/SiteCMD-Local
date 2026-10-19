@@ -84,12 +84,16 @@ pub fn evaluate_session(request: &SessionRequest) -> SessionResponse {
     }
 }
 
-/// A page as the analysis compares it. An `x` canonical becomes unique to its
-/// page, so two pages pointing off the site never point at one place.
+/// A page as the analysis compares it. Unknown requested and canonical keys
+/// become unique to the input position so they cannot identify another page.
 fn compared_page(position: usize, facts: &SessionPageFacts) -> SessionPage {
     SessionPage {
         url: facts.page.clone(),
-        requested_url: facts.requested.clone(),
+        requested_url: if facts.requested == ELSEWHERE {
+            format!("{ELSEWHERE}{position}")
+        } else {
+            facts.requested.clone()
+        },
         status_code: facts.status_code,
         title: facts.title.clone(),
         meta_description: facts.description.clone(),
