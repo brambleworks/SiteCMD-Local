@@ -5,7 +5,7 @@ fn router_report(router: &str) -> CodeScanReport {
     write_file(
         temp.path(),
         "src/index.ts",
-        &format!("app.post(\"/ping\", (c) => c.text(\"ok\"));\n{router}"),
+        &format!("{router}\napp.post(\"/ping\", (c) => c.text(\"ok\"));"),
     );
     write_file(
         temp.path(),
@@ -162,11 +162,12 @@ export default {{ async fetch(request: Request, env: Env, ctx: ExecutionContext)
 fn remote_fetches_and_service_bindings_still_need_outbound_guards() {
     for call in [
         "fetch('https://api.example.com/x')",
-        "env.CONNECT.fetch(request)",
+        "env.BACKEND.fetch(request)",
         "env.RENAMED_ASSETS.fetch(request)",
     ] {
         let report = router_report(&format!(
             r#"export default {{ async fetch(request, env, ctx) {{
+  const asset = await env.ASSETS.fetch(request);
   return {call};
 }} }};
 "#
@@ -177,6 +178,7 @@ fn remote_fetches_and_service_bindings_still_need_outbound_guards() {
                 "{call}: {prefix}: {:?}",
                 report.issues
             );
+            assert_eq!(finding(&report, prefix).unwrap().line, Some(3));
         }
     }
 }
@@ -239,7 +241,7 @@ app.post("/billing/checkout", startCheckout);
 app.post("/account/delete", deleteAccount);"#,
     );
     let issue = finding(&report, "sensitive-auth").unwrap();
-    assert_eq!(issue.line, Some(5));
+    assert_eq!(issue.line, Some(4));
     assert!(issue
         .source_excerpt
         .as_deref()

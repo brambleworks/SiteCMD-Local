@@ -345,7 +345,7 @@ fn regex_literal_sink_names_in_rule_tables_are_not_live_sinks() {
         r#"
 export const RULES = [
   [/dangerouslySetInnerHTML/, isScript, "render as text"],
-  [/\binnerHTML\s*=/, isScript, "render as text"],
+  [/innerHTML =/, isScript, "render as text"],
 ];
 "#,
     );

@@ -124,19 +124,9 @@ pub(in crate::core::code_scan) static OUTBOUND_HTTP_RETRY_SKIP_PATTERNS: LazyLoc
     ]
 });
 
-pub(in crate::core::code_scan) static RATE_LIMIT_PATTERNS: LazyLock<Vec<regex::Regex>> =
-    LazyLock::new(|| {
-        vec![
-            regex::Regex::new(r"(?i)rate[-_ ]?limit").unwrap(),
-            regex::Regex::new(r"ratelimit").unwrap(),
-            regex::Regex::new(r"express-rate-limit").unwrap(),
-            regex::Regex::new(r"upstash/ratelimit").unwrap(),
-            regex::Regex::new(r"\blimiter\b").unwrap(),
-            regex::Regex::new(r"\bthrottle\b").unwrap(),
-            regex::Regex::new(r"\bslowDown\b").unwrap(),
-            regex::Regex::new(r"\bgov(ernor|ernor)\b").unwrap(),
-        ]
-    });
+#[path = "rate_limits.rs"]
+mod rate_limits;
+pub(in crate::core::code_scan) use rate_limits::*;
 
 pub(in crate::core::code_scan) static PUBLIC_RISK_ENDPOINT_PATTERNS: LazyLock<Vec<regex::Regex>> =
     LazyLock::new(|| {

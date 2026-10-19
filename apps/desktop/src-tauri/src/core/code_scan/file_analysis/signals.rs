@@ -179,21 +179,11 @@ impl FileAnalysisSignals {
         let has_timeout = has_any(content, &TIMEOUT_PATTERNS);
         let has_retry_guard = has_any(content, &RETRY_PATTERNS);
         let has_concurrency_guard = has_any(content, &CONCURRENCY_PATTERNS);
-        // A Stripe signature check and a bundled-asset URL load look like SDK
-        // and fetch calls but never leave the process. Removing them keeps a
-        // file that also makes a real remote call counted as outbound, and the
-        // copy is only paid by the files that contain one.
-        let uses_outbound_http = !pattern_registry
-            && if has_any(content, &LOCAL_ONLY_OUTBOUND_PATTERNS) {
-                let scanned = LOCAL_ONLY_OUTBOUND_PATTERNS
-                    .iter()
-                    .fold(content.to_string(), |scanned, pattern| {
-                        pattern.replace_all(&scanned, "").into_owned()
-                    });
-                has_any(&scanned, &OUTBOUND_HTTP_PATTERNS)
-            } else {
-                has_any(content, &OUTBOUND_HTTP_PATTERNS)
-            };
+        // Stripe signature checks, bundled-asset loads, Worker fetch handlers,
+        // and assets bindings look outbound but stay local. Blanking these
+        // shapes preserves offsets and leaves real remote calls detectable.
+        let uses_outbound_http =
+            !pattern_registry && has_any(&outbound_view(content), &OUTBOUND_HTTP_PATTERNS);
         let skips_internal_http = has_any(content, &OUTBOUND_HTTP_RETRY_SKIP_PATTERNS);
         let uses_llm = !pattern_registry && has_any(content, &LLM_PATTERNS);
         let uses_ai_sdk = !pattern_registry

@@ -22,6 +22,7 @@ pub(in crate::core::code_scan) fn is_executable_sink(
     if markup_delimited {
         !matches!(preceding, Some('`'))
     } else {
-        !matches!(preceding, Some('"' | '\'' | '`' | '/'))
+        !matches!(preceding, Some('"' | '\'' | '`'))
+            && (preceding != Some('/') || content[..matched.start()].ends_with("*/"))
     }
 }
