@@ -265,7 +265,7 @@ fn a_sitemap_found_after_robots_failed_keeps_the_planned_routes() {
     let page = artifact(&home("<a href='/pricing'>Plans</a>"), 200, "/");
     assert_eq!(
         discovered(page, answer, &["/listed"], LIMIT),
-        routes(&["/pricing", "/about", "/listed"])
+        routes(&["/listed"])
     );
 }
 

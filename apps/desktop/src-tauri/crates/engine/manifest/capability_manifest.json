@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "manifest_digest": "a144343d94413ad9",
+  "manifest_digest": "0fa838d72512c8a0",
   "entries": [
     {
       "check": "accessibility.aria_usage",
@@ -1380,7 +1380,7 @@
     },
     {
       "check": "seo.robots_txt",
-      "contract": "d068be686b957a46",
+      "contract": "84cf101d62d5479b",
       "hosted": "probe_adapter",
       "class": "deterministic",
       "scope": "origin",

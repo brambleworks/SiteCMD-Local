@@ -289,14 +289,23 @@ fn headline_verdicts_match_each_cases_pages() {
                 );
                 assert_eq!(facts(1).page, "r2");
             }
-            "discovery_keeps_planned_stand_ins_after_pages_read_when_robots_did_not_answer" => {
+            "discovery_keeps_only_planned_routes_when_robots_did_not_answer" => {
                 assert_eq!(
                     discovered(),
-                    Some(vec!["/pricing".into(), "/about".into(), "/listed".into()])
+                    Some(vec!["/listed".into(), "/pricing".into()])
                 );
                 assert_eq!(
                     facts(0).sitemap.as_ref().expect("sitemap").partial_causes,
                     [SessionSitemapCause::UnfinishedWalk]
+                );
+            }
+            "discovery_adopts_none_when_robots_answers_503_on_a_first_scan" => {
+                assert_eq!(discovered(), Some(vec![]));
+            }
+            "discovery_keeps_only_planned_routes_when_robots_answers_429" => {
+                assert_eq!(
+                    discovered(),
+                    Some(vec!["/listed".into(), "/pricing".into()])
                 );
             }
             "discovery_keeps_no_planned_stand_ins_when_the_sitemap_is_missing" => {

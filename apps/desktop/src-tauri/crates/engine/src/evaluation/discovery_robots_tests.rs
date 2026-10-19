@@ -109,7 +109,7 @@ fn selected_groups_filter_at_capacity_and_become_unknown_above_it() {
     );
     assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
     body.push_str("User-agent: SiteCMD\nDisallow: /private\n");
-    assert!(RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
+    assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
 }
 
 #[test]
@@ -186,7 +186,7 @@ fn selected_groups_are_bounded_by_their_merged_pieces() {
     );
     assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
     let above = body.replacen("Disallow: /private", "Disallow: /private*", 1);
-    assert!(RobotsRules::parse(&above, "SiteCMD").allowed("/private"));
+    assert!(!RobotsRules::parse(&above, "SiteCMD").allowed("/private"));
 }
 
 #[test]
@@ -218,7 +218,7 @@ fn selected_groups_filter_at_the_star_limit_and_become_unknown_above_it() {
     );
     assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
     body.push_str("Disallow: /private*\n");
-    assert!(RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
+    assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
 }
 
 #[test]
@@ -279,7 +279,7 @@ fn over_limit_groups_are_never_compiled() {
     ] {
         COMPILED_RULES.set(0);
         let body = format!("User-agent: SiteCMD\nDisallow: {pattern}");
-        assert!(RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
+        assert!(!RobotsRules::parse(&body, "SiteCMD").allowed("/private"));
         assert_eq!(COMPILED_RULES.get(), 0);
     }
 }

@@ -4,17 +4,18 @@ use memchr::memmem::Finder;
 
 use super::origin_reads::robots_request;
 use super::probes::ProbeContext;
-use crate::checks::seo::robots::robots_fetch_from_probe;
+use crate::checks::seo::robots::{robots_fetch_from_probe, RobotsTxtFetch};
 use crate::checks::seo::robots_document::records;
 
-// More selected pattern pieces make the policy unknown, so discovery filters no routes.
+// More selected pattern pieces make the policy unknown, so discovery adds no routes.
 const ROBOTS_PIECE_LIMIT: usize = 8000;
-// More selected rules containing a star make the policy unknown, so no routes are filtered.
+// More selected rules containing a star make the policy unknown, so no routes are added.
 const ROBOTS_STAR_RULE_LIMIT: usize = 400;
 
 #[derive(Default)]
 pub(super) struct RobotsRules {
     rules: Vec<Rule>,
+    pub(super) known: bool,
 }
 
 struct Rule {
@@ -91,9 +92,20 @@ impl RobotsRules {
         let Some(answer) = context.outcomes.get(&robots_request(context)) else {
             return Self::default();
         };
-        robots_fetch_from_probe(answer.clone())
-            .body()
-            .map_or_else(Self::default, |body| Self::parse(body, "SiteCMD"))
+        match robots_fetch_from_probe(answer.clone()) {
+            RobotsTxtFetch::Found { body } | RobotsTxtFetch::FoundWithHtmlType { body } => {
+                Self::parse(&body, "SiteCMD")
+            }
+            RobotsTxtFetch::Status(code) if (400..500).contains(&code) && code != 429 => Self {
+                known: true,
+                ..Self::default()
+            },
+            RobotsTxtFetch::HtmlShell => Self {
+                known: true,
+                ..Self::default()
+            },
+            _ => Self::default(),
+        }
     }
 
     fn parse(body: &str, token: &str) -> Self {
@@ -145,6 +157,7 @@ impl RobotsRules {
             rules.push(rule);
         }
         Self {
+            known: true,
             rules: rules
                 .into_iter()
                 .map(|rule| Rule::compile(normalized(rule.pattern, true), rule.allow))
@@ -153,6 +166,9 @@ impl RobotsRules {
     }
 
     pub(super) fn allowed(&self, path_and_query: &str) -> bool {
+        if !self.known {
+            return false;
+        }
         let path = normalized(path_and_query, false);
         if path == "/robots.txt" {
             return true;

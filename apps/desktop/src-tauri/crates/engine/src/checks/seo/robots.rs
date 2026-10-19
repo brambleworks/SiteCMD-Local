@@ -73,6 +73,12 @@ pub fn robots_fetch_from_probe(outcome: ProbeOutcome) -> RobotsTxtFetch {
                 ),
             }
         }
+        ProbeOutcome::Response(response)
+            if (500..600).contains(&response.status)
+                && response.header("cf-mitigated") == Some("challenge") =>
+        {
+            RobotsTxtFetch::Error("robots.txt was answered by a bot challenge".into())
+        }
         ProbeOutcome::Response(response) => RobotsTxtFetch::Status(response.status),
         ProbeOutcome::Failure(failure) => RobotsTxtFetch::Error(failure.detail),
     }
@@ -232,6 +238,9 @@ pub fn evaluate_robots_txt(fetch: &RobotsTxtFetch) -> Vec<CheckResult> {
             result.confidence_reason = None;
             vec![result]
         }
+        RobotsTxtFetch::Status(code) if (500..600).contains(code) => {
+            vec![robots_server_error_result(*code)]
+        }
         RobotsTxtFetch::Status(code) => vec![robots_unavailable_result(
             Some(*code),
             "robots.txt returned a non-success response",
@@ -332,6 +341,25 @@ fn robots_unavailable_result(status_code: Option<u16>, observation: &str) -> Che
                 .into(),
         ),
         why_it_matters: None,
+    }
+}
+
+fn robots_server_error_result(code: u16) -> CheckResult {
+    CheckResult {
+        check_id: "seo.robots_txt".into(),
+        category: ScanCategory::Seo,
+        title: "robots.txt answers a server error".into(),
+        description: format!("robots.txt answered HTTP {code}. While it answers a server error, crawlers that follow the robots.txt standard (RFC 9309) treat every page on the site as disallowed, and Google pauses crawling the site."),
+        status: CheckStatus::Fail,
+        severity: Severity::High,
+        fix_prompt: None,
+        manual_fix: Some("Make /robots.txt answer HTTP 200 with the file, or 404 if the site has no crawl rules. Check the server, CDN or framework route that serves it.".into()),
+        raw_data: Some(serde_json::json!({
+            "robots_policy_evaluated": false, "status_code": code, "server_error": true,
+        })),
+        confidence: IssueConfidence::High,
+        confidence_reason: None,
+        why_it_matters: Some("Search engines that follow the robots.txt standard stop crawling the site while robots.txt answers a server error, so new and changed pages are not picked up.".into()),
     }
 }
 

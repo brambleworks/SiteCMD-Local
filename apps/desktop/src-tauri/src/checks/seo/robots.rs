@@ -65,4 +65,13 @@ mod tests {
         assert_eq!(results[0].status, CheckStatus::Skipped);
         assert!(results[0].title.contains("No robots.txt"));
     }
+    #[tokio::test]
+    async fn server_errors_fail_while_rate_limiting_stays_skipped() {
+        for (code, expected) in [(503, CheckStatus::Fail), (429, CheckStatus::Skipped)] {
+            let results = super::RobotsTxtCheck
+                .run(&ctx_with_robots(RobotsTxtFetch::Status(code)))
+                .await;
+            assert_eq!(results[0].status, expected, "{code}");
+        }
+    }
 }

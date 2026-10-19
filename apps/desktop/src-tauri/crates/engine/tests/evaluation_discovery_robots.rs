@@ -4,7 +4,7 @@
 mod support;
 pub use support::*;
 
-use sitecmd_engine::probe::{ProbeFailure, ProbeFailureClass, ProbeOutcome, ProbeRequest};
+use sitecmd_engine::probe::ProbeRequest;
 
 fn discover_with_rules(rules: &str, links: &str, planned: &[&str]) -> Option<Vec<String>> {
     let answer = |request: &ProbeRequest| match request.url.as_str() {
@@ -98,43 +98,17 @@ fn repeated_matching_groups_are_combined_and_other_agents_do_not_apply() {
 }
 
 #[test]
-fn unknown_rules_do_not_filter_routes() {
-    let unknown = [
-        ProbeOutcome::Failure(ProbeFailure {
-            class: ProbeFailureClass::Transport,
-            detail: "request failed".into(),
-        }),
-        ProbeOutcome::Failure(ProbeFailure {
-            class: ProbeFailureClass::BodyCapExceeded,
-            detail: "body exceeded cap".into(),
-        }),
-        response(
+fn unavailable_robots_allows_discovery_except_when_rate_limited() {
+    for status in [400, 401, 403, 404, 410, 499] {
+        let pages = [(
             "https://example.com/robots.txt",
-            503,
-            "text/plain",
-            "User-agent: *\nDisallow: /",
-        ),
-        response(
-            "https://example.com/robots.txt",
-            429,
-            "text/plain",
-            "User-agent: *\nDisallow: /",
-        ),
-        response(
-            "https://example.com/robots.txt",
-            403,
-            "text/plain",
-            "User-agent: *\nDisallow: /",
-        ),
-        response(
-            "https://example.com/robots.txt",
-            404,
-            "text/plain",
-            "User-agent: *\nDisallow: /",
-        ),
-    ];
-    for robots in unknown {
-        let pages = [("https://example.com/robots.txt", robots)];
+            response(
+                "https://example.com/robots.txt",
+                status,
+                "text/plain",
+                "User-agent: *\nDisallow: /",
+            ),
+        )];
         assert_eq!(
             discovered(
                 artifact(&home("<a href='/public'>Public</a>"), 200, "/"),
