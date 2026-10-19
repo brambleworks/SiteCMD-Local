@@ -46,9 +46,14 @@ reimplementation:
 - **Shared browser assets.** Axe and Core Web Vitals payloads live with the
   engine and return typed facts, including executed axe rule identities. Static
   and browser findings supersede one another per rule.
-- **Explicit crawl scope.** SiteCMD scans the selected route set, with sitemap
-  discovery as input rather than an unbounded link-following crawler.
-  Origin-scoped checks run on the entry route.
+- **Explicit crawl scope.** SiteCMD scans the route set the scope names:
+  the routes a person selected, or, for a site whose scope no person
+  chose, the routes the entry route's own reads discover when its
+  robots.txt rules are known, or the starting routes retained when those
+  rules are unknown. Discovery reads the entry route's same-origin links
+  and the site's sitemap pages, an index's through its children, one
+  level deep and followed no further. It is not an unbounded
+  link-following crawler. Origin-scoped checks run on the entry route.
 - **Separate integration metrics.** PageSpeed Insights remains an on-demand
   integration and is not part of hosted scan parity.
 
@@ -194,7 +199,7 @@ tier names the artifact that proves agreement:
    (the median of five runs).
    Cloudflare lets in-flight requests complete when an isolate passes
    128 MB, and starts a new isolate for later ones. A page near the request
-   cap (400) and the session's 25 MiB of response data can lift its pass
+   cap (400) and the route's 25 MiB of response data can lift its pass
    past half the isolate too, almost all of it garbage the isolate has not
    collected yet. A page of 399 images of 16 KiB measured 86,759,684 bytes,
    100 images of 128 KiB 68,975,409, and a heap snapshot of a pass with 99
@@ -523,20 +528,27 @@ deployments, and alarms are at-least-once. Correctness comes from a
   and scope-change-during-commit) prove it.
 - Page-step commits are idempotent on `(scan_id, route)` under the
   fence: an alarm that fires twice or a step retried after eviction
-  re-commits the same result, not a duplicate.
-- Recovery is resumption from the record, **and connect linearizes
-  it**: a restarted DO reads the scan record and calls
+  re-commits the same result, not a duplicate. An attempt the platform
+  ended partway is charged against the scan's retry budget of 5 only
+  after 15 minutes have passed since that attempt started; before then
+  recovery waits, because the earlier invocation may still be live. A
+  step retried after its browser pass began runs without the browser and
+  excepts its browser-family pairs, so a failed step earns no fresh
+  browser allowance.
+- Recovery is resumption from the record, **and connect linearizes it**:
+  a restarted DO reads the scan record and calls
   `advanceScanGeneration(scan_id, current, current + 1)` at connect
   **before** touching local state, because bump-locally-then-register
   would leave the exact window it exists to close (a zombie's commit
   landing between the bump and the registration). On `advanced` the
   coordinator adopts the new generation and resumes; on
   `already_committed` the scan finished under the old generation and
-  recovery stops; on `stale` it adopts the returned generation. The
-  call is idempotent by target generation, so a crash between the
-  connect CAS and local adoption re-runs and converges. Steps that
-  exceed the retry budget except their pairs; a scan that cannot
-  proceed terminates with honest partial coverage.
+  recovery stops; on `stale` it adopts the returned generation. The call
+  is idempotent by target generation, so a crash between the connect CAS
+  and local adoption re-runs and converges. When a page step that
+  failed, or that the platform ended, finds the scan's retry budget
+  spent, page collection ends; the remaining routes record `scan_ended`
+  coverage exceptions, and the scan submits its partial coverage.
 - Disconnect and erase cancel outstanding alarms, bump the
   `erasure_epoch`, and delete the DO storage for the site; erase
   includes this storage in its cascade.
@@ -559,6 +571,14 @@ not already provide. After the final step the coordinator assembles
 coverage, submits the observation through `commitHostedObservation`,
 and acts on the response: `applied`, or `history_only` with a
 replacement scan scheduled.
+
+A page step's network work has a 10-minute deadline inside the 15-minute
+wall time Cloudflare gives one Durable Object alarm. That deadline
+bounds the page fetch, each probe, the external facts and the browser
+pass. A probe past it reads as unanswered; the browser pass ends
+unanswered too, while the scan's browser session stays open for later
+routes. The remaining alarm time allows recovery, engine evaluation,
+commit and cleanup.
 
 ### Global browser admission
 
@@ -769,51 +789,144 @@ prices, replaced by the pricing pass's decided values at graduation:
 `crawl_profile: 3`, the envelope field the protocol spec reserved,
 pins:
 
-- **Route set: the scan-scope resource, entirely.** The scan record
-  pins the `scope_revision` it ran against, and a hosted scan covers
-  the **whole effective scope**: there is no silent per-scan
-  truncation, because a route that can never be scanned is a promise
-  that can never be kept. The reconciliation is at the resource
-  boundary instead: the protocol rejects a scope `PUT` exceeding the
-  single 100-route cap for every account with `422 scope_exceeds_plan`,
-  so scope and scan capacity are the same number by
-  construction, session checks can always reach complete coverage,
-  and nothing rots uncovered. The environment entry URL counts as a
-  route (deduplicated if also listed). The wire-format bound of 5,000
-  routes is just the schema limit, not a scanning promise.
-- **Discovery is informational:** each scan refreshes the sitemap through the
-  shared sitemap-document parser and candidate policy, then reports route-set
-  deltas as drift facts without scanning unselected routes.
+- **Route set: the scan-scope resource, entirely.** The scan record pins
+  the `scope_revision` it ran against, and a hosted scan covers the
+  **whole effective scope**: there is no silent per-scan truncation,
+  because a route that can never be scanned is a promise that can never
+  be kept. The reconciliation is at the resource boundary instead: the
+  protocol rejects a scope `PUT` exceeding the single 100-route cap for
+  every account with `422 scope_exceeds_plan`, so scope and scan
+  capacity are the same number by construction, session checks can
+  always reach complete coverage, and nothing rots uncovered. The
+  environment entry URL counts as a route (deduplicated if also listed).
+  The wire-format bound of 5,000 routes is just the schema limit, not a
+  scanning promise. For a scope no person chose, the scope is what the
+  site's last applied scan discovered or retained, and a scan covers the
+  plan its entry route's step adopts (below).
+- **Discovery writes a scope no person chose.** A scope a person set is
+  theirs: a scan of it covers exactly its routes, and discovery adds
+  none. For a site whose scope no person has set, a scan starts from the
+  scope the site's last applied scan discovered or retained, and the
+  write that commits its entry route's step adopts newly discovered
+  routes or retains the starting routes as the rest of its plan:
+  - **What it reads.** Nothing it has to request. The entry document's
+    anchors, in document order, resolved against its `<base href>`, with
+    visitor-written `rel="ugc"` anchors and CDN-reserved `/cdn-cgi/`
+    paths left out; then the page entries of the document the bounded
+    sitemap walk found, in its order, within the walk's 5,000-URL limit.
+    When that document is an index, the walk reads its distinct children
+    on the site's own origin, in the index's order, at most 50 and
+    within a separate 10 MiB child allowance. A child is fetched only
+    while a whole 2 MiB sitemap cap of that allowance remains. Each is
+    read alone under that cap, its pages kept and its body dropped; the
+    bytes received, even from a child that runs past the cap, count
+    against the allowance. The walk's candidates share one 2 MiB
+    allowance of received bytes, overruns included, so an oversized
+    candidate leaves later ones unread and the walk unfinished. A child
+    that is itself an index lists no pages, and a child the grammar
+    refuses still gives the locations it holds. A sitemap whose body is
+    not valid UTF-8 is refused and gives no locations; an index refused
+    that way reads no children. The comparison reads the same pages, so
+    an index whose children were not all read, or whose pages were cut
+    at the 5,000-URL limit, is a partial set. A link the link check
+    probed counts as the address its probe ended on, and is left out
+    when that probe showed it is not a page: a 404 or a 410, a success
+    that is not HTML, or an end on another origin or on an address with
+    a query.
+  - **What it keeps.** New routes on the entry document's own origin, as
+    the canonicalizer's paths, never the entry route or the route it
+    redirected to, in that priority, to one fewer than the per-scan
+    route budget. A candidate whose last segment ends in one of the file
+    extensions Cloudflare caches by default ("Default cached file
+    extensions" in its Default Cache Behavior documentation, a list that
+    leaves HTML and JSON out) is a file, and is left out. A candidate is
+    kept only when the hosted service may store it unchanged: no query
+    string, no user name or password, a first segment other than
+    `search` (case-insensitive), no segment the engine's evidence rules
+    would redact (an email address, a token-shaped segment, the segment
+    after a reset, verification or invitation marker, a known credential
+    format), within those rules' bound on an address, and no exposed-key
+    pattern. A candidate those rules would change is left out, never
+    altered, because an altered route is a page the site does not serve.
+    A path segment made of hyphen-separated lowercase words and whole
+    numbers is a slug and not a token-shaped segment when at least three
+    word parts have two or more letters and it is not UUID-shaped. A
+    candidate the site's robots.txt disallows for SiteCMD is left out
+    too: the group for the `SiteCMD` product token, else `*`, under RFC
+    9309's longest match. The rules are known from a readable 2xx body
+    within the parser's limits, whatever its content type, or a 4xx
+    other than 429 that is not a bot challenge. A 2xx HTML catch-all is
+    known with no rules. All other outcomes leave the rules unknown,
+    including a 5xx, a 429, a failed, refused or unmade request, an
+    unreadable body or one past the body cap, or a policy past the
+    parser's limits. On any non-2xx response, `cf-mitigated: challenge`
+    identifies a bot challenge and leaves the rules unknown; the header
+    value is trimmed and compared case-insensitively. A 2xx response
+    still uses the body classification. For server or network errors
+    that make robots.txt unreachable,
+    [RFC 9309 section 2.3.1.4](https://www.rfc-editor.org/rfc/rfc9309.html#section-2.3.1.4)
+    has a crawler assume complete disallow. That rule is why discovery
+    adds no new page while the rules are unknown; the scan still covers
+    its entry route and the routes it started with.
+  - **When it adopts.** New routes are adopted only when the entry route
+    answered with a success that is not a challenge and the robots.txt
+    rules are known. With unknown rules, the scan adopts no route it
+    found this time and keeps the routes it started with, unchanged and
+    in their order, without applying the new-route selection rules or
+    limit. A first scan then covers the entry route only. When the rules
+    are known but the sitemap walk could not finish, or a child it asked
+    for was not read (it did not answer, was refused by an allowance or
+    the request bound, or answered anything but 404, 410 or a success
+    with a readable body in valid UTF-8), the routes the scan started
+    with stand in after the pages it did read, under the same selection
+    rules and route budget. A discovery that found nothing while the
+    scan started with routes keeps them.
+  - **What a discovered route may be.** A discovered route whose
+    document answers a success that is not HTML is not a page. A
+    discovered route also leaves when its fetch ends on another route or
+    origin, or fails after following a redirect. Either way it leaves
+    that scan's route set with no pairs and no coverage exception,
+    withholds nothing from the scan's cross-page verdicts or its
+    verified-good profile, and is not kept in the scope. At its own
+    address, a discovered route whose document answers an error is
+    graded as a page that failed. A route a person chose is graded as
+    the desktop grades it.
+  - **What Connect keeps.** The applied observation names the routes its
+    plan adopted, but for any that left the route set, and Connect
+    stores them as the site's scope in that observation's commit
+    (protocol spec, the scan scope).
 - **Sequential route and transport execution, entry page first**,
   origin-scoped checks on the entry page only, per the manifest's
   `scope` entries. A rendered page's Chromium subresources retain
   browser-like concurrency inside that route; every request still
   passes through interception, public-address validation, and the
-  browser session ledger before it is fulfilled.
+  route's browser ledger before it is fulfilled.
 - **Identity rules** by reference to the protocol spec's canonicalizer:
   final URL after redirects, preserved trailing slashes, stripped query
   with `query_dependent` flagging.
 - **Transport constants**, identical to the desktop's except for the
   page body and sitemap caps and a coded asset body, which the desktop
   counts as sent and the hosted transport leaves unread, since its
-  runtime can decode a body as it reads it:
-  10-redirect limit with per-hop validation, 30 s page fetch timeout,
-  15 s per-check timeout with timeout-as-`Skipped`, 1 MiB page body
-  cap (overrun excepts only that route as `page_too_large` while the scan
-  continues), 512 KiB probe cap, 2 MiB
-  sitemap cap, 2 MiB stylesheet cap with at most 8 stylesheets,
-  30-asset sample with `Range: bytes=0-0` and `Accept-Encoding: identity`,
-  where the body of an answer below 400 that no header sizes is counted
-  under the probe cap and never kept, link-probe samples of
-  100 internal and 30 external. One route at every bound must stay under
-  half the Workers isolate's 128 MB, which every Durable Object it hosts
-  shares with the Worker's code, so a second route fits beside it; the
-  scan Worker measures that in workerd (`measure-route-memory.mjs`), and
-  these caps are the largest 1 MiB steps toward the desktop's that held
-  it. Version 2 held every intercepted browser response at once, pinned
-  its asset sample without `Accept-Encoding: identity`, and sent the
-  transport's requests through Cloudflare's cache; version 1 read pages
-  to 10 MiB, with overrun scan-fatal as on desktop, and sitemaps to 5 MiB.
+  runtime can decode a body as it reads it: 10-redirect limit with
+  per-hop validation, 30 s page fetch timeout, 15 s per-check timeout
+  with timeout-as-`Skipped`, 1 MiB page body cap (overrun excepts only
+  that route as `page_too_large` while the scan continues), 512 KiB
+  probe cap, 2 MiB sitemap cap, 2 MiB stylesheet cap with at most 8
+  stylesheets, 30-asset sample with `Range: bytes=0-0` and
+  `Accept-Encoding: identity`, where the body of an answer below 400
+  that no header sizes is counted under the probe cap and never kept,
+  link-probe samples of 100 internal and 30 external. One route at every
+  bound must stay under half the Workers isolate's 128 MB, which every
+  Durable Object it hosts shares with the Worker's code, so a second
+  route fits beside it; the scan Worker measures that in workerd
+  (`measure-route-memory.mjs`), and these caps are the largest 1 MiB
+  steps toward the desktop's that held it. Crawl profile version 2 held
+  every intercepted browser response at once, pinned its asset sample
+  without `Accept-Encoding: identity`, sent the transport's requests
+  through Cloudflare's cache, scanned only the routes a person selected
+  and read no index sitemap's children, and charged its browser
+  interception budget across the whole session; version 1 read pages to
+  10 MiB, with overrun scan-fatal as on desktop, and sitemaps to 5 MiB.
   Neither ran for a customer.
 - **Cloudflare's cache:** every hosted transport request except one for
   the route's own page, as requested or as served, is sent with
@@ -831,9 +944,15 @@ pins:
 - **Browser interception constants and timing semantics:** at most 400
   requests, 64 distinct hosts, 3 MiB of decoded body data for any one
   response, at most 3 MiB of response bodies held at once, each from its
-  fetch to its fulfillment, and 25 MiB across the session. The per-response cap is
+  fetch to its fulfillment, and 25 MiB across each route's page load,
+  inside the scan's one session, whose lifetime (the per-scan session
+  seconds) bounds the scan's whole browser phase. The per-route keys are
+  `browser_requests_per_route`, `browser_distinct_hosts_per_route` and
+  `browser_response_bytes_per_route`. A step retried after its browser
+  pass began runs without the browser, and a route that passes its
+  budget ends the session as any breach does. The per-response cap is
   enforced while reading, before the body is concatenated or handed to
-  Playwright; the session ledger charges the same decoded bytes before
+  Playwright; the route's ledger charges the same decoded bytes before
   fulfillment. Playwright fulfillment cannot stream the main document,
   so the proxy records the main-document body-wait interval and removes
   that artificial delay from TTFB, FCP, and LCP. CLS and long-task
@@ -846,36 +965,50 @@ pins:
   above caps one request; this one caps their sum, which nothing did
   before. Measured rather than chosen: driving `engine_route_plan` to
   its fixpoint against a page carrying 200 internal and 80 external
-  links, so both link samples bind, costs 384 requests for one route when
-  every probe fails (four rounds: 248, 133, 2, 1) and 258 when every probe
-  answers along a live redirect chain (ten rounds: 248, 2, then one per
-  hop). The same page naming 40 images, so the asset sample binds too,
-  asks for 414 when every probe fails (four rounds: 278, 133, 2, 1) and
-  409 when every link `HEAD` is answered `405` and everything else answers
-  (two rounds: 278, 131). The sitemap walk's
-  longest request set, twenty failing declared sitemaps beside failing
-  probes and the og:image, asks for 405. Requests and
-  rounds are maximised by opposite situations: failures cost requests,
-  because the link check's `GET` confirmations are planned only where a
-  `HEAD` failed, while answers cost rounds, because the redirect walk is
-  planned one hop at a time and each `3xx` names the next position.
-  Of these plans the cap binds three: the page with images when every
-  probe fails (414 asked) or its link `HEAD`s are answered `405` (409),
-  and the sitemap set (405); the other two fit whole. Where it binds,
-  it makes 400 and answers the rest with the budget's own refusal, which
+  links, so both link samples bind, costs 384 requests for one route
+  when every probe fails (four rounds: 248, 133, 2, 1) and 258 when
+  every probe answers along a live redirect chain (ten rounds: 248, 2,
+  then one per hop). The same page naming 40 images, so the asset sample
+  binds too, asks for 414 when every probe fails (four rounds: 278, 133,
+  2, 1) and 409 when every link `HEAD` is answered `405` and everything
+  else answers (two rounds: 278, 131). When that page's sitemap is an
+  index, the failing case asks for 464 requests in four rounds (278,
+  183, 2, 1). The sitemap walk's longest request set, twenty failing
+  declared sitemaps beside failing probes and the og:image, asks
+  for 405. Requests and rounds are maximised by opposite situations:
+  failures cost requests, because the link check's `GET` confirmations
+  are planned only where a `HEAD` failed, while answers cost rounds,
+  because the redirect walk is planned one hop at a time and each `3xx`
+  names the next position. Of these plans the cap binds four: the page
+  with images when every probe fails (414 asked), that page with an
+  index too (464), the page whose link `HEAD`s are answered `405` (409),
+  and the sitemap set (405); the other two fit whole. Where it binds, it
+  makes 400 and answers the rest with the budget's own refusal, which
   each check reads as unanswered, never as broken or missing: the last
   eleven internal link confirmations and the last three legal-page
-  candidates on the failing page, the last nine internal link
-  confirmations on the `405` page, and the last five declarations in the
-  sitemap set, read as unread. Raising
-  the cap is a capacity decision and trimming the profile a new version;
-  neither happens silently. The per-scan worst case
-  follows as routes times the cap, and with origin-scoped checks
-  narrowed to the entry route the realistic ceiling is about 30,000
-  requests to one origin per full scan. The bound is per route rather
-  than per scan so that it needs no durable spend counter across alarm
-  ticks and so that one pathological route cannot starve the rest of
-  the scan. A probe the budget refuses is reported as a failed probe
+  candidates on the failing page, and on the page with an index all 50
+  children with those eleven and three; the last nine internal link
+  confirmations on the `405` page; and the last five declarations in the
+  sitemap set, which the walk reads as unread. The index's children, at
+  most 50 and within their separate 10 MiB allowance, come after the
+  link confirmations in plan order and are refused with them, before the
+  legal-page candidates, and the comparison reads the index as partial.
+  On a page whose link `HEAD`s succeed, so no confirmations are planned,
+  the route's 400 requests leave room for every child, and children are
+  fetched only while a whole 2 MiB sitemap cap remains in that
+  allowance; where the confirmations fill the bound, as on the `405`
+  page, the children are refused with them. Received bytes, including
+  overruns, count against the child allowance. The walk's longest round
+  count is twenty-two, robots.txt and the conventional paths first, up
+  to twenty declared sitemaps one per round, then an index's children
+  one round later. Raising the cap is a capacity decision and trimming
+  the profile a new version; neither happens silently. The per-scan
+  worst case follows as routes times the cap, and with origin-scoped
+  checks narrowed to the entry route the realistic ceiling is about
+  30,000 requests to one origin per full scan. The bound is per route
+  rather than per scan so that it needs no durable spend counter across
+  alarm ticks and so that one pathological route cannot starve the rest
+  of the scan. A probe the budget refuses is reported as a failed probe
   with its own reason, never as a silent absence, because a hole is
   graded as evidence nobody gathered.
 - **User agent:** one shared, versioned identity across desktop and
@@ -1144,13 +1277,29 @@ produces them.
   `DnsOutcome::Failed` path, OSV or RDAP unreachability), and the
   polish CSS-incompleteness rule all become coverage exceptions for
   their pairs, never silent gaps.
+- **robots.txt verdicts.** An unchallenged 5xx response makes
+  `seo.robots_txt` report `Fail` at High severity and High confidence. A
+  429, a failed request or a challenged 5xx remains `Skipped`. The High
+  finding describes the crawl restriction that
+  [RFC 9309 section 2.3.1.4](https://www.rfc-editor.org/rfc/rfc9309.html#section-2.3.1.4)
+  requires for server errors.
 - Browser-layer failures except only the browser-family pairs for that
   route; the transport checks on the same route remain covered.
   Browser-slot exhaustion follows the admission rule: delay first,
   except only at the retry budget's end.
 - `origin`-scoped checks are covered as entry-page pairs only;
   `session`-scoped checks are covered only when the complete route set
-  ran.
+  ran. For a discovered scope too, `seo.orphan_pages` grades only when a
+  nonempty sitemap was read whole and every page it lists reached a
+  compared page, with the entry page present and enough comparable
+  pages; otherwise it is `Skipped`, with a reason. A sitemap set found
+  after a robots.txt that answered a 5xx or a 429, failed, or answered
+  with a bot challenge is partial. A body-cap refusal counts as
+  answered, with no declarations read, and does not by itself make the
+  set partial. As for any partial set, the orphan check is `Skipped`,
+  and `seo.noindex_in_sitemap` records `Skipped` coverage while
+  retaining `Warn` findings for any noindex contradictions it directly
+  observed.
 - A step that fails entirely excepts every pair on that route; a scan
   superseded mid-flight submits what it completed with the remaining
   routes excepted, and its observation's fate is the basis rule below.
@@ -1287,10 +1436,20 @@ new good:
 - **Fields**: certificate facts, security-relevant header profile,
   third-party origin set, DNS posture records, route set. All
   deterministic or clock-dependent; no measurement field exists in the
-  profile, by construction.
-- **Seeding**: a field seeds from the first observation after
-  bootstrap that is applied (current-basis), complete for that field's
-  pairs, and clean for that field.
+  profile, by construction. The security-relevant header profile is the
+  set of distinct header profiles the scan's routes serve, compared for
+  growth. For a discovered scope, the baseline keeps its good header and
+  third-party origin sets when the scope shrinks, and a clean
+  observation within them only clears the drift; those sets change by
+  seeding, a contract's reseed or a person's acceptance. A profile or
+  origin the baseline has not seen freezes its field as drift. Header
+  seeding, and promotion for a chosen scope, require a complete, clean
+  observation. The route set is a field only for a scope a person chose:
+  a discovered scope's routes change with the site, and each change is a
+  scope event rather than drift.
+- **Seeding**: a field seeds from the first applied (current-basis)
+  observation that is complete for that field's pairs and clean for that
+  field.
 - **Promotion**: a field's good value advances only from an applied,
   unexcepted, clean observation. Each field retains its source
   observation id, deployment reference, and the engine and profile
@@ -1313,9 +1472,10 @@ new good:
   contract with cause `detector or corpus update`.
 
 The drift checks reading the profile: certificate horizon
-(clock-dependent, ambient drift), header profile delta, third-party
-origin set growth, DNS posture delta, route-set delta. The alert and
-report delivery spec decides which of these wake anyone.
+(clock-dependent, ambient drift), header profile growth, third-party
+origin set growth, DNS posture delta, route-set delta for a scope a
+person chose. The alert and report delivery spec decides which of these
+wake anyone.
 
 ## The privacy projection
 
@@ -1399,31 +1559,31 @@ outcome at the strongest point it offers:
   TLS metadata probe, which does control its connection, pins the
   connection to a pre-validated public address and sends the original
   hostname as SNI.
-- **Browser egress is a behavior policy, not only an address policy.**
-  A verified tenant is authenticated, not trusted. Browser Run
-  sessions enforce, via request interception and launch configuration:
-  schemes `http`/`https` on default ports only; resource types limited
-  to what scanning renders (document, script, stylesheet, image, font,
-  xhr/fetch); **safe methods only (GET, HEAD, OPTIONS) for every
-  origin, the target's own included**: a compromised page holding a
+- **Browser egress is a behavior policy, not only an address policy.** A
+  verified tenant is authenticated, not trusted. Browser Run sessions
+  enforce, via request interception and launch configuration: schemes
+  `http`/`https` on default ports only; resource types limited to what
+  scanning renders (document, script, stylesheet, image, font,
+  xhr/fetch); **safe methods only (GET, HEAD, OPTIONS) for every origin,
+  the target's own included**: a compromised page holding a
   scanner-issued cookie could otherwise fire same-origin POSTs that
   trigger jobs, emails, purchases, or deletions, and "it was their own
-  site" is no comfort to the tenant whose site was the compromised
-  one. Scanning renders pages; it never submits them. When a blocked
-  unsafe request fired before evaluation settled (a scripted
-  same-origin mutation the page needed for its rendered state), the
-  route's browser-derived pairs are excepted rather than grading a
-  partial DOM; blocked fire-and-forget beacons after settle are
-  recorded without excepting anything. WebSockets, WebRTC, and service
-  workers disabled; downloads and popups denied (the desktop webview
-  already denies both); and per-session budgets on request count,
-  distinct hosts, and total bytes, with a policy or budget breach
-  terminating the session and excepting the route's browser pairs. An
-  ordinary upstream network failure aborts only that browser request;
-  it neither marks a policy breach nor retires the reusable session, so
-  later requests and routes can continue. Repeated policy breaches
-  surface to the entitlement layer as tenant abuse with suspension
-  consequences.
+  site" is no comfort to the tenant whose site was the compromised one.
+  Scanning renders pages; it never submits them. When a blocked unsafe
+  request fired before evaluation settled (a scripted same-origin
+  mutation the page needed for its rendered state), the route's
+  browser-derived pairs are excepted rather than grading a partial DOM;
+  blocked fire-and-forget beacons after settle are recorded without
+  excepting anything. WebSockets, WebRTC, and service workers disabled;
+  downloads and popups denied (the desktop webview already denies both);
+  and per-route budgets on request count, distinct hosts, and total
+  bytes, each counted across one route's page load, with a policy or
+  budget breach terminating the session and excepting the route's
+  browser pairs. An ordinary upstream network failure aborts only that
+  browser request; it neither marks a policy breach nor retires the
+  reusable session, so later requests and routes can continue. Repeated
+  policy breaches surface to the entitlement layer as tenant abuse with
+  suspension consequences.
 - **Every egress control is proven, not declared.** The conformance
   suite includes hostile-page fixtures exercising each control:
   WebSocket and WebRTC connection attempts, service-worker
@@ -1544,7 +1704,8 @@ restriction boundaries.
   and keeps the browser time the route spent, and the scan goes on: the
   engine has no clock and no I/O, so a retry of the same document would
   fail the same way. An I/O failure still fails the step, for the step's
-  retry. Step timeouts classify as `Skipped` coverage exceptions.
+  retry. Step timeouts classify as `Skipped` coverage exceptions under
+  the page-step deadline above.
 
 ## Implemented parity foundation
 
@@ -1609,12 +1770,15 @@ digest. Copying verdict logic into TypeScript is not a supported fallback.
    the applying transaction itself, because a service binding is not a
    transaction and tenant truth lives at connect.
 6. **The currency predicate is exact**: current head (including the
-   no-deployment state) and current scope revision; bare
-   event-sequence movement never invalidates an observation.
-7. **Scope membership follows the selected routes**: an occurrence becomes
-   `out_of_scope` only when none of its authored `scope_routes` remains
-   selected. Absence requires every currently in-scope provenance route
-   to be covered, and groups with no in-scope records go dormant.
+   no-deployment state) and current scope revision; bare event-sequence
+   movement never invalidates an observation. A discovered scope's
+   writes leave the revision where it is, because a scan of a discovered
+   scope plans its own routes.
+7. **Scope membership follows the scope's routes, selected or
+   discovered**: an occurrence becomes `out_of_scope` only when none of
+   its authored `scope_routes` remains in the scope. Absence requires
+   every currently in-scope provenance route to be covered, and groups
+   with no in-scope records go dormant.
 8. **Scope and scan capacity use the same cap**: scope `PUT` refuses an
    excessive route count explicitly. Connect scans the accepted scope
    without allowance-driven truncation. Connect's site state omits
@@ -1638,11 +1802,11 @@ digest. Copying verdict logic into TypeScript is not a supported fallback.
     applied to ourselves), with a vantage dimension because Browser
     Run is honestly identifiable; and a visible reset exists for
     deliberate redesigns.
-11. **Browser sessions are per scan with per-page contexts**, and
-    admission is leased, sharded, and reconciled: expiring leases
-    return crashed capacity, per-account shards avoid the global
-    singleton, and platform capacity failures delay protection rather
-    than falsifying coverage.
+11. **Browser sessions are per scan with per-page contexts, each with
+    its own interception budget**, and admission is leased, sharded, and
+    reconciled: expiring leases return crashed capacity, per-account
+    shards avoid the global singleton, and platform capacity failures
+    delay protection rather than falsifying coverage.
 12. **The verified-good baseline distinguishes dismissal from
     acceptance**: dismissing drift silences it, accepting drift
     rebaselines it, with provenance, and only the second changes what
@@ -1661,3 +1825,14 @@ digest. Copying verdict logic into TypeScript is not a supported fallback.
     gate's job; rendered-page target traffic is disclosed as unsigned
     Worker egress fulfilled into Browser Run.
 17. **Provider facts are verification tasks, not assertions.**
+18. **Discovery adds a site's own pages when no person chose its scope
+    and its robots.txt rules are known**, from what the entry route
+    already read, an index sitemap through its children, one level deep,
+    under the rules that let a route be stored unchanged and with files
+    left out, adopted in the write that commits the entry route's step,
+    so a site's first scan can cover its pages. With unknown rules it
+    keeps the starting routes; a first scan then covers only the entry
+    route. Its first applied observation seeds only baseline fields
+    whose evidence is complete and clean. Later scope shrinkage keeps
+    the good header and third-party origin sets rather than following
+    the smaller set down.

@@ -127,16 +127,17 @@ verify findings belonging to the other.
   URL.
 - Identity uses the final URL after redirects, as observed by the scanner
   that produced the finding.
-- Every Web occurrence, desktop and hosted, also carries `scope_route`, the
-  canonical authored route whose execution reached that final URL. It is
-  provenance, not part of occurrence identity. More than one authored route
-  can converge on the same final occurrence; the wire may therefore repeat
-  that occurrence with a different `scope_route`, and the service preserves
-  the complete set as `scope_routes`. The occurrence is in scope while any
-  provenance route is selected, and absence requires coverage of every
-  currently in-scope provenance route. A configured `/checkout` that redirects
-  to `/checkout/` therefore remains watched without allowing a clean scan of
-  one alias to clear a finding another selected alias can still reach. Records
+- Every Web occurrence, desktop and hosted, also carries `scope_route`,
+  the canonical authored route whose execution reached that final URL.
+  It is provenance, not part of occurrence identity. More than one
+  authored route can converge on the same final occurrence; the wire may
+  therefore repeat that occurrence with a different `scope_route`, and
+  the service preserves the complete set as `scope_routes`. The
+  occurrence is in scope while any provenance route is in the scope, and
+  absence requires coverage of every currently in-scope provenance
+  route. A configured `/checkout` that redirects to `/checkout/`
+  therefore remains watched without allowing a clean scan of one alias
+  to clear a finding another selected alias can still reach. Records
   created before this marker fall back to `route`.
 - Repeated snapshot rows with the same `(check, identity)` are normalized
   before lifecycle decisions, persistence, or alerting. Authored routes and
@@ -956,26 +957,27 @@ runners never carry counters they cannot keep:
 4. **Desktop snapshots declare their basis.** Each desktop snapshot
    carries `based_on_event_sequence`: the site event sequence the
    desktop had last pulled when the scan ran. It is the staleness shield
-   below, and it is a fact about what the producer knew, not a clock.
-   CI snapshots carry none; their basis is their deployment, and the
-   shield reads deployment ordering for them instead (below). Hosted
+   below, and it is a fact about what the producer knew, not a clock. CI
+   snapshots carry none; their basis is their deployment, and the shield
+   reads deployment ordering for them instead (below). Hosted
    observations declare a basis too: each captures, at scan start, the
    deployment head identity (or the explicit no-deployment state), the
-   `scope_revision`, and the `event_sequence`. The currency predicate
-   is exact: an observation is current-basis iff its captured head
-   equals the site's current head at submission (two no-deployment
-   states match) **and** its captured `scope_revision` is still
-   current. A head change or a scope change mid-flight makes the whole
-   observation history-only with a replacement scan scheduled;
-   movement of `event_sequence` alone (alerts, mutations, other
-   observations) never invalidates it. The hosted scanner spec owns
-   the mechanics. At bootstrap the watermark is
-   the genesis value `0`: bootstrap precedes every site event (scans and
-   hooks are disabled until it commits), so nothing exists for the
-   shield to engage against. Every post-bootstrap snapshot carries a
-   genuinely pulled watermark, and a backlog scan performed before
-   connection submits with `0`, where the shield governs it like any
-   other historical evidence.
+   `scope_revision`, and the `event_sequence`. The currency predicate is
+   exact: an observation is current-basis iff its captured head equals
+   the site's current head at submission (two no-deployment states
+   match) **and** its captured `scope_revision` is still current. A head
+   change or a person's scope change (a `scope_revision` advance)
+   mid-flight makes the whole observation history-only with a
+   replacement scan scheduled; movement of `event_sequence` alone
+   (alerts, mutations, other observations) never invalidates it. The
+   hosted scanner spec owns the mechanics. Hosted scans run in every
+   phase but `disconnected` and can record site events before bootstrap.
+   Provider and generic deploy hooks, CI submissions and the merge gate,
+   ordering-authority changes, deployment reconciliation, and
+   non-bootstrap desktop observations require `connected`. Every
+   post-bootstrap snapshot carries a genuinely pulled watermark, and a
+   backlog scan performed before connection submits with `0`, where the
+   shield governs it like any other historical evidence.
 
 ### Evidence precedence
 
@@ -1158,44 +1160,53 @@ route-level wholesale replacement.
 Coverage describes what a completed scan observed; it cannot define what
 future scans should observe, so scope is its own resource, not a
 projection of coverage. The scan scope is a revisioned per-environment
-configuration object: the selected routes (the same canonical route
-form as occurrences) and the expected check families. A signed-in person sets
-it through the dashboard (`PUT /v1/sites/{site}/scope`), guarded by its
-own `scope_revision` with the same stale-rejection semantics as every
-other guard, bounded by the coverage limits (5,000 routes), served in
-`GET /v1/sites/{site}/state` summaries, included in export, and erased
-with the site. The hosted scanner reads it as the authority for what to
-scan; scope changes are recorded events, and removing a route from
-scope does not delete its occurrence records (retention and compaction
-govern those), it only stops future observation. Occurrence records
-whose authored `scope_routes` all leave scope carry the orthogonal wire field
+configuration object: the routes, selected by a person or discovered
+(below), in the same canonical route form as occurrences, and the
+expected check families. A signed-in person sets it through
+`PUT /v1/sites/{site}/scope`, guarded by its own `scope_revision` with
+the same stale-rejection semantics as every other guard, bounded by the
+coverage limits (5,000 routes), served in `GET /v1/sites/{site}/state`
+summaries, included in export, and erased with the site. The hosted
+scanner reads it as the authority for what to scan; scope changes are
+recorded events, and removing a route from scope does not delete its
+occurrence records (retention and compaction govern those), it only
+stops future observation. Occurrence records whose authored
+`scope_routes` all leave scope carry the orthogonal wire field
 `scope_membership: "out_of_scope"` (a first-class tri-state record
 field, `in_scope | pending_reentry | out_of_scope`, in reads, export,
-and recovery, not a prose label): retained as history until
-compaction, excluded from current-state aggregation, verification
-targets, and group-state derivation, and a group left with no in-scope
-records carries the derived wire field `dormant: true` (kept, silent,
-excluded from active views) rather than being deleted. **Re-entry is
-not resurrection, and it never expires into exclusion**: when a route
-returns to scope, its existing records enter `pending_reentry`, a
-state that only a fresh governing observation resolves (to `in_scope`
-with current status, or removal on proven absence). It is deliberately
+and recovery, not a prose label): retained as history until compaction,
+excluded from current-state aggregation, verification targets, and
+group-state derivation, and a group left with no in-scope records
+carries the derived wire field `dormant: true` (kept, silent, excluded
+from active views) rather than being deleted. **Re-entry is not
+resurrection, and it never expires into exclusion**: when a route
+returns to scope, its existing records enter `pending_reentry`, a state
+that only a fresh governing observation resolves (to `in_scope` with
+current status, or removal on proven absence). It is deliberately
 **not** the `pending_fresh_evidence` flag, whose 90-day expiry would
 otherwise quietly strand a user-selected route as excluded forever; a
-`pending_reentry` record that observations keep failing to resolve
-stays visibly pending and surfaces as operationally unhealthy.
-Connect scans the accepted scope without allowance-driven truncation or
-a grace period that changes scope. Connect's site state no longer returns
-`scope_over_plan`,
-`site_allowance_over_plan`, their grace-expiry fields, or
-`scope_overflow_count`. The desktop's state reader still declares them
-with defaults: `false` for the flags, `null` for the expiry fields, and
-`0` for the overflow count. They are response fields, never submission
-fields. Connect returns `scope_effective_route_count` and `scope_route_cap`.
-A site cannot leave
-`pending_bootstrap` until both bootstrap and an initial scope have
-committed, because a connected site with no scope would be a guardian
-watching nothing.
+`pending_reentry` record that observations keep failing to resolve stays
+visibly pending and surfaces as operationally unhealthy. Connect scans
+the accepted scope without allowance-driven truncation or a grace period
+that changes scope. Connect's site state no longer returns
+`scope_over_plan`, `site_allowance_over_plan`, their grace-expiry
+fields, or `scope_overflow_count`. The desktop's state reader still
+declares them with defaults: `false` for the flags, `null` for the
+expiry fields, and `0` for the overflow count. They are response fields,
+never submission fields. Connect returns `scope_effective_route_count`
+and `scope_route_cap`. A site cannot leave `pending_bootstrap` until
+both bootstrap and a person's initial scope (`scope_revision` above 0)
+have committed; a discovered scope does not count.
+
+Until a person sets one, the scope holds the routes the site's last
+applied hosted scan discovered or retained (hosted scanner spec, the
+crawl profile): Connect writes them in that observation's commit,
+records the change as a `scope_put` event by the hosted producer,
+restamps occurrence membership as a person's write does, and leaves
+`scope_revision` at 0, because the revision guards a person's writes and
+a scan of a discovered scope plans its own routes. A person's first
+`PUT` makes the scope theirs, at `scope_revision` 1, even when it names
+exactly the discovered routes, and no scan changes it from then on.
 
 The wire limit of 5,000 routes bounds the resource; the **effective
 scannable scope** is bounded by the hosted scanner's 100-route ceiling. **The environment's entry URL counts toward the effective cap**
@@ -1211,13 +1222,15 @@ and the response returns the new `scope_revision`; a stale basis is
 ### Bootstrap and the mutation outbox
 
 A site moves through explicit phases: `pending_verification`,
-`pending_bootstrap`, `connected`. Scans, hooks, and webhook processing
-are disabled until bootstrap commits, so a hosted observation cannot
-create groups before the desktop's lifecycle arrives. Bootstrap is
-recorded as `bootstrapped_at` on the site; a second bootstrap answers
-`409 already_bootstrapped` **from that marker, never from group-set
-emptiness**, because a legitimate bootstrap can contain zero groups and
-must still commit the phase transition.
+`pending_bootstrap`, `connected`. Hosted scans run in every phase but
+`disconnected`, and their observations can create groups before the
+desktop's lifecycle arrives. Provider and generic deploy hooks, CI
+submissions and the merge gate, ordering-authority changes, deployment
+reconciliation, and non-bootstrap desktop observations require
+`connected`. Bootstrap is recorded as `bootstrapped_at` on the site; a
+second bootstrap answers `409 already_bootstrapped` **from that marker,
+never from group-set emptiness**, because a legitimate bootstrap can
+contain zero groups and must still commit the phase transition.
 
 Bootstrap carries the group set with, for every group whose local state
 is `verified`, the claimed state and the last-known occurrence
@@ -2013,12 +2026,14 @@ Site lifecycle (signed in through the dashboard):
   starts in `pending_verification`.
 - `POST /v1/sites/{site}/verify` - complete ownership verification. Two
   routes: provider-attested (the request names
-  `{connection_id, external_project_id}` from a provider connection,
-  and the provider confirms the project serves the domain; the
-  binding is stored on the site) or direct (DNS TXT record or
-  well-known token file).
-  Moves the site to `pending_bootstrap`. No scan runs and no webhook is
-  honored before the site is `connected`.
+  `{connection_id, external_project_id}` from a provider connection, and
+  the provider confirms the project serves the domain; the binding is
+  stored on the site) or direct (DNS TXT record or well-known token
+  file). Moves the site to `pending_bootstrap`. Hosted scans run in
+  every phase but `disconnected`; provider and generic deploy hooks, CI
+  submissions and the merge gate, ordering-authority changes, deployment
+  reconciliation, and non-bootstrap desktop observations require
+  `connected`.
 - `PATCH /v1/sites/{site}` - site metadata (the notification alias),
   guarded by `metadata_revision`.
 - `PUT /v1/sites/{site}/scope` - the scan scope (routes and expected
@@ -4539,9 +4554,12 @@ The implementation contract rests on these decisions:
 2. **Group existence and state are server-owned.** Clients bootstrap
    once (an explicit site phase committed by `bootstrapped_at`, never
    inferred from emptiness) and mutate thereafter; omission never means
-   deletion; scans and hooks stay disabled until bootstrap commits.
-   Bootstrap itself never asserts `verified_fixed`: imported claims land
-   as `claimed_fixed`, and the bootstrap transaction derives
+   deletion. Hosted scans run in every phase but `disconnected`;
+   provider and generic deploy hooks, CI submissions and the merge gate,
+   ordering-authority changes, deployment reconciliation, and
+   non-bootstrap desktop observations require `connected`. Bootstrap
+   itself never asserts `verified_fixed`: imported claims land as
+   `claimed_fixed`, and the bootstrap transaction derives
    `verified_fixed` only where the accompanying snapshots prove it.
 3. **Occurrence status preserves route-level tripwires.** Policy stays
    group-level; the server tracks each record as known, verified absent,
@@ -4562,18 +4580,19 @@ The implementation contract rests on these decisions:
    (`based_on_event_sequence`) is historical: recorded, never
    status-changing, never a regression, and it triggers an authoritative
    rescan instead, so a delayed offline upload cannot fake a regression
-   and a real one gets confirmed by fresh eyes. The shield covers CI
-   as a positive currency requirement: CI presence mutates state only
-   from a deployment that is current or atomically becomes current, so
+   and a real one gets confirmed by fresh eyes. The shield covers CI as
+   a positive currency requirement: CI presence mutates state only from
+   a deployment that is current or atomically becomes current, so
    unordered evidence is history, never authority. Stale code sightings
    set the durable `pending_fresh_evidence` flag rather than triggering
    a hosted rescan, which cannot see code; sightings of unseen
-   identities create status-less candidate records rather than
-   asserting presence from stale evidence; flagged records are exempt
-   from age-based compaction and the flag expires explicitly
+   identities create status-less candidate records rather than asserting
+   presence from stale evidence; flagged records are exempt from
+   age-based compaction and the flag expires explicitly
    (`evidence_request_expired`) after 90 unanswered days. Bootstrap
-   uses the genesis watermark `0`, safe because bootstrap precedes
-   every site event.
+   snapshots carry the watermark captured with their scan evidence; the
+   shield also applies when hosted observations arrived before
+   bootstrap.
 6. **A user claim is `claimed_fixed`, never `verified_fixed`**, and a
    failed claim returns to `active` with a recorded outcome, not a
    wake-up alert.
