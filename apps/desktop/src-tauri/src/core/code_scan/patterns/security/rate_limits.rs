@@ -1,12 +1,16 @@
 use std::sync::LazyLock;
 
 static UPSTREAM_LIMIT_HEADER: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"["'`](?i:x-ratelimit-(?:limit|remaining|reset|used)(?:-[a-z0-9_]+)*|ratelimit(?:-(?:policy|limit|remaining|reset))?)["'`]"#)
-        .expect("static upstream limit-header regex") // allow-expect: compile-time literal regex
+    regex::Regex::new(concat!(
+        r#"(?P<accessor>(?:\bheaders\s*\.\s*(?:get|has)\s*\(|\.\s*header\s*\(|\bgetHeader\s*\(|\bheaders\s*\[)\s*["'`])"#,
+        r#"(?i:x-rate-?limit-[a-z0-9_-]+|ratelimit[a-z0-9_-]*)"#,
+        r#"(?P<quote>["'`])"#,
+    ))
+    .expect("static upstream limit-header regex") // allow-expect: compile-time literal regex
 });
 
 pub(in crate::core::code_scan) fn has_rate_limit_evidence(content: &str) -> bool {
-    let scanned = UPSTREAM_LIMIT_HEADER.replace_all(content, " ");
+    let scanned = UPSTREAM_LIMIT_HEADER.replace_all(content, "${accessor} ${quote}");
     RATE_LIMIT_PATTERNS
         .iter()
         .any(|pattern| pattern.is_match(&scanned))

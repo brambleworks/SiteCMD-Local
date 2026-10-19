@@ -42,6 +42,13 @@ fn headers_and_comments_are_not_local_rate_limits() {
             "res.headers.get('ratelimit-policy');",
             "res.headers.get('ratelimit-limit');",
             "res.headers.get('ratelimit-reset');",
+            "res.headers.get('X-RateLimit-Bucket');",
+            "res.headers.get('X-RateLimit-Global');",
+            "res.headers.get('X-RateLimit-Scope');",
+            "res.headers.get('x-ratelimit-resource');",
+            "res.headers.get('x-rate-limit-limit');",
+            "res.headers.get('x-rate-limit-remaining');",
+            "res.headers.get('x-rate-limit-reset');",
             "// TODO: add rate limiting",
             "/* add rate limiting */",
             "/** rate-limit callers */",
@@ -70,6 +77,46 @@ fn headers_and_comments_are_not_local_rate_limits() {
 }
 
 #[test]
+fn upstream_limit_headers_are_not_evidence_in_header_accessors() {
+    let mut missing = Vec::new();
+    for ai in [false, true] {
+        let rule = if ai {
+            "ai-rate-limit"
+        } else {
+            "public-endpoint-rate-limit"
+        };
+        for name in [
+            "X-RateLimit-Bucket",
+            "X-RateLimit-Global",
+            "X-RateLimit-Scope",
+            "x-ratelimit-resource",
+            "x-rate-limit-limit",
+            "x-rate-limit-remaining",
+            "x-rate-limit-reset",
+            "ratelimit-policy",
+        ] {
+            for marker in [
+                format!("res.headers.get(\"{name}\");"),
+                format!("res.headers.has('{name}');"),
+                format!("c.req.header(`{name}`);"),
+                format!("res.getHeader('{name}');"),
+                format!("res.headers['{name}'];"),
+            ] {
+                let report = scan(&marker, ai);
+                if !report
+                    .issues
+                    .iter()
+                    .any(|issue| issue.id == format!("{rule}:src/routes/chat.ts"))
+                {
+                    missing.push(format!("{rule}: {marker}"));
+                }
+            }
+        }
+    }
+    assert!(missing.is_empty(), "{missing:?}");
+}
+
+#[test]
 fn custom_counter_keys_remain_rate_limit_evidence() {
     let mut unexpected = Vec::new();
     for ai in [false, true] {
@@ -83,6 +130,8 @@ fn custom_counter_keys_remain_rate_limit_evidence() {
             "ratelimit-user:",
             "x-ratelimit-counter:",
             "ratelimit-policy-custom:",
+            "x-ratelimit-limit",
+            "ratelimit-limit",
         ] {
             let temp = TempDir::new().unwrap();
             let response = if ai {
