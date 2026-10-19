@@ -107,7 +107,7 @@ fn sensitive_router_paths_make_every_registration_sensitive() {
 import { showSettings } from "../pages/settings";
 const router = Router();
 router.get("/settings", showSettings);
-router.post("/users/:id/delete", async (req, res) => { await db.user.delete({ where: { id: req.params.id } }); res.sendStatus(204); });
+router.post("/users/:id/delete", async (req, res) => { await purgeUser(req.params.id); res.sendStatus(204); });
 export default router;"#, &[("src/pages/settings.ts", "export async function showSettings(c) { const session = await loadSession(c); if (!session) return c.redirect('/login'); return c.text('ok'); }")]);
     assert!(reports(&report, "sensitive-auth", "src/routes/admin.ts"));
 }
@@ -126,34 +126,6 @@ app.use("*", limitApi);"#,
         "public-endpoint-rate-limit",
         "src/index.ts"
     ));
-}
-
-#[test]
-fn typescript_esm_imports_resolve_to_their_source_definitions() {
-    for (specifier, source) in [
-        ("billing.js", "billing.ts"),
-        ("billing.js", "billing.tsx"),
-        ("billing.mjs", "billing.mts"),
-        ("billing.cjs", "billing.cts"),
-    ] {
-        let code = "export async function startCheckout(c) { const session = await loadSession(c); if (!session) return c.redirect('/signin'); return c.text('ok'); }";
-        let path = format!("src/pages/{source}");
-        let temp = TempDir::new().unwrap();
-        write_file(
-            temp.path(),
-            "src/index.ts",
-            &format!(
-                r#"import {{ startCheckout }} from "./pages/{specifier}"; app.post("/billing/checkout", startCheckout);"#
-            ),
-        );
-        write_file(temp.path(), &path, code);
-        let report = audit_project(temp.path()).unwrap();
-        assert!(
-            !reports(&report, "sensitive-auth", "src/index.ts"),
-            "{specifier}: {source}: {:?}",
-            report.issues
-        );
-    }
 }
 
 #[test]

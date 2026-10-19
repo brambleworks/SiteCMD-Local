@@ -1,5 +1,17 @@
 use std::sync::LazyLock;
 
+static UPSTREAM_LIMIT_HEADER: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"["'`](?i:x-ratelimit-|ratelimit-)[^"'`\r\n]*["'`]"#)
+        .expect("static upstream limit-header regex") // allow-expect: compile-time literal regex
+});
+
+pub(in crate::core::code_scan) fn has_rate_limit_evidence(content: &str) -> bool {
+    let scanned = UPSTREAM_LIMIT_HEADER.replace_all(content, " ");
+    RATE_LIMIT_PATTERNS
+        .iter()
+        .any(|pattern| pattern.is_match(&scanned))
+}
+
 pub(in crate::core::code_scan) static RATE_LIMIT_PATTERNS: LazyLock<Vec<regex::Regex>> =
     LazyLock::new(|| {
         let compile = |source| regex::Regex::new(source).expect("static rate-limit regex"); // allow-expect: compile-time literal patterns

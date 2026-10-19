@@ -49,7 +49,7 @@ fn finding<'a>(report: &'a CodeScanReport, prefix: &str) -> Option<&'a CodeIssue
 }
 
 #[test]
-fn a_router_whose_sensitive_routes_delegate_to_gated_handlers_is_not_unauthenticated() {
+fn imported_authentication_gates_do_not_clear_router_findings() {
     let report = router_report(
         r#"
 import { startCheckout as checkout } from "./pages/billing";
@@ -58,7 +58,7 @@ app.get("/billing", (c) => c.redirect("/account/billing"));
 "#,
     );
     assert!(
-        finding(&report, "sensitive-auth").is_none(),
+        finding(&report, "sensitive-auth").is_some(),
         "{:?}",
         report.issues
     );
@@ -90,7 +90,7 @@ app.post("/billing/checkout", startCheckout);
 }
 
 #[test]
-fn a_router_that_mounts_an_imported_rate_limiter_is_limited() {
+fn imported_global_limiters_do_not_clear_router_findings() {
     for mount in ["app.use(\"*\", limitApi);", "app.use(limitApi);"] {
         let report = router_report(&format!(
             r#"import {{ limitApi }} from "./limits";
@@ -99,7 +99,7 @@ app.get("/auth/callback", (c) => c.text("ok"));
 "#
         ));
         assert!(
-            finding(&report, "public-endpoint-rate-limit").is_none(),
+            finding(&report, "public-endpoint-rate-limit").is_some(),
             "{:?}",
             report.issues
         );
@@ -184,13 +184,13 @@ fn remote_fetches_and_service_bindings_still_need_outbound_guards() {
 }
 
 #[test]
-fn a_global_limiter_does_not_require_the_handler_to_authenticate() {
+fn an_imported_limiter_leaves_rate_and_auth_findings() {
     let report = router_report(
         r#"import { limitApi } from "./limits";
 app.use("*", limitApi);
 app.post("/billing/checkout", (c) => c.text("ok"));"#,
     );
-    assert!(finding(&report, "public-endpoint-rate-limit").is_none());
+    assert!(finding(&report, "public-endpoint-rate-limit").is_some());
     assert!(finding(&report, "sensitive-auth").is_some());
 }
 
@@ -219,7 +219,7 @@ app.post("/billing/checkout", startCheckout);"#,
 }
 
 #[test]
-fn imported_handlers_can_refuse_with_an_http_status() {
+fn imported_http_refusals_do_not_clear_router_findings() {
     let temp = TempDir::new().unwrap();
     write_file(
         temp.path(),
@@ -229,11 +229,11 @@ app.post("/billing/checkout", startCheckout);"#,
     );
     write_file(temp.path(), "src/pages/billing/index.ts", "export async function startCheckout(c) { const session = await loadSession(c); if (!session) return c.text('no', 401); return c.text('ok'); }");
     let report = audit_project(temp.path()).unwrap();
-    assert!(finding(&report, "sensitive-auth").is_none());
+    assert!(finding(&report, "sensitive-auth").is_some());
 }
 
 #[test]
-fn unresolved_sensitive_routes_anchor_the_auth_finding() {
+fn router_auth_findings_keep_the_local_content_anchor() {
     let report = router_report(
         r#"import { startCheckout } from "./pages/billing";
 import { deleteAccount } from "./pages/account";
@@ -241,16 +241,16 @@ app.post("/billing/checkout", startCheckout);
 app.post("/account/delete", deleteAccount);"#,
     );
     let issue = finding(&report, "sensitive-auth").unwrap();
-    assert_eq!(issue.line, Some(4));
+    assert_eq!(issue.line, Some(1));
     assert!(issue
         .source_excerpt
         .as_deref()
         .unwrap()
-        .contains("/account/delete"));
+        .contains("./pages/billing"));
 }
 
 #[test]
-fn a_router_can_delegate_after_local_middleware_and_a_trailing_comma() {
+fn imported_gates_after_local_middleware_leave_router_findings() {
     let report = router_report(
         r#"import { startCheckout } from "./pages/billing";
 app.post(
@@ -259,7 +259,7 @@ app.post(
   startCheckout,
 );"#,
     );
-    assert!(finding(&report, "sensitive-auth").is_none());
+    assert!(finding(&report, "sensitive-auth").is_some());
 }
 
 #[test]

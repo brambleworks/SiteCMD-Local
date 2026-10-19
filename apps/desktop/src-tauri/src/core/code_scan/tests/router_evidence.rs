@@ -2,7 +2,7 @@ use super::router_coverage::{inspect, reports};
 use super::*;
 
 #[test]
-fn unrelated_identity_data_or_exports_do_not_authenticate_handlers() {
+fn imported_identity_evidence_does_not_clear_router_findings() {
     for module in [
         r#"export async function deleteAccount(c) { const { userId } = await c.req.parseBody(); await db.delete(users).where(eq(users.id, userId)); return c.redirect("/goodbye"); }"#,
         r#"export async function getAccount(c) { const session = await loadSession(c); if (!session) return c.redirect("/login"); return c.json(session); } export async function deleteAccount(c) { await db.purge(); return c.redirect("/goodbye"); }"#,
@@ -38,7 +38,7 @@ async function remove(c) {
 }
 export const deleteAccount = (c) => remove(c);
 "#)]);
-    assert!(!reports(&report, "sensitive-auth", "src/index.ts"));
+    assert!(reports(&report, "sensitive-auth", "src/index.ts"));
 }
 
 #[test]

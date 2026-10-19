@@ -142,7 +142,7 @@ impl FileAnalysisSignals {
         // identity evidence or an authorization follow-up.
         let has_auth = has_identity_auth || has_token_guard || middleware_auth_protected;
         let has_validation = has_any(content, &VALIDATION_PATTERNS);
-        let has_rate_limit = has_any(content, &RATE_LIMIT_PATTERNS) || middleware_throttled;
+        let has_rate_limit = has_rate_limit_evidence(content) || middleware_throttled;
         let has_cors_wildcard = has_any(content, &CORS_WILDCARD_PATTERNS);
         let has_cors_credentials = has_any(content, &CORS_CREDENTIAL_PATTERNS);
         let has_runtime_cors_config = has_any(content, &CORS_RUNTIME_PATTERNS);
