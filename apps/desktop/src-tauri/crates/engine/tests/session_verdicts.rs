@@ -2,7 +2,10 @@
 //! the input, so a runtime that keeps no addresses can still file each
 //! finding on its page.
 
-use sitecmd_engine::session::{analyze_session, SessionPage, SESSION_CHECK_IDS};
+use sitecmd_engine::session::{analyze_session, SessionPage, SessionSitemap, SESSION_CHECK_IDS};
+
+#[path = "support/orphan_scope.rs"]
+mod orphan_scope;
 use sitecmd_engine::CheckStatus;
 
 fn page(url: &str) -> SessionPage {
@@ -182,7 +185,14 @@ fn an_orphan_verdict_names_only_the_unlinked_page() {
         page("https://example.com/contact"),
     ];
     pages[0].internal_links = pages[2..].iter().map(|page| page.url.clone()).collect();
-    let analysis = analyze_session(&pages, None);
+    let urls: Vec<_> = pages.iter().map(|page| page.url.clone()).collect();
+    let analysis = analyze_session(
+        &pages,
+        Some(SessionSitemap {
+            urls: &urls,
+            partial_because: None,
+        }),
+    );
     let orphan = verdict(&analysis, "seo.orphan_pages");
     assert_eq!(orphan.result.status, CheckStatus::Warn);
     assert_eq!(orphan.pages, vec![1]);

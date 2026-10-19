@@ -84,8 +84,8 @@ pub struct SessionAnalysis {
 }
 
 /// Run all session-level analyzers. `sitemap` should be the discovered sitemap
-/// URL set when available (used only by the noindex contradiction check). Pure
-/// and synchronous: the caller does any fetching.
+/// URL set when available, for orphan coverage and noindex contradictions.
+/// Pure and synchronous: the caller does any fetching.
 pub fn analyze_session(
     pages: &[SessionPage],
     sitemap: Option<SessionSitemap<'_>>,
@@ -121,7 +121,7 @@ pub fn analyze_session(
         "H1 heading",
         |p| p.h1.as_deref(),
     ));
-    found.extend(graph::orphan_pages(comparable, &compared));
+    found.extend(graph::orphan_pages(comparable, &compared, sitemap));
     if let Some(sitemap) = sitemap {
         found.extend(graph::noindex_in_sitemap(comparable, &compared, sitemap));
     }
@@ -178,6 +178,7 @@ fn unreported_outcomes(
                 "seo.orphan_pages" if comparable < ORPHAN_MIN_PAGES => Some(format!(
                     "This check needs at least {ORPHAN_MIN_PAGES} scanned pages to tell an unlinked page from a small scan; this scan compared {comparable}.{note}"
                 )),
+                "seo.orphan_pages" => graph::orphan_sitemap_skip_reason(compared, sitemap),
                 "seo.noindex_in_sitemap" if sitemap.is_none() => Some(
                     "No sitemap was found for this site, so no page could be compared against one."
                         .to_string(),

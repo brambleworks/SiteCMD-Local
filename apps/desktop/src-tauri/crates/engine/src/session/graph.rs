@@ -1,13 +1,15 @@
 use super::compared::ComparedPages;
-use super::signals::{normalize_page_url, MAX_INTERNAL_LINKS_PER_PAGE};
+use super::signals::{normalize_page_url, same_site_link, MAX_INTERNAL_LINKS_PER_PAGE};
 use super::{base_result, safe_page_url, SessionPage, SessionSitemap, ORPHAN_MIN_PAGES};
 use crate::checks::{CheckResult, IssueConfidence, Severity};
 use std::collections::HashSet;
 
-/// Pages in the scan set that no other scanned page links to.
+/// Pages with no observed inbound link, graded only when the complete sitemap
+/// URL set reached compared pages.
 pub(super) fn orphan_pages(
     pages: &[&SessionPage],
     compared: &ComparedPages<'_>,
+    sitemap: Option<SessionSitemap<'_>>,
 ) -> Vec<(CheckResult, Vec<String>)> {
     if pages.len() < ORPHAN_MIN_PAGES {
         return Vec::new();
@@ -18,6 +20,9 @@ pub(super) fn orphan_pages(
     let Some(entry_page) = compared.entry_page else {
         return Vec::new();
     };
+    if orphan_sitemap_skip_reason(compared, sitemap).is_some() {
+        return Vec::new();
+    }
 
     // A page answers to every URL that reached it, not only the one it landed
     // on: a link written to a pre-redirect URL, or to the URL a second
@@ -99,6 +104,54 @@ pub(super) fn orphan_pages(
     }));
     let named = orphans.iter().map(|url| url.to_string()).collect();
     vec![(result, named)]
+}
+
+pub(super) fn orphan_sitemap_skip_reason(
+    compared: &ComparedPages<'_>,
+    sitemap: Option<SessionSitemap<'_>>,
+) -> Option<String> {
+    let Some(sitemap) = sitemap else {
+        return Some("No sitemap was found for this site, so this scan cannot tell whether the pages it compared are all of the site's pages.".into());
+    };
+    if let Some(reason) = sitemap.partial_because {
+        return Some(super::partial_sitemap_reason(reason));
+    }
+    let origin = compared
+        .entry_page
+        .and_then(|url| url::Url::parse(url).ok());
+    let alias_key = |raw: &str| {
+        origin
+            .as_ref()
+            .and_then(|origin| {
+                url::Url::parse(raw)
+                    .ok()
+                    .and_then(|url| same_site_link(&url, origin))
+            })
+            .map_or_else(
+                || normalize_page_url(raw),
+                |url| normalize_page_url(url.as_str()),
+            )
+    };
+    let aliases: HashSet<_> = compared
+        .pages
+        .iter()
+        .flat_map(|page| compared.aliases_of(page))
+        .map(alias_key)
+        .collect();
+    let urls: HashSet<_> = sitemap
+        .urls
+        .iter()
+        .map(|url| normalize_page_url(url))
+        .collect();
+    let n = urls.len();
+    let c = urls
+        .iter()
+        .filter(|url| aliases.contains(&alias_key(url)))
+        .count();
+    (c < n).then(|| format!(
+        "This scan compared {c} of the {n} page{} this site's sitemap lists, so a page with no link from a compared page may be linked from a page the scan did not read.",
+        if n == 1 { "" } else { "s" },
+    ))
 }
 
 /// Pages that are noindex AND listed in the sitemap: the sitemap invites
