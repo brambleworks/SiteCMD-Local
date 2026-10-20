@@ -1598,8 +1598,8 @@ outcome at the strongest point it offers:
   browser-session, response, and page-count budgets per scan. Values
   are operational configuration with the v1 numbers as defaults;
   changes are disclosed operational facts.
-- **Provider events** are signature-verified, idempotent, and
-  replay-protected at the connect layer, per the protocol spec.
+- **Generic deploy events** are signature-verified, idempotent, and
+  replay-protected at the Connect layer, per the protocol spec.
 
 ## Cost model and provider verification items
 
@@ -1661,10 +1661,8 @@ split by scan profile, is the measurement program this instrumentation
 exists to make computable.
 
 Provider items recorded for build-time verification rather than
-asserted: whether reaching Vercel Hobby deployments requires a Vercel
-Integration; Netlify's signed notification format; Browser Run's
-current session, creation, and concurrency limits and pricing, read
-from the documented limits and pricing pages, which are the only place
+asserted: Browser Run's current session, creation, and concurrency limits
+and pricing, read from the documented limits and pricing pages, which are the only place
 those numbers are published - the provider dashboard shows runs and
 usage and never the limits, so "check the dashboard" is not a
 verification anyone can perform - with the monthly invoice

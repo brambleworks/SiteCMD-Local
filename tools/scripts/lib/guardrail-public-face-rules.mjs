@@ -51,6 +51,30 @@ const PRIVATE_RECORD_DEFERRAL = /commercial (?:terms )?spec|RFC's economics sect
 // hand-built nonce allocator, AES-GCM envelope, or body-only HMAC they replaced.
 const RETIRED_CONNECT_CRYPTO =
   /MAX_ENCRYPTIONS_PER_KID|allocator reservation|\{envelope_version, algorithm, kid, nonce, ciphertext\}|existing `sha256=` lowercase-hex HMAC contract|desktop's exact\s+format|adopts this wire format verbatim/;
+const DEPLOY_HOST_NAMES = "(?:vercel|netlify)";
+const RETIRED_DEPLOY_TERMS =
+  "(?:doors?|hooks?|webhooks?|connections?|credentials?|oauth|callbacks?|promotions?|publish[ -]events?|authority|ordering)";
+const RETIRED_CONNECT_PROVIDERS = new RegExp(
+  [
+    "provider[\\s_-]+connection",
+    "provider[ -]attest",
+    "provider (?:door|hook|webhook|project|credential|authority|ordering)s?",
+    "\\bprovider(?:'s)?\\s+authorization\\b",
+    "\\bprovider(?:'s)?\\s+(?:oauth|connection_id)\\b",
+    "\\b(?:oauth|connection_id)\\b(?:\\s+authorization)?\\s+for\\s+the\\s+provider\\b",
+    "provider and generic",
+    "promotion (?:event|sequence)",
+    "provider_connection_id|external_project",
+    "webhook reprovision|reprovision the provider",
+    "/callbacks/(?:\\{provider\\}|vercel\\b|netlify\\b)",
+    "project_already_claimed",
+    "`promotion`",
+    '"kind"\\s*:\\s*"provider"',
+    `\\b${DEPLOY_HOST_NAMES}\\b(?:'s)?[ -]+(?:deploy[ -]+)?${RETIRED_DEPLOY_TERMS}\\b`,
+    `\\b${RETIRED_DEPLOY_TERMS}(?:[ -]+(?:(?:for|from|on)[ -]+)?|/)${DEPLOY_HOST_NAMES}\\b`,
+  ].join("|"),
+  "i",
+);
 // desktop-repo-public-face plan Task 8 rewrites this walkthrough; exclude it here until then.
 const WALKTHROUGH_PENDING_TASK_8 = `${PRODUCT_DOCS}/get-value-in-5-minutes.md`;
 
@@ -95,6 +119,12 @@ export function publicFaceFailures(read, exists, listFiles) {
     if (retired) {
       failures.push(
         `${file} specifies a retired Connect crypto contract ("${retired[0]}"); stored payloads are jose flattened JWE (dir, A256GCM, random IV) and outgoing webhooks use Standard Webhooks.`,
+      );
+    }
+    const provider = RETIRED_CONNECT_PROVIDERS.exec(read(file));
+    if (provider) {
+      failures.push(
+        `${file} specifies a retired Connect provider contract ("${provider[0]}"); deploy intake uses the generic signed door and publish-attestation ordering.`,
       );
     }
   }
