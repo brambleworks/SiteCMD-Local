@@ -32,7 +32,6 @@ const REGISTRATION_SOURCES = [
   "apps/desktop/src-tauri/src/checks/accessibility/mod.rs",
   "apps/desktop/src-tauri/src/checks/compliance/mod.rs",
   "apps/desktop/src-tauri/src/checks/config/mod.rs",
-  "apps/desktop/src-tauri/crates/engine/src/checks/predeploy/mod.rs",
 ];
 
 const SCORER_ABI = ["scorer_alloc", "scorer_score", "scorer_free"];

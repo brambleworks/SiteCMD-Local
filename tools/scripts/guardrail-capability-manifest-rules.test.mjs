@@ -154,6 +154,25 @@ describe("completeness", () => {
 });
 
 describe("lane truth", () => {
+  it("exempts an unsupported id only when every source is under predeploy", () => {
+    const id = "config.localhost_refs";
+    const entries = [entry(id, { hosted: "unsupported", requires: [] })];
+    const predeploy = { "predeploy/mod.rs": emits(id) };
+    expect(failures({ entries, engine: predeploy })).toEqual([]);
+    for (const engine of [
+      { "config/refs.rs": emits(id) },
+      { ...predeploy, "config/refs.rs": emits(id) },
+      { "predeploy_extra/mod.rs": emits(id) },
+    ]) {
+      expect(failures({ entries, engine }).join("\n")).toContain("marked unsupported");
+    }
+    expect(
+      failures({ entries, engine: predeploy, desktop: { "predeploy/mod.rs": emits(id) } }).join(
+        "\n",
+      ),
+    ).toContain("marked unsupported");
+  });
+
   it("backs a session check's hosted lane only while the engine declares it", () => {
     const fixture = {
       entries: [entry("seo.orphan_pages", { scope: "session" })],

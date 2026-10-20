@@ -451,7 +451,7 @@ constant those ids carry, with a shared contract that folds in the
 pinned axe version for the axe family. Lookup resolves an exact id
 first and the longest matching family second.
 
-Three things a generator cannot check about itself are enforced
+Four things a generator cannot check about itself are enforced
 against the source instead (`guardrail-capability-manifest-rules.mjs`):
 a row may claim a hosted lane other than `unsupported` only when the
 check's verdict code is in the engine crate, so the lane is checked
@@ -461,6 +461,13 @@ because two answers to one coverage question is how coverage claims go
 wrong; and a check whose verdict reads `evaluation_time` must be
 classed `clock_dependent`, because classing one as deterministic
 blames an operator for the calendar.
+
+The same guardrail also rejects a row marked `unsupported` while the engine
+crate emits its id, because that silently drops hosted findings from
+cross-vantage comparison. The one exception is a check whose id is emitted only
+from files under `crates/engine/src/checks/predeploy/`: those checks return
+nothing unless the page is localhost, so a hosted scan has no findings to
+compare.
 
 ## Execution architecture
 

@@ -72,12 +72,16 @@ Do not make an accuracy assertion depend only on a regenerated snapshot.
    When the check supports hosted page evaluation, also register its runner in
    `crates/engine/src/evaluation/runners.rs` (or `runners_seo.rs` for an SEO page
    check); a manifest entry alone does not execute the detector.
+   A check that returns nothing unless the page is localhost belongs in
+   `crates/engine/src/checks/predeploy/`, is listed in `all_predeploy_checks()`,
+   is registered `.unsupported()`, and has no hosted runner.
 4. Add the local guide under `apps/desktop/src/lib/fix-guides/`: a short
    explanation, bounded baseline steps, and an effort consistent with the
    existing guide types. Code Scan uses `lib/code-fix-guides/` instead.
 5. Add a corpus case and its dispatcher arm, plus an explicit verdict assertion
    in the relevant golden test. Reuse page, probe, or browser corpora according
-   to the facts the detector consumes.
+   to the facts the detector consumes, except for localhost-only checks, which
+   use direct unit tests instead of a hosted corpus case.
 
 The private intelligence catalog is a maintainer release task. A public patch
 must stand on its own with complete local behavior and baseline guidance;

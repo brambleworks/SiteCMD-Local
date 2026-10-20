@@ -1,4 +1,5 @@
 //! Localhost-only checks for common pre-deployment mistakes.
+//! The capability manifest marks these checks unsupported because hosted pages are never localhost.
 
 use crate::checks::{Check, CheckResult, CheckStatus, PageContext, ScanCategory, Severity};
 use regex::Regex;

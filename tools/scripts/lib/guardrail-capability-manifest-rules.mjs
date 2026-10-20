@@ -90,6 +90,13 @@ export function capabilityManifestFailures(read, listFiles) {
   }
   const understated = manifest.entries
     .filter((entry) => entry.hosted === "unsupported" && engineIds.has(entry.check))
+    // Localhost-only checks have no hosted findings to preserve in comparisons.
+    .filter(
+      (entry) =>
+        !emitted
+          .get(entry.check)
+          ?.every((file) => file.startsWith(`${WEB_CHECK_TREES.engine}/predeploy/`)),
+    )
     .map((entry) => entry.check);
   if (understated.length > 0) {
     failures.push(

@@ -404,38 +404,6 @@ pub const RUNNERS: &[Runner] = &[
         covers: &["config.trailing_slash"],
         run: |inputs| crate::checks::config::extras::TrailingSlashCheck.run(inputs.page),
     },
-    Runner {
-        covers: &["config.localhost_refs"],
-        run: |inputs| crate::checks::predeploy::LocalhostRefsCheck.run(inputs.page),
-    },
-    Runner {
-        covers: &["security.source_maps"],
-        run: |inputs| crate::checks::predeploy::SourceMapsCheck.run(inputs.page),
-    },
-    Runner {
-        covers: &["config.debug_mode"],
-        run: |inputs| crate::checks::predeploy::DebugModeCheck.run(inputs.page),
-    },
-    Runner {
-        covers: &["config.console_logs"],
-        run: |inputs| crate::checks::predeploy::ConsoleLogCheck.run(inputs.page),
-    },
-    Runner {
-        covers: &["config.todo_comments"],
-        run: |inputs| crate::checks::predeploy::TodoCommentsCheck.run(inputs.page),
-    },
-    Runner {
-        covers: &["config.dev_dependencies"],
-        run: |inputs| crate::checks::predeploy::DevDependenciesCheck.run(inputs.page),
-    },
-    Runner {
-        covers: &["config.placeholder_content"],
-        run: |inputs| crate::checks::predeploy::PlaceholderContentCheck.run(inputs.page),
-    },
-    Runner {
-        covers: &["security.env_leak"],
-        run: |inputs| crate::checks::predeploy::EnvLeakCheck.run(inputs.page),
-    },
     // Page weight remains artifact-derived despite its desktop async shell.
     Runner {
         covers: &["performance.page_weight"],

@@ -60,7 +60,6 @@ fn check_by_id(id: &str) -> Box<dyn Check> {
         "security.mixed_content" => Box::new(c::security::mixed_content::MixedContentCheck),
         "config.deprecated_html" => Box::new(c::config::deprecated_html::DeprecatedHtmlCheck),
         "compliance.trackers" => Box::new(c::compliance::trackers::ThirdPartyTrackerCheck),
-        "config.localhost_refs" => Box::new(c::predeploy::LocalhostRefsCheck),
         "performance.unminified" => Box::new(c::performance::unminified::UnminifiedCodeCheck),
         "accessibility.skip_nav" => Box::new(c::accessibility::html_checks::SkipNavCheck),
         "compliance.form_consent" => Box::new(c::compliance::trackers::FormConsentCheck),

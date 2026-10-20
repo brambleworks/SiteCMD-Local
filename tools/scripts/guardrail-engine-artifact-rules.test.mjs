@@ -200,6 +200,26 @@ describe("engineArtifactFailures", () => {
     expect(flags(failures, "not registered in any desktop")).toBe(true);
   });
 
+  it("rejects a hosted runner restored for a localhost-only predeploy check", () => {
+    const fixture = {
+      "apps/desktop/src-tauri/crates/engine/src/checks/predeploy/mod.rs":
+        "pub fn all_predeploy_checks() { vec![Box::new(LocalhostRefsCheck)] }",
+    };
+    expect(run(fixture)).toEqual([]);
+    const runner = [
+      "    Runner {",
+      '        covers: &["config.localhost_refs"],',
+      "        run: |inputs| crate::checks::predeploy::LocalhostRefsCheck.run(inputs.page),",
+      "    },",
+    ].join("\n");
+    const failures = run({
+      ...fixture,
+      [RUNNERS]: RUNNERS_BASE.replace("];", `${runner}\n];`),
+    });
+    expect(flags(failures, "not registered in any desktop")).toBe(true);
+    expect(flags(failures, "LocalhostRefsCheck")).toBe(true);
+  });
+
   it("rejects a brace-wrapped hosted runner whose desktop registration was deleted", () => {
     const failures = run({
       [REGISTRATION]: REGISTRATION_BASE.replace(

@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "manifest_digest": "b598a8f6ddb1aaff",
+  "manifest_digest": "998cdf997188ae46",
   "entries": [
     {
       "check": "accessibility.aria_usage",
@@ -267,10 +267,10 @@
     {
       "check": "config.console_logs",
       "contract": "522c28c2cbc74761",
-      "hosted": "artifact",
+      "hosted": "unsupported",
       "class": "deterministic",
       "scope": "page",
-      "requires": ["page_artifact"],
+      "requires": [],
       "compare_on": []
     },
     {
@@ -285,10 +285,10 @@
     {
       "check": "config.debug_mode",
       "contract": "3c7e14c1a7669ff2",
-      "hosted": "artifact",
+      "hosted": "unsupported",
       "class": "deterministic",
       "scope": "page",
-      "requires": ["page_artifact"],
+      "requires": [],
       "compare_on": []
     },
     {
@@ -303,10 +303,10 @@
     {
       "check": "config.dev_dependencies",
       "contract": "d93e6e4b180c409c",
-      "hosted": "artifact",
+      "hosted": "unsupported",
       "class": "deterministic",
       "scope": "page",
-      "requires": ["page_artifact"],
+      "requires": [],
       "compare_on": []
     },
     {
@@ -321,19 +321,19 @@
     {
       "check": "config.localhost_refs",
       "contract": "cf9ffbedfea75754",
-      "hosted": "artifact",
+      "hosted": "unsupported",
       "class": "deterministic",
       "scope": "page",
-      "requires": ["page_artifact"],
+      "requires": [],
       "compare_on": []
     },
     {
       "check": "config.placeholder_content",
       "contract": "d453fb82d590cecc",
-      "hosted": "artifact",
+      "hosted": "unsupported",
       "class": "deterministic",
       "scope": "page",
-      "requires": ["page_artifact"],
+      "requires": [],
       "compare_on": []
     },
     {
@@ -366,10 +366,10 @@
     {
       "check": "config.todo_comments",
       "contract": "dbadca0cfb8cac37",
-      "hosted": "artifact",
+      "hosted": "unsupported",
       "class": "deterministic",
       "scope": "page",
-      "requires": ["page_artifact"],
+      "requires": [],
       "compare_on": []
     },
     {
@@ -786,10 +786,10 @@
     {
       "check": "security.env_leak",
       "contract": "1b042f0287c97417",
-      "hosted": "artifact",
+      "hosted": "unsupported",
       "class": "deterministic",
       "scope": "page",
-      "requires": ["page_artifact"],
+      "requires": [],
       "compare_on": []
     },
     {
@@ -958,10 +958,10 @@
     {
       "check": "security.source_maps",
       "contract": "647f21ea3c994452",
-      "hosted": "artifact",
+      "hosted": "unsupported",
       "class": "deterministic",
       "scope": "page",
-      "requires": ["page_artifact"],
+      "requires": [],
       "compare_on": []
     },
     {

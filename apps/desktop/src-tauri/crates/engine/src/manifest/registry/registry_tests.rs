@@ -3,6 +3,19 @@ use crate::manifest::{CheckClass, CheckScope, HostedLane};
 use std::collections::HashSet;
 
 #[test]
+fn the_unsupported_set_is_the_localhost_only_checks() {
+    let mut unsupported: Vec<&str> = entries()
+        .filter(|entry| entry.lane == HostedLane::Unsupported)
+        .map(|entry| entry.check)
+        .collect();
+    let checks = crate::checks::predeploy::all_predeploy_checks();
+    let mut localhost_only: Vec<&str> = checks.iter().map(|check| check.id()).collect();
+    unsupported.sort_unstable();
+    localhost_only.sort_unstable();
+    assert_eq!(unsupported, localhost_only);
+}
+
+#[test]
 fn every_check_id_appears_once() {
     let mut seen = HashSet::new();
     for entry in entries() {

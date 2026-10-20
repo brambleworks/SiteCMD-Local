@@ -49,7 +49,6 @@ fn check_by_id(id: &str) -> Box<dyn Check> {
         }
         "compliance.dnt_respect" => Box::new(c::compliance::gdpr::DntRespectCheck),
         "config.analytics" => Box::new(c::config::analytics::AnalyticsCheck),
-        "config.localhost_refs" => Box::new(c::predeploy::LocalhostRefsCheck),
         "security.email_exposure" => Box::new(c::security::email_exposure::EmailExposureCheck),
         "security.vibe.csrf" => Box::new(c::security::csrf::CsrfCheck),
         "security.vibe.exposed_keys" => Box::new(c::security::exposed_keys::ExposedApiKeysCheck),
@@ -206,11 +205,6 @@ fn headline_verdicts_match_the_documented_checks() {
     let tracker = statuses("google_analytics_script_is_a_third_party_tracker");
     assert_eq!(
         status_of(&tracker, "compliance.trackers"),
-        CheckStatus::Warn
-    );
-    let loopback = statuses("hardcoded_loopback_url_flags_predeploy_localhost_refs");
-    assert_eq!(
-        status_of(&loopback, "config.localhost_refs"),
         CheckStatus::Warn
     );
 

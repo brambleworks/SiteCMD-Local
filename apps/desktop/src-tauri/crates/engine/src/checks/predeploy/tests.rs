@@ -18,6 +18,46 @@ fn make_ctx(body: &str, is_localhost: bool) -> PageContext {
 }
 
 #[test]
+fn unsupported_predeploy_checks_fire_only_on_localhost() {
+    use crate::manifest::{capability_manifest, HostedLane};
+
+    let body = r#"<a href="http://127.0.0.1:3000/api">API</a>
+        <script src="/vite/client"></script>
+        <script>console.log("preview"); window.config = { debug: true,
+            api_key: "not-a-real-test-secret" };
+            //# sourceMappingURL=app.js.map
+        </script>
+        <!-- TODO: remove before launch -->
+        <p>Lorem ipsum dolor sit amet</p>"#;
+    let local_ctx = make_ctx(body, true);
+    let hosted_ctx = make_ctx(body, false);
+    let manifest = capability_manifest();
+    let mut overclaimed = Vec::new();
+    for check in all_predeploy_checks() {
+        let local = check.run(&local_ctx);
+        assert!(!local.is_empty(), "{} has no local verdict", check.id());
+        assert!(
+            local.iter().all(|row| row.check_id == check.id()
+                && matches!(row.status, CheckStatus::Warn | CheckStatus::Fail)),
+            "{} did not fire: {local:?}",
+            check.id()
+        );
+        assert!(
+            check.run(&hosted_ctx).is_empty(),
+            "{} fires off localhost",
+            check.id()
+        );
+        if manifest.entry(check.id()).unwrap().hosted != HostedLane::Unsupported {
+            overclaimed.push(check.id().to_string());
+        }
+    }
+    assert!(
+        overclaimed.is_empty(),
+        "localhost-only checks claim hosted lanes: {overclaimed:?}"
+    );
+}
+
+#[test]
 fn test_localhost_refs_detected() {
     let body = r#"<a href="http://localhost:3000/api">Link</a>"#;
     let ctx = make_ctx(body, true);

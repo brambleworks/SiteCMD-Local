@@ -250,6 +250,29 @@ fn all_claimed_ids() -> Vec<&'static str> {
         .collect()
 }
 
+#[test]
+fn no_runner_claims_an_unsupported_entry() {
+    let manifest = capability_manifest();
+    let unsupported: Vec<&str> = manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.hosted == HostedLane::Unsupported)
+        .map(|entry| entry.check.as_str())
+        .collect();
+    assert!(
+        !unsupported.is_empty(),
+        "localhost-only checks need unsupported entries"
+    );
+    let claimed: Vec<&str> = all_claimed_ids()
+        .into_iter()
+        .filter(|check| unsupported.contains(check))
+        .collect();
+    assert!(
+        claimed.is_empty(),
+        "hosted runners claim unsupported entries: {claimed:?}"
+    );
+}
+
 // Two claimants would run one check twice and double every row it emits.
 #[test]
 fn no_manifest_id_is_claimed_by_two_runners() {
