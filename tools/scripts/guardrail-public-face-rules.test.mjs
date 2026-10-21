@@ -217,6 +217,15 @@ describe("publicFaceFailures", () => {
     ).toContain("reads as product intent");
   });
 
+  it("rejects a README that sends readers to the retired download page", () => {
+    expect(
+      run((files) => {
+        files[README] +=
+          "\nDownload it from [sitecmd.com/download](https://sitecmd.com/download).\n";
+      }),
+    ).toContain("sitecmd.com/download");
+  });
+
   it("rejects a docs index that still lists the executed cutover as an entry point", () => {
     expect(
       run((files) => {

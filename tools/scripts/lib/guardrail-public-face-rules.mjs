@@ -93,6 +93,13 @@ export function publicFaceFailures(read, exists, listFiles) {
     }
   }
 
+  // sitecmd.com/download redirects to the CLI docs; the desktop is not offered.
+  if (exists(README) && /sitecmd\.com\/download\b/.test(read(README))) {
+    failures.push(
+      `${README} links sitecmd.com/download, which now redirects to the CLI docs; link https://sitecmd.com/docs/cli instead.`,
+    );
+  }
+
   const docsIndex = read(DOCS_INDEX);
   if (!/publication-checklist\.md\)[^\n]*historical/i.test(docsIndex)) {
     failures.push(
