@@ -28,9 +28,32 @@ case "$TARGET" in
     ;;
 esac
 
-if [[ "$TARGET" == darwin-* ]] && [ -n "${APPLE_CERTIFICATE:-}" ]; then
+if [[ "$TARGET" == darwin-* ]]; then
+  : "${APPLE_CERTIFICATE:?macOS CLI signing requires APPLE_CERTIFICATE}"
+  : "${APPLE_SIGNING_IDENTITY:?macOS CLI signing requires APPLE_SIGNING_IDENTITY}"
   codesign --force --options runtime --timestamp \
     --sign "$APPLE_SIGNING_IDENTITY" "$DIST/sitecmd"
+
+  NOTARY_DIR="$RUNNER_TEMP/cli-notarization"
+  mkdir -p "$NOTARY_DIR"
+  NOTARY_AUTH=(--key "$RUNNER_TEMP/asc_api_key.p8"
+    --key-id "${APPLE_API_KEY_ID:?CLI notarization requires APPLE_API_KEY_ID}"
+    --issuer "${APPLE_API_ISSUER:?CLI notarization requires APPLE_API_ISSUER}")
+  ditto -c -k "$DIST/sitecmd" "$NOTARY_DIR/sitecmd.zip"
+  submit_exit=0
+  xcrun notarytool submit "$NOTARY_DIR/sitecmd.zip" \
+    "${NOTARY_AUTH[@]}" --wait --output-format json \
+    > "$NOTARY_DIR/submission.json" || submit_exit=$?
+  if ! submission_id=$(jq -er '.id | strings | select(length > 0)' "$NOTARY_DIR/submission.json"); then
+    echo "::error::CLI notarization returned no submission id."
+    exit 1
+  fi
+  printf '%s\n' "$submission_id" > "$NOTARY_DIR/submission-id.txt"
+  xcrun notarytool log "$submission_id" "${NOTARY_AUTH[@]}" "$NOTARY_DIR/notary-log.json"
+  if [ "$submit_exit" -ne 0 ] || [ "$(jq -r '.status' "$NOTARY_DIR/submission.json")" != "Accepted" ]; then
+    echo "::error::CLI notarization was not accepted; see submission $submission_id and its notary log."
+    exit 1
+  fi
 fi
 if [ "$TARGET" = "windows-x86_64" ] && [ -n "${AZURE_SIGN_ENDPOINT:-}" ] \
   && [ -n "${AZURE_CLIENT_ID:-}" ]; then

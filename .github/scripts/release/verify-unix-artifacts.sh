@@ -8,6 +8,8 @@ for legal_file in LICENSE NOTICE THIRD_PARTY_NOTICES THIRD_PARTY_DEPENDENCIES.js
 done
 if [ "$TARGET" = "darwin-universal" ]; then
   codesign --verify --strict cli-check/sitecmd
+  # Apple's check for non-app code consults online notarization tickets.
+  codesign -vvvv -R="notarized" --check-notarization cli-check/sitecmd
   filename=$(jq -r '.filename' "$dir/fragment.json")
   dmg_name=$(jq -r '.dmg_name' "$dir/fragment.json")
   mkdir app-check
