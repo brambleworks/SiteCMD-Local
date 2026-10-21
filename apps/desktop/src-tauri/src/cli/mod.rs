@@ -1,4 +1,4 @@
-//! Project-aware commands shared by the standalone CLI and desktop export.
+//! Project configuration, scan artifacts, and connected-service commands.
 
 pub mod audit;
 pub mod audit_suppressions;
@@ -354,97 +354,11 @@ pub fn default_desktop_db_path() -> Option<PathBuf> {
     crate::app_identity::default_app_db_path()
 }
 
-fn build_import_deep_link_url(project_root: &Path) -> String {
-    let path_str = project_root.to_string_lossy();
-    let encoded = urlencoding::encode(&path_str);
-    format!("sitecmd://import?path={}", encoded)
-}
-
-fn validate_deep_link_launch_status(
-    launch_succeeded: bool,
-    exit_code: Option<i32>,
-    deep_link_url: &str,
-) -> Result<(), String> {
-    if launch_succeeded {
-        return Ok(());
-    }
-
-    match exit_code {
-        Some(code) => Err(format!(
-            "desktop deep link launcher exited with code {} for {}",
-            code, deep_link_url
-        )),
-        None => Err(format!(
-            "desktop deep link launcher terminated before opening {}",
-            deep_link_url
-        )),
-    }
-}
-
-pub fn sync_project_to_local_database(
-    project_root: &Path,
-) -> Result<Option<CliImportSyncResult>, String> {
-    let Some(db_path) = default_desktop_db_path() else {
-        return Ok(None);
-    };
-    if !db_path.exists() {
-        return Ok(None);
-    }
-
-    crate::app_identity::validate_private_file_target(&db_path)
-        .map_err(|error| format!("refused unsafe SiteCMD database path: {error}"))?;
-    let db = crate::db::Database::open(db_path)?;
-    import_project_artifacts(&db, project_root).map(Some)
-}
-
-/// Best-effort deep link that asks the desktop app to import or refresh the
-/// project rooted at `project_root`. Used by `sitecmd init` and by scan/export
-/// commands after `.sitecmd/` artifacts are updated.
-pub fn fire_import_deep_link(project_root: &Path) -> Result<(), String> {
-    let deep_link_url = build_import_deep_link_url(project_root);
-
-    #[cfg(target_os = "macos")]
-    {
-        let status = std::process::Command::new("open")
-            .arg(&deep_link_url)
-            .status()
-            .map_err(|e| format!("failed to open deep link: {}", e))?;
-        return validate_deep_link_launch_status(status.success(), status.code(), &deep_link_url);
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let status = std::process::Command::new("xdg-open")
-            .arg(&deep_link_url)
-            .status()
-            .map_err(|e| format!("failed to open deep link: {}", e))?;
-        return validate_deep_link_launch_status(status.success(), status.code(), &deep_link_url);
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // Avoid `cmd /C start`, which interprets URL metacharacters. Explorer's
-        // exit code is unreliable after URI handoff, so only spawn failure is fatal.
-        let status = std::process::Command::new("explorer.exe")
-            .arg(&deep_link_url)
-            .status()
-            .map_err(|e| format!("failed to open deep link: {}", e))?;
-        return validate_deep_link_launch_status(true, status.code(), &deep_link_url);
-    }
-
-    #[allow(unreachable_code)]
-    Err("unsupported platform".to_string())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        build_import_deep_link_url, import_project_artifacts, read_config,
-        validate_deep_link_launch_status, write_config, CliConfig, CodeScanConfig,
-    };
+    use super::{import_project_artifacts, read_config, write_config, CliConfig, CodeScanConfig};
     use crate::connected_service::{ConnectedServiceError, ACCOUNT_INACTIVE_NOTICE};
     use crate::db::test_helpers::temp_db;
-    use std::path::Path;
 
     fn error(code: &str, message: &str) -> ConnectedServiceError {
         ConnectedServiceError {
@@ -660,51 +574,5 @@ mod tests {
             .expect("production environment");
         assert_eq!(production_environment.environment, "production");
         assert_eq!(production_environment.label, "sitecmd-landing (production)");
-    }
-
-    #[test]
-    fn build_import_deep_link_url_encodes_project_paths() {
-        let url =
-            build_import_deep_link_url(Path::new("/Users/dev/Projects/Web/SiteCMD/My Project"));
-
-        assert_eq!(
-            url,
-            "sitecmd://import?path=%2FUsers%2Fdev%2FProjects%2FWeb%2FSiteCMD%2FMy%20Project"
-        );
-    }
-
-    #[test]
-    fn validate_deep_link_launch_status_accepts_success() {
-        assert_eq!(
-            validate_deep_link_launch_status(
-                true,
-                Some(0),
-                "sitecmd://import?path=%2Ftmp%2Fproject",
-            ),
-            Ok(())
-        );
-    }
-
-    #[test]
-    fn validate_deep_link_launch_status_reports_non_zero_exit() {
-        let error = validate_deep_link_launch_status(
-            false,
-            Some(1),
-            "sitecmd://import?path=%2Ftmp%2Fproject",
-        )
-        .expect_err("non-zero exit should fail");
-
-        assert!(error.contains("exited with code 1"));
-        assert!(error.contains("sitecmd://import?path=%2Ftmp%2Fproject"));
-    }
-
-    #[test]
-    fn validate_deep_link_launch_status_reports_terminated_processes() {
-        let error =
-            validate_deep_link_launch_status(false, None, "sitecmd://import?path=%2Ftmp%2Fproject")
-                .expect_err("terminated process should fail");
-
-        assert!(error.contains("terminated before opening"));
-        assert!(error.contains("sitecmd://import?path=%2Ftmp%2Fproject"));
     }
 }

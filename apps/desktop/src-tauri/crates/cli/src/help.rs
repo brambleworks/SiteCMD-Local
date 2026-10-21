@@ -62,7 +62,6 @@ Usage:\n  sitecmd init [url] [options]\n\n\
 Options:\n  \
   --name <NAME>           Project name (default: directory name)\n  \
   --yes, -y               Non-interactive mode (use detected values)\n  \
-  --no-deep-link          Skip opening the desktop app\n  \
   --help, -h              Show this help"
     );
 }

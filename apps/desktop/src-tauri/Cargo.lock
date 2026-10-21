@@ -5119,6 +5119,7 @@ version = "1.5.0"
 dependencies = [
  "env_logger",
  "sitecmd-runtime",
+ "tempfile",
  "tokio",
 ]
 

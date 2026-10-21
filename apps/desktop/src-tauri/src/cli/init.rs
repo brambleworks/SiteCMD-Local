@@ -10,9 +10,9 @@ pub struct InitArgs {
     pub url: Option<String>,
     pub name: Option<String>,
     pub yes: bool,
-    pub no_deep_link: bool,
 }
 
+/// Write project configuration and ignore rules in the current directory.
 pub fn run(args: InitArgs) -> Result<(), String> {
     let cwd =
         std::env::current_dir().map_err(|e| format!("failed to get current directory: {}", e))?;
@@ -35,19 +35,7 @@ pub fn run(args: InitArgs) -> Result<(), String> {
 
     write_gitignore(&sitecmd_dir)?;
 
-    let _ = crate::cli::sync_project_to_local_database(&cwd);
-
-    if !args.no_deep_link {
-        let _ = crate::cli::fire_import_deep_link(&cwd);
-    }
-
-    print_summary(
-        &url,
-        &name,
-        framework.as_deref(),
-        &sitecmd_dir,
-        args.no_deep_link,
-    );
+    print_summary(&url, &name, framework.as_deref(), &sitecmd_dir);
 
     Ok(())
 }
@@ -237,13 +225,7 @@ fn write_gitignore(sitecmd_dir: &std::path::Path) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| format!("failed to write {}: {}", path.display(), e))
 }
 
-fn print_summary(
-    url: &str,
-    name: &str,
-    framework: Option<&str>,
-    sitecmd_dir: &std::path::Path,
-    no_deep_link: bool,
-) {
+fn print_summary(url: &str, name: &str, framework: Option<&str>, sitecmd_dir: &std::path::Path) {
     println!();
     println!("Initialized SiteCMD project");
     println!("  Name:    {}", name);
@@ -253,11 +235,6 @@ fn print_summary(
     }
     println!("  Config:  {}", sitecmd_dir.join("config.json").display());
     println!();
-    if !no_deep_link {
-        println!("Opening SiteCMD desktop app to import project...");
-        println!("(If the app is not installed, install it at sitecmd.com)");
-        println!();
-    }
     println!("Next steps:");
     println!("  sitecmd scan        Run a Web Scan");
     println!("  sitecmd check       Check for issues inline");

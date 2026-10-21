@@ -65,7 +65,6 @@ async fn run_standard(
     if let Some(sitecmd_dir) = export_scan_files(&scan, args.json, crate::cli::find_config_dir()) {
         eprintln!("\r\x1b[KExported to {}/", sitecmd_dir.display());
         print_claude_snippet(&sitecmd_dir);
-        sync_desktop_import(&sitecmd_dir);
     }
 
     let exit_code = check_threshold(&scan, &args);
@@ -130,8 +129,6 @@ async fn run_diff(
     // Overwrite `.sitecmd/` files.
     if let Err(e) = crate::cli::export::export_scan(&sitecmd_dir, &new_scan) {
         eprintln!("Warning: failed to export scan results: {}", e);
-    } else {
-        sync_desktop_import(&sitecmd_dir);
     }
 
     let exit_code = diff_exit_code(&old_scan, &new_scan, &args);
@@ -181,14 +178,6 @@ fn failing_check_ids(scan: &ScanResult) -> std::collections::HashSet<&str> {
         .filter(|i| is_failing(i))
         .map(|i| i.check_id.as_str())
         .collect()
-}
-
-fn sync_desktop_import(sitecmd_dir: &std::path::Path) {
-    let Some(project_root) = sitecmd_dir.parent() else {
-        return;
-    };
-    let _ = crate::cli::sync_project_to_local_database(project_root);
-    let _ = crate::cli::fire_import_deep_link(project_root);
 }
 
 async fn run_scan_inner(
