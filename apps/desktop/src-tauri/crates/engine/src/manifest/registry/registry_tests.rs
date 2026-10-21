@@ -3,16 +3,17 @@ use crate::manifest::{CheckClass, CheckScope, HostedLane};
 use std::collections::HashSet;
 
 #[test]
-fn the_unsupported_set_is_the_localhost_only_checks() {
+fn the_unsupported_set_is_localhost_only_checks_plus_http2() {
     let mut unsupported: Vec<&str> = entries()
         .filter(|entry| entry.lane == HostedLane::Unsupported)
         .map(|entry| entry.check)
         .collect();
     let checks = crate::checks::predeploy::all_predeploy_checks();
-    let mut localhost_only: Vec<&str> = checks.iter().map(|check| check.id()).collect();
+    let mut expected: Vec<&str> = checks.iter().map(|check| check.id()).collect();
+    expected.push("performance.http2");
     unsupported.sort_unstable();
-    localhost_only.sort_unstable();
-    assert_eq!(unsupported, localhost_only);
+    expected.sort_unstable();
+    assert_eq!(unsupported, expected);
 }
 
 #[test]

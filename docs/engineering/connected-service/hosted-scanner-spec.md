@@ -464,10 +464,11 @@ blames an operator for the calendar.
 
 The same guardrail also rejects a row marked `unsupported` while the engine
 crate emits its id, because that silently drops hosted findings from
-cross-vantage comparison. The one exception is a check whose id is emitted only
+cross-vantage comparison. One exception is a check whose id is emitted only
 from files under `crates/engine/src/checks/predeploy/`: those checks return
 nothing unless the page is localhost, so a hosted scan has no findings to
-compare.
+compare. The explicit `performance.http2` exception covers an input the hosted
+runtime cannot observe: Workers `fetch` exposes no negotiated HTTP protocol.
 
 ## Execution architecture
 

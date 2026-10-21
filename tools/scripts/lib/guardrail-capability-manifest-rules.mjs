@@ -12,6 +12,9 @@ const REGISTRY = "apps/desktop/src-tauri/crates/engine/src/manifest/registry/mod
 // Cross-page verdicts are manifest entries but not public check-count inputs.
 const SESSION_CHECKS = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
 
+// The hosted runtime cannot observe the negotiated protocol for these checks.
+const UNOBSERVABLE_HOSTED_CHECKS = ["performance.http2"];
+
 // Runner ids emit dynamic families rather than their own result rows.
 function runnerIds(read) {
   const source = read(REGISTRY);
@@ -90,6 +93,7 @@ export function capabilityManifestFailures(read, listFiles) {
   }
   const understated = manifest.entries
     .filter((entry) => entry.hosted === "unsupported" && engineIds.has(entry.check))
+    .filter((entry) => !UNOBSERVABLE_HOSTED_CHECKS.includes(entry.check))
     // Localhost-only checks have no hosted findings to preserve in comparisons.
     .filter(
       (entry) =>

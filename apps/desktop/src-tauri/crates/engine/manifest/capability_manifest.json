@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "manifest_digest": "998cdf997188ae46",
+  "manifest_digest": "422fa7f621edfb45",
   "entries": [
     {
       "check": "accessibility.aria_usage",
@@ -485,10 +485,10 @@
     {
       "check": "performance.http2",
       "contract": "ae3a2691d1cdb779",
-      "hosted": "artifact",
+      "hosted": "unsupported",
       "class": "deterministic",
       "scope": "page",
-      "requires": ["page_artifact"],
+      "requires": [],
       "compare_on": ["transport_profile"]
     },
     {

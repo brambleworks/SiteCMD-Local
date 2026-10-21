@@ -72,7 +72,8 @@ To add a check:
 5. Add the local baseline fix guide. Maintainers coordinate private catalog
    content separately before an official release.
 6. Update the appropriate golden check, probe, or browser corpus, except for
-   localhost-only checks, which use direct unit tests instead.
+   localhost-only checks and checks whose inputs the hosted runtime cannot
+   observe, which use direct unit tests instead.
 
 The public walkthrough is `../../../../docs/engineering/adding-a-detector.md`;
 building and testing a detector requires only this repository.

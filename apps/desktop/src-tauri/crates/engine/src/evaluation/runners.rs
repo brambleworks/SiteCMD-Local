@@ -255,10 +255,6 @@ pub const RUNNERS: &[Runner] = &[
         run: |inputs| crate::checks::performance::unminified::UnminifiedCodeCheck.run(inputs.page),
     },
     Runner {
-        covers: &["performance.http2"],
-        run: |inputs| crate::checks::performance::protocol::Http2Check.run(inputs.page),
-    },
-    Runner {
         covers: &["performance.inline_css"],
         run: |inputs| crate::checks::performance::protocol::InlineCssSizeCheck.run(inputs.page),
     },

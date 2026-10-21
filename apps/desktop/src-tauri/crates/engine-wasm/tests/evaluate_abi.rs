@@ -195,6 +195,33 @@ fn identical_requests_produce_identical_payloads() {
 }
 
 #[test]
+fn http2_is_named_unsupported_even_when_a_page_carries_a_protocol() {
+    for protocol in [None, Some("HTTP/1.1"), Some("HTTP/2.0"), Some("HTTP/3")] {
+        let mut page = corpus().cases[0].page.clone();
+        page.http_version = protocol.map(str::to_string);
+        let response = evaluate_through_abi(&page);
+        assert!(
+            response
+                .planned
+                .iter()
+                .all(|row| row.check != "performance.http2"),
+            "{protocol:?}: HTTP/2 must not be planned"
+        );
+        assert!(response
+            .results
+            .iter()
+            .all(|row| row.check_id != "performance.http2"));
+        let named = response
+            .not_evaluated
+            .iter()
+            .find(|row| row.check == "performance.http2")
+            .expect("HTTP/2 is named not evaluated");
+        assert_eq!(named.reason, NotEvaluatedReason::UnsupportedLane);
+        assert_eq!(named.layer, None);
+    }
+}
+
+#[test]
 fn every_response_partitions_the_whole_manifest() {
     let manifest = capability_manifest();
     for case in &corpus().cases {
