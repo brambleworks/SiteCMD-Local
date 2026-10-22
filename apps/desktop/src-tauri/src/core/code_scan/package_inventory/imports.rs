@@ -328,6 +328,7 @@ mod tests {
             relative_path: "sample.ts".to_string(),
             content: content.to_string(),
             line_count: content.lines().count(),
+            inline_rust_tests: false,
         }
     }
 

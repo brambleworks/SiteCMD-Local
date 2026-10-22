@@ -35,6 +35,11 @@ public repository history.
 
 ### Fixed
 
+- `sitecmd audit` no longer reports environment names that only tests read, or
+  that the project's own Cargo build script sets at compile time, as missing
+  from `.env.example`. Code Scan now also checks Rust code that follows an
+  inline test module or a `'"'` character literal, and no longer reports a
+  missing test for a Rust route file with inline tests.
 - Code Scan no longer mistakes Cloudflare Worker fetch handlers or asset
   bindings for outbound HTTP calls, raw-HTML sink names in regular
   expressions for executable sinks, or a private-key header without key

@@ -18,11 +18,11 @@ const { StdioClientTransport } = await import(
   pathToFileURL(requireMcp.resolve("@modelcontextprotocol/sdk/client/stdio.js"))
 );
 const binary = path.resolve(
-  process.env.SITECMD_SMOKE_BINARY ??
+  process.env.SITECMD_SMOKE_BINARY ||
     path.join(root, "apps/desktop/src-tauri/target/debug/sitecmd"),
 );
 const bundle = path.resolve(
-  process.env.SITECMD_SMOKE_MCP ?? path.join(root, "apps/mcp-server/dist-bundle/sitecmd-mcp.mjs"),
+  process.env.SITECMD_SMOKE_MCP || path.join(root, "apps/mcp-server/dist-bundle/sitecmd-mcp.mjs"),
 );
 await Promise.all([access(binary), access(bundle)]);
 const artifacts = path.join(root, ".artifacts/native-smoke");
@@ -33,7 +33,6 @@ await mkdir(source, { recursive: true });
 // The throwaway project must contain a TLS-disable idiom for the scan to find.
 // Assembling it at run time keeps this script, which the repository's own
 // Code Scan audit also reads, from being reported as disabling TLS itself.
-// The planted file's bytes are unchanged.
 const plantedTlsDisable = ["process.env.NODE_TLS", "REJECT_UNAUTHORIZED"].join("_");
 await writeFile(path.join(source, "index.js"), `${plantedTlsDisable} = "0";\n`);
 await writeFile(

@@ -50,6 +50,7 @@ fn retained_artifact_families_share_the_source_budget() {
         relative_path: "app.ts".into(),
         content: "export {};".into(),
         line_count: 1,
+        inline_rust_tests: false,
     };
     let mut budget = ScanTextBudget::new(1024, &|| false);
     budget.account_sources(&[source]).unwrap();
@@ -106,6 +107,7 @@ fn retained_capacity_and_current_file_bytes_cannot_bypass_the_budget() {
         relative_path: "app.ts".into(),
         content,
         line_count: 1,
+        inline_rust_tests: false,
     };
     let mut budget = ScanTextBudget::new(32, &|| false);
     assert!(budget.account_sources(&[source]).is_err());

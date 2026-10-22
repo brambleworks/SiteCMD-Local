@@ -129,6 +129,8 @@ mod router_evidence;
 mod router_guards;
 mod router_imports;
 mod runtime_eol_detection;
+mod rust_graph;
+mod rust_scope;
 mod scan_precision;
 mod scan_scope_rules;
 mod scanner_signal_edges;

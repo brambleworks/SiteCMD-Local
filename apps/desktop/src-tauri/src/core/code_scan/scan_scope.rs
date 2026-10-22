@@ -8,6 +8,24 @@ use ignore::Match;
 use std::fs;
 use std::path::Path;
 
+mod rust_modules;
+pub(super) use rust_modules::{
+    normalize as normalize_rust_module_path, strip_rust_test_modules, RustModuleGraph,
+};
+
+pub(super) const CARGO_MANIFEST_MAX_BYTES: u64 = 250_000;
+
+pub(super) fn cargo_build_script(content: &str) -> Option<std::path::PathBuf> {
+    let document = content.parse::<toml_edit::DocumentMut>().ok()?;
+    let package = document.get("package")?;
+    let script = match package.get("build") {
+        None => "build.rs",
+        Some(build) if build.as_bool() == Some(true) => "build.rs",
+        Some(build) => build.as_str()?,
+    };
+    Some(script.into())
+}
+
 /// Detect repository roots represented by either a `.git` directory or file.
 /// The walker skips nested repositories, including submodules.
 pub(super) fn has_git_entry(dir: &Path) -> bool {

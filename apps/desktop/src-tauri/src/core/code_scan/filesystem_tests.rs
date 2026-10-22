@@ -7,6 +7,107 @@ use std::fs;
 use tempfile::tempdir;
 
 #[test]
+fn rust_production_cargo_manifest_reads_share_text_budget() {
+    let project = tempdir().unwrap();
+    fs::write(
+        project.path().join("Cargo.toml"),
+        format!("[package]\nname = \"{}\"\n", "a".repeat(128)),
+    )
+    .unwrap();
+    let limits = CollectionLimits {
+        max_total_bytes: 64,
+        ..super::DEFAULT_COLLECTION_LIMITS
+    };
+    let scope = GitignoreChain::for_root(project.path());
+    let canonical_root = fs::canonicalize(project.path()).unwrap();
+    let result = collect_project_inventory_with_limits(
+        project.path(),
+        &canonical_root,
+        project.path(),
+        &scope,
+        &mut Vec::new(),
+        &mut Vec::new(),
+        limits,
+        &mut CollectionState::default(),
+        0,
+    );
+    assert!(
+        result.is_err(),
+        "Cargo manifest scope reads must respect the text budget"
+    );
+}
+
+#[test]
+fn rust_all_test_cfg_is_test_only() {
+    for gate in [
+        "all(test, unix)",
+        "all(unix, test)",
+        "all(unix, all(test, feature = \"a\"))",
+    ] {
+        let content = format!(
+            "#[cfg({gate})]\nmod capacity {{ const FIXTURE: u8 = 1; }}\npub fn runtime() {{}}"
+        );
+        let stripped = super::sanitize_source_content(std::path::Path::new("lib.rs"), content);
+        assert!(!stripped.contains("FIXTURE"), "{gate}: {stripped}");
+    }
+}
+
+#[test]
+fn rust_any_test_cfg_keeps_production_module() {
+    let content = "#[cfg(any(test, fuzzing))]\npub(crate) mod tests { pub fn runtime() {} }";
+    assert_eq!(
+        super::sanitize_source_content(std::path::Path::new("lib.rs"), content.into()),
+        content
+    );
+}
+
+#[test]
+fn rust_ungated_inline_tests_name_keeps_production_module() {
+    let content = "pub mod tests { pub fn runtime() {} }";
+    assert_eq!(
+        super::sanitize_source_content(std::path::Path::new("lib.rs"), content.into()),
+        content
+    );
+}
+
+#[test]
+fn rust_ungated_path_tests_name_keeps_production_file() {
+    let project = tempdir().unwrap();
+    fs::write(
+        project.path().join("lib.rs"),
+        "#[path = \"x.rs\"]\nmod tests;",
+    )
+    .unwrap();
+    fs::write(
+        project.path().join("x.rs"),
+        "pub fn runtime() { let _ = std::env::var(\"UNGATED_TESTS_RUNTIME\"); }",
+    )
+    .unwrap();
+    fs::write(project.path().join(".env.example"), "DOCUMENTED=\n").unwrap();
+    let report = super::super::audit_project(project.path()).unwrap();
+    assert!(report.issues.iter().any(|issue| {
+        issue.id.starts_with("env-example-incomplete:")
+            && issue
+                .evidence
+                .as_deref()
+                .is_some_and(|evidence| evidence.contains("UNGATED_TESTS_RUNTIME"))
+    }));
+}
+
+#[test]
+fn rust_strip_quote_characters_preserves_runtime_and_removes_tests() {
+    for literal in [r#"'"'"#, r#"'\"'"#, r#"b'"'"#] {
+        let content = format!("fn quote() {{ let _ = {literal}; }}\n#[cfg(test)]\nmod checks {{ const TEST_ONLY: &str = \"secret\"; }}\npub fn runtime() {{}}\n");
+        let stripped = super::sanitize_source_content(std::path::Path::new("src/lib.rs"), content);
+        assert!(!stripped.contains("TEST_ONLY"), "{literal}: {stripped}");
+        assert!(
+            stripped.contains("pub fn runtime()"),
+            "{literal}: {stripped}"
+        );
+    }
+}
+
+#[test]
 fn vendored_library_files_are_inventoried_but_not_analysed_as_source() {
     let project = tempdir().expect("temp dir");
     let jquery = format!(
@@ -377,7 +478,7 @@ fn security_regression_source_file_collection_enforces_total_byte_budget() {
     )
     .expect_err("byte budget should stop collection");
 
-    assert!(error.contains("byte source budget"));
+    assert!(error.contains("8 byte source and configuration text budget"));
 }
 
 #[test]

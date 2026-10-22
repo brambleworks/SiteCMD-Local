@@ -425,6 +425,7 @@ where
     issues.extend(analyze_operations(
         root,
         &files,
+        &inventory.rust_modules,
         &summaries,
         &project_files,
         &manifests,

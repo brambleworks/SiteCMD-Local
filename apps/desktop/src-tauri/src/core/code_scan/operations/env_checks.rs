@@ -4,19 +4,18 @@ pub(super) fn collect_env_issues(
     issues: &mut Vec<CodeIssue>,
     files: &[SourceFile],
     example_env_files: &[&EnvFileSnapshot],
-    source_env_keys: &HashSet<String>,
+    source_env_keys: &SourceEnvInventory,
     env_files: &[EnvFileSnapshot],
     inspect_local_databases: bool,
 ) {
     let mut scoped_source_keys = vec![HashSet::new(); example_env_files.len()];
     let mut uncovered_env_usage_file = None;
-    for file in files {
-        let keys = collect_source_env_keys_from_file(file);
+    for (file, keys) in files.iter().zip(&source_env_keys.keys_by_file) {
         if keys.is_empty() {
             continue;
         }
         if let Some(index) = closest_env_example_index(&file.relative_path, example_env_files) {
-            scoped_source_keys[index].extend(keys);
+            scoped_source_keys[index].extend(keys.iter().cloned());
         } else if uncovered_env_usage_file.is_none()
             && keys.iter().any(|key| !is_platform_injected_env_key(key))
         {
@@ -79,7 +78,7 @@ pub(super) fn collect_env_issues(
         }
     }
 
-    for (anchor_file, drift_summary) in summarize_env_drift(env_files, source_env_keys) {
+    for (anchor_file, drift_summary) in summarize_env_drift(env_files, &source_env_keys.all_keys) {
         let (confidence, confidence_reason) = policy_confidence("env-drift");
         issues.push(CodeIssue {
             check_id: String::new(),
@@ -198,6 +197,10 @@ fn is_platform_injected_env_key(key: &str) -> bool {
     let upper = key.to_ascii_uppercase();
     EXACT.contains(&upper.as_str()) || PREFIXES.iter().any(|prefix| upper.starts_with(prefix))
 }
+
+#[cfg(test)]
+#[path = "env_checks_tests.rs"]
+mod fixture_tests;
 
 #[cfg(test)]
 mod tests {

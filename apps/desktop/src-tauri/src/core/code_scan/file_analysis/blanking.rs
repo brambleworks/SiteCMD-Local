@@ -17,8 +17,8 @@ pub(in crate::core::code_scan) fn blank_non_code_for_env(file: &SourceFile) -> S
     }
 }
 
-/// Blank Rust comments and string literals while preserving byte offsets.
-fn blank_rust_non_code(content: &str) -> String {
+/// Blank Rust comments, strings and character literals while preserving byte offsets.
+pub(in crate::core::code_scan) fn blank_rust_non_code(content: &str) -> String {
     let bytes = content.as_bytes();
     let mut out = bytes.to_vec();
     let mut index = 0;
@@ -31,6 +31,11 @@ fn blank_rust_non_code(content: &str) -> String {
     };
 
     while index < bytes.len() {
+        if let Some(end) = rust_character_end(content, index) {
+            blank(&mut out, index, end);
+            index = end;
+            continue;
+        }
         if let Some(end) = rust_raw_string_end(bytes, index) {
             blank(&mut out, index, end);
             index = end;
@@ -46,10 +51,19 @@ fn blank_rust_non_code(content: &str) -> String {
                 index = end;
             }
             b'/' if bytes.get(index + 1) == Some(&b'*') => {
-                let end = content[index + 2..]
-                    .find("*/")
-                    .map(|offset| index + offset + 4)
-                    .unwrap_or(bytes.len());
+                let mut end = index + 2;
+                let mut depth = 1;
+                while end < bytes.len() && depth > 0 {
+                    if bytes[end..].starts_with(b"/*") {
+                        depth += 1;
+                        end += 2;
+                    } else if bytes[end..].starts_with(b"*/") {
+                        depth -= 1;
+                        end += 2;
+                    } else {
+                        end += 1;
+                    }
+                }
                 blank(&mut out, index, end);
                 index = end;
             }
@@ -77,10 +91,53 @@ fn blank_rust_non_code(content: &str) -> String {
     String::from_utf8(out).unwrap_or_else(|_| content.to_string())
 }
 
+fn rust_character_end(content: &str, start: usize) -> Option<usize> {
+    let bytes = content.as_bytes();
+    if bytes.get(start) != Some(&b'\'') {
+        return None;
+    }
+    let mut cursor = start + 1;
+    if bytes.get(cursor) == Some(&b'\\') {
+        cursor += 1;
+        match bytes.get(cursor)? {
+            b'x' => {
+                cursor += 1;
+                for _ in 0..2 {
+                    if !bytes.get(cursor)?.is_ascii_hexdigit() {
+                        return None;
+                    }
+                    cursor += 1;
+                }
+            }
+            b'u' if bytes.get(cursor + 1) == Some(&b'{') => {
+                cursor += 2;
+                while bytes
+                    .get(cursor)
+                    .is_some_and(|byte| byte.is_ascii_hexdigit() || *byte == b'_')
+                {
+                    cursor += 1;
+                }
+                if bytes.get(cursor) != Some(&b'}') {
+                    return None;
+                }
+                cursor += 1;
+            }
+            _ => cursor += 1,
+        }
+    } else {
+        let character = content.get(cursor..)?.chars().next()?;
+        if matches!(character, '\'' | '\n' | '\r') {
+            return None;
+        }
+        cursor += character.len_utf8();
+    }
+    (bytes.get(cursor) == Some(&b'\'')).then_some(cursor + 1)
+}
+
 fn rust_raw_string_end(bytes: &[u8], start: usize) -> Option<usize> {
     let raw_prefix = if bytes.get(start) == Some(&b'r') {
         start
-    } else if bytes.get(start) == Some(&b'b') && bytes.get(start + 1) == Some(&b'r') {
+    } else if matches!(bytes.get(start), Some(b'b' | b'c')) && bytes.get(start + 1) == Some(&b'r') {
         start + 1
     } else {
         return None;
@@ -177,4 +234,50 @@ pub(in crate::core::code_scan) fn blank_python(content: &str, blank_strings: boo
         }
     }
     String::from_utf8(out).unwrap_or_else(|_| content.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::blank_rust_non_code;
+
+    #[test]
+    fn rust_raw_c_string_preserves_following_code_and_offsets() {
+        for literal in [
+            r##"cr"C:\Program Files\Probe\""##,
+            r##"cr#"C:\Program Files\Probe\"#"##,
+        ] {
+            let source = format!("const PATH: &core::ffi::CStr = {literal};\nmod helper;\n");
+            let blanked = blank_rust_non_code(&source);
+            let start = source.find(literal).unwrap();
+            let end = start + literal.len();
+            assert!(
+                blanked[start..end].trim().is_empty(),
+                "{literal}: {blanked}"
+            );
+            assert_eq!(blanked.len(), source.len());
+            assert_eq!(&blanked[..start], &source[..start]);
+            assert_eq!(&blanked[end..], &source[end..]);
+            assert_eq!(
+                blanked.match_indices('\n').collect::<Vec<_>>(),
+                source.match_indices('\n').collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn rust_nested_block_comments_preserve_offsets() {
+        let source =
+            "fn before() {}\n/* outer /* inner */ {\ninclude!(\"hidden.rs\"); */\nfn after() {}\n";
+        let blanked = blank_rust_non_code(source);
+        let start = source.find("/*").unwrap();
+        let end = source.rfind("*/").unwrap() + 2;
+        assert!(blanked[start..end].trim().is_empty(), "{blanked}");
+        assert_eq!(blanked.len(), source.len());
+        assert_eq!(&blanked[..start], &source[..start]);
+        assert_eq!(&blanked[end..], &source[end..]);
+        assert_eq!(
+            blanked.match_indices('\n').collect::<Vec<_>>(),
+            source.match_indices('\n').collect::<Vec<_>>()
+        );
+    }
 }
