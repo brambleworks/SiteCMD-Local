@@ -2050,8 +2050,12 @@ Site lifecycle (signed in through the dashboard):
   disconnected-but-retained site; semantics in
   the allowance-transitions section (allowance check, retention-clock
   cancel, webhook-secret remint, and recorded transition).
-- `POST /v1/sites/{site}/erase` - deletion: physical removal, defined
-  below; `202` with `{ "job_id": "…", "status_token": "…" }`.
+- `POST /v1/sites/{site}/erase-request` - emails the account owner a
+  link to confirm removing the site, valid for 24 hours; a fresh request
+  replaces the previous link. The link opens `GET /s/{token}`, a landing
+  page that changes nothing, whose button sends `POST /s/{token}`: that
+  consumes the link and starts the deletion, physical removal, defined
+  below.
 
 State and sync:
 
@@ -2318,11 +2322,19 @@ Accounts, personal tokens, and sessions:
   answer `503 identity_unavailable` when the provider cannot be reached.
 - `GET /v1/account/export` requires sign-in and streams every site's export
   plus account-scoped data.
-- `POST /v1/account/erase` requires sign-in and takes no request body.
-  It erases all sites and account-scoped data, including personal tokens,
-  subscriptions, destinations, and security notices.
-  `202` returns `{ "job_id": "...", "status_token": "..." }`. The receipt
-  completes after identity deletion at WorkOS as well as the delivery drain.
+- `POST /v1/account/erasure-request` requires sign-in and takes no
+  request body. It emails the account owner a link to confirm erasing the
+  account, valid for 24 hours; a fresh request replaces an unconfirmed or
+  cancelled one, and a confirmed one answers `409 erasure_scheduled`. The
+  link opens `GET /e/{token}`, a landing page that changes nothing, whose
+  button sends `POST /e/{token}`: that records the confirmation and
+  schedules the erasure 30 days later. The daily billing pass then erases
+  all sites and account-scoped data, including personal tokens,
+  subscriptions, destinations, and security notices. The receipt completes
+  after identity deletion at WorkOS as well as the delivery drain.
+- `POST /v1/account/erasure-request/cancel` requires sign-in and keeps the
+  account: it clears a pending or scheduled erasure, and answers
+  `409 erasure_not_scheduled` when there is none.
 
 Export (signed in or a personal token with `read` for the site):
 
