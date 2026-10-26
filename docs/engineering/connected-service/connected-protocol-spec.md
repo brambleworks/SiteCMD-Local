@@ -1494,27 +1494,25 @@ inspector and `--dry-run` render exactly these objects.
 ## Credentials
 
 Two credential families. **Bearer credentials** include dashboard sessions
-and Connect's personal, CI, job, and erasure status tokens. Connect mints
-the latter four with the checksum format below and stores only their SHA-256
-digests.
+and Connect's personal, CI, and job tokens. Connect mints the latter
+three with the checksum format below and stores only their SHA-256 digests.
 **Capability tokens** are narrow, single-purpose, and mostly
 single-use; each grants exactly one operation on exactly one resource,
 and the complete inventory lives with the public-surface table below -
 there is no such thing as an unlisted way in.
 
-| Credential           | Kind       | Scope                                          | Issued by                        | Held by                      |
-| -------------------- | ---------- | ---------------------------------------------- | -------------------------------- | ---------------------------- |
-| Dashboard session    | bearer     | The signed-in person's account                 | WorkOS AuthKit                   | Dashboard                    |
-| Personal token       | bearer     | Account or selected sites, with named scopes   | Signed-in person                 | Client credential store      |
-| Job token            | bearer     | Assigned fix-job operations                    | Connect                          | Fix-job runner               |
-| CI token             | bearer     | Submit and read deployment cursor for one site | Signed-in person                 | CI secret store              |
-| Webhook secret       | MAC        | Sign deploy events for one site environment    | Signed-in person                 | Deploy pipeline secret store |
-| Erasure status token | bearer     | Read one erasure job's status                  | Service, at erase                | Requester                    |
-| Report link token    | capability | Render one report until TTL or revocation      | Service, at report creation      | Email or clipboard           |
-| Alert nonce          | capability | Redeem one alert view, once                    | Service, at alert delivery       | The alert email              |
-| Alert view session   | capability | View one alert for 30 minutes                  | Service, at redemption           | HttpOnly cookie              |
-| Confirmation token   | capability | Confirm one destination, once                  | Service, at destination creation | The confirmation email       |
-| Unsubscribe token    | capability | Demote one destination's cadence               | Service, per message             | `List-Unsubscribe-Post`      |
+| Credential         | Kind       | Scope                                          | Issued by                        | Held by                      |
+| ------------------ | ---------- | ---------------------------------------------- | -------------------------------- | ---------------------------- |
+| Dashboard session  | bearer     | The signed-in person's account                 | WorkOS AuthKit                   | Dashboard                    |
+| Personal token     | bearer     | Account or selected sites, with named scopes   | Signed-in person                 | Client credential store      |
+| Job token          | bearer     | Assigned fix-job operations                    | Connect                          | Fix-job runner               |
+| CI token           | bearer     | Submit and read deployment cursor for one site | Signed-in person                 | CI secret store              |
+| Webhook secret     | MAC        | Sign deploy events for one site environment    | Signed-in person                 | Deploy pipeline secret store |
+| Report link token  | capability | Render one report until TTL or revocation      | Service, at report creation      | Email or clipboard           |
+| Alert nonce        | capability | Redeem one alert view, once                    | Service, at alert delivery       | The alert email              |
+| Alert view session | capability | View one alert for 30 minutes                  | Service, at redemption           | HttpOnly cookie              |
+| Confirmation token | capability | Confirm one destination, once                  | Service, at destination creation | The confirmation email       |
+| Unsubscribe token  | capability | Demote one destination's cadence               | Service, per message             | `List-Unsubscribe-Post`      |
 
 - **Dashboard session.** Accounts are WorkOS AuthKit organizations. A person
   signs in at `app.sitecmd.com`; the dashboard holds the session and forwards
@@ -1535,9 +1533,9 @@ there is no such thing as an unlisted way in.
   with `403 signed_in_required`, regardless of their scopes. A session
   without an account receives `403 account_required` on account routes;
   an unavailable sign-in provider answers `503 identity_unavailable`.
-- **Minted bearer format.** Personal, CI, job, and erasure status tokens use
+- **Minted bearer format.** Personal, CI, and job tokens use
   `sitecmd_<kind>_` followed by 30 base62 body characters and a six-character
-  base62 CRC32 checksum. The kinds are `pat`, `ci`, `job`, and `ers`.
+  base62 CRC32 checksum. The kinds are `pat`, `ci`, and `job`.
   The alphabet is `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
   The body encodes 22 random bytes and is left-padded with `0` to 30
   characters. The checksum covers the prefix and body, encodes the unsigned
@@ -1700,9 +1698,7 @@ capability it does not describe is one the service does not have.
 
 - **Authentication** is `Authorization: Bearer <token>` on every
   `/v1/*` endpoint except the hook doors, which authenticate by
-  signature as specified per door. The erasure status token is a bearer
-  token under this same rule: it travels in the header, never in the
-  URL, because URLs leak into logs. Everything reachable without a
+  signature as specified per door. Everything reachable without a
   tenant bearer token is enumerated in the public-surface table below;
   a route not in that table does not exist unauthenticated.
 
@@ -2137,14 +2133,6 @@ sequence- or keyset-based, never time-based. A cursor pointing at
 history that has aged out of retention answers `410 cursor_expired`; the
 recovery section defines the fallback.
 
-Erasure status (status-token bearer, see deletion):
-
-- `GET /v1/erasures/{job_id}` - erasure-job status. `job_id` is a plain
-  identifier; authorization is the erasure **status token** presented in
-  the `Authorization` header like every other bearer, which is what
-  makes completion confirmable after the site and its credentials are
-  gone without ever putting a secret in a URL.
-
 Delivery management (signed in for changes, `read` for reads; content
 semantics in the alert and report delivery spec):
 
@@ -2391,8 +2379,7 @@ GitHub secret scanning:
   bodies `413`, throttling `429`, and unavailable published keys `503`.
 - Personal, CI, and job tokens are revoked atomically with a
   `token_found_in_public` security notice. A job-token report revokes
-  every token of that job. Erasure status tokens receive feedback without
-  revocation.
+  every token of that job.
   Notices keep internal identifiers and a closed source value, never the
   reported URL, token, or token hash. The security lane sends them to
   verified, unsuppressed destinations independently of alert preferences
@@ -2668,9 +2655,9 @@ its Postgres deployment. The fixture descriptions specify required
 checks, not evidence that those checks exist or pass. The restore and
 archive requirements in the retention section have the same status. Their 30-day restore horizon is
 an assumption of that unimplemented contract, not a configured backup
-retention period or a guarantee about the Postgres provider. The current
-erasure status returns `ciphertext_deletion: null`; it does not attest to
-deletion from an archive or provider backups.
+retention period or a guarantee about the Postgres provider. The erasure
+record is Connect's own record, retained one year and returned by no route;
+it does not attest to deletion from an archive or provider backups.
 
 The v1 limits (4 MiB submission bodies, 50,000 occurrences, 20,000
 coverage exceptions, 200-mutation batches) must be physically writable inside
@@ -3675,8 +3662,8 @@ itself is part of this registry:
   the receipt. A provider
   outage extends the barrier and therefore defers the receipt:
   deletion completeness outranks the completion target, and the
-  status endpoint keeps answering in-progress. The terminal outcomes
-  are exactly three, honestly bounded: provider-accepted
+  scheduled pass continues advancing the draining job. The terminal
+  outcomes are exactly three, honestly bounded: provider-accepted
   strictly before the erasure receipt
   exists; never sent (fenced before any claim, refused terminally,
   or closed `superseded` by the claim-time revalidation); or
@@ -3695,12 +3682,9 @@ itself is part of this registry:
   ever will be" - never "no provider finished one after this
   timestamp", a claim that would need a provider-side processing
   bound no contract offers. `send_quiesced_at` itself is **internal
-  barrier state, deliberately not a receipt field**: the receipt's
-  `deleted_at` is recorded after quiescence, so `deleted_at` is the
-  externally attested cutoff - "no send initiated at or after
-  `deleted_at`" follows from the quiescence guarantee with no second
-  exported timestamp for the schema, the status response, and the
-  trust page to disagree over. **The attempt-and-claim authority is
+  barrier state**, kept in Connect's record and written with
+  `completed_at`, at the same instant; no route returns either.
+  **The attempt-and-claim authority is
   universal, not an outbox special case**: every externally-visible
   delivery the service initiates - immediate alerts, digests and
   storm summaries, destination confirmation and re-verification
@@ -3894,51 +3878,40 @@ visible backpressure, never silent dropping.
   and each member's WorkOS user that no other account or unfinished
   creation names. The erasure
   fixtures cover every family the retention table names, both
-  scopes. Erase answers `202`
-  with `{ "job_id": "…", "status_token": "…" }`: the job id is a plain
-  identifier, and the status token is a high-entropy bearer secret,
-  shown once and stored only as a hash, presented in the
-  `Authorization` header on `GET /v1/erasures/{job_id}`. That is what
-  makes completion confirmable after the site's own credentials are
-  revoked, with no secret in any URL. The erasure is typically
-  immediate and completes within 24 hours, with one stated exception:
+  scopes. A person starts site removal or account erasure only through
+  an emailed confirmation link. The request routes answer `202` with
+  `{ "confirm_expires_at": "…" }` after the mail provider accepts the
+  confirmation email. Confirming a site removal link erases the site
+  at once; a confirmed account erasure runs 30 days later, in the
+  daily pass. Once started, the erasure typically completes within
+  24 hours, with one stated exception:
   the receipt waits behind the delivery drain barrier (the
   retention section - every delivery class, resolved through
   site-dependency sets), so a provider outage defers the receipt
   rather than permitting a send to be initiated after it.
-- **The erasure receipt** is the one durable artifact, retained one
-  year, and its contents are exactly: the job id, the **hash** of the
-  status token (so status reads can be verified; the token itself is
-  never stored, so a lost token cannot be re-shown), the erasure
-  scope as `scope_kind: site | account` plus the matching opaque
+- **The erasure receipt** is Connect's own record that the erasure
+  happened, retained one year and returned by no route. Its contents
+  are the job id, the erasure scope as `scope_kind: site | account`
+  plus the matching opaque
   `scope_id` (the site id, or the account-scope id for account
-  erasure - one receipt schema serves both endpoints),
-  and the deletion time - `deleted_at`, recorded after
-  `send_quiesced_at` and therefore doubling as the externally
-  attested no-initiation cutoff, while the internal quiescence
-  timestamp is deliberately not a receipt field. No other
+  erasure - one receipt schema serves both scopes),
+  and the deletion time - `completed_at`, written with
+  `send_quiesced_at` at the same instant and therefore doubling as
+  the no-initiation cutoff. The record also keeps the request,
+  admission-fence and quiescence times, who started it
+  (`started_by`), whether repository secrets remain
+  (`repository_secrets_left`), and, for account erasure, when its
+  last email was sent (`last_mail_sent_at`). It holds no host and no
+  person's id. No other
   **tenant data** survives readable; the exact residue contract -
   locked ciphertext without keys, bounded provider history - is
   stated once, in the retention section, this sentence is a
-  summary of it, and the status endpoint's live
-  `ciphertext_deletion` member is service state about the
-  deletion, not surviving tenant data. Retries have one
-  contract, consistent with the secret-replay rule: **the status token
-  is minted once, never re-shown, never replaced**, and stays valid for
-  the receipt's retention, so a poller's token cannot be invalidated
-  behind its back. The erase routes keep no `Idempotency-Key` record:
-  the delete commits in the request's own transaction, so by the time
-  the first answer leaves there is no tenant state left for a retry to
-  replay from, and a lost status token stays lost. The two erase routes
-  answer a retry after deletion differently. A retried **site** erase
-  resolves no site and answers `404 not_found`, the answer for any site
-  the caller cannot see; on this route the one thing that `404` can
-  mean is that the site is already gone, and the status token from the
-  first answer still reads the receipt. A retried account erase after
-  deletion finds no account (`403 account_required` for a valid dashboard
-  session) and does not recover a lost status token. The
-  original `sitecmd_ers_` token remains the way to read the receipt and
-  the delivery and identity drain status.
+  summary of it. The two request routes keep no `Idempotency-Key`
+  record and answer a request after deletion differently. A site
+  removal request for an erased site resolves no site and answers
+  `404 not_found`, the answer for any site the caller cannot see.
+  An account erasure request after deletion finds no account
+  (`403 account_required` for a valid dashboard session).
 
 - **Restore contract (not implemented).** Connect relies on its managed
   Postgres provider's backups and restore procedure. The following safety
@@ -4024,23 +3997,20 @@ visible backpressure, never silent dropping.
   construction. Second, **the erasure ledger and the receipt are
   one control-store state machine with two faces**: a **pending**
   record - state, scope,
-  erasure epoch, status-token hash - is created **before any
+  erasure epoch - is created **before any
   fencing or deletion begins**, pending and completed records alike
-  are restore tombstones, and `deleted_at` set at quiescence is
+  are restore tombstones, and `completed_at` set at quiescence is
   what completes the record - so a crash after
   deletion but before a separate ledger write can never leave an
   untombstoned erasure, because the tombstone precedes the first
   delete. The **internal control row** (state, epoch, journal
-  linkage - reconciliation needs them) is a different schema from
-  the **externally disclosed receipt projection**, which is exactly
-  the minimal enumeration below and nothing more: "nothing else
-  survives" is a disclosure claim about what is retained **for the
-  tenant and served to callers**, and the projection is the
-  `receipt` member of the status endpoint's exact envelope - the
-  endpoint returns the envelope, never the bare projection. Non-erasure journal rows for an erased
-  tenant do **not** become a second immortal artifact: they outlive
-  the receipt only through this contract's assumed 30-day restore
-  horizon, then purge; the receipt projection alone
+  linkage - reconciliation needs them) keeps the restore-control
+  metadata separate from the minimal receipt contents enumerated
+  above. The receipt is **Connect's own record that the erasure
+  happened**, retained one year and returned by no route. Non-erasure
+  journal rows for an erased tenant do **not** become a second immortal
+  artifact: they outlive the receipt only through this contract's assumed
+  30-day restore horizon, then purge; the receipt projection alone
   lives the year. Third, **restores run only through
   the restore orchestration, and quarantine is an exclusive write
   path, never a glance**: a check-then-write pair ("observed
@@ -4132,8 +4102,8 @@ visible backpressure, never silent dropping.
     `confirming` marker: reconstructed from the immutable journal
     (never independently authoritative), non-null exactly while
     the fence stands, cleared only after the terminal R2 event is
-    resolved, and projected to `pending` on the wire -
-    where `delete_due_at = deleted_at + 83 days` exactly (a 7-day
+    resolved -
+    where `delete_due_at = completed_at + 83 days` exactly (a 7-day
     execution margin inside the 90), the pruner runs from lock
     expiry onward retrying every 24 hours, and confirmation is a
     predicate against the target:
@@ -4160,7 +4130,7 @@ visible backpressure, never silent dropping.
     because the state is rederivable, not merely stored: after any
     control-store restore, reconciliation recomputes
     `prune_state` and the watermark from the immutable target plus
-    direct R2 absence checks before the status endpoint serves,
+    direct R2 absence checks,
     and the terminal confirmation is additionally archived once as
     an immutable receipt-ledger completion event (so a restored
     store cannot forget a confirmation or its timestamp); an
@@ -4172,38 +4142,16 @@ visible backpressure, never silent dropping.
     erasure with no post-target checkpoint (the payload-only
     watermark confirms; the retained structural checkpoint does
     not block it), checkpoint retention, and a PITR landing
-    after every pruning edge, not merely process crashes. The erasure **status endpoint has one exact
-    response envelope**, so the minimal-receipt contract and the
-    live deletion state stop contradicting each other:
-    `{status, receipt, ciphertext_deletion: {state, due_at, confirmed_at}}`,
-    **with its variants defined, because polling legally starts the
-    moment the `202` returns** - before a receipt, a target, or a
-    due date exists: `status` is `in_progress | completed`;
-    `receipt` is `null` until completion and then exactly the
-    minimal durable projection, nothing more; `ciphertext_deletion`
-    is `null` until **completion** - target capture is internal
-    cross-store ordering, deliberately not an externally visible
-    state, because `due_at` derives from `deleted_at` and a poll
-    landing between the archived target and the receipt would
-    otherwise have no valid shape - then
-    the live derived state machine (it can stay `pending` for
-    months, which is precisely why it
-    is not a receipt field). The union is discriminated, with the
-    per-variant constraints stated rather than implied:
-    `in_progress` carries neither receipt nor deletion state;
-    `completed` with `pending | overdue` carries the receipt and
-    `confirmed_at: null`; `completed` with `confirmed` **requires**
-    the confirmation timestamp - a `confirmed` without its
-    timestamp, or a timestamp on an unconfirmed state, is a schema
-    violation, not a style choice. The OpenAPI document carries
-    this union, constraints included, verbatim. A `delete_due_at`
+    after every pruning edge, not merely process crashes. The erasure
+    receipt is Connect's own record, retained one year and returned by no
+    route; pruning progress is internal control state. A `delete_due_at`
     miss flips `overdue`, pages the operator on the ops lane, keeps
     retrying until confirmed, and is disclosed as
     an incident rather than silently absorbed - and because neither
     the pending phase (a receipt deferred by provider outage) nor
     the overdue phase has an upper bound, **retention is
-    terminal-state-aware**: tombstones, targets, and status-token
-    hashes stay authoritative until confirmation, the one-year
+    terminal-state-aware**: tombstones and targets
+    stay authoritative until confirmation, the one-year
     clock starts at `deletion_confirmed_at`, and the retention
     table's renewal mechanism keeps a locked authoritative copy in
     R2 for as long as renewal keeps running - a bounded assumption
@@ -4552,13 +4500,10 @@ The implementation contract rests on these decisions:
     "replay returns the original result" cannot both hold, and the
     hash-only property wins: the `Idempotency-Key` record keeps only
     what was created, never the answer, and the refusal's `issued`
-    member names it; the remedy is revoke-and-recreate. The erasure
-    retry is the same principle carried through consistently: the
-    status token is minted once and never replaced, and erasure keeps
+    member names it; the remedy is revoke-and-recreate. Erasure keeps
     no `Idempotency-Key` record to replay. After deletion, a retried
-    account erase no longer reaches the deleted account; its original
-    status token reads the receipt. A retried site erase answers `404`
-    because the site is gone.
+    account erase no longer reaches the deleted account. A retried
+    site erase answers `404` because the site is gone.
 16. **Correlation pairs are keyed by the credential's actor**, either
     `user:<subject>` or `token:<token_id>`, and merged as a validated union.
     Independent submission counters are never compared. Clients sharing
@@ -4603,9 +4548,8 @@ The implementation contract rests on these decisions:
 19. **One environment per site in v1**, fixed to `production`.
 20. **Accounts use WorkOS AuthKit organizations and subscription entitlement.**
     The dashboard holds sessions; direct clients use personal tokens.
-    Erasure status survives account deletion through a `sitecmd_ers_`
-    bearer in the `Authorization` header, never a URL. A deleted account
-    cannot reissue a lost status token.
+    Connect retains the completed erasure record for one year; no route
+    returns it.
 21. **Durable records have a per-site bound with disclosed compaction**
     (250,000 records; the snapshot is staged and its own prospective
     coverage counts toward retirements before the bound is judged, so
