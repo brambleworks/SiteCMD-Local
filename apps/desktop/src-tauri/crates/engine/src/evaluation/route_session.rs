@@ -28,7 +28,6 @@ use crate::header_lines::{split_probe_lines, HeaderLines};
 use crate::page::PageContext;
 use crate::probe::ProbeOutcome;
 use crate::severity_policy::WebSeverityInput;
-use crate::stack::detect_stack;
 
 /// The facts a route's evaluation grades beside the outcomes it recorded.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -278,11 +277,7 @@ impl RouteSession {
             severity_inputs,
             measurement_samples,
             not_evaluated,
-            stack: detect_stack(
-                &self.page.response_headers,
-                &self.page.body,
-                self.page.body_lower(),
-            ),
+            stack: super::page_stack(&self.page, facts.resolver_facts.as_ref()),
         }
     }
 

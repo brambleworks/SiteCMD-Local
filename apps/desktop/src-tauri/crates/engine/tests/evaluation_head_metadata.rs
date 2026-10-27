@@ -115,3 +115,25 @@ fn a_very_long_title_warns_and_bounds_its_evidence() {
     assert_eq!(raw["title_evidence_truncated"], true);
     assert_eq!(raw["title"].as_str().expect("evidence text").len(), 503);
 }
+
+#[test]
+fn a_stray_quote_in_an_earlier_tag_cannot_change_seo_head_verdicts() {
+    let head = r#"<html><head><title>An example page with a descriptive document title</title>
+        <meta name="description" content="A useful page description that explains what visitors can find on this example page and gives search engines a clear summary of the document.">
+        <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="robots" content="noindex"><meta property="og:title" content="Page title">
+        <meta property="og:description" content="Page description"><meta property="og:image" content="https://example.com/share.png">
+        <meta name="twitter:card" content="summary_large_image"><link rel="canonical" href="https://example.com/">
+        <link rel="alternate" hreflang="en" href="https://example.com/"></head></html>"#;
+    let clean = evaluate(&request(head)).unwrap();
+    let malformed = evaluate(&request(&head.replace("<head>", "<head><div broken\">"))).unwrap();
+    for id in HEAD_CHECKS {
+        let statuses = |response: &sitecmd_engine::evaluation::EvaluationResponse| {
+            rows(&response.results, id)
+                .into_iter()
+                .map(|row| row.status)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(statuses(&malformed), statuses(&clean), "{id}");
+    }
+}

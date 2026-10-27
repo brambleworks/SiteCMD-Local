@@ -82,6 +82,7 @@ pub const FIELD_READINGS: &[(&str, FieldReading)] = &[
     ("x-amz-cf-id", FieldReading::Presence),
     ("x-amz-request-id", FieldReading::Presence),
     ("x-content-type-options", FieldReading::FirstLine),
+    ("x-fastly-request-id", FieldReading::Presence),
     ("x-frame-options", FieldReading::FirstLine),
     ("x-generator", FieldReading::EveryLine),
     ("x-github-request-id", FieldReading::Presence),

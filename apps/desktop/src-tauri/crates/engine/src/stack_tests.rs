@@ -45,6 +45,56 @@ fn detector_label_writes_use_the_label_table() {
     }
 }
 
+// The hosting tables name their labels from the label table, and the only
+// writes of the two hosting fields take a label one of those tables answered.
+// Answers cannot use string literals.
+#[test]
+fn hosting_tables_name_their_labels_from_the_label_table() {
+    let source = include_str!("stack_hosting.rs");
+    let literal_answer = regex::Regex::new(r#"\b(?:Some|then_some)\s*\(\s*""#).unwrap();
+    assert!(
+        !literal_answer.is_match(source),
+        "Hosting answers must use the label table"
+    );
+    let entry = regex::Regex::new(r#"\(\s*"[^"]+"\s*,\s*([^)]+?)\s*\)"#).unwrap();
+    let label = regex::Regex::new(r"\Alabels::[A-Z][A-Z0-9_]*\z").unwrap();
+    let mut entries = 0;
+    for captures in entry.captures_iter(source) {
+        entries += 1;
+        assert!(label.is_match(&captures[1]), "{}", &captures[0]);
+    }
+    assert_eq!(entries, 23, "the hosting tables were not found");
+    let writes =
+        regex::Regex::new(r"\bstack\s*\.\s*(?:hosting|dns_provider)\s*=\s*Some\s*\(([^;]*)\);")
+            .unwrap();
+    let mut written = 0;
+    for write in writes.captures_iter(source) {
+        written += 1;
+        assert_eq!(write[1].trim(), "label.into()", "{}", &write[0]);
+    }
+    assert_eq!(written, 2, "both hosting fields must have a write");
+}
+
+#[test]
+fn a_stored_stack_without_hosting_still_reads() {
+    let stack: DetectedStack = serde_json::from_str(r#"{"cdn":"Vercel"}"#).unwrap();
+    assert_eq!(stack.hosting, None);
+    assert_eq!(stack.dns_provider, None);
+    let written = serde_json::to_value(DetectedStack {
+        hosting: Some("Vercel".into()),
+        dns_provider: Some("Cloudflare".into()),
+        ..DetectedStack::default()
+    })
+    .unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({ "hosting": "Vercel", "dns_provider": "Cloudflare" })
+    );
+    assert!(!serde_json::from_value::<DetectedStack>(written)
+        .unwrap()
+        .is_empty());
+}
+
 #[test]
 fn test_detect_wordpress() {
     let headers = HeaderMap::new();
@@ -217,4 +267,46 @@ fn an_empty_object_is_the_empty_stack() {
         serde_json::from_str::<DetectedStack>("{}").unwrap(),
         DetectedStack::default()
     );
+}
+
+#[test]
+fn hosting_and_dns_each_make_a_stack_nonempty() {
+    assert!(!DetectedStack {
+        hosting: Some("Vercel".into()),
+        ..DetectedStack::default()
+    }
+    .is_empty());
+    assert!(!DetectedStack {
+        dns_provider: Some("Cloudflare".into()),
+        ..DetectedStack::default()
+    }
+    .is_empty());
+}
+
+#[test]
+fn hosting_and_dns_follow_cdn_in_json_and_summary() {
+    let stack = DetectedStack {
+        cdn: Some("Cloudflare".into()),
+        hosting: Some("Vercel".into()),
+        dns_provider: Some("Cloudflare".into()),
+        other: vec!["jQuery".into()],
+        ..DetectedStack::default()
+    };
+    assert_eq!(
+        serde_json::to_string(&stack).unwrap(),
+        r#"{"cdn":"Cloudflare","hosting":"Vercel","dns_provider":"Cloudflare","other":["jQuery"]}"#
+    );
+    assert_eq!(
+        stack.summary(),
+        "CDN/Hosting: Cloudflare, Hosting: Vercel, DNS: Cloudflare, jQuery"
+    );
+    assert_eq!(DetectedStack::default().to_json(), serde_json::json!({}));
+    assert_eq!(DetectedStack::default().summary(), "Unknown");
+}
+
+#[test]
+fn a_stray_quote_in_an_earlier_tag_does_not_hide_the_cms_generator() {
+    let body = r#"<div broken"><meta name="generator" content="WordPress 6.9">"#;
+    let stack = detect_stack(&HeaderMap::new(), body, &body.to_ascii_lowercase());
+    assert_eq!(stack.cms.as_deref(), Some("WordPress"));
 }

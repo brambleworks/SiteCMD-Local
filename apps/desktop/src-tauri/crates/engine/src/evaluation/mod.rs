@@ -52,7 +52,7 @@ use crate::manifest::{
 };
 use crate::page::PageContext;
 use crate::severity_policy::WebSeverityInput;
-use crate::stack::DetectedStack;
+use crate::stack::{detect_hosting, detect_stack, DetectedStack};
 use crate::vocab::CheckResult;
 
 /// Cached because hosted evaluation reuses this digest on every route.
@@ -202,7 +202,7 @@ pub struct EvaluationResponse {
     pub measurement_samples: Vec<EvaluationMeasurement>,
     /// Every other manifest entry, with the reason it produced nothing.
     pub not_evaluated: Vec<NotEvaluated>,
-    /// The stack this document shows, from the detector the desktop runs.
+    /// The stack this document shows, from the detector the desktop runs, with where the site is hosted.
     pub stack: DetectedStack,
 }
 
@@ -246,6 +246,13 @@ fn external_fact_plan(page: &PageContext) -> ExternalFactPlan {
             dnskey_name: domain.clone(),
             caa_name: domain.clone(),
             www_cname_name: dangling_cname::www_lookup_name(&domain),
+            host_cname_name: page
+                .url
+                .host_str()
+                .unwrap_or_default()
+                .trim_end_matches('.')
+                .to_owned(),
+            ns_name: domain.clone(),
             domain,
         }),
     };
@@ -253,6 +260,22 @@ fn external_fact_plan(page: &PageContext) -> ExternalFactPlan {
         resolver,
         vulnerability_queries: detect_libraries(&page.body),
     }
+}
+
+/// The stack this document shows, with where the site serving it is hosted,
+/// read from its host, headers and markup and from the resolver facts the
+/// request carried.
+fn page_stack(page: &PageContext, resolver: Option<&ResolverFacts>) -> DetectedStack {
+    let mut stack = detect_stack(&page.response_headers, &page.body, page.body_lower());
+    detect_hosting(
+        &mut stack,
+        page.url.host_str().unwrap_or_default(),
+        &page.response_headers,
+        &page.body,
+        page.body_lower(),
+        resolver,
+    );
+    stack
 }
 
 /// Evaluate one route from its whole request: a route session opened on its

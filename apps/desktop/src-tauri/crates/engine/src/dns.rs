@@ -89,6 +89,13 @@ pub struct ResolverFacts {
     pub www_cname: DnsOutcome<Vec<String>>,
     #[serde(default)]
     pub www_target_addresses: Option<DnsTargetAddresses>,
+    /// The CNAME answer at the page's own host: where a custom domain points
+    /// at the platform serving it.
+    #[serde(default)]
+    pub host_cname: Option<DnsOutcome<Vec<String>>>,
+    /// The domain's nameservers, which name whose DNS answers for it.
+    #[serde(default)]
+    pub ns: Option<DnsOutcome<Vec<String>>>,
 }
 
 /// One DKIM TXT question the resolver adapter must answer.
@@ -110,6 +117,11 @@ pub struct ResolverPlan {
     pub dnskey_name: String,
     pub caa_name: String,
     pub www_cname_name: String,
+    /// The page's own host, lowercase and without a trailing dot: its CNAME
+    /// names the platform serving it.
+    pub host_cname_name: String,
+    /// The registrable domain, whose NS answer names its DNS provider.
+    pub ns_name: String,
 }
 
 #[cfg(test)]
