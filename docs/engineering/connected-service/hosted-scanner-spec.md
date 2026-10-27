@@ -125,12 +125,12 @@ tier names the artifact that proves agreement:
      **freshness rule**: the certificate-horizon drift check and any
      re-evaluation may grade facts no older than 7 days; staler facts
      make the TLS pairs inconclusive and schedule a **targeted
-     refresh** (a single-page `full`-profile fetch of the entry URL),
+     refresh** (a single-page fetch of the entry URL with browser checks),
      because warning about a certificate that already rotated would be
      the guardian crying wolf with old news.
 
    Adapters fill the schema from the desktop's `rustls` handshake or,
-   hosted, from two pieces of one public-egress path during `full` page
+   hosted, from two pieces of one public-egress path during page
    loads. Workers global `fetch` supplies the chain verdict. After
    navigation settles, the hosted runner starts exactly one best-effort
    `node:tls` connection for the final main-document HTTPS response,
@@ -219,7 +219,7 @@ tier names the artifact that proves agreement:
    each timed from its dispatch to its response head over the redirects
    it follows and leaving out the scanner's own address check before each
    hop. Both are sent in the route's first probe round, after the page's
-   own fetch, the browser pass in a `full` scan and as many as 39 of that
+   own fetch, the browser pass and as many as 39 of that
    round's other requests, and never beside another probe, where the
    desktop times TTFB before its probes; the value is taken from
    Cloudflare's network rather than a visitor's, so it is a different
@@ -352,7 +352,7 @@ new engine build.
   complete required route set ran, so a partial scan cannot claim
   session-level absence.
 - `requires` names the runtime facts the check needs (browser, sockets,
-  resolver), which is how the gate knows a `standard` observation
+  resolver), which is how the gate knows an observation without browser execution
   cannot speak to browser-family pairs. It declares runtime needs,
   **not** input completeness, and is therefore never the basis for
   input equivalence.
@@ -421,7 +421,7 @@ an already-registered digest, never unregistering one.
 Browser Run reports; automatic platform updates change it, and
 pretending otherwise would make unequal environments compare equal),
 axe version, resolver identity, transport adapter identity and
-version, scan profile (`full` or `standard`), and `layers_run` - the
+version, scan profile, and `layers_run` - the
 layers the observation actually ran, the only vantage fact a
 producer states. `producer_instance` and locality are
 **server-derived, never wire values**: the instance from the
@@ -565,7 +565,7 @@ deployments, and alarms are at-least-once. Correctness comes from a
 
 A hosted scan mirrors the desktop's sequential page loop as a chain of
 steps driven by the coordinator: each step scans one route (transport
-fetch, browser work when the scan profile includes it, wasm checks),
+fetch, browser work when admitted, wasm checks),
 commits its sanitized partial result under the fence, and yields.
 Between steps the coordinator checks for supersession and cancellation,
 the hosted equivalent of the desktop's 50 ms cancel polling, at page
@@ -632,19 +632,12 @@ singleton hotspot Cloudflare warns against):
   operational alert about the service, not a quiet coverage note about
   the site.
 
-### Scan profiles
+### Hosted scan
 
-Two, mirroring the desktop's own split (its scheduler always passes
-`axe_enabled: false`):
-
-- `full`: transport plus browser layer. Default for deploy-triggered
-  scans, because the deploy-verification promise includes the browser
-  checks, and the source of hosted TLS facts.
-- `standard`: transport only. Default for scheduled between-deploy
-  scans, where the drift checks below carry the watch and browser cost
-  is not justified per tick. Cadence and the periodic full pass are
-  operating values in the beta operating configuration below; what a
-  paid plan eventually includes is decided outside this specification.
+Every hosted scan runs all available transport and browser checks: daily
+scheduled, deploy-triggered, coalesced and manual scans use the same scan.
+Browser checks include the hosted TLS facts. Admission failures remain
+explicit coverage exceptions under the browser admission rules above.
 
 ## Beta operating configuration
 
@@ -654,71 +647,54 @@ values are therefore a **versioned configuration artifact** in the
 connect worker - engineering capacity decisions, explicitly not
 prices, replaced by the pricing pass's decided values at graduation:
 
-- The keys, all required: scheduled standard-scan cadence, periodic
-  full-pass cadence, deploy debounce window, fair-use deploy-scan
-  ceiling and coalescing floor, per-destination and per-account daily
-  send caps, per-credential rate limits, per-scan and per-site budget
-  bounds (pages, sessions, session seconds), the allowance-slot
-  cooldown window, and the retained `dunning_grace_days` setting.
-  Entitlement does not read that setting: payment grace is the Stripe
-  `past_due` status, which permits watching but not adding sites or
-  dispatching fix jobs.
-- The **beta-1 values**, the initial committed artifact ("set
-  conservatively" is not a value an implementer can ship). These are
-  capacity engineering, not prices; every revision is a version bump
-  with a changelog line, so "what were the limits when this scan ran"
+- The keys, all required: daily scheduled attempts, deploy debounce
+  window, per-destination and per-account daily send caps, per-scan and
+  per-site budget bounds (pages, sessions, session seconds), and the
+  allowance-slot cooldown window.
+- The **current values** below come from the runner's cadence, the
+  committed operating artifact and the credential rate-limit binding
+  ("set conservatively" is not a value an implementer can ship). These
+  are capacity engineering, not prices. Artifact revisions have a version
+  bump and changelog line, so "what were the limits when this scan ran"
   is answerable:
 
-  | Key                              | Beta-1 value                                                                                                                                                                                                                                                                                                                         |
+  | Key                              | Current value                                                                                                                                                                                                                                                                                                                        |
   | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-  | Scheduled standard scan          | 1 per site per day                                                                                                                                                                                                                                                                                                                   |
-  | Periodic full pass               | 1 per site per week                                                                                                                                                                                                                                                                                                                  |
+  | Daily scheduled scan             | 1 per site per UTC day                                                                                                                                                                                                                                                                                                               |
   | Deploy debounce window           | 120 seconds                                                                                                                                                                                                                                                                                                                          |
-  | Deploy-scan fair-use ceiling     | 30 deploy-triggered scans per site per day                                                                                                                                                                                                                                                                                           |
-  | Coalescing floor                 | Full profile for the first 10 deploy scans per day, `standard` after                                                                                                                                                                                                                                                                 |
   | Per-destination send cap         | 50 messages per day                                                                                                                                                                                                                                                                                                                  |
   | Per-account send cap             | 200 messages per day                                                                                                                                                                                                                                                                                                                 |
-  | Account-credential rate limit    | 120 requests per minute                                                                                                                                                                                                                                                                                                              |
+  | Account-credential rate limit    | 120 requests per 60 seconds per credential per location, configured by `CONNECT_TOKEN_RATE_LIMIT`                                                                                                                                                                                                                                    |
   | Live personal tokens per account | 50                                                                                                                                                                                                                                                                                                                                   |
-  | CI-token rate limit              | 60 requests per minute                                                                                                                                                                                                                                                                                                               |
-  | Hook-door rate limit             | 60 events per minute per site                                                                                                                                                                                                                                                                                                        |
-  | Resend-intake rate limit         | 300 events per minute, global                                                                                                                                                                                                                                                                                                        |
-  | Browser-form public-route limit  | 30 requests per minute per source address per resource                                                                                                                                                                                                                                                                               |
-  | Per-site daily budget            | 60 scans, 15 sessions, 13,500 session seconds, 6,000 pages                                                                                                                                                                                                                                                                           |
+  | Per-site daily budget            | 3 scans, 3 browser sessions, 2,700 session seconds, 300 pages                                                                                                                                                                                                                                                                        |
   | Per-scan budget                  | 100 routes, 1 browser session, 900 session seconds, 400 outbound probe requests per route                                                                                                                                                                                                                                            |
   | Allowance-slot cooldown          | 7 days                                                                                                                                                                                                                                                                                                                               |
-  | Retained dunning setting         | 7 days, unused by entitlement                                                                                                                                                                                                                                                                                                        |
   | Browser admission partition      | Ceiling = the billed-free concurrency allowance (10), deliberately not the platform limit (120) recorded beside it: the provider refuses above one and bills above the other, so they are different numbers on purpose; reserve 2; 4 shards; per-shard quota = floor((ceiling - reserve) / 4), literals stamped at config generation |
-  | Scheduled reservation, daily     | Up to 3 attempts: 300 pages, 0 sessions, per site                                                                                                                                                                                                                                                                                    |
-  | Scheduled reservation, weekly    | Up to 3 attempts: 300 pages, 3 sessions, 2,700 session seconds, per site                                                                                                                                                                                                                                                             |
+  | Scheduled reservation, daily     | Up to 3 attempts per site per UTC day: 300 pages, 3 browser sessions, 2,700 session seconds, derived from the per-scan bounds                                                                                                                                                                                                        |
 
-  The account-credential rate uses `account_token_requests_per_minute`:
-  120 requests per minute per dashboard session bearer or personal token,
-  including the dashboard entrypoint. `personal_tokens_per_account` limits
-  live personal tokens to 50; revocation frees a place. Configuration
-  version 13 introduces that limit. `dunning_grace_days` remains declared
-  as 7 but is unused; entitlement reads subscription status.
+  The credential bound is the `CONNECT_TOKEN_RATE_LIMIT` binding:
+  120 requests per 60 seconds per credential per location. Account and CI
+  credentials share this bound, including the dashboard entrypoint.
+  `personal_tokens_per_account` limits live personal tokens to 50;
+  revocation frees a place. Configuration version 13 introduces that limit.
 
 - **The trigger algorithm, deterministic end to end.** "Day" means
   the UTC calendar day, everywhere a daily quantity appears (rolling
   windows apply only where a key says "rolling", as the alert storm
   budget does). A qualifying deploy event opens or extends the
-  debounce window; when the window closes, let N be the number of
-  deploy-triggered scans already started this UTC day for the site:
-  N < 10 runs a `full` scan; 10 <= N < 30 runs `standard`; N >= 30
-  enters **coalesced mode**: no scan starts, a pending-deploys marker
-  aggregates everything that lands, and while the marker is set one
-  `standard` scan runs at the top of each hour against the
-  then-current deployment, clearing the marker it consumed.
-  Marker-consuming scans are always `standard` and **never count in
-  N**, which settles the midnight edge: a marker pending at 00:00 UTC
-  is consumed by the 00:00 marker scan as usual (standard,
-  N-neutral), the day's counter resets independently, and the next
-  actual deploy event starts the new day at N = 0 with a `full` scan
-  through the ordinary debounce. Two determinism rules close the
+  debounce window; when it closes, a scan starts only if its whole
+  charge fits that UTC day's demand budget. Otherwise no scan starts:
+  a pending-deploys marker aggregates the work. The hourly consumer
+  starts one scan against the then-current deployment when the demand
+  budget has room, clearing only the marker it consumed. Marker scans
+  share the demand budget and never count in N, the day's deploy-start
+  counter used for scan-id uniqueness. A midnight marker drains only
+  while the new UTC day's budget can pay; the next actual deploy starts
+  that day's deploy counter at N = 1 through the ordinary debounce.
+  Two determinism rules close the
   remaining edges. First, a scan belongs to the UTC day in which its
   **start decision** is made (a 23:59 deploy whose debounce closes at
-  00:01 is the new day's N = 1, full). Second, the marker is a stored
+  00:01 is the new day's N = 1). Second, the marker is a stored
   object with a generation, and consumption is a **generation CAS**,
   because Cloudflare alarms are at-least-once and a bare
   compare-and-delete would let a consumer that read stale state
@@ -747,7 +723,7 @@ prices, replaced by the pricing pass's decided values at graduation:
   so "joins" can only ever mean the scan for exactly that marker. Scheduled **retries** are new scan records
   with fresh scan ids and fences (a retry never resumes a fenced-off
   execution), keyed to the same reservation attempt counter
-  `(site, UTC day, class, attempt <= 3)`; resources consumed by
+  `(site, UTC day, attempt <= 3)`; resources consumed by
   failed attempts are recorded against the reservation's accounting
   but do not reduce the remaining attempt allowance - the
   reservation's promise is "up to three tries, each within the
@@ -757,40 +733,68 @@ prices, replaced by the pricing pass's decided values at graduation:
   current deployment mid-scan finishes the page step, marks the scan
   superseded, submits partial coverage honestly), the marker state
   and the mode are visible in site state, and the UTC day boundary
-  resets N, so the worst case is bounded and computable from this
-  paragraph alone.
-- **Per-site daily budgets** (beta-1), backstopping the per-scan
-  bounds against pathological days: 60 scans, 15 browser sessions,
-  13,500 session seconds, 6,000 pages per site per UTC day. The
-  budgets bind the **demand-driven classes** - deploy-triggered,
-  coalesced, and manual-refresh scans; the scheduled classes (the
-  daily standard scan and the weekly full pass) run from their own
-  **reserved allocation outside these budgets**, with the arithmetic
-  in the reservation rows above, so "scheduled protection continues"
-  is arithmetic, not a contradiction: exhausting the demand budget
-  stops demand scans and cannot touch the reservation. Reservation
-  mechanics: on the weekly full pass's day, the full pass **replaces**
-  the daily standard scan (they never stack); a failed scheduled scan
-  retries at most twice within its own reservation, and a day that
-  ends with the reservation unfulfilled records a protection-health
-  note rather than rolling capacity forward. Exhaustion behaves like
-  every other ceiling: visible degradation
-  (scheduled protection continues, further deploy scans coalesce to
-  the next UTC day),
+  resets N, so the worst case is bounded and computable with the
+  demand-budget bounds below.
+- **Per-site daily budgets**, backstopping the per-scan bounds against
+  pathological days: 3 scans, 3 browser sessions, 2,700 session seconds,
+  300 pages per site per UTC day. The budgets bind the **demand-driven
+  classes** - deploy-triggered, coalesced and manual-refresh scans.
+  The daily scheduled scan has a **reserved allocation outside these
+  budgets**: up to 3 attempts, each bounded to 100 routes, 1 browser
+  session and 900 session seconds, giving 300 pages, 3 sessions and
+  2,700 session seconds in total. The configuration stores the attempt
+  allowance; the resource totals follow from the per-scan bounds.
+  Exhausting the demand budget cannot consume scheduled protection.
+  A failed scheduled scan retries at most twice within its reservation,
+  and a day ending unfulfilled records a protection-health note rather
+  than rolling capacity forward. Further deploy and coalesced scans wait
+  for the next UTC day's demand budget; exhaustion is visible degradation,
   never a silent stop.
+
+  Daily starts are spread across UTC hours, following the load-spreading
+  idea of [Jenkins' H schedule](https://www.jenkins.io/doc/book/pipeline/syntax/#cron-syntax).
+  Each site stores a permanent `scan_hour`, a non-null small integer
+  between 0 and 21. At creation, start at the account's stable hash hour,
+  the unsigned first 32 bits of its MD5 digest modulo 22, and count up,
+  wrapping after hour 21, to the first hour none of the account's other
+  sites holds. All retained sites hold their hours, including disconnected
+  sites. If all 22 hours are held, use the hash hour. Selection runs under
+  the account lock already held by site creation; no additional lock is
+  needed. The assigned hour never changes when another site is added or
+  removed. Removal frees its hour for a future creation without moving
+  existing sites. Migration backfills existing sites by the same rule in
+  `site_id` order per account, assigning distinct hours to the first 22
+  and the hash hour thereafter.
+  The hourly pass starts an owed reservation when the current UTC hour
+  is at or past its stored hour, retaining the existing per-pass bound of
+  50 sites. Even the latest assigned hour leaves passes at 21:00, 22:00
+  and 23:00 UTC for the reservation's three attempts. Later passes may
+  retry an unfulfilled reservation when its preceding attempt has failed
+  or is stale under the progress timeout. A missed pass or a site added after
+  its hour still starts that day. A site's first scan within a minute of
+  creation bypasses the stored hour.
+  Sites sharing an hour still start together within the pass bound;
+  past the admission partition's concurrent sessions, the rest can finish without browser
+  checks after exhausting admission retries. Queueing scheduled scans for
+  a lease is the upgrade beyond this hour spread.
+
 - A **test fixture pins the schema and the values**: every key
   present, typed, within declared sanity bounds, and equal to the
-  committed beta-1 artifact, so a missing, nonsensical, or silently
+  committed artifact, so a missing, nonsensical, or silently
   drifted value is a failing test, not a runtime surprise. The
   fixture also replays the trigger algorithm against a scripted deploy
-  day and asserts the exact scan sequence, covering scans 1 through
-  10, 11 through 30, coalesced mode, a 23:59 debounce spanning
-  midnight, a deploy landing at exactly 00:00, a duplicated marker
-  alarm, demand-budget exhaustion with the reservation intact, and
-  the daily-scan-replaced-by-weekly-full collision. Site state
-  and error surfaces quote the running configuration's values (the
+  day and asserts the exact scan sequence, covering three demand scans,
+  coalesced mode, a 23:59 debounce spanning midnight, a deploy landing at
+  exactly 00:00, a duplicated marker alarm and demand-budget exhaustion
+  with the reservation intact.
+  Site state and error surfaces quote the running configuration's values (the
   `422`s already name their limits), so the beta cohort always sees
   the numbers that are actually in force.
+- Separate **Postgres integration regressions** cover distinct daily
+  browser starts within an account, permanent hours across site additions
+  and removals, distinct creation and backfill hours within 0 through 21,
+  refusal of hours 22 and 23, three attempts from hour 21, retries later
+  the same day, and slots that are not yet due or were missed earlier.
 
 ## Crawl profile, version 3
 
@@ -1013,7 +1017,7 @@ pins:
   the profile a new version; neither happens silently. The per-scan
   worst case follows as routes times the cap, and with origin-scoped
   checks narrowed to the entry route the realistic ceiling is about
-  30,000 requests to one origin per full scan. The bound is per route
+  30,000 requests to one origin per scan. The bound is per route
   rather than per scan so that it needs no durable spend counter across
   alarm ticks and so that one pathological route cannot starve the rest
   of the scan. A probe the budget refuses is reported as a failed probe
@@ -1126,13 +1130,13 @@ produces them.
   one structured object everywhere it appears - signatures, evidence
   entries, execution profiles, measurements. **`layer` is the
   check's manifest layer, never a scan
-  label**: a `full` scan produces transport and browser results in
+  label**: a hosted scan produces transport and browser results in
   one observation, so the observation declares only `layers_run`
   (instance and locality are server-derived, per the execution
   profile) and every
   result's vantage
-  layer comes from the check that produced it - the scan profile can
-  narrow `layers_run`, it cannot mislabel a result.
+  layer comes from the check that produced it. Only committed verdicts
+  establish which layers ran.
 
   Vantage identity is
   `{ producer_instance, layer, locality }`, with each part earning
@@ -1332,7 +1336,7 @@ execution does with them:
   this prose can never disagree with it again), reset by further
   deploys for the same environment. Every deployment is still
   recorded individually; debounce coalesces work, not history. The
-  full trigger algorithm, including the ceiling and coalescing
+  full trigger algorithm, including the demand budget and coalescing
   behavior, is the deterministic procedure in the beta operating
   configuration section.
 - When a newer deployment becomes current mid-scan, the coordinator
@@ -1613,7 +1617,7 @@ outcome at the strongest point it offers:
 
 Browser Run is metered with account-wide concurrency limits; the
 sockets API and DoH calls are ordinary worker work. Browser cost now
-scales with `full` scans (one session each) plus per-page contexts;
+scales with hosted scans (one session each) plus per-page contexts;
 transport cost with routes times probes. Instrumentation records, per
 scan: pages scanned, sessions opened, contexts created, session
 seconds, bytes fetched, and admission wait time.
@@ -1664,9 +1668,8 @@ actually computed from:
   provider price change is a price-book commit, not a silent drift in
   the margin math.
 
-The roll-up to cost per connected site per month, as a distribution
-split by scan profile, is the measurement program this instrumentation
-exists to make computable.
+The roll-up to cost per connected site per month, as a distribution,
+is the measurement program this instrumentation exists to make computable.
 
 Provider items recorded for build-time verification rather than
 asserted: Browser Run's current session, creation, and concurrency limits
