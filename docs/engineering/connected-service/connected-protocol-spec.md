@@ -1501,18 +1501,20 @@ single-use; each grants exactly one operation on exactly one resource,
 and the complete inventory lives with the public-surface table below -
 there is no such thing as an unlisted way in.
 
-| Credential         | Kind       | Scope                                          | Issued by                        | Held by                      |
-| ------------------ | ---------- | ---------------------------------------------- | -------------------------------- | ---------------------------- |
-| Dashboard session  | bearer     | The signed-in person's account                 | WorkOS AuthKit                   | Dashboard                    |
-| Personal token     | bearer     | Account or selected sites, with named scopes   | Signed-in person                 | Client credential store      |
-| Job token          | bearer     | Assigned fix-job operations                    | Connect                          | Fix-job runner               |
-| CI token           | bearer     | Submit and read deployment cursor for one site | Signed-in person                 | CI secret store              |
-| Webhook secret     | MAC        | Sign deploy events for one site environment    | Signed-in person                 | Deploy pipeline secret store |
-| Report link token  | capability | Render one report until TTL or revocation      | Service, at report creation      | Email or clipboard           |
-| Alert nonce        | capability | Redeem one alert view, once                    | Service, at alert delivery       | The alert email              |
-| Alert view session | capability | View one alert for 30 minutes                  | Service, at redemption           | HttpOnly cookie              |
-| Confirmation token | capability | Confirm one destination, once                  | Service, at destination creation | The confirmation email       |
-| Unsubscribe token  | capability | Demote one destination's cadence               | Service, per message             | `List-Unsubscribe-Post`      |
+| Credential                 | Kind       | Scope                                          | Issued by                        | Held by                      |
+| -------------------------- | ---------- | ---------------------------------------------- | -------------------------------- | ---------------------------- |
+| Dashboard session          | bearer     | The signed-in person's account                 | WorkOS AuthKit                   | Dashboard                    |
+| Personal token             | bearer     | Account or selected sites, with named scopes   | Signed-in person                 | Client credential store      |
+| Job token                  | bearer     | Assigned fix-job operations                    | Connect                          | Fix-job runner               |
+| CI token                   | bearer     | Submit and read deployment cursor for one site | Signed-in person                 | CI secret store              |
+| Webhook secret             | MAC        | Sign deploy events for one site environment    | Signed-in person                 | Deploy pipeline secret store |
+| Report link token          | capability | Render one report until TTL or revocation      | Service, at report creation      | Email or clipboard           |
+| Alert nonce                | capability | Redeem one alert view, once                    | Service, at alert delivery       | The alert email              |
+| Alert view session         | capability | View one alert for 30 minutes                  | Service, at redemption           | HttpOnly cookie              |
+| Confirmation token         | capability | Confirm one destination, once                  | Service, at destination creation | The confirmation email       |
+| Erasure confirmation token | capability | Confirm erasure of one account                 | Service, at erasure request      | The confirmation email       |
+| Site removal token         | capability | Confirm removal of one site, once              | Service, at site removal request | The confirmation email       |
+| Unsubscribe token          | capability | Demote one destination's cadence               | Service, per message             | `List-Unsubscribe-Post`      |
 
 - **Dashboard session.** Accounts are WorkOS AuthKit organizations. A person
   signs in at `app.sitecmd.com`; the dashboard holds the session and forwards
@@ -1723,7 +1725,8 @@ browsers and must not be handed browser assumptions:
   redirect chain, because the caller is a mail system acting on the
   user's gesture.
 - **Browser-form routes** (alert landing, redeem,
-  view, and resend, destination confirmation, report render): render
+  view, and resend, destination confirmation, account erasure and site
+  removal confirmation, report render): render
   HTML, including their failures - the `/v1/*` problem details do not
   apply here; the error page is an HTML page with the same
   security headers. POSTs are same-origin form posts; the only cookie
@@ -1738,27 +1741,31 @@ limits come from the beta operating configuration, which carries
 per-class keys (hook doors per site, Resend intake globally, browser-form
 routes per source address per resource).
 
-| Method + path                           | Authentication                                               | Single-use                 | TTL                            | Behavior                                                                                |
-| --------------------------------------- | ------------------------------------------------------------ | -------------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
-| `POST /v1/hooks/github-secret-scanning` | GitHub ECDSA signature over raw body                         | Revocation is idempotent   | n/a                            | Leaked-token feedback and security notice; 1 MiB body limit                             |
-| `POST /v1/hooks/github`                 | `X-Hub-Signature-256`: HMAC-SHA256 over raw body             | No                         | n/a                            | GitHub App pull-request deliveries for the fix loop                                     |
-| `POST /v1/fix-jobs/{id}/claim`          | `X-GitHub-OIDC-Token`, checked against the job binding       | One claim per purpose      | OIDC validity                  | Issues a purpose-scoped job token for execute or publish                                |
-| `POST /v1/fix-jobs/{id}/result`         | Purpose-scoped job-token bearer                              | One result per job attempt | Job timeout                    | Commits the outcome and revokes the job's live tokens                                   |
-| `POST /v1/fix-jobs/{id}/publish-token`  | Publish-purpose job-token bearer                             | No                         | Job timeout                    | Mints a GitHub token for contents and pull requests in one repository                   |
-| `POST /v1/fix-jobs/{id}/issue-token`    | Publish-purpose job-token bearer                             | No                         | Job timeout                    | Mints a GitHub token for issues in one repository                                       |
-| `POST /v1/hooks/{site}/deploy`          | `sha256=` HMAC over `{sent_at}.{raw body}`                   | Dedup by `event_id`        | 5-minute skew window           | Generic deploy door; body schema below; duplicate `event_id` converges `200`            |
-| `POST /v1/hooks/resend`                 | Svix signature over raw body                                 | Dedup by `svix-id`         | 5-minute tolerance             | Bounce and complaint intake (delivery spec)                                             |
-| `POST /v1/hooks/stripe`                 | `Stripe-Signature`, verified by the Stripe SDK over raw body | Dedup by event id          | 5-minute tolerance             | Refreshes the customer's newest subscription; an unprocessed delivery remains retryable |
-| `GET /a/{alert}/{nonce}`                | None (landing renders nothing sensitive)                     | No (non-consuming)         | 72h from first send initiation | Alert landing page: one button, no alert content                                        |
-| `POST /a/{alert}/{nonce}/redeem`        | Alert nonce (bound to `{alert}`)                             | Yes                        | 72h from first send initiation | Exchanges nonce for the 30-minute view session cookie                                   |
-| `GET /a/view`                           | Alert view session cookie                                    | No                         | 30 minutes                     | The alert view (delivery spec's content ceiling)                                        |
-| `POST /a/{alert}/{nonce}/resend`        | The nonce record (used or expired counts)                    | Rate-limited               | Nonce TTL + 7 days             | Fresh link to the currently verified destination only; generic `200` always             |
-| `GET /d/{token}`                        | None (landing, non-consuming)                                | No                         | 24h from first send initiation | Destination confirmation landing: one button                                            |
-| `POST /d/{token}/confirm`               | Confirmation token                                           | Yes                        | 24h from first send initiation | Confirms the destination (double-opt-in completes)                                      |
-| `POST /u/{token}`                       | Unsubscribe token (RFC 8058)                                 | Yes, idempotent replay     | 30d from first send initiation | Sets destination policy per its message class; expired answers `410`                    |
-| `GET /r/{token}`                        | Report link token plus registry check                        | No                         | Report TTL, revocable          | Renders the stored report projection                                                    |
-| `GET /v1/internal/storage-probe`        | Deploy probe bearer, constant-time                           | No                         | n/a                            | Deploy check: writes, reads back and deletes one row; no tenant data                    |
-| `POST /v1/internal/restore/reapply`     | `RESTORE_TOKEN` bearer, constant-time; `RESTORE_MODE=1`      | No; same-cursor retries    | Restore mode only              | Reapplies erasures and revocations by cursor; no email; 4 KiB body limit                |
+| Method + path                           | Authentication                                               | Single-use                 | TTL                                    | Behavior                                                                                |
+| --------------------------------------- | ------------------------------------------------------------ | -------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
+| `POST /v1/hooks/github-secret-scanning` | GitHub ECDSA signature over raw body                         | Revocation is idempotent   | n/a                                    | Leaked-token feedback and security notice; 1 MiB body limit                             |
+| `POST /v1/hooks/github`                 | `X-Hub-Signature-256`: HMAC-SHA256 over raw body             | No                         | n/a                                    | GitHub App pull-request deliveries for the fix loop                                     |
+| `POST /v1/fix-jobs/{id}/claim`          | `X-GitHub-OIDC-Token`, checked against the job binding       | One claim per purpose      | OIDC validity                          | Issues a purpose-scoped job token for execute or publish                                |
+| `POST /v1/fix-jobs/{id}/result`         | Purpose-scoped job-token bearer                              | One result per job attempt | Job timeout                            | Commits the outcome and revokes the job's live tokens                                   |
+| `POST /v1/fix-jobs/{id}/publish-token`  | Publish-purpose job-token bearer                             | No                         | Job timeout                            | Mints a GitHub token for contents and pull requests in one repository                   |
+| `POST /v1/fix-jobs/{id}/issue-token`    | Publish-purpose job-token bearer                             | No                         | Job timeout                            | Mints a GitHub token for issues in one repository                                       |
+| `POST /v1/hooks/{site}/deploy`          | `sha256=` HMAC over `{sent_at}.{raw body}`                   | Dedup by `event_id`        | 5-minute skew window                   | Generic deploy door; body schema below; duplicate `event_id` converges `200`            |
+| `POST /v1/hooks/resend`                 | Svix signature over raw body                                 | Dedup by `svix-id`         | 5-minute tolerance                     | Bounce and complaint intake (delivery spec)                                             |
+| `POST /v1/hooks/stripe`                 | `Stripe-Signature`, verified by the Stripe SDK over raw body | Dedup by event id          | 5-minute tolerance                     | Refreshes the customer's newest subscription; an unprocessed delivery remains retryable |
+| `GET /a/{alert}/{nonce}`                | None (landing renders nothing sensitive)                     | No (non-consuming)         | 72h from first send initiation         | Alert landing page: one button, no alert content                                        |
+| `POST /a/{alert}/{nonce}/redeem`        | Alert nonce (bound to `{alert}`)                             | Yes                        | 72h from first send initiation         | Exchanges nonce for the 30-minute view session cookie                                   |
+| `GET /a/view`                           | Alert view session cookie                                    | No                         | 30 minutes                             | The alert view (delivery spec's content ceiling)                                        |
+| `POST /a/{alert}/{nonce}/resend`        | The nonce record (used or expired counts)                    | Rate-limited               | Nonce TTL + 7 days                     | Fresh link to the currently verified destination only; generic `200` always             |
+| `GET /d/{token}`                        | None (landing, non-consuming)                                | No                         | 24h from first send initiation         | Destination confirmation landing: one button                                            |
+| `POST /d/{token}/confirm`               | Confirmation token                                           | Yes                        | 24h from first send initiation         | Confirms the destination (double-opt-in completes)                                      |
+| `GET /e/{token}`                        | Erasure confirmation token (landing, non-consuming)          | No                         | 24h to confirm; replay until cancelled | Account erasure confirmation landing: one button, or the confirmed schedule             |
+| `POST /e/{token}`                       | Erasure confirmation token                                   | No; idempotent replay      | 24h to confirm; replay until cancelled | Records confirmation and schedules account erasure 30 days later                        |
+| `GET /s/{token}`                        | Site removal token (landing, non-consuming)                  | No                         | 24h from request                       | Site removal confirmation landing: one button                                           |
+| `POST /s/{token}`                       | Site removal token                                           | Yes                        | 24h from request                       | Removes the site at once                                                                |
+| `POST /u/{token}`                       | Unsubscribe token (RFC 8058)                                 | Yes, idempotent replay     | 30d from first send initiation         | Sets destination policy per its message class; expired answers `410`                    |
+| `GET /r/{token}`                        | Report link token plus registry check                        | No                         | Report TTL, revocable                  | Renders the stored report projection                                                    |
+| `GET /v1/internal/storage-probe`        | Deploy probe bearer, constant-time                           | No                         | n/a                                    | Deploy check: writes, reads back and deletes one row; no tenant data                    |
+| `POST /v1/internal/restore/reapply`     | `RESTORE_TOKEN` bearer, constant-time; `RESTORE_MODE=1`      | No; same-cursor retries    | Restore mode only                      | Reapplies erasures and revocations by cursor; no email; 4 KiB body limit                |
 
 The generic deploy door's body, exact:
 
@@ -2048,7 +2055,9 @@ Site lifecycle (signed in through the dashboard):
   cancel, webhook-secret remint, and recorded transition).
 - `POST /v1/sites/{site}/erase-request` - emails the account owner a
   link to confirm removing the site, valid for 24 hours; a fresh request
-  replaces the previous link. The link opens `GET /s/{token}`, a landing
+  replaces the previous link, and resends within fifteen minutes of a sent
+  email answer `429 rate_limited` with `Retry-After`. The link opens
+  `GET /s/{token}`, a landing
   page that changes nothing, whose button sends `POST /s/{token}`: that
   consumes the link and starts the deletion, physical removal, defined
   below.
@@ -2313,16 +2322,18 @@ Accounts, personal tokens, and sessions:
 - `POST /v1/account/erasure-request` requires sign-in and takes no
   request body. It emails the account owner a link to confirm erasing the
   account, valid for 24 hours; a fresh request replaces an unconfirmed or
-  cancelled one, and a confirmed one answers `409 erasure_scheduled`. The
-  link opens `GET /e/{token}`, a landing page that changes nothing, whose
-  button sends `POST /e/{token}`: that records the confirmation and
-  schedules the erasure 30 days later. The daily billing pass then erases
-  all sites and account-scoped data, including personal tokens,
-  subscriptions, destinations, and security notices. The receipt completes
-  after identity deletion at WorkOS as well as the delivery drain.
+  cancelled one, and a confirmed one answers `409 erasure_scheduled`;
+  resends within fifteen minutes of a sent email answer `429 rate_limited`
+  with `Retry-After`. The link opens `GET /e/{token}`, a landing page that changes
+  nothing, whose button sends `POST /e/{token}`: that records the
+  confirmation and schedules the erasure 30 days later. The daily billing
+  pass then erases all sites and account-scoped data, including personal
+  tokens, subscriptions, destinations, and security notices. The receipt
+  completes after identity deletion at WorkOS as well as the delivery drain.
 - `POST /v1/account/erasure-request/cancel` requires sign-in and keeps the
   account: it clears a pending or scheduled erasure, and answers
-  `409 erasure_not_scheduled` when there is none.
+  `409 erasure_not_scheduled` when there is none, or
+  `409 request_in_progress` while a started erasure is still finishing.
 
 Export (signed in or a personal token with `read` for the site):
 
@@ -3882,9 +3893,9 @@ visible backpressure, never silent dropping.
   an emailed confirmation link. The request routes answer `202` with
   `{ "confirm_expires_at": "…" }` after the mail provider accepts the
   confirmation email. Confirming a site removal link erases the site
-  at once; a confirmed account erasure runs 30 days later, in the
-  daily pass. Once started, the erasure typically completes within
-  24 hours, with one stated exception:
+  at once; a confirmed account erasure runs 30 days later, or at an earlier
+  account lapse deadline, in the daily pass. Once started, the erasure
+  typically completes within 24 hours, with one stated exception:
   the receipt waits behind the delivery drain barrier (the
   retention section - every delivery class, resolved through
   site-dependency sets), so a provider outage defers the receipt
@@ -4501,9 +4512,10 @@ The implementation contract rests on these decisions:
     hash-only property wins: the `Idempotency-Key` record keeps only
     what was created, never the answer, and the refusal's `issued`
     member names it; the remedy is revoke-and-recreate. Erasure keeps
-    no `Idempotency-Key` record to replay. After deletion, a retried
-    account erase no longer reaches the deleted account. A retried
-    site erase answers `404` because the site is gone.
+    no `Idempotency-Key` record to replay. After deletion, an account
+    erasure request no longer reaches the deleted account
+    (`403 account_required` for a valid dashboard session). A retried
+    site removal request answers `404` because the site is gone.
 16. **Correlation pairs are keyed by the credential's actor**, either
     `user:<subject>` or `token:<token_id>`, and merged as a validated union.
     Independent submission counters are never compared. Clients sharing
