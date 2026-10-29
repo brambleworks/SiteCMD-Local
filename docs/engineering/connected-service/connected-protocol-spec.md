@@ -2146,8 +2146,14 @@ Delivery management (signed in for changes, `read` for reads; content
 semantics in the alert and report delivery spec):
 
 - `GET` and `PUT /v1/sites/{site}/notification-settings` - mute,
-  severity floor, digest cadence, and content mode, guarded by
+  severity floor, daily wake-up budget, hourly bundling point, the
+  three flap settings, digest cadence, and content mode, guarded by
   `notification_revision`.
+- `PUT /v1/sites/{site}/uptime-monitoring` - turn the site's uptime
+  monitoring on or off, signed in; off stops the probes and their
+  down, recovery and challenge alerts, and the expiry watch continues.
+  `site_uptime_bindings.state`: `active` while SiteCMD probes the
+  site, `paused` while its uptime monitoring is off.
 - Destinations are **account-level** (one address, one verification,
   one policy - however many sites deliver to it; site-scoped
   destination rows could not represent the cross-site digest or the
@@ -2461,9 +2467,13 @@ The delivery spec's user controls exist as revisioned resources, not
 prose:
 
 - **Notification settings** (`GET`/`PUT`, `notification_revision`
-  guard): per-site mute, severity floor, digest cadence, and content
-  mode. `PUT` is full replacement under the guard, and every change is
-  an event, so the timeline can explain why the pager went quiet.
+  guard): per-site mute, severity floor, daily wake-up budget (1 to
+  10, default 3), hourly bundling point (1 to 10, default 5), flap
+  cycle count (2 to 10, default 3), flap window (30 to 240 minutes,
+  default 60), settle time (10 to 120 minutes, default 30), digest
+  cadence, and content mode. `PUT` is full replacement under the
+  guard, and every change is an event, so the timeline can explain why
+  the pager went quiet.
 - **Destinations** are account-level resources (endpoint inventory)
   with their own small lifecycle: created
   `unverified`, double-opt-in always (content owned by the delivery
@@ -3412,7 +3422,7 @@ itself is part of this registry:
   destination id or webhook endpoint id and the dedup basis is
   **closed per class, enumerated here for all eight**: immediate
   alert `(site, observation)`; storm summary
-  `(site, 6-hour window index)`; digest
+  `(site, 55-minute window index)`; digest
   `(account, destination, mode, cadence, window)`; confirmation and
   re-verification `(destination, verification round)`, each
   explicit resend a new generation; courtesy
