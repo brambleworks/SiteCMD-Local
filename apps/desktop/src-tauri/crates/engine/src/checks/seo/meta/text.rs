@@ -4,6 +4,47 @@ use super::extract_meta;
 use crate::checks::seo::parsing::extract_document_title;
 use crate::checks::{Check, CheckResult, CheckStatus, PageContext, ScanCategory, Severity};
 
+/// The metadata check's character-length classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LengthOutcome {
+    Missing,
+    Short,
+    Long,
+    Ok,
+}
+
+/// The non-empty, trimmed document title the title check grades.
+pub(crate) fn title_value(body: &str) -> Option<String> {
+    extract_document_title(body).filter(|value| !value.trim().is_empty())
+}
+
+/// The first non-blank description attribute, preserving its whitespace.
+pub(crate) fn description_value(body: &str) -> Option<String> {
+    extract_meta(body, "description").filter(|value| !value.trim().is_empty())
+}
+
+/// Grade an extracted title's character count, with `None` classified as missing.
+pub(crate) fn title_outcome(title: Option<&str>) -> LengthOutcome {
+    length_outcome(title, 20, 70)
+}
+
+/// Grade an extracted description's character count, with `None` classified as missing.
+pub(crate) fn description_outcome(description: Option<&str>) -> LengthOutcome {
+    length_outcome(description, 50, 170)
+}
+
+fn length_outcome(value: Option<&str>, minimum: usize, maximum: usize) -> LengthOutcome {
+    let Some(value) = value else {
+        return LengthOutcome::Missing;
+    };
+    match value.chars().count() {
+        length if length < minimum => LengthOutcome::Short,
+        length if length > maximum => LengthOutcome::Long,
+        _ => LengthOutcome::Ok,
+    }
+}
+
 fn bounded_metadata_evidence(value: &str, max_bytes: usize) -> (String, bool) {
     if value.len() <= max_bytes {
         return (value.to_string(), false);
@@ -23,7 +64,8 @@ impl Check for TitleTagCheck {
     }
 
     fn run(&self, ctx: &PageContext) -> Vec<CheckResult> {
-        let title = extract_document_title(&ctx.body).filter(|value| !value.trim().is_empty());
+        let title = title_value(&ctx.body);
+        let outcome = title_outcome(title.as_deref());
         match title {
             Some(t) => {
                 // Character count, not byte length: a 30-character CJK title is
@@ -33,9 +75,9 @@ impl Check for TitleTagCheck {
                 // Search displays render by width and may rewrite title
                 // links. Character count is therefore only an extreme-value
                 // review heuristic, not proof of quality or truncation.
-                let (status, result_title, desc) = if len < 20 {
+                let (status, result_title, desc) = if outcome == LengthOutcome::Short {
                     (CheckStatus::Warn, "Short title tag needs review", format!("The title contains {} characters. Length alone does not establish quality, but a very short title may be too generic or fail to distinguish this page. Review the rendered title and page intent rather than padding it to a quota.", len))
-                } else if len > 70 {
+                } else if outcome == LengthOutcome::Long {
                     (CheckStatus::Warn, "Long title tag needs review", format!("The title contains {} characters. Search title links render by width and may be rewritten, so this extreme count is a review signal; it does not prove truncation or that a particular query will display the supplied title unchanged.", len))
                 } else {
                     (CheckStatus::Pass, "Title tag", format!("A non-empty title is present ({} characters) and did not trigger the extreme-length heuristic. This check does not assess relevance, uniqueness across pages, rendered width, or search-engine rewrites.", len))
@@ -48,7 +90,7 @@ impl Check for TitleTagCheck {
                     status, severity: Severity::High,
                     fix_prompt: None, manual_fix: if status == CheckStatus::Pass {
                         None
-                    } else if len < 20 {
+                    } else if outcome == LengthOutcome::Short {
                         Some("Review the page intent and the title shown in the rendered document. If the wording is generic or ambiguous, replace it with a concise, page-specific label; include the brand only when it helps users distinguish the result. Do not add filler solely to reach a character target.".into())
                     } else {
                         Some("Review the title's wording, rendered width, and representative search contexts. Remove redundant or low-value text while preserving the page-specific topic; do not force a character quota or assume that shortening guarantees a particular search display.".into())
@@ -91,7 +133,8 @@ impl Check for MetaDescriptionCheck {
     }
 
     fn run(&self, ctx: &PageContext) -> Vec<CheckResult> {
-        let desc = extract_meta(&ctx.body, "description").filter(|value| !value.trim().is_empty());
+        let desc = description_value(&ctx.body);
+        let outcome = description_outcome(desc.as_deref());
         match desc {
             Some(d) => {
                 // Character count, not byte length (see seo.title): a CJK
@@ -100,9 +143,9 @@ impl Check for MetaDescriptionCheck {
                 // Snippet length varies by query, device, and search system,
                 // and the supplied description may be rewritten. Character
                 // count is an editorial review heuristic only.
-                let (status, result_title, msg) = if len < 50 {
+                let (status, result_title, msg) = if outcome == LengthOutcome::Short {
                     (CheckStatus::Warn, "Short meta description needs review", format!("The meta description contains {} characters. It may be intentionally concise, but review whether it gives a useful, page-specific summary; do not pad it solely to meet a character target.", len))
-                } else if len > 170 {
+                } else if outcome == LengthOutcome::Long {
                     (CheckStatus::Warn, "Long meta description needs review", format!("The meta description contains {} characters. Search snippets vary by query and device and may be rewritten, so the tail may not be shown; this count does not prove truncation.", len))
                 } else {
                     (CheckStatus::Pass, "Meta description", format!("A non-empty meta description is present ({} characters) and did not trigger the extreme-length heuristic. This check does not assess relevance, uniqueness, displayed snippet length, or whether a search system will use it.", len))
@@ -115,7 +158,7 @@ impl Check for MetaDescriptionCheck {
                     status, severity: Severity::Medium,
                     fix_prompt: None, manual_fix: if status == CheckStatus::Pass {
                         None
-                    } else if len < 50 {
+                    } else if outcome == LengthOutcome::Short {
                         Some("Review the page intent and representative search contexts. If this description is too generic to explain the page, replace it with a specific plain-language summary of what the visitor will find; add substance, not filler, and do not target a character quota.".into())
                     } else {
                         Some("Review the description in representative search contexts. Move the most useful page-specific information earlier and remove redundant wording that may not add value when a snippet is shortened; do not assume a fixed character limit or that a search system will use the supplied text.".into())
@@ -131,7 +174,7 @@ impl Check for MetaDescriptionCheck {
                     confidence_reason: if status == CheckStatus::Pass { None } else { Some("The length is directly observed, but usefulness, query fit, device rendering, and search-engine snippet selection are contextual.".into()) },
                     why_it_matters: if status == CheckStatus::Pass {
                         None
-                    } else if len < 50 {
+                    } else if outcome == LengthOutcome::Short {
                         Some("An underspecified authored summary can give a consumer little page-specific context, but usefulness and click-through impact cannot be inferred from character count alone.".into())
                     } else {
                         Some("A consumer may omit the tail of a long authored summary, but displayed length, usefulness, and click-through impact cannot be inferred from character count alone.".into())

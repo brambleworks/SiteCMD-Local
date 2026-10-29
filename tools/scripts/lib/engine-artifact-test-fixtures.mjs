@@ -31,6 +31,7 @@ const WASM_LIB_BASE = [
   gated("engine_route_evaluate"),
   gated("engine_route_session_page"),
   gated("engine_route_discover"),
+  gated("engine_route_sitemap_routes"),
   gated("engine_session_evaluate"),
 ].join("\n\n");
 
@@ -46,6 +47,8 @@ const ROUTE_SCHEMA_BASE = [
   "pub struct RouteSessionPageRequest {",
   "}",
   "pub struct RouteDiscoverRequest {",
+  "}",
+  "pub struct RouteSitemapRoutesRequest {",
   "}",
 ].join("\n");
 

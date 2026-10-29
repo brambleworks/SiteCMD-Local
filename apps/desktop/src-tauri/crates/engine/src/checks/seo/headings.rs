@@ -28,7 +28,7 @@ pub static COMMENT_AND_SCRIPT_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Heading levels in document order from comment/script/style-stripped markup.
-fn heading_levels(ctx: &PageContext) -> Vec<u8> {
+pub(crate) fn heading_levels(ctx: &PageContext) -> Vec<u8> {
     let scannable = NON_CONTENT_BLOCK_RE.replace_all(ctx.body_lower(), " ");
     HEADING_TAG_RE
         .captures_iter(&scannable)

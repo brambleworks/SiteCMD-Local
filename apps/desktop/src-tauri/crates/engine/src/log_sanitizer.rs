@@ -44,6 +44,11 @@ static EVIDENCE_EMAIL: LazyLock<regex::Regex> = LazyLock::new(|| {
         .expect("static evidence email regex")
 });
 
+/// Whether text contains an email-shaped run, regardless of its surrounding syntax.
+pub(crate) fn contains_email(text: &str) -> bool {
+    EVIDENCE_EMAIL.is_match(text)
+}
+
 static EVIDENCE_SENSITIVE_PAIR: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
         r#"(?i)\b(?P<key>access[_-]?token|api[_-]?key|authorization|client[_-]?secret|password|secret|token)\s*(?P<separator>[:=])\s*(?P<value>\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"#,

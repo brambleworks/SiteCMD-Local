@@ -6,7 +6,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -15,7 +19,9 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -93,7 +99,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": "398991009da1d251792eb353a0b7b185bc83e71e12e489e73228b554fc6cebc5",
+            "h1_chars": 4,
+            "heading_counts": [1, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -102,12 +112,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": "398991009da1d251792eb353a0b7b185bc83e71e12e489e73228b554fc6cebc5"
+            "title": "398991009da1d251792eb353a0b7b185bc83e71e12e489e73228b554fc6cebc5",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": "398991009da1d251792eb353a0b7b185bc83e71e12e489e73228b554fc6cebc5",
+            "h1_chars": 4,
+            "heading_counts": [1, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -116,7 +132,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "398991009da1d251792eb353a0b7b185bc83e71e12e489e73228b554fc6cebc5"
+            "title": "398991009da1d251792eb353a0b7b185bc83e71e12e489e73228b554fc6cebc5",
+            "title_chars": 4,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -251,7 +269,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -260,12 +282,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": "80658bb63287650aa5b5488ec2bc0433401b2eac8822f010344c304fcd36e6f0"
+            "title": "80658bb63287650aa5b5488ec2bc0433401b2eac8822f010344c304fcd36e6f0",
+            "title_chars": 300,
+            "title_outcome": "long"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -274,7 +302,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "7a81b18e7041cb4dee68ac4a5d1f7642d198ed03be96f6a742c5888844fbe07b"
+            "title": "7a81b18e7041cb4dee68ac4a5d1f7642d198ed03be96f6a742c5888844fbe07b",
+            "title_chars": 300,
+            "title_outcome": "long"
           }
         ],
         "response": {
@@ -409,7 +439,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -418,12 +452,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -432,7 +472,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -567,7 +609,11 @@
           {
             "canonical": "r1",
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -576,12 +622,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": "x",
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -590,7 +642,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -725,7 +779,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -734,12 +792,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": "r2",
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -748,12 +812,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": "r1",
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -762,7 +832,9 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -911,7 +983,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": ["r1"],
             "hreflang_truncated": false,
             "links": [],
@@ -920,12 +996,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -934,7 +1016,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -1069,7 +1153,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1078,12 +1166,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": "0967115f2813a3541eaef77de9d9d5773f1c0c04314b0bbfe4ff3b3b1c55b5d5"
+            "title": "0967115f2813a3541eaef77de9d9d5773f1c0c04314b0bbfe4ff3b3b1c55b5d5",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1092,7 +1186,9 @@
             "page": "pf8c0bb50121fc698",
             "requested": "r1",
             "status_code": 200,
-            "title": "0967115f2813a3541eaef77de9d9d5773f1c0c04314b0bbfe4ff3b3b1c55b5d5"
+            "title": "0967115f2813a3541eaef77de9d9d5773f1c0c04314b0bbfe4ff3b3b1c55b5d5",
+            "title_chars": 4,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -1227,7 +1323,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1236,7 +1336,9 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           null
         ],
@@ -1329,7 +1431,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1338,12 +1444,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1352,12 +1464,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 404,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1366,7 +1484,9 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": "398991009da1d251792eb353a0b7b185bc83e71e12e489e73228b554fc6cebc5"
+            "title": "398991009da1d251792eb353a0b7b185bc83e71e12e489e73228b554fc6cebc5",
+            "title_chars": 4,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -1515,7 +1635,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1", "r2", "r3"],
@@ -1528,12 +1652,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1542,12 +1672,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1556,12 +1692,18 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1570,12 +1712,18 @@
             "page": "r3",
             "requested": "r3",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1584,7 +1732,9 @@
             "page": "r4",
             "requested": "r4",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -1796,7 +1946,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1", "r2", "r3"],
@@ -1809,12 +1963,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1823,12 +1983,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1837,12 +2003,18 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1851,12 +2023,18 @@
             "page": "r3",
             "requested": "r3",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -1865,7 +2043,9 @@
             "page": "r4",
             "requested": "r4",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -2078,7 +2258,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -2091,12 +2275,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -2105,7 +2295,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -2269,7 +2461,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -2287,12 +2483,18 @@
               ]
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -2301,7 +2503,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -2485,7 +2689,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -2503,12 +2711,18 @@
               ]
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -2517,7 +2731,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -2685,7 +2901,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -2703,12 +2923,18 @@
               ]
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -2717,7 +2943,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -2885,7 +3113,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -7904,12 +8136,18 @@
               ]
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -7918,7 +8156,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -8086,7 +8326,11 @@
           {
             "canonical": "x",
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -8095,12 +8339,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -8109,7 +8359,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -8244,7 +8496,11 @@
           {
             "canonical": "x",
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -8253,12 +8509,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -8267,7 +8529,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -8402,7 +8666,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -8411,12 +8679,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -8425,7 +8699,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 302,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -8560,7 +8836,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -8573,12 +8853,18 @@
               "partial_causes": []
             },
             "status_code": 503,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -8587,7 +8873,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -8755,7 +9043,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -13769,12 +14061,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -13783,7 +14081,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -13951,7 +14251,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -13964,12 +14268,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -13978,7 +14288,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -14146,7 +14458,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1"],
@@ -14159,12 +14475,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r0"],
@@ -14173,7 +14495,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9",
+            "title_chars": 6,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -14370,7 +14694,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1"],
@@ -14389,12 +14717,18 @@
               ]
             },
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -14403,7 +14737,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9",
+            "title_chars": 6,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -14616,7 +14952,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1"],
@@ -14634,12 +14974,18 @@
               ]
             },
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -14648,7 +14994,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9",
+            "title_chars": 6,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -14847,7 +15195,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1", "pd07612a0879b703e", "pebee1deb63f2bb01"],
@@ -14860,12 +15212,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r0"],
@@ -14874,12 +15232,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062"
+            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062",
+            "title_chars": 7,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r0"],
@@ -14888,7 +15252,9 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": "a4262e1c9bcbc1721eb3fe13558154460a2b2a2d307daa32532478526ce6ccb1"
+            "title": "a4262e1c9bcbc1721eb3fe13558154460a2b2a2d307daa32532478526ce6ccb1",
+            "title_chars": 5,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -15085,7 +15451,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1"],
@@ -15094,12 +15464,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -15108,7 +15484,9 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9",
+            "title_chars": 6,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -15339,7 +15717,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -15348,12 +15730,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 500,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -15362,7 +15750,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9",
+            "title_chars": 6,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -15504,7 +15894,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1"],
@@ -15517,12 +15911,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -15531,12 +15931,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062"
+            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062",
+            "title_chars": 7,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -15545,12 +15951,18 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": "c51e1e554f857a3ed8d42a139ae2db262ef6fbbafc0b0d06306295ff5cca2875"
+            "title": "c51e1e554f857a3ed8d42a139ae2db262ef6fbbafc0b0d06306295ff5cca2875",
+            "title_chars": 10,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -15559,7 +15971,9 @@
             "page": "r3",
             "requested": "r3",
             "status_code": 200,
-            "title": "a4262e1c9bcbc1721eb3fe13558154460a2b2a2d307daa32532478526ce6ccb1"
+            "title": "a4262e1c9bcbc1721eb3fe13558154460a2b2a2d307daa32532478526ce6ccb1",
+            "title_chars": 5,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -15796,7 +16210,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["p858ec808dfd652dc", "r1"],
@@ -15805,12 +16223,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -15819,7 +16243,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "efa1f375d76194fa51a3556a97e641e61685f914d446979da50a551a4333ffd7"
+            "title": "efa1f375d76194fa51a3556a97e641e61685f914d446979da50a551a4333ffd7",
+            "title_chars": 6,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -16050,7 +16476,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r2"],
@@ -16067,12 +16497,18 @@
               ]
             },
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -16081,12 +16517,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9",
+            "title_chars": 6,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r0"],
@@ -16095,7 +16537,9 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062"
+            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062",
+            "title_chars": 7,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -16284,7 +16728,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1"],
@@ -16293,12 +16741,18 @@
             "page": "r0",
             "requested": "r0",
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r0"],
@@ -16307,7 +16761,9 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062"
+            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062",
+            "title_chars": 7,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -16527,7 +16983,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["p7ea22417f447d9f9", "p8c39731f69bb025d", "pf563e835b74e5312"],
@@ -16547,12 +17007,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -16561,12 +17027,18 @@
             "page": "p7ea22417f447d9f9",
             "requested": "x",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -16575,12 +17047,18 @@
             "page": "p8c39731f69bb025d",
             "requested": "x",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -16589,12 +17067,18 @@
             "page": "pf563e835b74e5312",
             "requested": "x",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -16603,7 +17087,9 @@
             "page": "p5d72b1d847e2ee1b",
             "requested": "x",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -16815,7 +17301,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1", "r2", "r3"],
@@ -16828,12 +17318,18 @@
               "partial_causes": []
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -16842,12 +17338,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -16856,12 +17358,18 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -16870,12 +17378,18 @@
             "page": "r3",
             "requested": "r3",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -16884,7 +17398,9 @@
             "page": "r4",
             "requested": "r4",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {
@@ -17103,7 +17619,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["p23a538fde85c5907"],
@@ -17120,7 +17640,9 @@
               ]
             },
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -17234,7 +17756,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r2"],
@@ -17251,12 +17777,18 @@
               ]
             },
             "status_code": 200,
-            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942"
+            "title": "4ea140588150773ce3aace786aeef7f4049ce100fa649c94fbbddb960f1da942",
+            "title_chars": 4,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -17265,12 +17797,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9"
+            "title": "56547a7cc8bbf46bb4aa2f18a097fee842ce6e94ca4c7f5cda6df35c4f5825c9",
+            "title_chars": 6,
+            "title_outcome": "short"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r0"],
@@ -17279,7 +17817,9 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062"
+            "title": "1e2ea6d9b72e685b53e26f41837abfc797c38cb6a7ad7b750ed3cac269fcc062",
+            "title_chars": 7,
+            "title_outcome": "short"
           }
         ],
         "response": {
@@ -17461,7 +18001,11 @@
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": ["r1", "r2", "r3"],
@@ -17478,12 +18022,18 @@
               ]
             },
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -17492,12 +18042,18 @@
             "page": "r1",
             "requested": "r1",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -17506,12 +18062,18 @@
             "page": "r2",
             "requested": "r2",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -17520,12 +18082,18 @@
             "page": "r3",
             "requested": "r3",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           },
           {
             "canonical": null,
             "description": null,
+            "description_chars": null,
+            "description_outcome": "missing",
             "h1": null,
+            "h1_chars": null,
+            "heading_counts": [0, 0, 0, 0, 0, 0],
             "hreflang": [],
             "hreflang_truncated": false,
             "links": [],
@@ -17534,7 +18102,9 @@
             "page": "r4",
             "requested": "r4",
             "status_code": 200,
-            "title": null
+            "title": null,
+            "title_chars": null,
+            "title_outcome": "missing"
           }
         ],
         "response": {

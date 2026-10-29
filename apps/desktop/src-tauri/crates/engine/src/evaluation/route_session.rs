@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 use super::artifact::facts_in_order;
-use super::discovery::{discover, DiscoveryResponse};
+use super::discovery::{discover, sitemap_routes, DiscoveryResponse, SitemapRoutes};
 use super::origin_reads::found_index;
 use super::probes::{
     is_sitemap_child_key, is_sitemap_probe_key, plan_probes, ExecutedProbe, ProbeContext,
@@ -95,6 +95,13 @@ pub struct RouteDiscoverRequest {
     #[serde(default)]
     pub planned: Vec<String>,
     pub limit: usize,
+}
+
+/// `engine_route_sitemap_routes`'s bounds on paths and their JSON array bytes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteSitemapRoutesRequest {
+    pub limit: usize,
+    pub byte_limit: usize,
 }
 
 /// One route's document, read once, and the probe outcomes recorded for it.
@@ -304,6 +311,16 @@ impl RouteSession {
             &self.context(&outcomes, &RouteFacts::default()),
             planned,
             limit,
+        )
+    }
+
+    /// The sitemap's storable paths, without requiring probes of those pages.
+    pub fn sitemap_routes(&self, limit: usize, byte_limit: usize) -> SitemapRoutes {
+        let outcomes = ProbeOutcomes::index(&self.outcomes);
+        sitemap_routes(
+            &self.context(&outcomes, &RouteFacts::default()),
+            limit,
+            byte_limit,
         )
     }
 

@@ -260,6 +260,27 @@ pub unsafe extern "C" fn engine_route_discover(ptr: *mut u8, len: u32) -> *const
     })
 }
 
+/// Answer the open route's storable sitemap paths within the supplied bounds.
+/// Its request is framed (see `request.rs`); the body region goes unread.
+///
+/// # Safety
+///
+/// `ptr` must be an unfreed `scorer_alloc` buffer of exactly `len` bytes.
+/// This call consumes the buffer.
+#[cfg(feature = "checks")]
+#[no_mangle]
+pub unsafe extern "C" fn engine_route_sitemap_routes(ptr: *mut u8, len: u32) -> *const u8 {
+    use sitecmd_engine::evaluation::RouteSitemapRoutesRequest;
+
+    let parsed = read_request::<RouteSitemapRoutesRequest>(ptr, len, BodyFields::None);
+    leak_framed(match parsed {
+        Ok(call) => {
+            with_route(|route| canonical(&route.sitemap_routes(call.limit, call.byte_limit)))
+        }
+        Err(error) => error_payload(&error),
+    })
+}
+
 /// Compare one scan's pages and return its cross-page verdicts as framed JSON.
 /// Its request is framed (see `request.rs`); the body region goes unread.
 ///

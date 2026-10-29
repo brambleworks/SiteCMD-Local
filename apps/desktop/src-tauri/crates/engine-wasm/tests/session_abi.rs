@@ -17,6 +17,9 @@ use sitecmd_engine_wasm::{
 
 const CORPUS: &str = include_str!("../../engine/fixtures/session/golden.json");
 
+#[path = "support/session_sitemap.rs"]
+mod sitemap;
+
 /// This thread's route opened on the request's page, its outcomes recorded,
 /// and its facts read through the ABI.
 fn facts_through_abi(request: &SessionPageRequest, children: usize) -> Vec<u8> {

@@ -1508,8 +1508,35 @@ storage, log, trace, cache, error report, or the connect submission:
   header's product name),
   each page's comparison facts (route keys, keyed path keys, Connect's
   MACs of the title, description and H1 digests, the status code, the key
-  version, flags and counts, the gate's presence reason, never a digest
-  or an address), timing counters, and operational counters.
+  version, flags and counts, the gate's presence reason, never an unkeyed
+  digest, an address or page text), timing counters, and operational counters.
+- Page facts also carry `title_chars`, `description_chars` and `h1_chars`
+  as optional character counts saturating at the engine's `MAX_FACT_CHARS`
+  (100,000), `title_outcome` and `description_outcome`
+  as `missing`, `short`, `long` or `ok`, and `heading_counts` as six counts
+  from H1 through H6, each saturating at 65,535. The engine's metadata
+  checks and facts share extraction and length classification: title
+  length uses the trimmed document title outside inline SVG, description
+  length uses the untrimmed attribute value, and missing or whitespace-only
+  values have no length. Title counts below 20 or above 70 and description
+  counts below 50 or above 170 are short or long, graded before saturation.
+  The digests retain the session comparison's normalization; `h1_chars`
+  measures that comparison's H1. An error-status row has no lengths,
+  missing outcomes and zero heading counts; readers use only its status.
+- The entry route may also keep `sitemap_routes: { routes, complete }`.
+  `engine_route_sitemap_routes({ limit, byte_limit })` reads the existing
+  sitemap walk, with no page probes required, and shares discovery's gate:
+  same origin, no query, path parameters or credentials, no cached-file
+  extension, no search path, no exposed-key format or email address, and
+  allowed by the site's robots policy. Published paths retain digit runs,
+  names and word slugs.
+  Canonical paths stay in sitemap order with duplicates removed, including
+  `/` when listed. The read keeps at most 5,000 routes and the caller's byte
+  bound, measured as UTF-8 JSON of the route array including its brackets,
+  quotes, escapes and commas. The hosted caller supplies 1,048,576 bytes.
+  `complete` is false when the walk is partial or a bound cuts it. An entry
+  document without a success status returns `routes: null` and
+  `complete: false`, and the hosted projection keeps no sitemap routes.
 - Error reports and logs carry the error taxonomy and `request_id`s,
   never page content; the projection is a function with a test, and
   the conformance corpus includes a hostile-page fixture (secrets in

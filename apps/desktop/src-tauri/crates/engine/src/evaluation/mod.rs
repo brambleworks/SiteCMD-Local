@@ -15,8 +15,9 @@ mod session_eval;
 mod session_facts;
 mod sitemap_children;
 
+pub use crate::checks::seo::meta::LengthOutcome;
 pub use artifact::{EvaluationError, PageArtifact};
-pub use discovery::DiscoveryResponse;
+pub use discovery::{DiscoveryResponse, SitemapRoutes};
 pub use inputs::EvaluationInputs;
 pub use probe_checks::{ProbeCheck, PROBE_CHECKS};
 pub use probes::{
@@ -25,14 +26,14 @@ pub use probes::{
 };
 pub use route_session::{
     RouteCall, RouteDiscoverRequest, RouteEvaluationRequest, RouteFacts, RouteOpenRequest,
-    RouteOpened, RouteSession, RouteSessionPageRequest,
+    RouteOpened, RouteSession, RouteSessionPageRequest, RouteSitemapRoutesRequest,
 };
 pub use runners::{Runner, RUNNERS};
 pub use runners_seo::{EXCLUDED_ARTIFACT_CHECKS, SEO_RUNNERS};
 pub use session_eval::{evaluate_session, SessionRequest, SessionResponse, SessionVerdictRow};
 pub use session_facts::{
     session_page, SessionPageFacts, SessionPageRequest, SessionSitemapCause, SessionSitemapFacts,
-    ELSEWHERE,
+    ELSEWHERE, MAX_FACT_CHARS,
 };
 
 use std::collections::HashMap;

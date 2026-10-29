@@ -13,6 +13,7 @@ const ROUTE_ABI = [
   "engine_route_evaluate",
   "engine_route_session_page",
   "engine_route_discover",
+  "engine_route_sitemap_routes",
   "engine_session_evaluate",
 ];
 const ROUTE_REQUESTS = [
@@ -21,6 +22,7 @@ const ROUTE_REQUESTS = [
   "struct RouteEvaluationRequest",
   "struct RouteSessionPageRequest",
   "struct RouteDiscoverRequest",
+  "struct RouteSitemapRoutesRequest",
 ];
 
 export function routeAbiFailures(read, listFiles) {

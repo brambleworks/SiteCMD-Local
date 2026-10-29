@@ -16,6 +16,10 @@ use super::origin_reads::{robots_request, sitemap_probe, sitemap_sources_read};
 use super::probes::{ExecutedProbe, ProbeContext};
 use super::{EvaluationError, PageArtifact, RouteSession};
 use crate::checks::origin_with_port;
+use crate::checks::seo::headings::heading_levels;
+use crate::checks::seo::meta::{
+    description_outcome, description_value, title_outcome, title_value, LengthOutcome,
+};
 use crate::checks::seo::robots::robots_fetch_from_probe;
 use crate::checks::seo::sitemap::{
     parse_sitemap_document, sitemap_bound_description, sitemap_urls_from_robots,
@@ -29,6 +33,9 @@ use crate::session::signals::{
 
 /// The key of an address no scanned page can be.
 pub const ELSEWHERE: &str = "x";
+
+/// The largest persisted character count for a page's title, description or H1.
+pub const MAX_FACT_CHARS: u32 = 100_000;
 
 /// One page step's request for its comparison facts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +126,14 @@ pub struct SessionPageFacts {
     pub title: Option<String>,
     pub description: Option<String>,
     pub h1: Option<String>,
+    /// Lengths and outcomes use the values graded by the metadata checks.
+    pub title_chars: Option<u32>,
+    pub title_outcome: LengthOutcome,
+    pub description_chars: Option<u32>,
+    pub description_outcome: LengthOutcome,
+    /// The compared H1's character count and the check's H1 through H6 counts.
+    pub h1_chars: Option<u32>,
+    pub heading_counts: [u16; 6],
     pub canonical: Option<String>,
     /// `null` when where a joined X-Robots-Tag line ended decides it.
     pub noindex: Option<bool>,
@@ -227,6 +242,12 @@ pub(super) fn page_facts(
             title: None,
             description: None,
             h1: None,
+            title_chars: None,
+            title_outcome: LengthOutcome::Missing,
+            description_chars: None,
+            description_outcome: LengthOutcome::Missing,
+            h1_chars: None,
+            heading_counts: [0; 6],
             canonical: None,
             noindex: Some(false),
             hreflang: Vec::new(),
@@ -236,6 +257,13 @@ pub(super) fn page_facts(
             sitemap: sitemap_facts(context, &keys),
         }));
     }
+    let title = title_value(&page.body);
+    let description = description_value(&page.body);
+    let mut heading_counts = [0_u16; 6];
+    for level in heading_levels(page) {
+        let count = &mut heading_counts[usize::from(level - 1)];
+        *count = count.saturating_add(1);
+    }
     Ok(Some(SessionPageFacts {
         page: own,
         requested: keys.key(&compared.requested_url),
@@ -243,6 +271,12 @@ pub(super) fn page_facts(
         title: digest(compared.title.as_deref()),
         description: digest(compared.meta_description.as_deref()),
         h1: digest(compared.h1.as_deref()),
+        title_chars: char_count(title.as_deref()),
+        title_outcome: title_outcome(title.as_deref()),
+        description_chars: char_count(description.as_deref()),
+        description_outcome: description_outcome(description.as_deref()),
+        h1_chars: char_count(compared.h1.as_deref()),
+        heading_counts,
         canonical: compared
             .canonical
             .as_deref()
@@ -254,6 +288,14 @@ pub(super) fn page_facts(
         links_truncated: compared.internal_links_truncated,
         sitemap: sitemap_facts(context, &keys),
     }))
+}
+
+fn char_count(value: Option<&str>) -> Option<u32> {
+    value.map(|value| {
+        u32::try_from(value.chars().count())
+            .unwrap_or(MAX_FACT_CHARS)
+            .min(MAX_FACT_CHARS)
+    })
 }
 
 /// The SHA-256 of the key the comparison uses (trimmed and ASCII-lowercased,
