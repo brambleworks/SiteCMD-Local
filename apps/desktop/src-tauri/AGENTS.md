@@ -58,6 +58,8 @@ decision, work-item regressions and the fix brief) keeps a parity corpus under
 `tests/fixtures/parity/`, written only by each module's ignored `regenerate` test
 and vendored with `tools/scripts/vendor-ported-fixtures.mjs`; change the Rust and
 its corpus together, then re-vendor.
+See [Hosted WASM builds](../../../docs/engineering/hosted-wasm-builds.md) for
+artifact vendoring and the recorded build flags.
 
 The engine has no clock, filesystem, network, environment, or Tauri dependency.
 Callers inject evaluation time and runtime facts. The wasm push gates enforce

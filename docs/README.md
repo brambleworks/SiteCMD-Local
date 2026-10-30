@@ -25,6 +25,7 @@ Use `docs/` only for information that should be treated as current project truth
 - [Tauri command and capability guide](engineering/tauri.md)
 - [Unified scan architecture](engineering/unified-scan-architecture.md)
 - [Native runtime boundary](engineering/native-runtime-boundary.md) (shared Rust ownership and standalone CLI builds)
+- [Hosted WASM builds](engineering/hosted-wasm-builds.md) (vendoring, recorded flags, and byte reproduction)
 - [Issue and alert architecture](engineering/issue-and-alert-architecture.md)
 - [Get value in five minutes](product/get-value-in-5-minutes.md)
 - [Fix your first issue](product/fix-your-first-issue.md)

@@ -42,11 +42,13 @@ const REQUIRED_PROVENANCE = [
   "rustc",
   "target",
   "profile",
+  "rustflags",
   "artifact_sha256",
   "corpus_sha256",
   "session_corpus_sha256",
   "browser_assets_sha256",
   "manifest_digest",
+  "capability_manifest_sha256",
 ];
 
 export function engineArtifactFailures(read, listFiles) {
@@ -316,6 +318,9 @@ export function engineArtifactFailures(read, listFiles) {
           `only thing between a reviewer and a wasm blob of unknown origin`,
       );
     }
+  }
+  if (!/\brustflags:/.test(scorerScript)) {
+    failures.push(`${SCORER_SCRIPT}: the vendored record no longer carries \`rustflags\``);
   }
 
   const registered = REGISTRATION_SOURCES.map((file) => read(file)).join("\n");

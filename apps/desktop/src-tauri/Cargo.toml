@@ -183,10 +183,10 @@ inherits = "release"
 debug = true
 strip = false
 
-# Optimize the Worker scorer artifact for size and turn panics into clean traps.
+# Build the hosted engine for speed and turn panics into clean traps.
 [profile.wasm-release]
 inherits = "release"
-opt-level = "z"
+opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"

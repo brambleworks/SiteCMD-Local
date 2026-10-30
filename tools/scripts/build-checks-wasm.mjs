@@ -14,6 +14,7 @@ import {
   sha256,
   vendorSet,
   WASM_PROFILE,
+  WASM_RUSTFLAGS,
   WASM_TARGET,
 } from "./lib/wasm-vendor.mjs";
 
@@ -58,7 +59,8 @@ const artifact = readFileSync(artifactPath);
 const corpus = readFileSync(corpusPath);
 const stackCorpus = readFileSync(stackCorpusPath);
 const sessionCorpus = readFileSync(sessionCorpusPath);
-const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+const manifestBytes = readFileSync(manifestPath);
+const manifest = JSON.parse(manifestBytes.toString("utf8"));
 const axeCore = readFileSync(path.join(browserPath, "axe.min.js"), "utf8");
 const cwvObserver = readFileSync(path.join(browserPath, "cwv_observer.js"), "utf8");
 const cwvRead = readFileSync(path.join(browserPath, "cwv_read.js"), "utf8");
@@ -94,18 +96,21 @@ const provenance = {
   rustc: run("rustc", ["--version"], { cwd: cargoRoot }),
   target: WASM_TARGET,
   profile: WASM_PROFILE,
+  rustflags: WASM_RUSTFLAGS,
   artifact_sha256: sha256(artifact),
   corpus_sha256: sha256(corpus),
   stack_corpus_sha256: sha256(stackCorpus),
   session_corpus_sha256: sha256(sessionCorpus),
   browser_assets_sha256: sha256(browserAssets),
   manifest_digest: manifest.manifest_digest,
+  capability_manifest_sha256: sha256(manifestBytes),
 };
 
 vendorSet({
   outDir,
   files: [
     { name: "checks.wasm", bytes: artifact },
+    { name: "capability_manifest.json", bytes: manifestBytes },
     { name: "golden.json", bytes: corpus },
     { name: "stack-golden.json", bytes: stackCorpus },
     { name: "session-golden.json", bytes: sessionCorpus },

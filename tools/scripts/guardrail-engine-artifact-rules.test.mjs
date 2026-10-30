@@ -185,7 +185,7 @@ describe("engineArtifactFailures", () => {
     expect(flags(failures, "does not vendor through")).toBe(true);
   });
 
-  it.each(["corpus_sha256", "session_corpus_sha256"])(
+  it.each(["corpus_sha256", "session_corpus_sha256", "rustflags", "capability_manifest_sha256"])(
     "rejects a provenance record missing %s",
     (field) => {
       const failures = run({
@@ -194,6 +194,12 @@ describe("engineArtifactFailures", () => {
       expect(flags(failures, field)).toBe(true);
     },
   );
+
+  it("rejects a scorer record missing rustflags", () => {
+    expect(run({ [SCORER_SCRIPT]: SCORER_SCRIPT_BASE.replace("rustflags:", "other:") })).toContain(
+      `${SCORER_SCRIPT}: the vendored record no longer carries \`rustflags\``,
+    );
+  });
 
   it("rejects a hosted runner for a check no desktop scan registers", () => {
     const failures = run({ [REGISTRATION]: "pub fn sync_checks() { vec![] }" });
