@@ -58,7 +58,7 @@ struct CollectionState {
 }
 
 impl CollectionState {
-    fn account_text(&mut self, content: &String, limits: CollectionLimits) -> Result<(), String> {
+    fn charge_text(&mut self, content: &String, limits: CollectionLimits) -> Result<(), String> {
         self.total_bytes = self.total_bytes.saturating_add(content.capacity() as u64);
         if self.total_bytes > limits.max_total_bytes {
             return Err(format!(
@@ -346,7 +346,7 @@ fn collect_project_inventory_with_limits(
             let content = read_project_file(&project_file, scan_scope::CARGO_MANIFEST_MAX_BYTES)
                 .and_then(|bytes| String::from_utf8(bytes).ok());
             if let Some(content) = &content {
-                state.account_text(content, limits)?;
+                state.charge_text(content, limits)?;
             }
             state
                 .rust_modules
@@ -420,7 +420,7 @@ fn collect_project_inventory_with_limits(
             continue;
         }
 
-        state.account_text(&content, limits)?;
+        state.charge_text(&content, limits)?;
 
         source_files.push(SourceFile {
             absolute_path: canonical_path,
