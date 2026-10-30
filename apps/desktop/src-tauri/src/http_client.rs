@@ -351,7 +351,7 @@ fn safe_redirect_policy(policy: crate::network_policy::UrlPolicy) -> reqwest::re
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
+    use tokio::net::{TcpListener, TcpStream};
 
     fn ptr<T>(r: &T) -> *const T {
         r as *const T
@@ -366,10 +366,10 @@ mod tests {
         encoder.finish().expect("finish the gzip stream")
     }
 
-    /// Answer exactly one request with a `Content-Encoding: gzip` body and
-    /// hand back the request head the client sent.
-    async fn serve_one_gzip_response(listener: TcpListener, body: Vec<u8>) -> String {
-        let (mut stream, _) = listener.accept().await.expect("accept gzip request");
+    /// Read one request head, up to its blank line. A test server answers
+    /// only after this, as a real one does: a response that arrives while the
+    /// client is still sending its request fails the request in hyper.
+    async fn read_request_head(stream: &mut TcpStream) -> Vec<u8> {
         let mut request = Vec::new();
         let mut buffer = [0u8; 1024];
         while !request.windows(4).any(|window| window == b"\r\n\r\n") {
@@ -379,6 +379,14 @@ mod tests {
             }
             request.extend_from_slice(&buffer[..read]);
         }
+        request
+    }
+
+    /// Answer exactly one request with a `Content-Encoding: gzip` body and
+    /// hand back the request head the client sent.
+    async fn serve_one_gzip_response(listener: TcpListener, body: Vec<u8>) -> String {
+        let (mut stream, _) = listener.accept().await.expect("accept gzip request");
+        let request = read_request_head(&mut stream).await;
         let head = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
@@ -671,6 +679,7 @@ mod tests {
         let addr = listener.local_addr().expect("body-limit server address");
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.expect("accept body-limit request");
+            read_request_head(&mut stream).await;
             stream
                 .write_all(
                     b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n",
