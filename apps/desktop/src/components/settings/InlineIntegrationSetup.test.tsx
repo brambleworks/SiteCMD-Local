@@ -94,7 +94,7 @@ describe("InlineIntegrationSetup", () => {
 
     fireEvent.click(screen.getByText("Plausible Analytics").closest("button")!);
 
-    expect(screen.getByRole("button", { name: "Connect" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Connect" })).toBeInTheDocument();
     expect(screen.getByText("Open Plausible API Keys →")).toBeInTheDocument();
   });
 
@@ -273,7 +273,9 @@ describe("InlineIntegrationSetup", () => {
     const select = await screen.findByLabelText(target.label);
     expect(screen.queryByLabelText(target.otherLabel)).not.toBeInTheDocument();
     expect(select).toHaveValue("");
-    expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
+    // The picker opens its native dialog in an effect, after the select exists,
+    // and getByRole skips a closed dialog's contents, so wait for the button.
+    expect(await screen.findByRole("button", { name: "Connect" })).toBeDisabled();
     expect(invokeMock).not.toHaveBeenCalledWith("save_google_integration", expect.anything());
 
     fireEvent.change(select, { target: { value: target.choice } });
