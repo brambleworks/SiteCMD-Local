@@ -101,6 +101,6 @@
     "safe-regex": "^2.1.1",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.69.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }

@@ -3793,7 +3793,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ================================================================================
 SHA-256: 23d466b1b134b415b66fa50c6526b4cf3e7b9258554da88d3abb371721e7ce68
-Packages: npm:body-parser@2.3.0, npm:type-is@2.1.0
+Packages: npm:body-parser@2.4.0, npm:type-is@2.1.0
 Upstream files: LICENSE
 ================================================================================
 (The MIT License)
@@ -4010,7 +4010,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ================================================================================
 SHA-256: 253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552
-Packages: cargo:tokio-util@0.7.19, cargo:tokio@1.53.1
+Packages: cargo:tokio-util@0.7.19, cargo:tokio@1.54.1
 Upstream files: LICENSE
 ================================================================================
 MIT License
@@ -5991,7 +5991,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ================================================================================
 SHA-256: 3f1189b28e3866e0d979968d466b78f813f76827cfdca1fbb124cc0a5c8841f8
-Packages: npm:zod@4.5.4
+Packages: npm:zod@4.6.7
 Upstream files: LICENSE
 ================================================================================
 MIT License
@@ -8193,7 +8193,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ================================================================================
 SHA-256: 5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a
-Packages: cargo:rustls-webpki@0.103.14
+Packages: cargo:rustls-webpki@0.103.16
 Upstream files: LICENSE
 ================================================================================
 Except as otherwise noted, this project is licensed under the following
@@ -8383,7 +8383,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ================================================================================
 SHA-256: 5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d
-Packages: npm:@modelcontextprotocol/sdk@1.31.0
+Packages: npm:@modelcontextprotocol/sdk@1.32.2
 Upstream files: LICENSE
 ================================================================================
 MIT License
@@ -13680,7 +13680,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ================================================================================
 SHA-256: 91585c36e4fb9ab4ca0d3dfac5d66d3c0c62cc51f640a0e1196542daf2267eae
-Packages: cargo:ctutils@0.4.2
+Packages: cargo:ctutils@0.4.7
 Upstream files: LICENSE-MIT
 ================================================================================
 Copyright (c) 2025-2026 The RustCrypto Project Developers
@@ -19675,7 +19675,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ================================================================================
 SHA-256: cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
-Packages: cargo:cmov@0.5.4, cargo:ctutils@0.4.2, cargo:embed_plist@1.2.2, cargo:encoding_rs@0.8.35, cargo:tinyvec@1.12.0, cargo:utf8_iter@1.0.4, cargo:x11rb-protocol@0.13.2, cargo:x11rb@0.13.2, cargo:zeroize@1.9.0, cargo:zeroize_derive@1.5.0
+Packages: cargo:cmov@0.5.4, cargo:ctutils@0.4.7, cargo:embed_plist@1.2.2, cargo:encoding_rs@0.8.35, cargo:tinyvec@1.12.0, cargo:utf8_iter@1.0.4, cargo:x11rb-protocol@0.13.2, cargo:x11rb@0.13.2, cargo:zeroize@1.9.0, cargo:zeroize_derive@1.5.0
 Upstream files: LICENSE-APACHE, LICENSE-APACHE.md
 ================================================================================
 
@@ -20855,7 +20855,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ================================================================================
 SHA-256: df7464922225c9b286167fa692d305e5ba98bf71613525d4d031649a344a3f3f
-Packages: npm:fast-uri@3.1.8
+Packages: npm:fast-uri@3.1.9
 Upstream files: LICENSE
 ================================================================================
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae
@@ -20972,7 +20972,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ================================================================================
 SHA-256: e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8
-Packages: cargo:webpki-root-certs@1.0.9
+Packages: cargo:webpki-root-certs@1.0.11
 Upstream files: LICENSE
 ================================================================================
 # Community Data License Agreement - Permissive - Version 2.0
@@ -21536,7 +21536,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ================================================================================
 SHA-256: e7dc37bf662d7f786efcb46c545615e70c1daf458a38385521c63cf6607cdfe1
-Packages: npm:qs@6.16.0
+Packages: npm:qs@6.17.1
 Upstream files: LICENSE.md
 ================================================================================
 BSD 3-Clause License
@@ -22544,7 +22544,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 ================================================================================
 SHA-256: f8d791359a50cbcac82c29cb7b0b1b889b28be76fdd35b8ee33f0f7c8704702a
-Packages: npm:ip-address@10.7.3
+Packages: npm:ip-address@10.7.5
 Upstream files: LICENSE
 ================================================================================
 Copyright (C) 2011 by Beau Gunderson

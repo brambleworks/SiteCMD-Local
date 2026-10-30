@@ -94,6 +94,8 @@ export function publicFaceFailures(read, exists, listFiles) {
   }
 
   // sitecmd.com/download redirects to the CLI docs; the desktop is not offered.
+  // codeql-allow: js/regex/missing-regexp-anchor. This searches README prose
+  // for a link anywhere in it; it never decides whether a URL is trusted.
   if (exists(README) && /sitecmd\.com\/download\b/.test(read(README))) {
     failures.push(
       `${README} links sitecmd.com/download, which now redirects to the CLI docs; link https://sitecmd.com/docs/cli instead.`,
