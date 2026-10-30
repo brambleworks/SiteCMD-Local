@@ -11,6 +11,8 @@ public repository history.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-29
+
 ### Added
 
 - `sitecmd gate --outputs <FILE>` writes its verdict and the number of new
