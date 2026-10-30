@@ -11,6 +11,8 @@ public repository history.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-29
+
 ### Added
 
 - `sitecmd gate --outputs <FILE>` writes its verdict and the number of new
@@ -88,6 +90,14 @@ public repository history.
 - `sitecmd init --no-deep-link` has been removed because initialization no
   longer opens the desktop app. Remove the option from scripts; passing it
   now produces an unknown-option error.
+
+### Security
+
+- Updated rustls-webpki and its bundled root certificates past
+  RUSTSEC-2026-0381, RUSTSEC-2026-0382 and RUSTSEC-2026-0383, under which
+  certificate verification could accept distrusted intermediate certificates.
+- The MCP server moves to patched releases of its SDK and of zod, past the
+  advisories published against them.
 
 ## [1.5.0] - 2026-09-21
 
