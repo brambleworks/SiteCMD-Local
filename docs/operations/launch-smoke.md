@@ -121,7 +121,7 @@ Run the desktop and local CLI while signed out and disconnected:
    text, raw file paths, credentials, and application table rows are absent.
 5. Cancel the connection flow and confirm nothing is submitted.
 
-Production entitlement, hosted scanning, provider callbacks, alert delivery,
+Production entitlement, hosted scanning, alert delivery,
 reports, retention, and erasure are verified by the private connected-service
 runbook because those systems do not ship from this repository.
 

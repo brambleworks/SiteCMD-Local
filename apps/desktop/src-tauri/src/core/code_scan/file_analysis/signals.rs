@@ -393,7 +393,7 @@ impl FileAnalysisSignals {
                 .any(|needle| path_norm.contains(needle)),
             sensitive_handler,
             write_handler: write_handler_raw,
-            inline_rust_tests: rel_lower.ends_with(".rs") && has_inline_rust_tests(&lower),
+            inline_rust_tests: file.inline_rust_tests,
         };
 
         let signals = Self {

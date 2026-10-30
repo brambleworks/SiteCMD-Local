@@ -22,6 +22,7 @@ fn source_file(relative_path: &str, content: &str) -> SourceFile {
         absolute_path: std::path::PathBuf::from(relative_path),
         relative_path: relative_path.to_string(),
         line_count: content.lines().count(),
+        inline_rust_tests: false,
         content: content.to_string(),
     }
 }

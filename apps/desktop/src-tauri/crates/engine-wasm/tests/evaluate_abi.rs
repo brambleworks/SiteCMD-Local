@@ -60,7 +60,6 @@ fn check_by_id(id: &str) -> Box<dyn Check> {
         "security.mixed_content" => Box::new(c::security::mixed_content::MixedContentCheck),
         "config.deprecated_html" => Box::new(c::config::deprecated_html::DeprecatedHtmlCheck),
         "compliance.trackers" => Box::new(c::compliance::trackers::ThirdPartyTrackerCheck),
-        "config.localhost_refs" => Box::new(c::predeploy::LocalhostRefsCheck),
         "performance.unminified" => Box::new(c::performance::unminified::UnminifiedCodeCheck),
         "accessibility.skip_nav" => Box::new(c::accessibility::html_checks::SkipNavCheck),
         "compliance.form_consent" => Box::new(c::compliance::trackers::FormConsentCheck),
@@ -192,6 +191,33 @@ fn identical_requests_produce_identical_payloads() {
         abi::open(&case.page);
         let second = abi::call(engine_route_evaluate, b"{}");
         assert_eq!(first, second, "{}", case.name);
+    }
+}
+
+#[test]
+fn http2_is_named_unsupported_even_when_a_page_carries_a_protocol() {
+    for protocol in [None, Some("HTTP/1.1"), Some("HTTP/2.0"), Some("HTTP/3")] {
+        let mut page = corpus().cases[0].page.clone();
+        page.http_version = protocol.map(str::to_string);
+        let response = evaluate_through_abi(&page);
+        assert!(
+            response
+                .planned
+                .iter()
+                .all(|row| row.check != "performance.http2"),
+            "{protocol:?}: HTTP/2 must not be planned"
+        );
+        assert!(response
+            .results
+            .iter()
+            .all(|row| row.check_id != "performance.http2"));
+        let named = response
+            .not_evaluated
+            .iter()
+            .find(|row| row.check == "performance.http2")
+            .expect("HTTP/2 is named not evaluated");
+        assert_eq!(named.reason, NotEvaluatedReason::UnsupportedLane);
+        assert_eq!(named.layer, None);
     }
 }
 

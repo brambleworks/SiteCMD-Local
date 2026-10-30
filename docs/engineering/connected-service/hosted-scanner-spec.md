@@ -46,9 +46,14 @@ reimplementation:
 - **Shared browser assets.** Axe and Core Web Vitals payloads live with the
   engine and return typed facts, including executed axe rule identities. Static
   and browser findings supersede one another per rule.
-- **Explicit crawl scope.** SiteCMD scans the selected route set, with sitemap
-  discovery as input rather than an unbounded link-following crawler.
-  Origin-scoped checks run on the entry route.
+- **Explicit crawl scope.** SiteCMD scans the route set the scope names:
+  the routes a person selected, or, for a site whose scope no person
+  chose, the routes the entry route's own reads discover when its
+  robots.txt rules are known, or the starting routes retained when those
+  rules are unknown. Discovery reads the entry route's same-origin links
+  and the site's sitemap pages, an index's through its children, one
+  level deep and followed no further. It is not an unbounded
+  link-following crawler. Origin-scoped checks run on the entry route.
 - **Separate integration metrics.** PageSpeed Insights remains an on-demand
   integration and is not part of hosted scan parity.
 
@@ -120,12 +125,12 @@ tier names the artifact that proves agreement:
      **freshness rule**: the certificate-horizon drift check and any
      re-evaluation may grade facts no older than 7 days; staler facts
      make the TLS pairs inconclusive and schedule a **targeted
-     refresh** (a single-page `full`-profile fetch of the entry URL),
+     refresh** (a single-page fetch of the entry URL with browser checks),
      because warning about a certificate that already rotated would be
      the guardian crying wolf with old news.
 
    Adapters fill the schema from the desktop's `rustls` handshake or,
-   hosted, from two pieces of one public-egress path during `full` page
+   hosted, from two pieces of one public-egress path during page
    loads. Workers global `fetch` supplies the chain verdict. After
    navigation settles, the hosted runner starts exactly one best-effort
    `node:tls` connection for the final main-document HTTPS response,
@@ -194,7 +199,7 @@ tier names the artifact that proves agreement:
    (the median of five runs).
    Cloudflare lets in-flight requests complete when an isolate passes
    128 MB, and starts a new isolate for later ones. A page near the request
-   cap (400) and the session's 25 MiB of response data can lift its pass
+   cap (400) and the route's 25 MiB of response data can lift its pass
    past half the isolate too, almost all of it garbage the isolate has not
    collected yet. A page of 399 images of 16 KiB measured 86,759,684 bytes,
    100 images of 128 KiB 68,975,409, and a heap snapshot of a pass with 99
@@ -214,7 +219,7 @@ tier names the artifact that proves agreement:
    each timed from its dispatch to its response head over the redirects
    it follows and leaving out the scanner's own address check before each
    hop. Both are sent in the route's first probe round, after the page's
-   own fetch, the browser pass in a `full` scan and as many as 39 of that
+   own fetch, the browser pass and as many as 39 of that
    round's other requests, and never beside another probe, where the
    desktop times TTFB before its probes; the value is taken from
    Cloudflare's network rather than a visitor's, so it is a different
@@ -347,7 +352,7 @@ new engine build.
   complete required route set ran, so a partial scan cannot claim
   session-level absence.
 - `requires` names the runtime facts the check needs (browser, sockets,
-  resolver), which is how the gate knows a `standard` observation
+  resolver), which is how the gate knows an observation without browser execution
   cannot speak to browser-family pairs. It declares runtime needs,
   **not** input completeness, and is therefore never the basis for
   input equivalence.
@@ -416,7 +421,7 @@ an already-registered digest, never unregistering one.
 Browser Run reports; automatic platform updates change it, and
 pretending otherwise would make unequal environments compare equal),
 axe version, resolver identity, transport adapter identity and
-version, scan profile (`full` or `standard`), and `layers_run` - the
+version, scan profile, and `layers_run` - the
 layers the observation actually ran, the only vantage fact a
 producer states. `producer_instance` and locality are
 **server-derived, never wire values**: the instance from the
@@ -446,7 +451,7 @@ constant those ids carry, with a shared contract that folds in the
 pinned axe version for the axe family. Lookup resolves an exact id
 first and the longest matching family second.
 
-Three things a generator cannot check about itself are enforced
+Four things a generator cannot check about itself are enforced
 against the source instead (`guardrail-capability-manifest-rules.mjs`):
 a row may claim a hosted lane other than `unsupported` only when the
 check's verdict code is in the engine crate, so the lane is checked
@@ -456,6 +461,14 @@ because two answers to one coverage question is how coverage claims go
 wrong; and a check whose verdict reads `evaluation_time` must be
 classed `clock_dependent`, because classing one as deterministic
 blames an operator for the calendar.
+
+The same guardrail also rejects a row marked `unsupported` while the engine
+crate emits its id, because that silently drops hosted findings from
+cross-vantage comparison. One exception is a check whose id is emitted only
+from files under `crates/engine/src/checks/predeploy/`: those checks return
+nothing unless the page is localhost, so a hosted scan has no findings to
+compare. The explicit `performance.http2` exception covers an input the hosted
+runtime cannot observe: Workers `fetch` exposes no negotiated HTTP protocol.
 
 ## Execution architecture
 
@@ -523,20 +536,27 @@ deployments, and alarms are at-least-once. Correctness comes from a
   and scope-change-during-commit) prove it.
 - Page-step commits are idempotent on `(scan_id, route)` under the
   fence: an alarm that fires twice or a step retried after eviction
-  re-commits the same result, not a duplicate.
-- Recovery is resumption from the record, **and connect linearizes
-  it**: a restarted DO reads the scan record and calls
+  re-commits the same result, not a duplicate. An attempt the platform
+  ended partway is charged against the scan's retry budget of 5 only
+  after 15 minutes have passed since that attempt started; before then
+  recovery waits, because the earlier invocation may still be live. A
+  step retried after its browser pass began runs without the browser and
+  excepts its browser-family pairs, so a failed step earns no fresh
+  browser allowance.
+- Recovery is resumption from the record, **and connect linearizes it**:
+  a restarted DO reads the scan record and calls
   `advanceScanGeneration(scan_id, current, current + 1)` at connect
   **before** touching local state, because bump-locally-then-register
   would leave the exact window it exists to close (a zombie's commit
   landing between the bump and the registration). On `advanced` the
   coordinator adopts the new generation and resumes; on
   `already_committed` the scan finished under the old generation and
-  recovery stops; on `stale` it adopts the returned generation. The
-  call is idempotent by target generation, so a crash between the
-  connect CAS and local adoption re-runs and converges. Steps that
-  exceed the retry budget except their pairs; a scan that cannot
-  proceed terminates with honest partial coverage.
+  recovery stops; on `stale` it adopts the returned generation. The call
+  is idempotent by target generation, so a crash between the connect CAS
+  and local adoption re-runs and converges. When a page step that
+  failed, or that the platform ended, finds the scan's retry budget
+  spent, page collection ends; the remaining routes record `scan_ended`
+  coverage exceptions, and the scan submits its partial coverage.
 - Disconnect and erase cancel outstanding alarms, bump the
   `erasure_epoch`, and delete the DO storage for the site; erase
   includes this storage in its cascade.
@@ -545,7 +565,7 @@ deployments, and alarms are at-least-once. Correctness comes from a
 
 A hosted scan mirrors the desktop's sequential page loop as a chain of
 steps driven by the coordinator: each step scans one route (transport
-fetch, browser work when the scan profile includes it, wasm checks),
+fetch, browser work when admitted, wasm checks),
 commits its sanitized partial result under the fence, and yields.
 Between steps the coordinator checks for supersession and cancellation,
 the hosted equivalent of the desktop's 50 ms cancel polling, at page
@@ -559,6 +579,14 @@ not already provide. After the final step the coordinator assembles
 coverage, submits the observation through `commitHostedObservation`,
 and acts on the response: `applied`, or `history_only` with a
 replacement scan scheduled.
+
+A page step's network work has a 10-minute deadline inside the 15-minute
+wall time Cloudflare gives one Durable Object alarm. That deadline
+bounds the page fetch, each probe, the external facts and the browser
+pass. A probe past it reads as unanswered; the browser pass ends
+unanswered too, while the scan's browser session stays open for later
+routes. The remaining alarm time allows recovery, engine evaluation,
+commit and cleanup.
 
 ### Global browser admission
 
@@ -604,19 +632,12 @@ singleton hotspot Cloudflare warns against):
   operational alert about the service, not a quiet coverage note about
   the site.
 
-### Scan profiles
+### Hosted scan
 
-Two, mirroring the desktop's own split (its scheduler always passes
-`axe_enabled: false`):
-
-- `full`: transport plus browser layer. Default for deploy-triggered
-  scans, because the deploy-verification promise includes the browser
-  checks, and the source of hosted TLS facts.
-- `standard`: transport only. Default for scheduled between-deploy
-  scans, where the drift checks below carry the watch and browser cost
-  is not justified per tick. Cadence and the periodic full pass are
-  operating values in the beta operating configuration below; what a
-  paid plan eventually includes is decided outside this specification.
+Every hosted scan runs all available transport and browser checks: daily
+scheduled, deploy-triggered, coalesced and manual scans use the same scan.
+Browser checks include the hosted TLS facts. Admission failures remain
+explicit coverage exceptions under the browser admission rules above.
 
 ## Beta operating configuration
 
@@ -626,71 +647,54 @@ values are therefore a **versioned configuration artifact** in the
 connect worker - engineering capacity decisions, explicitly not
 prices, replaced by the pricing pass's decided values at graduation:
 
-- The keys, all required: scheduled standard-scan cadence, periodic
-  full-pass cadence, deploy debounce window, fair-use deploy-scan
-  ceiling and coalescing floor, per-destination and per-account daily
-  send caps, per-credential rate limits, per-scan and per-site budget
-  bounds (pages, sessions, session seconds), the allowance-slot
-  cooldown window, and the retained `dunning_grace_days` setting.
-  Entitlement does not read that setting: payment grace is the Stripe
-  `past_due` status, which permits watching but not adding sites or
-  dispatching fix jobs.
-- The **beta-1 values**, the initial committed artifact ("set
-  conservatively" is not a value an implementer can ship). These are
-  capacity engineering, not prices; every revision is a version bump
-  with a changelog line, so "what were the limits when this scan ran"
+- The keys, all required: daily scheduled attempts, deploy debounce
+  window, per-destination and per-account daily send caps, per-scan and
+  per-site budget bounds (pages, sessions, session seconds), and the
+  allowance-slot cooldown window.
+- The **current values** below come from the runner's cadence, the
+  committed operating artifact and the credential rate-limit binding
+  ("set conservatively" is not a value an implementer can ship). These
+  are capacity engineering, not prices. Artifact revisions have a version
+  bump and changelog line, so "what were the limits when this scan ran"
   is answerable:
 
-  | Key                              | Beta-1 value                                                                                                                                                                                                                                                                                                                         |
+  | Key                              | Current value                                                                                                                                                                                                                                                                                                                        |
   | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-  | Scheduled standard scan          | 1 per site per day                                                                                                                                                                                                                                                                                                                   |
-  | Periodic full pass               | 1 per site per week                                                                                                                                                                                                                                                                                                                  |
+  | Daily scheduled scan             | 1 per site per UTC day                                                                                                                                                                                                                                                                                                               |
   | Deploy debounce window           | 120 seconds                                                                                                                                                                                                                                                                                                                          |
-  | Deploy-scan fair-use ceiling     | 30 deploy-triggered scans per site per day                                                                                                                                                                                                                                                                                           |
-  | Coalescing floor                 | Full profile for the first 10 deploy scans per day, `standard` after                                                                                                                                                                                                                                                                 |
   | Per-destination send cap         | 50 messages per day                                                                                                                                                                                                                                                                                                                  |
   | Per-account send cap             | 200 messages per day                                                                                                                                                                                                                                                                                                                 |
-  | Account-credential rate limit    | 120 requests per minute                                                                                                                                                                                                                                                                                                              |
+  | Account-credential rate limit    | 120 requests per 60 seconds per credential per location, configured by `CONNECT_TOKEN_RATE_LIMIT`                                                                                                                                                                                                                                    |
   | Live personal tokens per account | 50                                                                                                                                                                                                                                                                                                                                   |
-  | CI-token rate limit              | 60 requests per minute                                                                                                                                                                                                                                                                                                               |
-  | Hook-door rate limit             | 60 events per minute per site                                                                                                                                                                                                                                                                                                        |
-  | Resend-intake rate limit         | 300 events per minute, global                                                                                                                                                                                                                                                                                                        |
-  | Browser-form public-route limit  | 30 requests per minute per source address per resource                                                                                                                                                                                                                                                                               |
-  | Per-site daily budget            | 60 scans, 15 sessions, 13,500 session seconds, 6,000 pages                                                                                                                                                                                                                                                                           |
+  | Per-site daily budget            | 3 scans, 3 browser sessions, 2,700 session seconds, 300 pages                                                                                                                                                                                                                                                                        |
   | Per-scan budget                  | 100 routes, 1 browser session, 900 session seconds, 400 outbound probe requests per route                                                                                                                                                                                                                                            |
   | Allowance-slot cooldown          | 7 days                                                                                                                                                                                                                                                                                                                               |
-  | Retained dunning setting         | 7 days, unused by entitlement                                                                                                                                                                                                                                                                                                        |
   | Browser admission partition      | Ceiling = the billed-free concurrency allowance (10), deliberately not the platform limit (120) recorded beside it: the provider refuses above one and bills above the other, so they are different numbers on purpose; reserve 2; 4 shards; per-shard quota = floor((ceiling - reserve) / 4), literals stamped at config generation |
-  | Scheduled reservation, daily     | Up to 3 attempts: 300 pages, 0 sessions, per site                                                                                                                                                                                                                                                                                    |
-  | Scheduled reservation, weekly    | Up to 3 attempts: 300 pages, 3 sessions, 2,700 session seconds, per site                                                                                                                                                                                                                                                             |
+  | Scheduled reservation, daily     | Up to 3 attempts per site per UTC day: 300 pages, 3 browser sessions, 2,700 session seconds, derived from the per-scan bounds                                                                                                                                                                                                        |
 
-  The account-credential rate uses `account_token_requests_per_minute`:
-  120 requests per minute per dashboard session bearer or personal token,
-  including the dashboard entrypoint. `personal_tokens_per_account` limits
-  live personal tokens to 50; revocation frees a place. Configuration
-  version 13 introduces that limit. `dunning_grace_days` remains declared
-  as 7 but is unused; entitlement reads subscription status.
+  The credential bound is the `CONNECT_TOKEN_RATE_LIMIT` binding:
+  120 requests per 60 seconds per credential per location. Account and CI
+  credentials share this bound, including the dashboard entrypoint.
+  `personal_tokens_per_account` limits live personal tokens to 50;
+  revocation frees a place. Configuration version 13 introduces that limit.
 
 - **The trigger algorithm, deterministic end to end.** "Day" means
   the UTC calendar day, everywhere a daily quantity appears (rolling
   windows apply only where a key says "rolling", as the alert storm
   budget does). A qualifying deploy event opens or extends the
-  debounce window; when the window closes, let N be the number of
-  deploy-triggered scans already started this UTC day for the site:
-  N < 10 runs a `full` scan; 10 <= N < 30 runs `standard`; N >= 30
-  enters **coalesced mode**: no scan starts, a pending-deploys marker
-  aggregates everything that lands, and while the marker is set one
-  `standard` scan runs at the top of each hour against the
-  then-current deployment, clearing the marker it consumed.
-  Marker-consuming scans are always `standard` and **never count in
-  N**, which settles the midnight edge: a marker pending at 00:00 UTC
-  is consumed by the 00:00 marker scan as usual (standard,
-  N-neutral), the day's counter resets independently, and the next
-  actual deploy event starts the new day at N = 0 with a `full` scan
-  through the ordinary debounce. Two determinism rules close the
+  debounce window; when it closes, a scan starts only if its whole
+  charge fits that UTC day's demand budget. Otherwise no scan starts:
+  a pending-deploys marker aggregates the work. The hourly consumer
+  starts one scan against the then-current deployment when the demand
+  budget has room, clearing only the marker it consumed. Marker scans
+  share the demand budget and never count in N, the day's deploy-start
+  counter used for scan-id uniqueness. A midnight marker drains only
+  while the new UTC day's budget can pay; the next actual deploy starts
+  that day's deploy counter at N = 1 through the ordinary debounce.
+  Two determinism rules close the
   remaining edges. First, a scan belongs to the UTC day in which its
   **start decision** is made (a 23:59 deploy whose debounce closes at
-  00:01 is the new day's N = 1, full). Second, the marker is a stored
+  00:01 is the new day's N = 1). Second, the marker is a stored
   object with a generation, and consumption is a **generation CAS**,
   because Cloudflare alarms are at-least-once and a bare
   compare-and-delete would let a consumer that read stale state
@@ -719,7 +723,7 @@ prices, replaced by the pricing pass's decided values at graduation:
   so "joins" can only ever mean the scan for exactly that marker. Scheduled **retries** are new scan records
   with fresh scan ids and fences (a retry never resumes a fenced-off
   execution), keyed to the same reservation attempt counter
-  `(site, UTC day, class, attempt <= 3)`; resources consumed by
+  `(site, UTC day, attempt <= 3)`; resources consumed by
   failed attempts are recorded against the reservation's accounting
   but do not reduce the remaining attempt allowance - the
   reservation's promise is "up to three tries, each within the
@@ -729,91 +733,212 @@ prices, replaced by the pricing pass's decided values at graduation:
   current deployment mid-scan finishes the page step, marks the scan
   superseded, submits partial coverage honestly), the marker state
   and the mode are visible in site state, and the UTC day boundary
-  resets N, so the worst case is bounded and computable from this
-  paragraph alone.
-- **Per-site daily budgets** (beta-1), backstopping the per-scan
-  bounds against pathological days: 60 scans, 15 browser sessions,
-  13,500 session seconds, 6,000 pages per site per UTC day. The
-  budgets bind the **demand-driven classes** - deploy-triggered,
-  coalesced, and manual-refresh scans; the scheduled classes (the
-  daily standard scan and the weekly full pass) run from their own
-  **reserved allocation outside these budgets**, with the arithmetic
-  in the reservation rows above, so "scheduled protection continues"
-  is arithmetic, not a contradiction: exhausting the demand budget
-  stops demand scans and cannot touch the reservation. Reservation
-  mechanics: on the weekly full pass's day, the full pass **replaces**
-  the daily standard scan (they never stack); a failed scheduled scan
-  retries at most twice within its own reservation, and a day that
-  ends with the reservation unfulfilled records a protection-health
-  note rather than rolling capacity forward. Exhaustion behaves like
-  every other ceiling: visible degradation
-  (scheduled protection continues, further deploy scans coalesce to
-  the next UTC day),
+  resets N, so the worst case is bounded and computable with the
+  demand-budget bounds below.
+- **Per-site daily budgets**, backstopping the per-scan bounds against
+  pathological days: 3 scans, 3 browser sessions, 2,700 session seconds,
+  300 pages per site per UTC day. The budgets bind the **demand-driven
+  classes** - deploy-triggered, coalesced and manual-refresh scans.
+  The daily scheduled scan has a **reserved allocation outside these
+  budgets**: up to 3 attempts, each bounded to 100 routes, 1 browser
+  session and 900 session seconds, giving 300 pages, 3 sessions and
+  2,700 session seconds in total. The configuration stores the attempt
+  allowance; the resource totals follow from the per-scan bounds.
+  Exhausting the demand budget cannot consume scheduled protection.
+  A failed scheduled scan retries at most twice within its reservation,
+  and a day ending unfulfilled records a protection-health note rather
+  than rolling capacity forward. Further deploy and coalesced scans wait
+  for the next UTC day's demand budget; exhaustion is visible degradation,
   never a silent stop.
+
+  Daily starts are spread across UTC hours, following the load-spreading
+  idea of [Jenkins' H schedule](https://www.jenkins.io/doc/book/pipeline/syntax/#cron-syntax).
+  Each site stores a permanent `scan_hour`, a non-null small integer
+  between 0 and 21. At creation, start at the account's stable hash hour,
+  the unsigned first 32 bits of its MD5 digest modulo 22, and count up,
+  wrapping after hour 21, to the first hour none of the account's other
+  sites holds. All retained sites hold their hours, including disconnected
+  sites. If all 22 hours are held, use the hash hour. Selection runs under
+  the account lock already held by site creation; no additional lock is
+  needed. The assigned hour never changes when another site is added or
+  removed. Removal frees its hour for a future creation without moving
+  existing sites. Migration backfills existing sites by the same rule in
+  `site_id` order per account, assigning distinct hours to the first 22
+  and the hash hour thereafter.
+  The hourly pass starts an owed reservation when the current UTC hour
+  is at or past its stored hour, retaining the existing per-pass bound of
+  50 sites. Even the latest assigned hour leaves passes at 21:00, 22:00
+  and 23:00 UTC for the reservation's three attempts. Later passes may
+  retry an unfulfilled reservation when its preceding attempt has failed
+  or is stale under the progress timeout. A missed pass or a site added after
+  its hour still starts that day. A site's first scan within a minute of
+  creation bypasses the stored hour.
+  Sites sharing an hour still start together within the pass bound;
+  past the admission partition's concurrent sessions, the rest can finish without browser
+  checks after exhausting admission retries. Queueing scheduled scans for
+  a lease is the upgrade beyond this hour spread.
+
 - A **test fixture pins the schema and the values**: every key
   present, typed, within declared sanity bounds, and equal to the
-  committed beta-1 artifact, so a missing, nonsensical, or silently
+  committed artifact, so a missing, nonsensical, or silently
   drifted value is a failing test, not a runtime surprise. The
   fixture also replays the trigger algorithm against a scripted deploy
-  day and asserts the exact scan sequence, covering scans 1 through
-  10, 11 through 30, coalesced mode, a 23:59 debounce spanning
-  midnight, a deploy landing at exactly 00:00, a duplicated marker
-  alarm, demand-budget exhaustion with the reservation intact, and
-  the daily-scan-replaced-by-weekly-full collision. Site state
-  and error surfaces quote the running configuration's values (the
+  day and asserts the exact scan sequence, covering three demand scans,
+  coalesced mode, a 23:59 debounce spanning midnight, a deploy landing at
+  exactly 00:00, a duplicated marker alarm and demand-budget exhaustion
+  with the reservation intact.
+  Site state and error surfaces quote the running configuration's values (the
   `422`s already name their limits), so the beta cohort always sees
   the numbers that are actually in force.
+- Separate **Postgres integration regressions** cover distinct daily
+  browser starts within an account, permanent hours across site additions
+  and removals, distinct creation and backfill hours within 0 through 21,
+  refusal of hours 22 and 23, three attempts from hour 21, retries later
+  the same day, and slots that are not yet due or were missed earlier.
 
 ## Crawl profile, version 3
 
 `crawl_profile: 3`, the envelope field the protocol spec reserved,
 pins:
 
-- **Route set: the scan-scope resource, entirely.** The scan record
-  pins the `scope_revision` it ran against, and a hosted scan covers
-  the **whole effective scope**: there is no silent per-scan
-  truncation, because a route that can never be scanned is a promise
-  that can never be kept. The reconciliation is at the resource
-  boundary instead: the protocol rejects a scope `PUT` exceeding the
-  single 100-route cap for every account with `422 scope_exceeds_plan`,
-  so scope and scan capacity are the same number by
-  construction, session checks can always reach complete coverage,
-  and nothing rots uncovered. The environment entry URL counts as a
-  route (deduplicated if also listed). The wire-format bound of 5,000
-  routes is just the schema limit, not a scanning promise.
-- **Discovery is informational:** each scan refreshes the sitemap through the
-  shared sitemap-document parser and candidate policy, then reports route-set
-  deltas as drift facts without scanning unselected routes.
+- **Route set: the scan-scope resource, entirely.** The scan record pins
+  the `scope_revision` it ran against, and a hosted scan covers the
+  **whole effective scope**: there is no silent per-scan truncation,
+  because a route that can never be scanned is a promise that can never
+  be kept. The reconciliation is at the resource boundary instead: the
+  protocol rejects a scope `PUT` exceeding the single 100-route cap for
+  every account with `422 scope_exceeds_plan`, so scope and scan
+  capacity are the same number by construction, session checks can
+  always reach complete coverage, and nothing rots uncovered. The
+  environment entry URL counts as a route (deduplicated if also listed).
+  The wire-format bound of 5,000 routes is just the schema limit, not a
+  scanning promise. For a scope no person chose, the scope is what the
+  site's last applied scan discovered or retained, and a scan covers the
+  plan its entry route's step adopts (below).
+- **Discovery writes a scope no person chose.** A scope a person set is
+  theirs: a scan of it covers exactly its routes, and discovery adds
+  none. For a site whose scope no person has set, a scan starts from the
+  scope the site's last applied scan discovered or retained, and the
+  write that commits its entry route's step adopts newly discovered
+  routes or retains the starting routes as the rest of its plan:
+  - **What it reads.** Nothing it has to request. The entry document's
+    anchors, in document order, resolved against its `<base href>`, with
+    visitor-written `rel="ugc"` anchors and CDN-reserved `/cdn-cgi/`
+    paths left out; then the page entries of the document the bounded
+    sitemap walk found, in its order, within the walk's 5,000-URL limit.
+    When that document is an index, the walk reads its distinct children
+    on the site's own origin, in the index's order, at most 50 and
+    within a separate 10 MiB child allowance. A child is fetched only
+    while a whole 2 MiB sitemap cap of that allowance remains. Each is
+    read alone under that cap, its pages kept and its body dropped; the
+    bytes received, even from a child that runs past the cap, count
+    against the allowance. The walk's candidates share one 2 MiB
+    allowance of received bytes, overruns included, so an oversized
+    candidate leaves later ones unread and the walk unfinished. A child
+    that is itself an index lists no pages, and a child the grammar
+    refuses still gives the locations it holds. A sitemap whose body is
+    not valid UTF-8 is refused and gives no locations; an index refused
+    that way reads no children. The comparison reads the same pages, so
+    an index whose children were not all read, or whose pages were cut
+    at the 5,000-URL limit, is a partial set. A link the link check
+    probed counts as the address its probe ended on, and is left out
+    when that probe showed it is not a page: a 404 or a 410, a success
+    that is not HTML, or an end on another origin or on an address with
+    a query.
+  - **What it keeps.** New routes on the entry document's own origin, as
+    the canonicalizer's paths, never the entry route or the route it
+    redirected to, in that priority, to one fewer than the per-scan
+    route budget. A candidate whose last segment ends in one of the file
+    extensions Cloudflare caches by default ("Default cached file
+    extensions" in its Default Cache Behavior documentation, a list that
+    leaves HTML and JSON out) is a file, and is left out. A candidate is
+    kept only when the hosted service may store it unchanged: no query
+    string, no user name or password, a first segment other than
+    `search` (case-insensitive), no segment the engine's evidence rules
+    would redact (an email address, a token-shaped segment, the segment
+    after a reset, verification or invitation marker, a known credential
+    format), within those rules' bound on an address, and no exposed-key
+    pattern. A candidate those rules would change is left out, never
+    altered, because an altered route is a page the site does not serve.
+    A path segment made of hyphen-separated lowercase words and whole
+    numbers is a slug and not a token-shaped segment when at least three
+    word parts have two or more letters and it is not UUID-shaped. A
+    candidate the site's robots.txt disallows for SiteCMD is left out
+    too: the group for the `SiteCMD` product token, else `*`, under RFC
+    9309's longest match. The rules are known from a readable 2xx body
+    within the parser's limits, whatever its content type, or a 4xx
+    other than 429 that is not a bot challenge. A 2xx HTML catch-all is
+    known with no rules. All other outcomes leave the rules unknown,
+    including a 5xx, a 429, a failed, refused or unmade request, an
+    unreadable body or one past the body cap, or a policy past the
+    parser's limits. On any non-2xx response, `cf-mitigated: challenge`
+    identifies a bot challenge and leaves the rules unknown; the header
+    value is trimmed and compared case-insensitively. A 2xx response
+    still uses the body classification. For server or network errors
+    that make robots.txt unreachable,
+    [RFC 9309 section 2.3.1.4](https://www.rfc-editor.org/rfc/rfc9309.html#section-2.3.1.4)
+    has a crawler assume complete disallow. That rule is why discovery
+    adds no new page while the rules are unknown; the scan still covers
+    its entry route and the routes it started with.
+  - **When it adopts.** New routes are adopted only when the entry route
+    answered with a success that is not a challenge and the robots.txt
+    rules are known. With unknown rules, the scan adopts no route it
+    found this time and keeps the routes it started with, unchanged and
+    in their order, without applying the new-route selection rules or
+    limit. A first scan then covers the entry route only. When the rules
+    are known but the sitemap walk could not finish, or a child it asked
+    for was not read (it did not answer, was refused by an allowance or
+    the request bound, or answered anything but 404, 410 or a success
+    with a readable body in valid UTF-8), the routes the scan started
+    with stand in after the pages it did read, under the same selection
+    rules and route budget. A discovery that found nothing while the
+    scan started with routes keeps them.
+  - **What a discovered route may be.** A discovered route whose
+    document answers a success that is not HTML is not a page. A
+    discovered route also leaves when its fetch ends on another route or
+    origin, or fails after following a redirect. Either way it leaves
+    that scan's route set with no pairs and no coverage exception,
+    withholds nothing from the scan's cross-page verdicts or its
+    verified-good profile, and is not kept in the scope. At its own
+    address, a discovered route whose document answers an error is
+    graded as a page that failed. A route a person chose is graded as
+    the desktop grades it.
+  - **What Connect keeps.** The applied observation names the routes its
+    plan adopted, but for any that left the route set, and Connect
+    stores them as the site's scope in that observation's commit
+    (protocol spec, the scan scope).
 - **Sequential route and transport execution, entry page first**,
   origin-scoped checks on the entry page only, per the manifest's
   `scope` entries. A rendered page's Chromium subresources retain
   browser-like concurrency inside that route; every request still
   passes through interception, public-address validation, and the
-  browser session ledger before it is fulfilled.
+  route's browser ledger before it is fulfilled.
 - **Identity rules** by reference to the protocol spec's canonicalizer:
   final URL after redirects, preserved trailing slashes, stripped query
   with `query_dependent` flagging.
 - **Transport constants**, identical to the desktop's except for the
   page body and sitemap caps and a coded asset body, which the desktop
   counts as sent and the hosted transport leaves unread, since its
-  runtime can decode a body as it reads it:
-  10-redirect limit with per-hop validation, 30 s page fetch timeout,
-  15 s per-check timeout with timeout-as-`Skipped`, 1 MiB page body
-  cap (overrun excepts only that route as `page_too_large` while the scan
-  continues), 512 KiB probe cap, 2 MiB
-  sitemap cap, 2 MiB stylesheet cap with at most 8 stylesheets,
-  30-asset sample with `Range: bytes=0-0` and `Accept-Encoding: identity`,
-  where the body of an answer below 400 that no header sizes is counted
-  under the probe cap and never kept, link-probe samples of
-  100 internal and 30 external. One route at every bound must stay under
-  half the Workers isolate's 128 MB, which every Durable Object it hosts
-  shares with the Worker's code, so a second route fits beside it; the
-  scan Worker measures that in workerd (`measure-route-memory.mjs`), and
-  these caps are the largest 1 MiB steps toward the desktop's that held
-  it. Version 2 held every intercepted browser response at once, pinned
-  its asset sample without `Accept-Encoding: identity`, and sent the
-  transport's requests through Cloudflare's cache; version 1 read pages
-  to 10 MiB, with overrun scan-fatal as on desktop, and sitemaps to 5 MiB.
+  runtime can decode a body as it reads it: 10-redirect limit with
+  per-hop validation, 30 s page fetch timeout, 15 s per-check timeout
+  with timeout-as-`Skipped`, 1 MiB page body cap (overrun excepts only
+  that route as `page_too_large` while the scan continues), 512 KiB
+  probe cap, 2 MiB sitemap cap, 2 MiB stylesheet cap with at most 8
+  stylesheets, 30-asset sample with `Range: bytes=0-0` and
+  `Accept-Encoding: identity`, where the body of an answer below 400
+  that no header sizes is counted under the probe cap and never kept,
+  link-probe samples of 100 internal and 30 external. One route at every
+  bound must stay under half the Workers isolate's 128 MB, which every
+  Durable Object it hosts shares with the Worker's code, so a second
+  route fits beside it; the scan Worker measures that in workerd
+  (`measure-route-memory.mjs`), and these caps are the largest 1 MiB
+  steps toward the desktop's that held it. Crawl profile version 2 held
+  every intercepted browser response at once, pinned its asset sample
+  without `Accept-Encoding: identity`, sent the transport's requests
+  through Cloudflare's cache, scanned only the routes a person selected
+  and read no index sitemap's children, and charged its browser
+  interception budget across the whole session; version 1 read pages to
+  10 MiB, with overrun scan-fatal as on desktop, and sitemaps to 5 MiB.
   Neither ran for a customer.
 - **Cloudflare's cache:** every hosted transport request except one for
   the route's own page, as requested or as served, is sent with
@@ -831,9 +956,15 @@ pins:
 - **Browser interception constants and timing semantics:** at most 400
   requests, 64 distinct hosts, 3 MiB of decoded body data for any one
   response, at most 3 MiB of response bodies held at once, each from its
-  fetch to its fulfillment, and 25 MiB across the session. The per-response cap is
+  fetch to its fulfillment, and 25 MiB across each route's page load,
+  inside the scan's one session, whose lifetime (the per-scan session
+  seconds) bounds the scan's whole browser phase. The per-route keys are
+  `browser_requests_per_route`, `browser_distinct_hosts_per_route` and
+  `browser_response_bytes_per_route`. A step retried after its browser
+  pass began runs without the browser, and a route that passes its
+  budget ends the session as any breach does. The per-response cap is
   enforced while reading, before the body is concatenated or handed to
-  Playwright; the session ledger charges the same decoded bytes before
+  Playwright; the route's ledger charges the same decoded bytes before
   fulfillment. Playwright fulfillment cannot stream the main document,
   so the proxy records the main-document body-wait interval and removes
   that artificial delay from TTFB, FCP, and LCP. CLS and long-task
@@ -846,36 +977,50 @@ pins:
   above caps one request; this one caps their sum, which nothing did
   before. Measured rather than chosen: driving `engine_route_plan` to
   its fixpoint against a page carrying 200 internal and 80 external
-  links, so both link samples bind, costs 384 requests for one route when
-  every probe fails (four rounds: 248, 133, 2, 1) and 258 when every probe
-  answers along a live redirect chain (ten rounds: 248, 2, then one per
-  hop). The same page naming 40 images, so the asset sample binds too,
-  asks for 414 when every probe fails (four rounds: 278, 133, 2, 1) and
-  409 when every link `HEAD` is answered `405` and everything else answers
-  (two rounds: 278, 131). The sitemap walk's
-  longest request set, twenty failing declared sitemaps beside failing
-  probes and the og:image, asks for 405. Requests and
-  rounds are maximised by opposite situations: failures cost requests,
-  because the link check's `GET` confirmations are planned only where a
-  `HEAD` failed, while answers cost rounds, because the redirect walk is
-  planned one hop at a time and each `3xx` names the next position.
-  Of these plans the cap binds three: the page with images when every
-  probe fails (414 asked) or its link `HEAD`s are answered `405` (409),
-  and the sitemap set (405); the other two fit whole. Where it binds,
-  it makes 400 and answers the rest with the budget's own refusal, which
+  links, so both link samples bind, costs 384 requests for one route
+  when every probe fails (four rounds: 248, 133, 2, 1) and 258 when
+  every probe answers along a live redirect chain (ten rounds: 248, 2,
+  then one per hop). The same page naming 40 images, so the asset sample
+  binds too, asks for 414 when every probe fails (four rounds: 278, 133,
+  2, 1) and 409 when every link `HEAD` is answered `405` and everything
+  else answers (two rounds: 278, 131). When that page's sitemap is an
+  index, the failing case asks for 464 requests in four rounds (278,
+  183, 2, 1). The sitemap walk's longest request set, twenty failing
+  declared sitemaps beside failing probes and the og:image, asks
+  for 405. Requests and rounds are maximised by opposite situations:
+  failures cost requests, because the link check's `GET` confirmations
+  are planned only where a `HEAD` failed, while answers cost rounds,
+  because the redirect walk is planned one hop at a time and each `3xx`
+  names the next position. Of these plans the cap binds four: the page
+  with images when every probe fails (414 asked), that page with an
+  index too (464), the page whose link `HEAD`s are answered `405` (409),
+  and the sitemap set (405); the other two fit whole. Where it binds, it
+  makes 400 and answers the rest with the budget's own refusal, which
   each check reads as unanswered, never as broken or missing: the last
   eleven internal link confirmations and the last three legal-page
-  candidates on the failing page, the last nine internal link
-  confirmations on the `405` page, and the last five declarations in the
-  sitemap set, read as unread. Raising
-  the cap is a capacity decision and trimming the profile a new version;
-  neither happens silently. The per-scan worst case
-  follows as routes times the cap, and with origin-scoped checks
-  narrowed to the entry route the realistic ceiling is about 30,000
-  requests to one origin per full scan. The bound is per route rather
-  than per scan so that it needs no durable spend counter across alarm
-  ticks and so that one pathological route cannot starve the rest of
-  the scan. A probe the budget refuses is reported as a failed probe
+  candidates on the failing page, and on the page with an index all 50
+  children with those eleven and three; the last nine internal link
+  confirmations on the `405` page; and the last five declarations in the
+  sitemap set, which the walk reads as unread. The index's children, at
+  most 50 and within their separate 10 MiB allowance, come after the
+  link confirmations in plan order and are refused with them, before the
+  legal-page candidates, and the comparison reads the index as partial.
+  On a page whose link `HEAD`s succeed, so no confirmations are planned,
+  the route's 400 requests leave room for every child, and children are
+  fetched only while a whole 2 MiB sitemap cap remains in that
+  allowance; where the confirmations fill the bound, as on the `405`
+  page, the children are refused with them. Received bytes, including
+  overruns, count against the child allowance. The walk's longest round
+  count is twenty-two, robots.txt and the conventional paths first, up
+  to twenty declared sitemaps one per round, then an index's children
+  one round later. Raising the cap is a capacity decision and trimming
+  the profile a new version; neither happens silently. The per-scan
+  worst case follows as routes times the cap, and with origin-scoped
+  checks narrowed to the entry route the realistic ceiling is about
+  30,000 requests to one origin per scan. The bound is per route
+  rather than per scan so that it needs no durable spend counter across
+  alarm ticks and so that one pathological route cannot starve the rest
+  of the scan. A probe the budget refuses is reported as a failed probe
   with its own reason, never as a silent absence, because a hole is
   graded as evidence nobody gathered.
 - **User agent:** one shared, versioned identity across desktop and
@@ -985,13 +1130,13 @@ produces them.
   one structured object everywhere it appears - signatures, evidence
   entries, execution profiles, measurements. **`layer` is the
   check's manifest layer, never a scan
-  label**: a `full` scan produces transport and browser results in
+  label**: a hosted scan produces transport and browser results in
   one observation, so the observation declares only `layers_run`
   (instance and locality are server-derived, per the execution
   profile) and every
   result's vantage
-  layer comes from the check that produced it - the scan profile can
-  narrow `layers_run`, it cannot mislabel a result.
+  layer comes from the check that produced it. Only committed verdicts
+  establish which layers ran.
 
   Vantage identity is
   `{ producer_instance, layer, locality }`, with each part earning
@@ -1144,13 +1289,29 @@ produces them.
   `DnsOutcome::Failed` path, OSV or RDAP unreachability), and the
   polish CSS-incompleteness rule all become coverage exceptions for
   their pairs, never silent gaps.
+- **robots.txt verdicts.** An unchallenged 5xx response makes
+  `seo.robots_txt` report `Fail` at High severity and High confidence. A
+  429, a failed request or a challenged 5xx remains `Skipped`. The High
+  finding describes the crawl restriction that
+  [RFC 9309 section 2.3.1.4](https://www.rfc-editor.org/rfc/rfc9309.html#section-2.3.1.4)
+  requires for server errors.
 - Browser-layer failures except only the browser-family pairs for that
   route; the transport checks on the same route remain covered.
   Browser-slot exhaustion follows the admission rule: delay first,
   except only at the retry budget's end.
 - `origin`-scoped checks are covered as entry-page pairs only;
   `session`-scoped checks are covered only when the complete route set
-  ran.
+  ran. For a discovered scope too, `seo.orphan_pages` grades only when a
+  nonempty sitemap was read whole and every page it lists reached a
+  compared page, with the entry page present and enough comparable
+  pages; otherwise it is `Skipped`, with a reason. A sitemap set found
+  after a robots.txt that answered a 5xx or a 429, failed, or answered
+  with a bot challenge is partial. A body-cap refusal counts as
+  answered, with no declarations read, and does not by itself make the
+  set partial. As for any partial set, the orphan check is `Skipped`,
+  and `seo.noindex_in_sitemap` records `Skipped` coverage while
+  retaining `Warn` findings for any noindex contradictions it directly
+  observed.
 - A step that fails entirely excepts every pair on that route; a scan
   superseded mid-flight submits what it completed with the remaining
   routes excepted, and its observation's fate is the basis rule below.
@@ -1175,7 +1336,7 @@ execution does with them:
   this prose can never disagree with it again), reset by further
   deploys for the same environment. Every deployment is still
   recorded individually; debounce coalesces work, not history. The
-  full trigger algorithm, including the ceiling and coalescing
+  full trigger algorithm, including the demand budget and coalescing
   behavior, is the deterministic procedure in the beta operating
   configuration section.
 - When a newer deployment becomes current mid-scan, the coordinator
@@ -1287,10 +1448,20 @@ new good:
 - **Fields**: certificate facts, security-relevant header profile,
   third-party origin set, DNS posture records, route set. All
   deterministic or clock-dependent; no measurement field exists in the
-  profile, by construction.
-- **Seeding**: a field seeds from the first observation after
-  bootstrap that is applied (current-basis), complete for that field's
-  pairs, and clean for that field.
+  profile, by construction. The security-relevant header profile is the
+  set of distinct header profiles the scan's routes serve, compared for
+  growth. For a discovered scope, the baseline keeps its good header and
+  third-party origin sets when the scope shrinks, and a clean
+  observation within them only clears the drift; those sets change by
+  seeding, a contract's reseed or a person's acceptance. A profile or
+  origin the baseline has not seen freezes its field as drift. Header
+  seeding, and promotion for a chosen scope, require a complete, clean
+  observation. The route set is a field only for a scope a person chose:
+  a discovered scope's routes change with the site, and each change is a
+  scope event rather than drift.
+- **Seeding**: a field seeds from the first applied (current-basis)
+  observation that is complete for that field's pairs and clean for that
+  field.
 - **Promotion**: a field's good value advances only from an applied,
   unexcepted, clean observation. Each field retains its source
   observation id, deployment reference, and the engine and profile
@@ -1313,9 +1484,10 @@ new good:
   contract with cause `detector or corpus update`.
 
 The drift checks reading the profile: certificate horizon
-(clock-dependent, ambient drift), header profile delta, third-party
-origin set growth, DNS posture delta, route-set delta. The alert and
-report delivery spec decides which of these wake anyone.
+(clock-dependent, ambient drift), header profile growth, third-party
+origin set growth, DNS posture delta, route-set delta for a scope a
+person chose. The alert and report delivery spec decides which of these
+wake anyone.
 
 ## The privacy projection
 
@@ -1336,8 +1508,35 @@ storage, log, trace, cache, error report, or the connect submission:
   header's product name),
   each page's comparison facts (route keys, keyed path keys, Connect's
   MACs of the title, description and H1 digests, the status code, the key
-  version, flags and counts, the gate's presence reason, never a digest
-  or an address), timing counters, and operational counters.
+  version, flags and counts, the gate's presence reason, never an unkeyed
+  digest, an address or page text), timing counters, and operational counters.
+- Page facts also carry `title_chars`, `description_chars` and `h1_chars`
+  as optional character counts saturating at the engine's `MAX_FACT_CHARS`
+  (100,000), `title_outcome` and `description_outcome`
+  as `missing`, `short`, `long` or `ok`, and `heading_counts` as six counts
+  from H1 through H6, each saturating at 65,535. The engine's metadata
+  checks and facts share extraction and length classification: title
+  length uses the trimmed document title outside inline SVG, description
+  length uses the untrimmed attribute value, and missing or whitespace-only
+  values have no length. Title counts below 20 or above 70 and description
+  counts below 50 or above 170 are short or long, graded before saturation.
+  The digests retain the session comparison's normalization; `h1_chars`
+  measures that comparison's H1. An error-status row has no lengths,
+  missing outcomes and zero heading counts; readers use only its status.
+- The entry route may also keep `sitemap_routes: { routes, complete }`.
+  `engine_route_sitemap_routes({ limit, byte_limit })` reads the existing
+  sitemap walk, with no page probes required, and shares discovery's gate:
+  same origin, no query, path parameters or credentials, no cached-file
+  extension, no search path, no exposed-key format or email address, and
+  allowed by the site's robots policy. Published paths retain digit runs,
+  names and word slugs.
+  Canonical paths stay in sitemap order with duplicates removed, including
+  `/` when listed. The read keeps at most 5,000 routes and the caller's byte
+  bound, measured as UTF-8 JSON of the route array including its brackets,
+  quotes, escapes and commas. The hosted caller supplies 1,048,576 bytes.
+  `complete` is false when the walk is partial or a bound cuts it. An entry
+  document without a success status returns `routes: null` and
+  `complete: false`, and the hosted projection keeps no sitemap routes.
 - Error reports and logs carry the error taxonomy and `request_id`s,
   never page content; the projection is a function with a test, and
   the conformance corpus includes a hostile-page fixture (secrets in
@@ -1399,31 +1598,31 @@ outcome at the strongest point it offers:
   TLS metadata probe, which does control its connection, pins the
   connection to a pre-validated public address and sends the original
   hostname as SNI.
-- **Browser egress is a behavior policy, not only an address policy.**
-  A verified tenant is authenticated, not trusted. Browser Run
-  sessions enforce, via request interception and launch configuration:
-  schemes `http`/`https` on default ports only; resource types limited
-  to what scanning renders (document, script, stylesheet, image, font,
-  xhr/fetch); **safe methods only (GET, HEAD, OPTIONS) for every
-  origin, the target's own included**: a compromised page holding a
+- **Browser egress is a behavior policy, not only an address policy.** A
+  verified tenant is authenticated, not trusted. Browser Run sessions
+  enforce, via request interception and launch configuration: schemes
+  `http`/`https` on default ports only; resource types limited to what
+  scanning renders (document, script, stylesheet, image, font,
+  xhr/fetch); **safe methods only (GET, HEAD, OPTIONS) for every origin,
+  the target's own included**: a compromised page holding a
   scanner-issued cookie could otherwise fire same-origin POSTs that
   trigger jobs, emails, purchases, or deletions, and "it was their own
-  site" is no comfort to the tenant whose site was the compromised
-  one. Scanning renders pages; it never submits them. When a blocked
-  unsafe request fired before evaluation settled (a scripted
-  same-origin mutation the page needed for its rendered state), the
-  route's browser-derived pairs are excepted rather than grading a
-  partial DOM; blocked fire-and-forget beacons after settle are
-  recorded without excepting anything. WebSockets, WebRTC, and service
-  workers disabled; downloads and popups denied (the desktop webview
-  already denies both); and per-session budgets on request count,
-  distinct hosts, and total bytes, with a policy or budget breach
-  terminating the session and excepting the route's browser pairs. An
-  ordinary upstream network failure aborts only that browser request;
-  it neither marks a policy breach nor retires the reusable session, so
-  later requests and routes can continue. Repeated policy breaches
-  surface to the entitlement layer as tenant abuse with suspension
-  consequences.
+  site" is no comfort to the tenant whose site was the compromised one.
+  Scanning renders pages; it never submits them. When a blocked unsafe
+  request fired before evaluation settled (a scripted same-origin
+  mutation the page needed for its rendered state), the route's
+  browser-derived pairs are excepted rather than grading a partial DOM;
+  blocked fire-and-forget beacons after settle are recorded without
+  excepting anything. WebSockets, WebRTC, and service workers disabled;
+  downloads and popups denied (the desktop webview already denies both);
+  and per-route budgets on request count, distinct hosts, and total
+  bytes, each counted across one route's page load, with a policy or
+  budget breach terminating the session and excepting the route's
+  browser pairs. An ordinary upstream network failure aborts only that
+  browser request; it neither marks a policy breach nor retires the
+  reusable session, so later requests and routes can continue. Repeated
+  policy breaches surface to the entitlement layer as tenant abuse with
+  suspension consequences.
 - **Every egress control is proven, not declared.** The conformance
   suite includes hostile-page fixtures exercising each control:
   WebSocket and WebRTC connection attempts, service-worker
@@ -1438,14 +1637,14 @@ outcome at the strongest point it offers:
   browser-session, response, and page-count budgets per scan. Values
   are operational configuration with the v1 numbers as defaults;
   changes are disclosed operational facts.
-- **Provider events** are signature-verified, idempotent, and
-  replay-protected at the connect layer, per the protocol spec.
+- **Generic deploy events** are signature-verified, idempotent, and
+  replay-protected at the Connect layer, per the protocol spec.
 
 ## Cost model and provider verification items
 
 Browser Run is metered with account-wide concurrency limits; the
 sockets API and DoH calls are ordinary worker work. Browser cost now
-scales with `full` scans (one session each) plus per-page contexts;
+scales with hosted scans (one session each) plus per-page contexts;
 transport cost with routes times probes. Instrumentation records, per
 scan: pages scanned, sessions opened, contexts created, session
 seconds, bytes fetched, and admission wait time.
@@ -1496,15 +1695,12 @@ actually computed from:
   provider price change is a price-book commit, not a silent drift in
   the margin math.
 
-The roll-up to cost per connected site per month, as a distribution
-split by scan profile, is the measurement program this instrumentation
-exists to make computable.
+The roll-up to cost per connected site per month, as a distribution,
+is the measurement program this instrumentation exists to make computable.
 
 Provider items recorded for build-time verification rather than
-asserted: whether reaching Vercel Hobby deployments requires a Vercel
-Integration; Netlify's signed notification format; Browser Run's
-current session, creation, and concurrency limits and pricing, read
-from the documented limits and pricing pages, which are the only place
+asserted: Browser Run's current session, creation, and concurrency limits
+and pricing, read from the documented limits and pricing pages, which are the only place
 those numbers are published - the provider dashboard shows runs and
 usage and never the limits, so "check the dashboard" is not a
 verification anyone can perform - with the monthly invoice
@@ -1544,7 +1740,8 @@ restriction boundaries.
   and keeps the browser time the route spent, and the scan goes on: the
   engine has no clock and no I/O, so a retry of the same document would
   fail the same way. An I/O failure still fails the step, for the step's
-  retry. Step timeouts classify as `Skipped` coverage exceptions.
+  retry. Step timeouts classify as `Skipped` coverage exceptions under
+  the page-step deadline above.
 
 ## Implemented parity foundation
 
@@ -1609,12 +1806,15 @@ digest. Copying verdict logic into TypeScript is not a supported fallback.
    the applying transaction itself, because a service binding is not a
    transaction and tenant truth lives at connect.
 6. **The currency predicate is exact**: current head (including the
-   no-deployment state) and current scope revision; bare
-   event-sequence movement never invalidates an observation.
-7. **Scope membership follows the selected routes**: an occurrence becomes
-   `out_of_scope` only when none of its authored `scope_routes` remains
-   selected. Absence requires every currently in-scope provenance route
-   to be covered, and groups with no in-scope records go dormant.
+   no-deployment state) and current scope revision; bare event-sequence
+   movement never invalidates an observation. A discovered scope's
+   writes leave the revision where it is, because a scan of a discovered
+   scope plans its own routes.
+7. **Scope membership follows the scope's routes, selected or
+   discovered**: an occurrence becomes `out_of_scope` only when none of
+   its authored `scope_routes` remains in the scope. Absence requires
+   every currently in-scope provenance route to be covered, and groups
+   with no in-scope records go dormant.
 8. **Scope and scan capacity use the same cap**: scope `PUT` refuses an
    excessive route count explicitly. Connect scans the accepted scope
    without allowance-driven truncation. Connect's site state omits
@@ -1638,11 +1838,11 @@ digest. Copying verdict logic into TypeScript is not a supported fallback.
     applied to ourselves), with a vantage dimension because Browser
     Run is honestly identifiable; and a visible reset exists for
     deliberate redesigns.
-11. **Browser sessions are per scan with per-page contexts**, and
-    admission is leased, sharded, and reconciled: expiring leases
-    return crashed capacity, per-account shards avoid the global
-    singleton, and platform capacity failures delay protection rather
-    than falsifying coverage.
+11. **Browser sessions are per scan with per-page contexts, each with
+    its own interception budget**, and admission is leased, sharded, and
+    reconciled: expiring leases return crashed capacity, per-account
+    shards avoid the global singleton, and platform capacity failures
+    delay protection rather than falsifying coverage.
 12. **The verified-good baseline distinguishes dismissal from
     acceptance**: dismissing drift silences it, accepting drift
     rebaselines it, with provenance, and only the second changes what
@@ -1661,3 +1861,14 @@ digest. Copying verdict logic into TypeScript is not a supported fallback.
     gate's job; rendered-page target traffic is disclosed as unsigned
     Worker egress fulfilled into Browser Run.
 17. **Provider facts are verification tasks, not assertions.**
+18. **Discovery adds a site's own pages when no person chose its scope
+    and its robots.txt rules are known**, from what the entry route
+    already read, an index sitemap through its children, one level deep,
+    under the rules that let a route be stored unchanged and with files
+    left out, adopted in the write that commits the entry route's step,
+    so a site's first scan can cover its pages. With unknown rules it
+    keeps the starting routes; a first scan then covers only the entry
+    route. Its first applied observation seeds only baseline fields
+    whose evidence is complete and clean. Later scope shrinkage keeps
+    the good header and third-party origin sets rather than following
+    the smaller set down.

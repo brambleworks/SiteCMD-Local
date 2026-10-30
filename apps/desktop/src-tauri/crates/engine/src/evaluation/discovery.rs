@@ -4,7 +4,8 @@
 //! pages the sitemap walk's document lists, an index's through its children,
 //! in their order. Nothing is requested for it, and nothing it finds is
 //! followed. A candidate is kept only as a canonical route the hosted service
-//! may store unchanged, and never one that names a file.
+//! may store unchanged, and never one that names a file. These reads also
+//! supply bounded sitemap routes for storage.
 
 use std::collections::HashSet;
 
@@ -22,7 +23,7 @@ use crate::checks::seo::links::{
 use crate::checks::seo::robots::robots_fetch_from_probe;
 use crate::checks::seo::sitemap::{parse_sitemap_document, SitemapProbe};
 use crate::checks::seo::sitemap_walk::{robots_was_read, SITEMAP_URL_LIMIT};
-use crate::log_sanitizer::{evidence_safe_page_url, ISSUE_EVIDENCE_URL_MAX_CHARS};
+use crate::log_sanitizer::{contains_email, evidence_safe_page_url, ISSUE_EVIDENCE_URL_MAX_CHARS};
 use crate::page::PageContext;
 use crate::probe::ProbeOutcome;
 use crate::route::canonical_path;
@@ -33,6 +34,58 @@ use crate::session::signals::rel_has;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiscoveryResponse {
     pub routes: Option<Vec<String>>,
+}
+
+/// Storable sitemap paths in document order, and whether the read fit its bounds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SitemapRoutes {
+    pub routes: Option<Vec<String>>,
+    pub complete: bool,
+}
+
+/// Storable paths from the sitemap read, bounded by count and JSON array bytes.
+pub(super) fn sitemap_routes(
+    context: &ProbeContext,
+    limit: usize,
+    byte_limit: usize,
+) -> SitemapRoutes {
+    if !(200..300).contains(&context.page.status_code) {
+        return SitemapRoutes {
+            routes: None,
+            complete: false,
+        };
+    }
+    let origin = origin_with_port(&context.page.url);
+    let robots = RobotsRules::from_context(context);
+    let (locations, mut complete) = sitemap_pages(context, &origin);
+    complete &= robots.known && byte_limit >= 2;
+    let mut routes = Vec::new();
+    let mut seen = HashSet::new();
+    let mut bytes = 2;
+    for location in locations {
+        let Some(route) = url::Url::parse(&location)
+            .ok()
+            .and_then(|url| accepted_route(&url, &origin, &robots))
+        else {
+            continue;
+        };
+        if !seen.insert(route.clone()) {
+            continue;
+        }
+        // allow-expect: a string always serializes to JSON
+        let encoded = serde_json::to_vec(&route).expect("route JSON");
+        let additional = encoded.len() + usize::from(!routes.is_empty());
+        if routes.len() >= limit.min(SITEMAP_URL_LIMIT) || bytes + additional > byte_limit {
+            complete = false;
+            break;
+        }
+        bytes += additional;
+        routes.push(route);
+    }
+    SitemapRoutes {
+        routes: Some(routes),
+        complete,
+    }
 }
 
 /// The file extensions Cloudflare caches by default, which name static files
@@ -144,32 +197,31 @@ impl Chosen {
     /// An address on the page's own origin, with no query and no credentials,
     /// as its canonical route.
     fn offer(&mut self, url: &url::Url) {
-        if origin_with_port(url) != self.origin
-            || url.query().is_some()
-            || !url.username().is_empty()
-            || url.password().is_some()
-        {
+        if self.routes.len() >= self.limit {
             return;
         }
-        self.offer_route(&canonical_path(url.path()), url);
+        if let Some(route) = accepted_route(url, &self.origin, &self.robots) {
+            if self.seen.insert(route.clone()) {
+                self.routes.push(route);
+            }
+        }
     }
+}
 
-    fn offer_route(&mut self, route: &str, url: &url::Url) {
-        if self.routes.len() >= self.limit || self.seen.contains(route) {
-            return;
-        }
-        // Rejection depends only on the route and this run's fixed context,
-        // so weighing a rejected route again gives the same answer.
-        if !names_a_cached_file(route)
-            && storable(route, &self.origin)
-            && self
-                .robots
-                .allowed(&url[url::Position::BeforePath..url::Position::AfterQuery])
-        {
-            self.seen.insert(route.to_string());
-            self.routes.push(route.to_string());
-        }
+/// Discovery and sitemap storage admit the same canonical page addresses.
+fn accepted_route(url: &url::Url, origin: &str, robots: &RobotsRules) -> Option<String> {
+    if origin_with_port(url) != origin
+        || url.query().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return None;
     }
+    let route = canonical_path(url.path());
+    (!names_a_cached_file(&route)
+        && storable(&route, origin)
+        && robots.allowed(&url[url::Position::BeforePath..url::Position::AfterQuery]))
+    .then_some(route)
 }
 
 /// Whether the route's last segment ends in a file extension Cloudflare
@@ -190,7 +242,8 @@ fn names_a_cached_file(route: &str) -> bool {
 /// a route it would have to change, and a refused route is left out rather
 /// than altered, because an altered route is a page the site does not serve: a
 /// search path, a route the evidence rules would redact after word-slug masking,
-/// an address past the length bound, and a route holding an exposed-key pattern.
+/// an address past the length bound, or a route holding an exposed-key pattern,
+/// an email address or path parameters.
 fn storable(route: &str, origin: &str) -> bool {
     let address = format!("{origin}{route}");
     let masked = route
@@ -200,12 +253,14 @@ fn storable(route: &str, origin: &str) -> bool {
         .join("/");
     let masked = format!("{origin}{masked}");
     !is_search_path(route)
+        && !route.contains(';')
+        && !contains_email(route)
         && address.chars().count() <= ISSUE_EVIDENCE_URL_MAX_CHARS
         && evidence_safe_page_url(&masked) == masked
         && !matches_key_pattern(route)
 }
 
-// Only discovery permits word slugs; every other evidence caller retains its token policy.
+// Published page routes permit word slugs; other evidence callers retain their token policy.
 fn word_slug(segment: &str) -> bool {
     let pieces: Vec<_> = segment.split('-').collect();
     let uuid = pieces.iter().map(|piece| piece.len()).eq([8, 4, 4, 4, 12])
@@ -285,7 +340,7 @@ fn page_a_link_reaches(outcomes: &ProbeOutcomes<'_>, link: &url::Url) -> Option<
 /// whether they are all its pages: an index's are its children's, as far as
 /// the route read them, and a missing sitemap lists none. Not all when the
 /// walk could not finish, robots.txt or an earlier candidate did not answer,
-/// or a child the route asked for did not answer.
+/// a child the route asked for did not answer, or the URL limit cut its pages.
 fn sitemap_pages(context: &ProbeContext, origin: &str) -> (Vec<String>, bool) {
     let Some(answer) = context.outcomes.get(&robots_request(context)) else {
         return (Vec::new(), false);
@@ -296,18 +351,24 @@ fn sitemap_pages(context: &ProbeContext, origin: &str) -> (Vec<String>, bool) {
             let children = context.sitemap_children.pages(&found, origin);
             (
                 children.pages.to_vec(),
-                children.complete && sitemap_sources_read(context, &robots, &found),
+                children.complete
+                    && !children.url_limited
+                    && sitemap_sources_read(context, &robots, &found),
             )
         }
-        SitemapProbe::Found(found) => (
-            parse_sitemap_document(&found.body)
-                .locs()
-                .iter()
-                .take(SITEMAP_URL_LIMIT)
-                .cloned()
-                .collect(),
-            sitemap_sources_read(context, &robots, &found),
-        ),
+        SitemapProbe::Found(found) => {
+            let document = parse_sitemap_document(&found.body);
+            (
+                document
+                    .locs()
+                    .iter()
+                    .take(SITEMAP_URL_LIMIT)
+                    .cloned()
+                    .collect(),
+                document.locs().len() <= SITEMAP_URL_LIMIT
+                    && sitemap_sources_read(context, &robots, &found),
+            )
+        }
         SitemapProbe::Missing { .. } if robots_was_read(answer) => (Vec::new(), true),
         _ => (Vec::new(), false),
     }

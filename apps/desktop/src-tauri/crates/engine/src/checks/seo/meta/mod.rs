@@ -21,4 +21,6 @@ pub use hreflang::HreflangCheck;
 pub use noindex::NoindexCheck;
 pub use og_absolute_urls::OgImageAbsoluteCheck;
 pub use social::{OpenGraphCheck, TwitterCardCheck};
+pub use text::LengthOutcome;
+pub(crate) use text::{description_outcome, description_value, title_outcome, title_value};
 pub use text::{MetaDescriptionCheck, TitleTagCheck};

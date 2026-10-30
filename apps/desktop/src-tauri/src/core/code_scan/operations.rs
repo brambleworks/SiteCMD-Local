@@ -59,6 +59,7 @@ fn declares_drupal_update_hook(content: &str) -> bool {
 pub(super) fn analyze_operations(
     root: &Path,
     files: &[SourceFile],
+    rust_modules: &scan_scope::RustModuleGraph,
     summaries: &[FileSignalSummary],
     project_files: &[ProjectFile],
     manifests: &[PackageManifest],
@@ -82,7 +83,7 @@ pub(super) fn analyze_operations(
         Vec::new()
     };
     let deploy_configs = collect_deploy_config_files(project_files, text_budget)?;
-    let source_env_keys = collect_source_env_keys(files);
+    let source_env_keys = SourceEnvInventory::new(files, project_files, rust_modules, text_budget)?;
     let project_paths_lower = project_paths
         .iter()
         .map(|path| path.to_ascii_lowercase())

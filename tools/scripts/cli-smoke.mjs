@@ -42,7 +42,7 @@ const HELP_SNAPSHOTS = [
   {
     label: "sitecmd init --help",
     args: ["init", "--help"],
-    sha256: "ddb1aa807ad0f80e15d7a3ac8ecf01646cd0c37fd75c1a3aff646d70ae405838",
+    sha256: "ee94220c5f060b7e84121986b8cf2e80e4a0226b2f7ef319f5d78a444d4c03b3",
   },
   {
     label: "sitecmd audit --help",

@@ -61,9 +61,6 @@ pub async fn run(args: WatchArgs) -> Result<(), String> {
                 if let Some(sitecmd_dir) = crate::cli::find_config_dir() {
                     if let Err(e) = crate::cli::export::export_scan(&sitecmd_dir, &scan) {
                         eprintln!("Warning: failed to export scan results: {}", e);
-                    } else if let Some(project_root) = sitecmd_dir.parent() {
-                        let _ = crate::cli::sync_project_to_local_database(project_root);
-                        let _ = crate::cli::fire_import_deep_link(project_root);
                     }
                 }
 

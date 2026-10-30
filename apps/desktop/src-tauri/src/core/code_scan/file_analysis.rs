@@ -13,7 +13,9 @@ mod signals;
 
 use ai_checks::collect_ai_issues;
 use architecture_checks::collect_architecture_issues;
-pub(in crate::core::code_scan) use blanking::{blank_non_code_for_env, blank_python};
+pub(in crate::core::code_scan) use blanking::{
+    blank_non_code_for_env, blank_python, blank_rust_non_code,
+};
 use js_sinks::collect_js_sink_issues;
 use php_sinks::collect_php_sink_issues;
 use python_sinks::collect_python_sink_issues;
@@ -190,6 +192,7 @@ fn code_view_for_analysis(file: &SourceFile) -> Option<SourceFile> {
         relative_path: file.relative_path.clone(),
         content,
         line_count: file.line_count,
+        inline_rust_tests: file.inline_rust_tests,
     })
 }
 
@@ -504,6 +507,7 @@ mod code_view_tests {
             relative_path: relative_path.to_string(),
             content: content.to_string(),
             line_count: content.lines().count(),
+            inline_rust_tests: false,
         }
     }
 

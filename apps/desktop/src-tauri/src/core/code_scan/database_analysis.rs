@@ -3,6 +3,8 @@ use std::fs;
 
 mod artifacts;
 pub(in crate::core::code_scan) use artifacts::*;
+mod env_inventory;
+pub(in crate::core::code_scan) use env_inventory::SourceEnvInventory;
 mod env_files;
 pub(in crate::core::code_scan) use env_files::*;
 mod live_inspection;

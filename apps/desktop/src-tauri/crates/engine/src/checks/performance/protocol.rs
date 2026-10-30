@@ -18,6 +18,25 @@ impl Check for Http2Check {
         ScanCategory::Performance
     }
     fn run(&self, ctx: &PageContext) -> Vec<CheckResult> {
+        let Some(version) = ctx.http_version.as_deref() else {
+            return vec![CheckResult {
+                check_id: self.id().into(),
+                category: self.category(),
+                title: "HTTP/2 Support".into(),
+                description:
+                    "The negotiated HTTP protocol was not observed, so this check did not grade it."
+                        .into(),
+                status: CheckStatus::Skipped,
+                severity: Severity::Low,
+                fix_prompt: None,
+                manual_fix: None,
+                raw_data: Some(serde_json::json!({"reason": "protocol_not_observed"})),
+                confidence: crate::checks::IssueConfidence::High,
+                confidence_reason: None,
+                why_it_matters: None,
+            }];
+        };
+
         // Local dev servers speak HTTP/1.1; HTTP/2 comes from the
         // production server or CDN, so grading a preview scan produced
         // production advice for every local run.
@@ -39,7 +58,6 @@ impl Check for Http2Check {
             }];
         }
 
-        let version = ctx.http_version.as_deref().unwrap_or("unknown");
         let is_h2_plus = version.contains("HTTP/2") || version.contains("HTTP/3");
         // Browsers negotiate h2 and h3 through ALPN during the TLS handshake,
         // so a page served over plain HTTP cannot reach either one whatever
@@ -231,6 +249,26 @@ mod tests {
     }
 
     #[test]
+    fn http2_check_skips_when_protocol_was_not_observed() {
+        let mut page = ctx(false, "HTTP/2.0");
+        page.http_version = None;
+        let results = Http2Check.run(&page);
+        assert_eq!(results.len(), 1);
+        let result = &results[0];
+        assert_eq!(result.status, CheckStatus::Skipped, "{result:?}");
+        assert_eq!(result.check_id, "performance.http2");
+        assert_eq!(result.severity, Severity::Low);
+        assert!(result.description.contains("protocol was not observed"));
+        assert!(result.description.contains("did not grade"));
+        assert_eq!(
+            result.raw_data,
+            Some(serde_json::json!({"reason": "protocol_not_observed"}))
+        );
+        assert!(result.fix_prompt.is_none());
+        assert!(result.manual_fix.is_none());
+    }
+
+    #[test]
     fn http2_check_skips_on_localhost_preview() {
         let results = Http2Check.run(&ctx(true, "HTTP/1.1"));
         assert_eq!(results[0].status, CheckStatus::Skipped);
@@ -272,6 +310,19 @@ mod tests {
             results[0].manual_fix
         );
         assert_eq!(results[0].raw_data.as_ref().unwrap()["scheme"], "http");
+    }
+
+    #[test]
+    fn http3_check_still_passes_on_production() {
+        for version in ["HTTP/3", "HTTP/3.0"] {
+            let results = Http2Check.run(&ctx(false, version));
+            assert_eq!(results[0].status, CheckStatus::Pass);
+            assert_eq!(results[0].title, "Modern HTTP protocol detected");
+            assert_eq!(
+                results[0].raw_data.as_ref().unwrap()["http_version"],
+                version
+            );
+        }
     }
 
     #[test]

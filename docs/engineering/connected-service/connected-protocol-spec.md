@@ -127,16 +127,17 @@ verify findings belonging to the other.
   URL.
 - Identity uses the final URL after redirects, as observed by the scanner
   that produced the finding.
-- Every Web occurrence, desktop and hosted, also carries `scope_route`, the
-  canonical authored route whose execution reached that final URL. It is
-  provenance, not part of occurrence identity. More than one authored route
-  can converge on the same final occurrence; the wire may therefore repeat
-  that occurrence with a different `scope_route`, and the service preserves
-  the complete set as `scope_routes`. The occurrence is in scope while any
-  provenance route is selected, and absence requires coverage of every
-  currently in-scope provenance route. A configured `/checkout` that redirects
-  to `/checkout/` therefore remains watched without allowing a clean scan of
-  one alias to clear a finding another selected alias can still reach. Records
+- Every Web occurrence, desktop and hosted, also carries `scope_route`,
+  the canonical authored route whose execution reached that final URL.
+  It is provenance, not part of occurrence identity. More than one
+  authored route can converge on the same final occurrence; the wire may
+  therefore repeat that occurrence with a different `scope_route`, and
+  the service preserves the complete set as `scope_routes`. The
+  occurrence is in scope while any provenance route is in the scope, and
+  absence requires coverage of every currently in-scope provenance
+  route. A configured `/checkout` that redirects to `/checkout/`
+  therefore remains watched without allowing a clean scan of one alias
+  to clear a finding another selected alias can still reach. Records
   created before this marker fall back to `route`.
 - Repeated snapshot rows with the same `(check, identity)` are normalized
   before lifecycle decisions, persistence, or alerting. Authored routes and
@@ -943,7 +944,7 @@ runners never carry counters they cannot keep:
 2. **CI runners carry no sequence.** CI jobs are concurrent and
    disposable, with no shared persistent counter to increment, so a CI
    submission never has a `submission_sequence`. CI ordering comes from
-   the deployment identity it embeds: provider ordering facts order the
+   the deployment identity it embeds: publish-attestation facts order the
    deployments, create-or-match deduplicates the record, and the
    `Idempotency-Key` header deduplicates the submission. Two jobs for the
    same deployment converge; jobs for different deployments order by the
@@ -956,26 +957,27 @@ runners never carry counters they cannot keep:
 4. **Desktop snapshots declare their basis.** Each desktop snapshot
    carries `based_on_event_sequence`: the site event sequence the
    desktop had last pulled when the scan ran. It is the staleness shield
-   below, and it is a fact about what the producer knew, not a clock.
-   CI snapshots carry none; their basis is their deployment, and the
-   shield reads deployment ordering for them instead (below). Hosted
+   below, and it is a fact about what the producer knew, not a clock. CI
+   snapshots carry none; their basis is their deployment, and the shield
+   reads deployment ordering for them instead (below). Hosted
    observations declare a basis too: each captures, at scan start, the
    deployment head identity (or the explicit no-deployment state), the
-   `scope_revision`, and the `event_sequence`. The currency predicate
-   is exact: an observation is current-basis iff its captured head
-   equals the site's current head at submission (two no-deployment
-   states match) **and** its captured `scope_revision` is still
-   current. A head change or a scope change mid-flight makes the whole
-   observation history-only with a replacement scan scheduled;
-   movement of `event_sequence` alone (alerts, mutations, other
-   observations) never invalidates it. The hosted scanner spec owns
-   the mechanics. At bootstrap the watermark is
-   the genesis value `0`: bootstrap precedes every site event (scans and
-   hooks are disabled until it commits), so nothing exists for the
-   shield to engage against. Every post-bootstrap snapshot carries a
-   genuinely pulled watermark, and a backlog scan performed before
-   connection submits with `0`, where the shield governs it like any
-   other historical evidence.
+   `scope_revision`, and the `event_sequence`. The currency predicate is
+   exact: an observation is current-basis iff its captured head equals
+   the site's current head at submission (two no-deployment states
+   match) **and** its captured `scope_revision` is still current. A head
+   change or a person's scope change (a `scope_revision` advance)
+   mid-flight makes the whole observation history-only with a
+   replacement scan scheduled; movement of `event_sequence` alone
+   (alerts, mutations, other observations) never invalidates it. The
+   hosted scanner spec owns the mechanics. Hosted scans run in every
+   phase but `disconnected` and can record site events before bootstrap.
+   Generic deploy hooks, CI submissions and the merge gate,
+   ordering-authority changes, deployment reconciliation, and
+   non-bootstrap desktop observations require `connected`. Every
+   post-bootstrap snapshot carries a genuinely pulled watermark, and a
+   backlog scan performed before connection submits with `0`, where the
+   shield governs it like any other historical evidence.
 
 ### Evidence precedence
 
@@ -1074,9 +1076,8 @@ from ruling from the grave:
   `unknown` bases inform presence and never resolve absence. Both
   qualifying kinds are predicates **against the site's current
   ordered deployment head**, so they are evaluable only where one
-  exists: on a site with no ordered deployment (no CI door, no
-  provider webhook, ordering unknown), every basis degrades to
-  `unknown` server-side and code absence records
+  exists: on a site without an ordered deployment head, every basis
+  degrades to `unknown` server-side and code absence records
   `verification inconclusive (no deployment basis)` - visibly, until
   the first ordered deployment lands. That is the honest reading of
   deploy-anchored verification, not a gap: without a deployment
@@ -1158,44 +1159,53 @@ route-level wholesale replacement.
 Coverage describes what a completed scan observed; it cannot define what
 future scans should observe, so scope is its own resource, not a
 projection of coverage. The scan scope is a revisioned per-environment
-configuration object: the selected routes (the same canonical route
-form as occurrences) and the expected check families. A signed-in person sets
-it through the dashboard (`PUT /v1/sites/{site}/scope`), guarded by its
-own `scope_revision` with the same stale-rejection semantics as every
-other guard, bounded by the coverage limits (5,000 routes), served in
-`GET /v1/sites/{site}/state` summaries, included in export, and erased
-with the site. The hosted scanner reads it as the authority for what to
-scan; scope changes are recorded events, and removing a route from
-scope does not delete its occurrence records (retention and compaction
-govern those), it only stops future observation. Occurrence records
-whose authored `scope_routes` all leave scope carry the orthogonal wire field
+configuration object: the routes, selected by a person or discovered
+(below), in the same canonical route form as occurrences, and the
+expected check families. A signed-in person sets it through
+`PUT /v1/sites/{site}/scope`, guarded by its own `scope_revision` with
+the same stale-rejection semantics as every other guard, bounded by the
+coverage limits (5,000 routes), served in `GET /v1/sites/{site}/state`
+summaries, included in export, and erased with the site. The hosted
+scanner reads it as the authority for what to scan; scope changes are
+recorded events, and removing a route from scope does not delete its
+occurrence records (retention and compaction govern those), it only
+stops future observation. Occurrence records whose authored
+`scope_routes` all leave scope carry the orthogonal wire field
 `scope_membership: "out_of_scope"` (a first-class tri-state record
 field, `in_scope | pending_reentry | out_of_scope`, in reads, export,
-and recovery, not a prose label): retained as history until
-compaction, excluded from current-state aggregation, verification
-targets, and group-state derivation, and a group left with no in-scope
-records carries the derived wire field `dormant: true` (kept, silent,
-excluded from active views) rather than being deleted. **Re-entry is
-not resurrection, and it never expires into exclusion**: when a route
-returns to scope, its existing records enter `pending_reentry`, a
-state that only a fresh governing observation resolves (to `in_scope`
-with current status, or removal on proven absence). It is deliberately
+and recovery, not a prose label): retained as history until compaction,
+excluded from current-state aggregation, verification targets, and
+group-state derivation, and a group left with no in-scope records
+carries the derived wire field `dormant: true` (kept, silent, excluded
+from active views) rather than being deleted. **Re-entry is not
+resurrection, and it never expires into exclusion**: when a route
+returns to scope, its existing records enter `pending_reentry`, a state
+that only a fresh governing observation resolves (to `in_scope` with
+current status, or removal on proven absence). It is deliberately
 **not** the `pending_fresh_evidence` flag, whose 90-day expiry would
 otherwise quietly strand a user-selected route as excluded forever; a
-`pending_reentry` record that observations keep failing to resolve
-stays visibly pending and surfaces as operationally unhealthy.
-Connect scans the accepted scope without allowance-driven truncation or
-a grace period that changes scope. Connect's site state no longer returns
-`scope_over_plan`,
-`site_allowance_over_plan`, their grace-expiry fields, or
-`scope_overflow_count`. The desktop's state reader still declares them
-with defaults: `false` for the flags, `null` for the expiry fields, and
-`0` for the overflow count. They are response fields, never submission
-fields. Connect returns `scope_effective_route_count` and `scope_route_cap`.
-A site cannot leave
-`pending_bootstrap` until both bootstrap and an initial scope have
-committed, because a connected site with no scope would be a guardian
-watching nothing.
+`pending_reentry` record that observations keep failing to resolve stays
+visibly pending and surfaces as operationally unhealthy. Connect scans
+the accepted scope without allowance-driven truncation or a grace period
+that changes scope. Connect's site state no longer returns
+`scope_over_plan`, `site_allowance_over_plan`, their grace-expiry
+fields, or `scope_overflow_count`. The desktop's state reader still
+declares them with defaults: `false` for the flags, `null` for the
+expiry fields, and `0` for the overflow count. They are response fields,
+never submission fields. Connect returns `scope_effective_route_count`
+and `scope_route_cap`. A site cannot leave `pending_bootstrap` until
+both bootstrap and a person's initial scope (`scope_revision` above 0)
+have committed; a discovered scope does not count.
+
+Until a person sets one, the scope holds the routes the site's last
+applied hosted scan discovered or retained (hosted scanner spec, the
+crawl profile): Connect writes them in that observation's commit,
+records the change as a `scope_put` event by the hosted producer,
+restamps occurrence membership as a person's write does, and leaves
+`scope_revision` at 0, because the revision guards a person's writes and
+a scan of a discovered scope plans its own routes. A person's first
+`PUT` makes the scope theirs, at `scope_revision` 1, even when it names
+exactly the discovered routes, and no scan changes it from then on.
 
 The wire limit of 5,000 routes bounds the resource; the **effective
 scannable scope** is bounded by the hosted scanner's 100-route ceiling. **The environment's entry URL counts toward the effective cap**
@@ -1211,13 +1221,15 @@ and the response returns the new `scope_revision`; a stale basis is
 ### Bootstrap and the mutation outbox
 
 A site moves through explicit phases: `pending_verification`,
-`pending_bootstrap`, `connected`. Scans, hooks, and webhook processing
-are disabled until bootstrap commits, so a hosted observation cannot
-create groups before the desktop's lifecycle arrives. Bootstrap is
-recorded as `bootstrapped_at` on the site; a second bootstrap answers
-`409 already_bootstrapped` **from that marker, never from group-set
-emptiness**, because a legitimate bootstrap can contain zero groups and
-must still commit the phase transition.
+`pending_bootstrap`, `connected`. Hosted scans run in every phase but
+`disconnected`, and their observations can create groups before the
+desktop's lifecycle arrives. Generic deploy hooks, CI
+submissions and the merge gate, ordering-authority changes, deployment
+reconciliation, and non-bootstrap desktop observations require
+`connected`. Bootstrap is recorded as `bootstrapped_at` on the site; a
+second bootstrap answers `409 already_bootstrapped` **from that marker,
+never from group-set emptiness**, because a legitimate bootstrap can
+contain zero groups and must still commit the phase transition.
 
 Bootstrap carries the group set with, for every group whose local state
 is `verified`, the claimed state and the last-known occurrence
@@ -1482,28 +1494,27 @@ inspector and `--dry-run` render exactly these objects.
 ## Credentials
 
 Two credential families. **Bearer credentials** include dashboard sessions
-and Connect's personal, CI, job, and erasure status tokens. Connect mints
-the latter four with the checksum format below and stores only their SHA-256
-digests.
+and Connect's personal, CI, and job tokens. Connect mints the latter
+three with the checksum format below and stores only their SHA-256 digests.
 **Capability tokens** are narrow, single-purpose, and mostly
 single-use; each grants exactly one operation on exactly one resource,
 and the complete inventory lives with the public-surface table below -
 there is no such thing as an unlisted way in.
 
-| Credential           | Kind       | Scope                                          | Issued by                        | Held by                 |
-| -------------------- | ---------- | ---------------------------------------------- | -------------------------------- | ----------------------- |
-| Dashboard session    | bearer     | The signed-in person's account                 | WorkOS AuthKit                   | Dashboard               |
-| Personal token       | bearer     | Account or selected sites, with named scopes   | Signed-in person                 | Client credential store |
-| Job token            | bearer     | Assigned fix-job operations                    | Connect                          | Fix-job runner          |
-| CI token             | bearer     | Submit and read deployment cursor for one site | Signed-in person                 | CI secret store         |
-| Webhook secret       | bearer/mac | Trigger scans for one environment              | Signed-in person                 | Provider webhook config |
-| Erasure status token | bearer     | Read one erasure job's status                  | Service, at erase                | Requester               |
-| Report link token    | capability | Render one report until TTL or revocation      | Service, at report creation      | Email or clipboard      |
-| Alert nonce          | capability | Redeem one alert view, once                    | Service, at alert delivery       | The alert email         |
-| Alert view session   | capability | View one alert for 30 minutes                  | Service, at redemption           | HttpOnly cookie         |
-| Confirmation token   | capability | Confirm one destination, once                  | Service, at destination creation | The confirmation email  |
-| Unsubscribe token    | capability | Demote one destination's cadence               | Service, per message             | `List-Unsubscribe-Post` |
-| OAuth state token    | capability | Complete one provider authorization, once      | Service, at connection creation  | The authorize URL       |
+| Credential                 | Kind       | Scope                                          | Issued by                        | Held by                      |
+| -------------------------- | ---------- | ---------------------------------------------- | -------------------------------- | ---------------------------- |
+| Dashboard session          | bearer     | The signed-in person's account                 | WorkOS AuthKit                   | Dashboard                    |
+| Personal token             | bearer     | Account or selected sites, with named scopes   | Signed-in person                 | Client credential store      |
+| Job token                  | bearer     | Assigned fix-job operations                    | Connect                          | Fix-job runner               |
+| CI token                   | bearer     | Submit and read deployment cursor for one site | Signed-in person                 | CI secret store              |
+| Webhook secret             | MAC        | Sign deploy events for one site environment    | Signed-in person                 | Deploy pipeline secret store |
+| Report link token          | capability | Render one report until TTL or revocation      | Service, at report creation      | Email or clipboard           |
+| Alert nonce                | capability | Redeem one alert view, once                    | Service, at alert delivery       | The alert email              |
+| Alert view session         | capability | View one alert for 30 minutes                  | Service, at redemption           | HttpOnly cookie              |
+| Confirmation token         | capability | Confirm one destination, once                  | Service, at destination creation | The confirmation email       |
+| Erasure confirmation token | capability | Confirm erasure of one account                 | Service, at erasure request      | The confirmation email       |
+| Site removal token         | capability | Confirm removal of one site, once              | Service, at site removal request | The confirmation email       |
+| Unsubscribe token          | capability | Demote one destination's cadence               | Service, per message             | `List-Unsubscribe-Post`      |
 
 - **Dashboard session.** Accounts are WorkOS AuthKit organizations. A person
   signs in at `app.sitecmd.com`; the dashboard holds the session and forwards
@@ -1524,9 +1535,9 @@ there is no such thing as an unlisted way in.
   with `403 signed_in_required`, regardless of their scopes. A session
   without an account receives `403 account_required` on account routes;
   an unavailable sign-in provider answers `503 identity_unavailable`.
-- **Minted bearer format.** Personal, CI, job, and erasure status tokens use
+- **Minted bearer format.** Personal, CI, and job tokens use
   `sitecmd_<kind>_` followed by 30 base62 body characters and a six-character
-  base62 CRC32 checksum. The kinds are `pat`, `ci`, `job`, and `ers`.
+  base62 CRC32 checksum. The kinds are `pat`, `ci`, and `job`.
   The alphabet is `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
   The body encodes 22 random bytes and is left-padded with `0` to 30
   characters. The checksum covers the prefix and body, encodes the unsigned
@@ -1565,12 +1576,15 @@ there is no such thing as an unlisted way in.
   with the new-finding identities, evaluating and discarding the
   submission without mutating any state (semantics in the alert and
   report delivery spec).
-- **Webhook secret.** Per environment and provider. Generic-door requests
-  are HMAC-signed with it over the raw body, following the LemonSqueezy
-  verification pattern already in production (constant-time hex compare,
-  fail-closed on empty secret). Vercel and Netlify doors use the
-  provider's own signing; mechanics belong to the hosted scanner spec, but
-  the credential object and its rotation live here.
+- **Webhook secret.** Per site, for its production environment. The deploy
+  pipeline signs `{sent_at}.{raw body}` with HMAC-SHA256 under the
+  `sitecmd_whs_` secret and sends `X-SiteCMD-Signature` and
+  `X-SiteCMD-Timestamp`. Connect checks the five-minute skew window and
+  signature before parsing the body, comparing the signature in constant
+  time. A missing or revoked secret receives the same `401 unauthorized`
+  as an invalid signature. The secret derives from a service-held keyring;
+  the stored row contains derivation coordinates and a one-way fingerprint.
+  Its minting, rotation, and revocation live here.
 - **Report link.** An opaque token containing 32 random bytes encoded as
   base64url. The service stores its SHA-256 hash alongside the report's
   expiry. The render path looks the report up by the presented token's hash
@@ -1617,13 +1631,14 @@ Conformance is judged against this protocol and its route inventory.
   `stale_groups` member to reconcile without a second read. A guardrail
   fails the build when a 4xx or 5xx is answered outside them.
 - **Customer-origin egress is fully disclosed.** Ownership verification
-  queries the named DNS resolver or fetches the customer's well-known route,
-  and hosted scans fetch only the configured public routes. `/scanner` names
-  both senders, their User-Agents, the Worker-proxied rendered-page path, and
-  the controls an operator can use. It deliberately publishes no runner address list: Workers
-  egress varies across Cloudflare's network and has no stable per-customer
-  range. `network-facts.ts` and the trust pages enumerate the remaining
-  provider and delivery destinations.
+  queries the named DNS resolver, or fetches the customer's well-known
+  route or home page. Hosted scans fetch only the configured public
+  routes. `/scanner` names both senders, their User-Agents, the
+  Worker-proxied rendered-page path, and the controls an operator can use.
+  It deliberately publishes no runner address list: Workers egress varies
+  across Cloudflare's network and has no stable per-customer range.
+  `network-facts.ts` and the trust pages enumerate the remaining provider
+  and delivery destinations.
 
 Connect resolves the caller before applying each route's access rule. Public
 capability and signed-hook routes declare their authentication separately.
@@ -1671,10 +1686,9 @@ existed has no rows, and for it every check stays sparable - the old
 reading, stated rather than guessed past - until its next governing
 code snapshot populates the inventory.
 
-Since that account was written, the remaining connected-service surfaces
-have landed: hosted triggers, deployment ordering, alert delivery, provider
-connections, reports, reconnect, key rotation, retention, and erasure. Their
-current wire shapes are frozen in the OpenAPI document named below.
+The connected-service surface includes hosted triggers, deployment ordering,
+alert delivery, reports, reconnect, key rotation, retention, and erasure.
+Their wire shapes are frozen in the OpenAPI document named below.
 
 The OpenAPI document this spec obligates exists now, at
 `apps/sitecmd-connect/openapi.yaml` in the separate SiteCMD-Connect repository. It
@@ -1686,21 +1700,20 @@ capability it does not describe is one the service does not have.
 
 - **Authentication** is `Authorization: Bearer <token>` on every
   `/v1/*` endpoint except the hook doors, which authenticate by
-  signature as specified per door. The erasure status token is a bearer
-  token under this same rule: it travels in the header, never in the
-  URL, because URLs leak into logs. Everything reachable without a
-  bearer token is enumerated in the public-surface table below;
+  signature as specified per door. Everything reachable without a
+  tenant bearer token is enumerated in the public-surface table below;
   a route not in that table does not exist unauthenticated.
 
 ### The public surface
 
-Every internet-reachable route that does not take an account or
-CI bearer, normative and closed, in **two route classes** with
-different rules, because provider webhooks and mail systems are not
+Every internet-reachable route that does not take a tenant bearer,
+normative and closed, in **two route classes** with
+different rules, because signed deploy hooks and mail systems are not
 browsers and must not be handed browser assumptions:
 
-- **Server-to-server doors** (the signed webhook doors, fix-job doors, the RFC 8058
-  unsubscribe and the deploy's storage probe): no origin policy and no
+- **Server-to-server doors** (the signed webhook doors, fix-job doors,
+  the RFC 8058 unsubscribe, the deploy's storage probe, and the restore
+  operation): no origin policy and no
   cookies - the callers cannot and need not establish browser context;
   authentication is the signature, runner OIDC token, or single-purpose
   token alone.
@@ -1711,8 +1724,9 @@ browsers and must not be handed browser assumptions:
   and performs the cadence demotion with no confirmation page and no
   redirect chain, because the caller is a mail system acting on the
   user's gesture.
-- **Browser-form routes** (the OAuth callback, alert landing, redeem,
-  view, and resend, destination confirmation, report render): render
+- **Browser-form routes** (alert landing, redeem,
+  view, and resend, destination confirmation, account erasure and site
+  removal confirmation, report render): render
   HTML, including their failures - the `/v1/*` problem details do not
   apply here; the error page is an HTML page with the same
   security headers. POSTs are same-origin form posts; the only cookie
@@ -1722,36 +1736,36 @@ browsers and must not be handed browser assumptions:
 
 Both classes: every response is `Cache-Control: no-store`; capability
 tokens in paths are redacted from access logs to their resource id,
-and **query strings on public routes are redacted wholesale** (the
-OAuth `state` and the provider's authorization `code` arrive as query
-parameters; the code exists in memory for the exchange and is never
-stored or logged); rate limits come from the beta operating
-configuration, which carries per-class keys (hook doors per site,
-Resend intake globally, browser-form routes per source address per
-resource).
+and **query strings on public routes are redacted wholesale**; rate
+limits come from the beta operating configuration, which carries
+per-class keys (hook doors per site, Resend intake globally, browser-form
+routes per source address per resource).
 
-| Method + path                           | Authentication                                         | Single-use                 | TTL                            | Behavior                                                                     |
-| --------------------------------------- | ------------------------------------------------------ | -------------------------- | ------------------------------ | ---------------------------------------------------------------------------- |
-| `POST /v1/hooks/github-secret-scanning` | GitHub ECDSA signature over raw body                   | Revocation is idempotent   | n/a                            | Leaked-token feedback and security notice; 1 MiB body limit                  |
-| `POST /v1/hooks/github`                 | `X-Hub-Signature-256`: HMAC-SHA256 over raw body       | No                         | n/a                            | GitHub App pull-request deliveries for the fix loop                          |
-| `POST /v1/fix-jobs/{id}/claim`          | `X-GitHub-OIDC-Token`, checked against the job binding | One claim per purpose      | OIDC validity                  | Issues a purpose-scoped job token for execute or publish                     |
-| `POST /v1/fix-jobs/{id}/result`         | Purpose-scoped job-token bearer                        | One result per job attempt | Job timeout                    | Commits the outcome and revokes the job's live tokens                        |
-| `POST /v1/fix-jobs/{id}/publish-token`  | Publish-purpose job-token bearer                       | No                         | Job timeout                    | Mints a GitHub token for contents and pull requests in one repository        |
-| `POST /v1/fix-jobs/{id}/issue-token`    | Publish-purpose job-token bearer                       | No                         | Job timeout                    | Mints a GitHub token for issues in one repository                            |
-| `POST /v1/hooks/vercel`                 | Provider signature (per provider contract)             | Dedup by event id          | n/a                            | Deploy event; unverifiable = dropped and counted, never applied              |
-| `POST /v1/hooks/netlify`                | Provider signature (per provider contract)             | Dedup by event id          | n/a                            | Same contract as above                                                       |
-| `POST /v1/hooks/{site}/deploy`          | `sha256=` HMAC over raw body                           | Dedup by `event_id`        | 5-minute skew window           | Generic deploy door; body schema below; duplicate `event_id` converges `200` |
-| `POST /v1/hooks/resend`                 | Svix signature over raw body                           | Dedup by `svix-id`         | 5-minute tolerance             | Bounce and complaint intake (delivery spec)                                  |
-| `GET /callbacks/{provider}`             | OAuth `state` token (single-use, hashed)               | Yes                        | 15 minutes                     | Provider code exchange, server-side; completion page carries no tokens       |
-| `GET /a/{alert}/{nonce}`                | None (landing renders nothing sensitive)               | No (non-consuming)         | 72h from first send initiation | Alert landing page: one button, no alert content                             |
-| `POST /a/{alert}/{nonce}/redeem`        | Alert nonce (bound to `{alert}`)                       | Yes                        | 72h from first send initiation | Exchanges nonce for the 30-minute view session cookie                        |
-| `GET /a/view`                           | Alert view session cookie                              | No                         | 30 minutes                     | The alert view (delivery spec's content ceiling)                             |
-| `POST /a/{alert}/{nonce}/resend`        | The nonce record (used or expired counts)              | Rate-limited               | Nonce TTL + 7 days             | Fresh link to the currently verified destination only; generic `200` always  |
-| `GET /d/{token}`                        | None (landing, non-consuming)                          | No                         | 24h from first send initiation | Destination confirmation landing: one button                                 |
-| `POST /d/{token}/confirm`               | Confirmation token                                     | Yes                        | 24h from first send initiation | Confirms the destination (double-opt-in completes)                           |
-| `POST /u/{token}`                       | Unsubscribe token (RFC 8058)                           | Yes, idempotent replay     | 30d from first send initiation | Sets destination policy per its message class; expired answers `410`         |
-| `GET /r/{token}`                        | Report link token plus registry check                  | No                         | Report TTL, revocable          | Renders the stored report projection                                         |
-| `GET /v1/internal/storage-probe`        | Deploy probe bearer, constant-time                     | No                         | n/a                            | Deploy check: writes, reads back and deletes one row; no tenant data         |
+| Method + path                           | Authentication                                               | Single-use                 | TTL                                    | Behavior                                                                                |
+| --------------------------------------- | ------------------------------------------------------------ | -------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
+| `POST /v1/hooks/github-secret-scanning` | GitHub ECDSA signature over raw body                         | Revocation is idempotent   | n/a                                    | Leaked-token feedback and security notice; 1 MiB body limit                             |
+| `POST /v1/hooks/github`                 | `X-Hub-Signature-256`: HMAC-SHA256 over raw body             | No                         | n/a                                    | GitHub App pull-request deliveries for the fix loop                                     |
+| `POST /v1/fix-jobs/{id}/claim`          | `X-GitHub-OIDC-Token`, checked against the job binding       | One claim per purpose      | OIDC validity                          | Issues a purpose-scoped job token for execute or publish                                |
+| `POST /v1/fix-jobs/{id}/result`         | Purpose-scoped job-token bearer                              | One result per job attempt | Job timeout                            | Commits the outcome and revokes the job's live tokens                                   |
+| `POST /v1/fix-jobs/{id}/publish-token`  | Publish-purpose job-token bearer                             | No                         | Job timeout                            | Mints a GitHub token for contents and pull requests in one repository                   |
+| `POST /v1/fix-jobs/{id}/issue-token`    | Publish-purpose job-token bearer                             | No                         | Job timeout                            | Mints a GitHub token for issues in one repository                                       |
+| `POST /v1/hooks/{site}/deploy`          | `sha256=` HMAC over `{sent_at}.{raw body}`                   | Dedup by `event_id`        | 5-minute skew window                   | Generic deploy door; body schema below; duplicate `event_id` converges `200`            |
+| `POST /v1/hooks/resend`                 | Svix signature over raw body                                 | Dedup by `svix-id`         | 5-minute tolerance                     | Bounce and complaint intake (delivery spec)                                             |
+| `POST /v1/hooks/stripe`                 | `Stripe-Signature`, verified by the Stripe SDK over raw body | Dedup by event id          | 5-minute tolerance                     | Refreshes the customer's newest subscription; an unprocessed delivery remains retryable |
+| `GET /a/{alert}/{nonce}`                | None (landing renders nothing sensitive)                     | No (non-consuming)         | 72h from first send initiation         | Alert landing page: one button, no alert content                                        |
+| `POST /a/{alert}/{nonce}/redeem`        | Alert nonce (bound to `{alert}`)                             | Yes                        | 72h from first send initiation         | Exchanges nonce for the 30-minute view session cookie                                   |
+| `GET /a/view`                           | Alert view session cookie                                    | No                         | 30 minutes                             | The alert view (delivery spec's content ceiling)                                        |
+| `POST /a/{alert}/{nonce}/resend`        | The nonce record (used or expired counts)                    | Rate-limited               | Nonce TTL + 7 days                     | Fresh link to the currently verified destination only; generic `200` always             |
+| `GET /d/{token}`                        | None (landing, non-consuming)                                | No                         | 24h from first send initiation         | Destination confirmation landing: one button                                            |
+| `POST /d/{token}/confirm`               | Confirmation token                                           | Yes                        | 24h from first send initiation         | Confirms the destination (double-opt-in completes)                                      |
+| `GET /e/{token}`                        | Erasure confirmation token (landing, non-consuming)          | No                         | 24h to confirm; replay until cancelled | Account erasure confirmation landing: one button, or the confirmed schedule             |
+| `POST /e/{token}`                       | Erasure confirmation token                                   | No; idempotent replay      | 24h to confirm; replay until cancelled | Records confirmation and schedules account erasure 30 days later                        |
+| `GET /s/{token}`                        | Site removal token (landing, non-consuming)                  | No                         | 24h from request                       | Site removal confirmation landing: one button                                           |
+| `POST /s/{token}`                       | Site removal token                                           | Yes                        | 24h from request                       | Removes the site at once                                                                |
+| `POST /u/{token}`                       | Unsubscribe token (RFC 8058)                                 | Yes, idempotent replay     | 30d from first send initiation         | Sets destination policy per its message class; expired answers `410`                    |
+| `GET /r/{token}`                        | Report link token plus registry check                        | No                         | Report TTL, revocable                  | Renders the stored report projection                                                    |
+| `GET /v1/internal/storage-probe`        | Deploy probe bearer, constant-time                           | No                         | n/a                                    | Deploy check: writes, reads back and deletes one row; no tenant data                    |
+| `POST /v1/internal/restore/reapply`     | `RESTORE_TOKEN` bearer, constant-time; `RESTORE_MODE=1`      | No; same-cursor retries    | Restore mode only                      | Reapplies erasures and revocations by cursor; no email; 4 KiB body limit                |
 
 The generic deploy door's body, exact:
 
@@ -1768,8 +1782,9 @@ The generic deploy door's body, exact:
 The signature is computed over `{sent_at}.{raw body}` with the
 `sitecmd_whs_` secret and carried as
 `X-SiteCMD-Signature: sha256=<lowercase hex>` plus
-`X-SiteCMD-Timestamp: {sent_at}`; a timestamp outside the skew window
-or a header/body timestamp mismatch is rejected before parsing, a
+`X-SiteCMD-Timestamp: {sent_at}`. Connect rejects a timestamp outside the
+skew window before parsing; after signature verification and parsing, a
+header/body timestamp mismatch answers `400 malformed_request`. A
 duplicate `event_id` inside retention converges `200`, and the
 deployment object follows the create-or-match semantics deployments
 already have. Notification-settings writes require a signed-in person
@@ -1917,21 +1932,22 @@ nothing else, which is the honest answer.
   under a record causes, such as a webhook delivery or a mail send,
   either commits with the record's completion or carries a key derived
   from the record that a takeover does not change, so a receiver that
-  deduplicates by that key sees one effect. Provider hooks do not use
-  the header: their idempotency is the provider event identity, as
-  specified under deployment records. Local precedent exists in
+  deduplicates by that key sees one effect. Generic deploy hooks do not
+  use the header: they deduplicate by `(site_id, event_id)` in the
+  deploy-door receipts (`site_hook_receipts`). Local precedent exists in
   `scan_executions.idempotency_key UNIQUE`; server precedent in the
   activation nonce and the hashed webhook event id.
 - **Limits, v1 values:** request bodies are bounded per route (4 KiB
-  unless the route states otherwise, a route that takes an
-  `Idempotency-Key` and reads no body of its own included, since the
-  key is bound to the body's hash; 4 MiB for the desktop and CI
-  submissions, the CI gate, the mutation batch and the scope write;
+  unless the route states otherwise; restore reapplication uses this
+  default. A route that takes an `Idempotency-Key` and reads no body of
+  its own also uses this default, since the key is bound to the body's
+  hash; 4 MiB for the desktop
+  and CI submissions, the CI gate, the mutation batch and the scope write;
   512 KiB for a capability manifest; 64 KiB for a fix-job result;
-  256,000 bytes for the GitHub, Vercel and Netlify webhook doors and
-  the site's own deploy door; 64,000 bytes for the Resend webhook
-  door), each stated in bytes as the route's `x-body-limit` in the
-  OpenAPI document, and a body over its route's limit is refused with
+  256,000 bytes for the GitHub App, Stripe, and site deploy webhook
+  doors; 1 MiB for GitHub secret-scanning reports; 64,000 bytes for the
+  Resend webhook door), each stated in bytes as the route's `x-body-limit`
+  in the OpenAPI document, and a body over its route's limit is refused with
   `413 payload_too_large`, whose problem names no bound; 50,000
   occurrences per snapshot and 2,000 groups per bootstrap; 200
   entries per mutation batch; coverage bounded at 5,000 routes, 1,000
@@ -2011,14 +2027,14 @@ Site lifecycle (signed in through the dashboard):
 - `POST /v1/sites` - create a connected site; `201` with `Location`,
   the `site_id`, and the ownership-verification challenge. The site
   starts in `pending_verification`.
-- `POST /v1/sites/{site}/verify` - complete ownership verification. Two
-  routes: provider-attested (the request names
-  `{connection_id, external_project_id}` from a provider connection,
-  and the provider confirms the project serves the domain; the
-  binding is stored on the site) or direct (DNS TXT record or
-  well-known token file).
-  Moves the site to `pending_bootstrap`. No scan runs and no webhook is
-  honored before the site is `connected`.
+- `POST /v1/sites/{site}/verify` - complete ownership verification by
+  DNS TXT record (`dns_txt`), a well-known token file (`well_known`), or
+  a home-page meta tag (`meta_tag`). Moves the site to
+  `pending_bootstrap`. Hosted scans run in every phase but `disconnected`;
+  generic deploy hooks, CI
+  submissions and the merge gate, ordering-authority changes, deployment
+  reconciliation, and non-bootstrap desktop observations require
+  `connected`.
 - `PATCH /v1/sites/{site}` - site metadata (the notification alias),
   guarded by `metadata_revision`.
 - `PUT /v1/sites/{site}/scope` - the scan scope (routes and expected
@@ -2036,9 +2052,15 @@ Site lifecycle (signed in through the dashboard):
 - `POST /v1/sites/{site}/reconnect` - resume a
   disconnected-but-retained site; semantics in
   the allowance-transitions section (allowance check, retention-clock
-  cancel, credential remint, webhook reprovisioning, all evented).
-- `POST /v1/sites/{site}/erase` - deletion: physical removal, defined
-  below; `202` with `{ "job_id": "…", "status_token": "…" }`.
+  cancel, webhook-secret remint, and recorded transition).
+- `POST /v1/sites/{site}/erase-request` - emails the account owner a
+  link to confirm removing the site, valid for 24 hours; a fresh request
+  replaces the previous link, and resends within fifteen minutes of a sent
+  email answer `429 rate_limited` with `Retry-After`. The link opens
+  `GET /s/{token}`, a landing
+  page that changes nothing, whose button sends `POST /s/{token}`: that
+  consumes the link and starts the deletion, physical removal, defined
+  below.
 
 State and sync:
 
@@ -2120,34 +2142,18 @@ sequence- or keyset-based, never time-based. A cursor pointing at
 history that has aged out of retention answers `410 cursor_expired`; the
 recovery section defines the fallback.
 
-Erasure status (status-token bearer, see deletion):
-
-- `GET /v1/erasures/{job_id}` - erasure-job status. `job_id` is a plain
-  identifier; authorization is the erasure **status token** presented in
-  the `Authorization` header like every other bearer, which is what
-  makes completion confirmable after the site and its credentials are
-  gone without ever putting a secret in a URL.
-
-Provider connections (signed in for changes, `read` for metadata;
-account-wide, so site-limited tokens are refused):
-
-- `POST /v1/provider-connections` - begin a provider authorization;
-  returns the pending connection and the provider authorize URL.
-- `GET /v1/provider-connections` and
-  `GET /v1/provider-connections/{id}` - list and read, metadata only,
-  never provider credentials.
-- `GET /v1/provider-connections/{id}/projects` - enumerate the
-  provider projects visible to the connection, for site verification.
-- `DELETE /v1/provider-connections/{id}` - revoke: deprovision
-  provider webhooks, discard provider credentials, degrade dependent
-  sites' triggers visibly.
-
 Delivery management (signed in for changes, `read` for reads; content
 semantics in the alert and report delivery spec):
 
 - `GET` and `PUT /v1/sites/{site}/notification-settings` - mute,
-  severity floor, digest cadence, and content mode, guarded by
+  severity floor, daily wake-up budget, hourly bundling point, the
+  three flap settings, digest cadence, and content mode, guarded by
   `notification_revision`.
+- `PUT /v1/sites/{site}/uptime-monitoring` - turn the site's uptime
+  monitoring on or off, signed in; off stops the probes and their
+  down, recovery and challenge alerts, and the expiry watch continues.
+  `site_uptime_bindings.state`: `active` while SiteCMD probes the
+  site, `paused` while its uptime monitoring is off.
 - Destinations are **account-level** (one address, one verification,
   one policy - however many sites deliver to it; site-scoped
   destination rows could not represent the cross-site digest or the
@@ -2319,11 +2325,21 @@ Accounts, personal tokens, and sessions:
   answer `503 identity_unavailable` when the provider cannot be reached.
 - `GET /v1/account/export` requires sign-in and streams every site's export
   plus account-scoped data.
-- `POST /v1/account/erase` requires sign-in and takes no request body.
-  It erases all sites and account-scoped data, including personal tokens,
-  subscriptions, provider connections, destinations, and security notices.
-  `202` returns `{ "job_id": "...", "status_token": "..." }`. The receipt
+- `POST /v1/account/erasure-request` requires sign-in and takes no
+  request body. It emails the account owner a link to confirm erasing the
+  account, valid for 24 hours; a fresh request replaces an unconfirmed or
+  cancelled one, and a confirmed one answers `409 erasure_scheduled`;
+  resends within fifteen minutes of a sent email answer `429 rate_limited`
+  with `Retry-After`. The link opens `GET /e/{token}`, a landing page that changes
+  nothing, whose button sends `POST /e/{token}`: that records the
+  confirmation and schedules the erasure 30 days later. The daily billing
+  pass then erases all sites and account-scoped data, including personal
+  tokens, subscriptions, destinations, and security notices. The receipt
   completes after identity deletion at WorkOS as well as the delivery drain.
+- `POST /v1/account/erasure-request/cancel` requires sign-in and keeps the
+  account: it clears a pending or scheduled erasure, and answers
+  `409 erasure_not_scheduled` when there is none, or
+  `409 request_in_progress` while a started erasure is still finishing.
 
 Export (signed in or a personal token with `read` for the site):
 
@@ -2341,7 +2357,6 @@ Export (signed in or a personal token with `read` for the site):
 Triggers (webhook credentials; execution semantics in the hosted scanner
 spec, contract shape here):
 
-- `POST /v1/hooks/vercel`, `POST /v1/hooks/netlify` - provider doors.
 - `POST /v1/hooks/{site}/deploy` - generic door, HMAC-signed.
 
 Verified-good baseline (signed in through the dashboard):
@@ -2381,8 +2396,7 @@ GitHub secret scanning:
   bodies `413`, throttling `429`, and unavailable published keys `503`.
 - Personal, CI, and job tokens are revoked atomically with a
   `token_found_in_public` security notice. A job-token report revokes
-  every token of that job. Erasure status tokens receive feedback without
-  revocation.
+  every token of that job.
   Notices keep internal identifiers and a closed source value, never the
   reported URL, token, or token hash. The security lane sends them to
   verified, unsuppressed destinations independently of alert preferences
@@ -2447,71 +2461,19 @@ deploy-during-commit, and scope-change-during-commit. The operation is
 idempotent by scan id and appears in the OpenAPI document's internal
 section with the same rigor as the public surface.
 
-## Provider connections
-
-Vercel and Netlify are connected through a first-class
-`provider_connection` resource; nothing in this protocol assumes an
-ambient, already-connected provider. Connections are **many per
-account**, uniquely keyed by
-`(provider, external account/team/installation id)`, because the
-target customer manages client sites that live across different
-provider teams and client-owned accounts; a single-connection model
-would exclude exactly the agency shape the RFC targets. A site binds
-`{connection_id, external_project_id}`.
-
-- **Creation.** A signed-in person calls `POST /v1/provider-connections`
-  through the dashboard's API forwarding with the provider name. The
-  response contains a `pending` connection and an authorize URL carrying
-  a single-use `state` token (bound to the connection id, 15-minute TTL,
-  hash-stored). Opening that URL takes the person to the provider, which
-  redirects to `GET /callbacks/{provider}`. Connect validates `state`,
-  exchanges the code server-side, and stores the provider credential
-  encrypted at rest. `GET /v1/provider-connections/{id}` exposes the
-  `active` transition to a signed-in person or a full personal token with
-  `read`; the completion page carries no tokens. The shipped desktop's
-  installation token cannot create or poll the connection. No provider
-  credential passes through a client or appears in a URL, log, or export.
-- **Scope.** The minimum the two jobs need: reading the project list
-  (for site verification) and provisioning deploy webhooks. Granted
-  scopes are recorded on the resource and shown before authorize.
-- **Project binding.** The provider-attested verification route names
-  `{connection_id, external_project_id}`; the binding is stored on the
-  site. A signed-in person or a full personal token with `read` can
-  list projects. Submitting the choice to the verification route requires
-  sign-in through the dashboard's API forwarding. One provider project
-  backs at most one connected site;
-  the ownership claim is exclusive.
-- **Webhook provisioning.** On site connection, connect provisions the
-  provider webhook for the bound project and holds the provider-side
-  signing secret; the hook points at the matching provider door.
-  Provisioning state (`provisioned | failed | removed`) is site state:
-  a webhook the provider reports gone is a protection degradation
-  (delivery-spec wake-up), never a silent gap. Whether reaching a
-  given Vercel plan requires an Integration rather than an account
-  webhook is a recorded build-time verification item (hosted scanner
-  spec); the resource is provider-generic so either mechanism hangs
-  off the same lifecycle, including an Integration's own
-  configuration-removed and secret-rotation events.
-- **Revocation, both directions.** `DELETE` deprovisions webhooks
-  (best-effort, outcome recorded), discards the provider credential,
-  and degrades dependent sites' deploy triggers visibly. Uninstall or
-  revocation on the provider side surfaces as failed delivery or a
-  provider notification and degrades the same way, with the
-  connection marked `revoked` and the observed cause. Reconnecting is
-  a new authorize round on the same resource.
-- **Custody.** Provider credentials are never exported, never logged,
-  and erased in the account cascade; the export registry excludes
-  them by name.
-
 ## Notification settings, destinations, and outbound webhooks
 
 The delivery spec's user controls exist as revisioned resources, not
 prose:
 
 - **Notification settings** (`GET`/`PUT`, `notification_revision`
-  guard): per-site mute, severity floor, digest cadence, and content
-  mode. `PUT` is full replacement under the guard, and every change is
-  an event, so the timeline can explain why the pager went quiet.
+  guard): per-site mute, severity floor, daily wake-up budget (1 to
+  10, default 3), hourly bundling point (1 to 10, default 5), flap
+  cycle count (2 to 10, default 3), flap window (30 to 240 minutes,
+  default 60), settle time (10 to 120 minutes, default 30), digest
+  cadence, and content mode. `PUT` is full replacement under the
+  guard, and every change is an event, so the timeline can explain why
+  the pager went quiet.
 - **Destinations** are account-level resources (endpoint inventory)
   with their own small lifecycle: created
   `unverified`, double-opt-in always (content owned by the delivery
@@ -2714,9 +2676,9 @@ its Postgres deployment. The fixture descriptions specify required
 checks, not evidence that those checks exist or pass. The restore and
 archive requirements in the retention section have the same status. Their 30-day restore horizon is
 an assumption of that unimplemented contract, not a configured backup
-retention period or a guarantee about the Postgres provider. The current
-erasure status returns `ciphertext_deletion: null`; it does not attest to
-deletion from an archive or provider backups.
+retention period or a guarantee about the Postgres provider. The erasure
+record is Connect's own record, retained one year and returned by no route;
+it does not attest to deletion from an archive or provider backups.
 
 The v1 limits (4 MiB submission bodies, 50,000 occurrences, 20,000
 coverage exceptions, 200-mutation batches) must be physically writable inside
@@ -3188,15 +3150,15 @@ slot before taking a new slot. It cancels the retention clock, restores
 the phase from the retained markers, and records the transition.
 A webhook secret revoked by disconnect is reminted and shown once on the
 transition; CI tokens remain revoked and require new minting. An expired
-site answers `404` and must be connected again. If another live site has
-taken its domain or provider project, reconnect answers `409 site_exists`
-or `409 project_already_claimed` without changing it.
+site answers `404` and must be connected again. If another live site in
+the account has taken its domain, reconnect answers `409 site_exists`
+without changing it. Reminting requires configured webhook signing keys;
+if they are unavailable, reconnect succeeds and the secret remains
+revoked in the token list.
 
-A retry on an already-live site converges with `200` and mints no new
-secret. Both resume and converge reprovision the provider webhook through
-the stored binding when the connection has a live credential, or report
-a degraded trigger. While the subscription does not permit watching, the
-converge path returns the existing trigger state without reprovisioning.
+A retry on an already-live site converges with
+`200 { "phase": "...", "reconnected": true }` and mints no new secret.
+This path returns before checking subscription entitlement.
 
 Connect's site state omits `scope_over_plan`, `site_allowance_over_plan`,
 their grace-expiry fields, and `scope_overflow_count`. The desktop's state
@@ -3206,48 +3168,40 @@ respectively; the desktop does not send them to Connect.
 ## Deployment records and ordering
 
 A deployment record is keyed
-`(site, environment, provider, provider_deployment_id)` and stores the
-provider's own facts: target, provider creation time, commit SHA and ref,
-previous SHA when the provider or submitter supplies it, and receipt
-time. Rebuilds and rollbacks are ordinary records: the same SHA deployed
-twice is two records, because deployment identity is the provider's
-deployment, not the commit. Records are created by provider hooks, by
-`POST /v1/sites/{site}/deployments`, or embedded in a CI submission; all
-three converge on the same identity key.
+`(site_id, provider, provider_deployment_id)` and stores the
+pipeline's deployment facts: target, provider creation time, commit SHA
+and ref, previous SHA when the submitter supplies it, and receipt time.
+Rebuilds and rollbacks are ordinary records: the same SHA deployed twice
+is two records, because each publication has its own deployment identity.
+Records are created by `POST /v1/hooks/{site}/deploy`, by
+`POST /v1/sites/{site}/deployments`, or embedded in a CI submission. All
+three use the `ci` namespace in the `provider` field and converge on the
+same identity key.
 
-Redelivery of an event for a known deployment identity with identical
-facts is success, not conflict: the response is a `200` no-op carrying
-the existing record, mirroring the activation webhook's
-`duplicate_ignored` posture, because providers retry deliveries and a
-retry must converge, not error. Every new record stores
-`immutable_facts_hash`, SHA-256 over the complete canonical fact set:
-provider, provider deployment id, commit SHA, ref, previous SHA, target, and
-provider creation time, including explicit nulls. `409 deployment_conflict`
-is reserved for the same provider deployment identity arriving with a
-different hash, which indicates a provider anomaly or a forged submission
-and is never silently merged. Legacy rows without the hash are backfilled
-only by an exact redelivery of their stored fact set.
+Redelivery for a known deployment identity with matching facts succeeds.
+When neither deployment facts nor the head changes, the CI deployments
+door answers `200` with `{ created: false, current, deployment }`,
+where `deployment` is the existing record. The generic deploy door
+answers `200 duplicate_ignored` for a retained `event_id`; a delivery with
+a new event id follows create-or-match.
+Optional facts omitted by one delivery can be supplied by another and
+enrich the record. Every accepted record stores `immutable_facts_hash`,
+SHA-256 over its complete known canonical fact set: provider, provider
+deployment id, commit SHA, ref, previous SHA, target, and provider creation
+time, including explicit nulls. Enrichment updates the hash under
+compare-and-swap. A disagreement about a mutually stated immutable fact,
+a conflicting ordering upgrade, or a causal ordering position claimed by
+a different deployment answers `409 deployment_conflict`. A missing hash
+is backfilled from the converged fact set.
 
 Ordering is by deployment identity, never arrival, and **publish order
-and creation order are different authorities**. Each adapter emits the
-strongest fact the source offers, recorded on the record as `ordering`:
+and creation order are different authorities**. Each delivery records
+the strongest fact it carries as `ordering`:
 
-- `promotion` - the provider states this deployment became current for
-  the environment (Vercel promotion and aliasing events, Netlify publish
-  events). Establishes the current deployment; permits supersession and
-  causal attribution. Delayed promotion events follow the same
-  discipline as everything else here: promotions order only by facts
-  that are actually ordered - an adapter-specific monotonic promotion
-  sequence, an exact predecessor deployment id, or authoritative
-  current-state reconciliation against the provider's own
-  live-deployment answer. A unique event id is not an order, and tied
-  timestamps are not a tie-breaker: a promotion that cannot be
-  positively ordered against the applied head stays historical rather
-  than moving currency on a guess.
-- `publish_sequence` - a reliable production publish order without an
-  explicit promotion event, and **never receipt order**: two authentic
-  publish notifications can arrive swapped, and an older deployment must
-  not supersede the real current one because its packet traveled faster.
+- `publish_sequence` - a reliable production publish order, and
+  **never receipt order**: two authentic publish notifications can arrive
+  swapped, and an older deployment must not supersede the real current
+  one because its packet traveled faster.
   Qualifying facts must be genuinely causal: a publish ordinal
   **allocated atomically at successful publication** (an ordinal or run
   number assigned before concurrent jobs finish is creation order
@@ -3271,52 +3225,42 @@ strongest fact the source offers, recorded on the record as `ordering`:
   history, but **cannot** establish currency, supersede anything, or
   authorize causal claims: a build finishing second may still publish
   first.
-- `unknown` - no usable fact, including parallel deployments that cannot
-  be ordered and records with missing `previous_sha` and unreliable
-  timestamps.
+- `unknown` - neither a qualifying publish attestation nor a
+  `provider_created_at` value is supplied.
 
-**One ordering authority per environment.** Promotion facts and publish
-attestations are independent ordering domains with incomparable
-watermarks, so they cannot share the head: if the provider and the
-pipeline disagree about what is current, one of them is wrong, and the
-protocol refuses to guess which. The authority is a concrete identity,
-not a vague domain:
-`{ "kind": "provider" | "publish_attestation", "authority_id": "…", "epoch": n }`,
-where `authority_id` pins one ordering namespace (one Vercel project,
-one Netlify site, one attestation namespace: two Vercel projects are as
-incomparable as Vercel and CI), and `epoch` increments on every
-transition. Exactly one authority is active per environment, stored as
-environment state independent of the deployment head, because a site
-may select its authority before its first deployment ever happens. The
-transition is its own operation,
-`PUT /v1/sites/{site}/ordering-authority`, dashboard-session
-authorized, idempotent, and guarded by the current epoch, and it is
-recorded as an event.
+**One ordering authority per environment.** Publish-attestation
+namespaces have independent watermarks and cannot share the head.
+The authority is a concrete identity:
+`{ "kind": "publish_attestation", "authority_id": "…", "epoch": n }`,
+where `authority_id` pins one attestation namespace and `epoch` increments
+on every transition. Exactly one authority is active per environment,
+stored as environment state independent of the deployment head, because a
+site may select its authority before its first deployment ever happens.
+The transition is its own operation,
+`PUT /v1/sites/{site}/ordering-authority`, dashboard-session authorized,
+idempotent, and guarded by the current
+epoch, and it is recorded as an event.
 
-Facts are evaluated against the authority under which they arrive:
-facts from a non-authoritative namespace or from an earlier epoch are
-recorded as history and never move the head. A transition carries the
-standing current deployment across and freezes the old domain's
-watermarks, and the new authority starts behind an **activation
-barrier**, because its "first qualifying fact" could otherwise be a
-delayed pre-transition event that rewinds the head and applies stale
-evidence. Provider authority activates with authoritative current-state
-reconciliation: the adapter asks the provider what is live now and
-seeds the watermark from the answer. Publish-attestation authority
+Facts are evaluated against the authority under which they arrive: facts
+from a non-authoritative namespace or from an earlier epoch are recorded
+as history and never move the head. A transition carries the standing
+current deployment across and freezes the old domain's watermarks, and the
+new authority starts behind an **activation barrier**, because its "first
+qualifying fact" could otherwise be a delayed pre-transition event that
+rewinds the head and applies stale evidence. Publish-attestation authority
 activates only on a fact causally rooted at the carried head (its
 predecessor reference names the carried current deployment) or on an
-explicitly seeded watermark from the transition request. Anything
-earlier stays historical; watermarks do not translate between domains,
-and no fact predating its own authority's activation may establish
-currency.
+explicitly seeded watermark from the transition request. Anything earlier
+stays historical; watermarks do not translate between domains, and no fact
+predating its own authority's activation may establish currency.
 
 A record's ordering fact may be **enriched, never downgraded**: a
-deployment first seen through a build event (`creation_sequence`)
-upgrades in place when the provider's promotion event or a qualifying
-publish attestation for the same deployment identity arrives, and
-currency is evaluated at upgrade time. Two conflicting upgrade facts for
-one identity are a `409 deployment_conflict`, the same rule as any other
-immutable-fact conflict.
+deployment first seen with creation-time metadata (`creation_sequence`)
+upgrades in place when a qualifying publish attestation for the same
+deployment identity arrives, and currency is evaluated at upgrade time.
+Two conflicting upgrade facts for one identity are a
+`409 deployment_conflict`, the same rule as any other immutable-fact
+conflict.
 
 Becoming current retroactively has a defined effect on evidence, with a
 deterministic winner at every step. Canonical status is per
@@ -3362,13 +3306,13 @@ snapshots remain historical. The head persists the applied-snapshot
 markers naming the canonical snapshots whose evidence currently
 governs. Evidence waits for currency; it is not lost to it.
 
-Supersession and causal attribution require `promotion` or
-`publish_sequence`. Under `creation_sequence` or `unknown` the record is
-kept, scans still run, but nothing is marked superseded, no alert names
-the deployment as the cause, and attribution provenance degrades honestly
+Supersession and causal attribution require `publish_sequence`. Under
+`creation_sequence` or `unknown` the record is kept, scans still run,
+but nothing is marked superseded, no alert names the deployment as the
+cause, and attribution provenance degrades honestly
 (`stale` or `unknown`) rather than guessing. CI code-evidence governance
 ("while its deployment is current") follows the same rule: only a
-deployment made current by `promotion` or `publish_sequence` governs. A
+deployment made current by `publish_sequence` governs. A
 late-arriving webhook slots into history where its ordering fact says it
 happened; scans and alerts attach to deployment records, not to webhook
 deliveries. When a newer deployment for the same environment is recorded
@@ -3383,8 +3327,8 @@ exception: the **current deployment head** - the **complete current
 deployment record**, enumerated: provider, provider deployment id,
 target, commit SHA, ref, `previous_sha`, provider creation time,
 receipt time, its ordering fact, and the immutable-facts hash; plus the
-per-ordering-domain high watermarks (last applied promotion sequence,
-publish ordinal, and predecessor chain head), the active ordering
+publish-attestation watermarks (publish ordinal and predecessor chain
+head), the active ordering
 authority `{ kind, authority_id, epoch }`, and the applied-snapshot
 markers - is durable site state, retained for the life of the connected
 site. The immutable fields are provider, provider deployment id,
@@ -3423,7 +3367,6 @@ disclosure section keeps the two in agreement.
 | Notification settings, alert webhooks           | Life of the connected site                                      |
 | Destinations (account-level)                    | Life of the account or explicit delete                          |
 | Report registry rows                            | Life of the site; links by their TTL                            |
-| Provider connections (metadata and credentials) | Life of the account or until revoked                            |
 | Coalescing generation watermark                 | Life of the site; survives disconnect, resets only with erasure |
 | `delivery_attempt` rows (every delivery class)  | 7 days after terminal outcome, then deleted                     |
 | Personal tokens                                 | Live until revoked; deleted 30 days after revocation            |
@@ -3447,8 +3390,7 @@ itself is part of this registry:
   timestamps, watermarks, never secrets), `site_metadata`, and -
   account export only - `destination` (with verification,
   suppression, and policy state; account-level like the resource),
-  `provider_connection` (metadata and granted
-  scopes, never provider credentials), `slot_lease` (site, release time),
+  `slot_lease` (site, release time),
   `account_settings`, `member` (provider identifiers and membership),
   `subscription`, `personal_token` (metadata, never its hash or secret),
   and `personal_token_site`.
@@ -3480,7 +3422,7 @@ itself is part of this registry:
   destination id or webhook endpoint id and the dedup basis is
   **closed per class, enumerated here for all eight**: immediate
   alert `(site, observation)`; storm summary
-  `(site, 6-hour window index)`; digest
+  `(site, 55-minute window index)`; digest
   `(account, destination, mode, cadence, window)`; confirmation and
   re-verification `(destination, verification round)`, each
   explicit resend a new generation; courtesy
@@ -3741,8 +3683,8 @@ itself is part of this registry:
   the receipt. A provider
   outage extends the barrier and therefore defers the receipt:
   deletion completeness outranks the completion target, and the
-  status endpoint keeps answering in-progress. The terminal outcomes
-  are exactly three, honestly bounded: provider-accepted
+  scheduled pass continues advancing the draining job. The terminal
+  outcomes are exactly three, honestly bounded: provider-accepted
   strictly before the erasure receipt
   exists; never sent (fenced before any claim, refused terminally,
   or closed `superseded` by the claim-time revalidation); or
@@ -3761,12 +3703,9 @@ itself is part of this registry:
   ever will be" - never "no provider finished one after this
   timestamp", a claim that would need a provider-side processing
   bound no contract offers. `send_quiesced_at` itself is **internal
-  barrier state, deliberately not a receipt field**: the receipt's
-  `deleted_at` is recorded after quiescence, so `deleted_at` is the
-  externally attested cutoff - "no send initiated at or after
-  `deleted_at`" follows from the quiescence guarantee with no second
-  exported timestamp for the schema, the status response, and the
-  trust page to disagree over. **The attempt-and-claim authority is
+  barrier state**, kept in Connect's record and written with
+  `completed_at`, at the same instant; no route returns either.
+  **The attempt-and-claim authority is
   universal, not an outbox special case**: every externally-visible
   delivery the service initiates - immediate alerts, digests and
   storm summaries, destination confirmation and re-verification
@@ -3848,13 +3787,12 @@ itself is part of this registry:
   appender facade is create-only by construction, only the pruning
   job holds delete, and it deletes nothing a lock still covers.
 
-- **Secret** material is never exportable by design: provider
-  credentials, MAC and signing keys, token secrets, the
-  single-use confirmation and OAuth state token hashes (columns on
-  their destination and provider-connection rows) while they live,
-  and the frozen-body ciphertext of nonterminal `delivery_attempt`
-  rows (the row's metadata is operational; the ciphertext embeds
-  live capabilities and is Secret until purged at terminal outcome).
+- **Secret** material is never exportable by design: MAC and signing
+  keys, token secrets, single-use confirmation token hashes on
+  destination rows while they live, and the frozen-body ciphertext of
+  nonterminal `delivery_attempt` rows (the row's metadata is operational;
+  the ciphertext embeds live capabilities and is Secret until purged at
+  terminal outcome).
 
 **The classification check covers Postgres tables.** Connect's
 `src/export.test.ts` reads the current schema's base tables from
@@ -3954,58 +3892,47 @@ visible backpressure, never silent dropping.
   restore authority, and neither is falsely claimed deleted.
   Account erasure
   runs this cascade for every site and then removes account-scoped
-  state: destinations, provider connections and their credentials,
-  personal tokens, subscriptions, slot leases, members, the account's
-  creation record, every remaining delivery attempt, and security notices.
+  state: destinations, personal tokens, subscriptions, slot leases,
+  members, the account's creation record, every remaining delivery
+  attempt, and security notices.
   The identity drain deletes the WorkOS organization
   and each member's WorkOS user that no other account or unfinished
   creation names. The erasure
   fixtures cover every family the retention table names, both
-  scopes. Erase answers `202`
-  with `{ "job_id": "…", "status_token": "…" }`: the job id is a plain
-  identifier, and the status token is a high-entropy bearer secret,
-  shown once and stored only as a hash, presented in the
-  `Authorization` header on `GET /v1/erasures/{job_id}`. That is what
-  makes completion confirmable after the site's own credentials are
-  revoked, with no secret in any URL. The erasure is typically
-  immediate and completes within 24 hours, with one stated exception:
+  scopes. A person starts site removal or account erasure only through
+  an emailed confirmation link. The request routes answer `202` with
+  `{ "confirm_expires_at": "…" }` after the mail provider accepts the
+  confirmation email. Confirming a site removal link erases the site
+  at once; a confirmed account erasure runs 30 days later, or at an earlier
+  account lapse deadline, in the daily pass. Once started, the erasure
+  typically completes within 24 hours, with one stated exception:
   the receipt waits behind the delivery drain barrier (the
   retention section - every delivery class, resolved through
   site-dependency sets), so a provider outage defers the receipt
   rather than permitting a send to be initiated after it.
-- **The erasure receipt** is the one durable artifact, retained one
-  year, and its contents are exactly: the job id, the **hash** of the
-  status token (so status reads can be verified; the token itself is
-  never stored, so a lost token cannot be re-shown), the erasure
-  scope as `scope_kind: site | account` plus the matching opaque
+- **The erasure receipt** is Connect's own record that the erasure
+  happened, retained one year and returned by no route. Its contents
+  are the job id, the erasure scope as `scope_kind: site | account`
+  plus the matching opaque
   `scope_id` (the site id, or the account-scope id for account
-  erasure - one receipt schema serves both endpoints),
-  and the deletion time - `deleted_at`, recorded after
-  `send_quiesced_at` and therefore doubling as the externally
-  attested no-initiation cutoff, while the internal quiescence
-  timestamp is deliberately not a receipt field. No other
+  erasure - one receipt schema serves both scopes),
+  and the deletion time - `completed_at`, written with
+  `send_quiesced_at` at the same instant and therefore doubling as
+  the no-initiation cutoff. The record also keeps the request,
+  admission-fence and quiescence times, who started it
+  (`started_by`), whether repository secrets remain
+  (`repository_secrets_left`), and, for account erasure, when its
+  last email was sent (`last_mail_sent_at`). It holds no host and no
+  person's id. No other
   **tenant data** survives readable; the exact residue contract -
   locked ciphertext without keys, bounded provider history - is
   stated once, in the retention section, this sentence is a
-  summary of it, and the status endpoint's live
-  `ciphertext_deletion` member is service state about the
-  deletion, not surviving tenant data. Retries have one
-  contract, consistent with the secret-replay rule: **the status token
-  is minted once, never re-shown, never replaced**, and stays valid for
-  the receipt's retention, so a poller's token cannot be invalidated
-  behind its back. The erase routes keep no `Idempotency-Key` record:
-  the delete commits in the request's own transaction, so by the time
-  the first answer leaves there is no tenant state left for a retry to
-  replay from, and a lost status token stays lost. The two erase routes
-  answer a retry after deletion differently. A retried **site** erase
-  resolves no site and answers `404 not_found`, the answer for any site
-  the caller cannot see; on this route the one thing that `404` can
-  mean is that the site is already gone, and the status token from the
-  first answer still reads the receipt. A retried account erase after
-  deletion finds no account (`403 account_required` for a valid dashboard
-  session) and does not recover a lost status token. The
-  original `sitecmd_ers_` token remains the way to read the receipt and
-  the delivery and identity drain status.
+  summary of it. The two request routes keep no `Idempotency-Key`
+  record and answer a request after deletion differently. A site
+  removal request for an erased site resolves no site and answers
+  `404 not_found`, the answer for any site the caller cannot see.
+  An account erasure request after deletion finds no account
+  (`403 account_required` for a valid dashboard session).
 
 - **Restore contract (not implemented).** Connect relies on its managed
   Postgres provider's backups and restore procedure. The following safety
@@ -4023,7 +3950,7 @@ visible backpressure, never silent dropping.
   mechanism as the
   persistence inventory, so a qualifying transition nobody
   journaled is a failing check, not a quiet omission - and
-  enumerates: credential revocations; site disconnect; provider-connection revocation;
+  enumerates: credential revocations; site disconnect;
   destination suppression, policy-bit sets, unsubscribes, and
   association switches; notification-settings changes that reduce
   or redirect egress (mutes, severity floors, cadence changes);
@@ -4065,7 +3992,6 @@ visible backpressure, never silent dropping.
   | --------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
   | Credential revocation                   | removing | Replay                                                                                                                                                                                                                                                                          |
   | Site disconnect                         | removing | Replay                                                                                                                                                                                                                                                                          |
-  | Provider-connection revocation          | removing | Replay                                                                                                                                                                                                                                                                          |
   | Suppression / policy bits / unsubscribe | removing | Replay                                                                                                                                                                                                                                                                          |
   | Association switch                      | compound | Detach replays, attach aborts ("alerts unconfigured" warning, never a silent reroute)                                                                                                                                                                                           |
   | Mute / severity floor / cadence change  | removing | Replay                                                                                                                                                                                                                                                                          |
@@ -4074,7 +4000,7 @@ visible backpressure, never silent dropping.
   | Webhook deletion / auto-disable         | removing | Replay                                                                                                                                                                                                                                                                          |
   | Webhook secret rotation                 | compound | Revocation replays, activation aborts (endpoint visibly disabled, never quietly dual-valid)                                                                                                                                                                                     |
   | Fingerprint-key rotation completion     | adding   | Abort; the rotation protocol re-runs its own completion                                                                                                                                                                                                                         |
-  | Ordering-authority transition           | adding   | Abort; re-derived from the provider's own facts, never from a lost CAS                                                                                                                                                                                                          |
+  | Ordering-authority transition           | adding   | Abort; never replayed from a lost CAS                                                                                                                                                                                                                                           |
   | Capability consumption                  | removing | Replay; consumed stays consumed                                                                                                                                                                                                                                                 |
   | First-initiation timestamp              | removing | Replay; an earlier clock start only shortens a capability's life                                                                                                                                                                                                                |
   | Terminal delivery outcome               | removing | Replay; an outcome ends sendability, and the reconciler re-closes anything it disturbs                                                                                                                                                                                          |
@@ -4092,23 +4018,20 @@ visible backpressure, never silent dropping.
   construction. Second, **the erasure ledger and the receipt are
   one control-store state machine with two faces**: a **pending**
   record - state, scope,
-  erasure epoch, status-token hash - is created **before any
+  erasure epoch - is created **before any
   fencing or deletion begins**, pending and completed records alike
-  are restore tombstones, and `deleted_at` set at quiescence is
+  are restore tombstones, and `completed_at` set at quiescence is
   what completes the record - so a crash after
   deletion but before a separate ledger write can never leave an
   untombstoned erasure, because the tombstone precedes the first
   delete. The **internal control row** (state, epoch, journal
-  linkage - reconciliation needs them) is a different schema from
-  the **externally disclosed receipt projection**, which is exactly
-  the minimal enumeration below and nothing more: "nothing else
-  survives" is a disclosure claim about what is retained **for the
-  tenant and served to callers**, and the projection is the
-  `receipt` member of the status endpoint's exact envelope - the
-  endpoint returns the envelope, never the bare projection. Non-erasure journal rows for an erased
-  tenant do **not** become a second immortal artifact: they outlive
-  the receipt only through this contract's assumed 30-day restore
-  horizon, then purge; the receipt projection alone
+  linkage - reconciliation needs them) keeps the restore-control
+  metadata separate from the minimal receipt contents enumerated
+  above. The receipt is **Connect's own record that the erasure
+  happened**, retained one year and returned by no route. Non-erasure
+  journal rows for an erased tenant do **not** become a second immortal
+  artifact: they outlive the receipt only through this contract's assumed
+  30-day restore horizon, then purge; the receipt projection alone
   lives the year. Third, **restores run only through
   the restore orchestration, and quarantine is an exclusive write
   path, never a glance**: a check-then-write pair ("observed
@@ -4200,8 +4123,8 @@ visible backpressure, never silent dropping.
     `confirming` marker: reconstructed from the immutable journal
     (never independently authoritative), non-null exactly while
     the fence stands, cleared only after the terminal R2 event is
-    resolved, and projected to `pending` on the wire -
-    where `delete_due_at = deleted_at + 83 days` exactly (a 7-day
+    resolved -
+    where `delete_due_at = completed_at + 83 days` exactly (a 7-day
     execution margin inside the 90), the pruner runs from lock
     expiry onward retrying every 24 hours, and confirmation is a
     predicate against the target:
@@ -4228,7 +4151,7 @@ visible backpressure, never silent dropping.
     because the state is rederivable, not merely stored: after any
     control-store restore, reconciliation recomputes
     `prune_state` and the watermark from the immutable target plus
-    direct R2 absence checks before the status endpoint serves,
+    direct R2 absence checks,
     and the terminal confirmation is additionally archived once as
     an immutable receipt-ledger completion event (so a restored
     store cannot forget a confirmation or its timestamp); an
@@ -4240,38 +4163,16 @@ visible backpressure, never silent dropping.
     erasure with no post-target checkpoint (the payload-only
     watermark confirms; the retained structural checkpoint does
     not block it), checkpoint retention, and a PITR landing
-    after every pruning edge, not merely process crashes. The erasure **status endpoint has one exact
-    response envelope**, so the minimal-receipt contract and the
-    live deletion state stop contradicting each other:
-    `{status, receipt, ciphertext_deletion: {state, due_at, confirmed_at}}`,
-    **with its variants defined, because polling legally starts the
-    moment the `202` returns** - before a receipt, a target, or a
-    due date exists: `status` is `in_progress | completed`;
-    `receipt` is `null` until completion and then exactly the
-    minimal durable projection, nothing more; `ciphertext_deletion`
-    is `null` until **completion** - target capture is internal
-    cross-store ordering, deliberately not an externally visible
-    state, because `due_at` derives from `deleted_at` and a poll
-    landing between the archived target and the receipt would
-    otherwise have no valid shape - then
-    the live derived state machine (it can stay `pending` for
-    months, which is precisely why it
-    is not a receipt field). The union is discriminated, with the
-    per-variant constraints stated rather than implied:
-    `in_progress` carries neither receipt nor deletion state;
-    `completed` with `pending | overdue` carries the receipt and
-    `confirmed_at: null`; `completed` with `confirmed` **requires**
-    the confirmation timestamp - a `confirmed` without its
-    timestamp, or a timestamp on an unconfirmed state, is a schema
-    violation, not a style choice. The OpenAPI document carries
-    this union, constraints included, verbatim. A `delete_due_at`
+    after every pruning edge, not merely process crashes. The erasure
+    receipt is Connect's own record, retained one year and returned by no
+    route; pruning progress is internal control state. A `delete_due_at`
     miss flips `overdue`, pages the operator on the ops lane, keeps
     retrying until confirmed, and is disclosed as
     an incident rather than silently absorbed - and because neither
     the pending phase (a receipt deferred by provider outage) nor
     the overdue phase has an upper bound, **retention is
-    terminal-state-aware**: tombstones, targets, and status-token
-    hashes stay authoritative until confirmation, the one-year
+    terminal-state-aware**: tombstones and targets
+    stay authoritative until confirmation, the one-year
     clock starts at `deletion_confirmed_at`, and the retention
     table's renewal mechanism keeps a locked authoritative copy in
     R2 for as long as renewal keeps running - a bounded assumption
@@ -4539,9 +4440,12 @@ The implementation contract rests on these decisions:
 2. **Group existence and state are server-owned.** Clients bootstrap
    once (an explicit site phase committed by `bootstrapped_at`, never
    inferred from emptiness) and mutate thereafter; omission never means
-   deletion; scans and hooks stay disabled until bootstrap commits.
-   Bootstrap itself never asserts `verified_fixed`: imported claims land
-   as `claimed_fixed`, and the bootstrap transaction derives
+   deletion. Hosted scans run in every phase but `disconnected`;
+   generic deploy hooks, CI submissions and the merge gate,
+   ordering-authority changes, deployment reconciliation, and
+   non-bootstrap desktop observations require `connected`. Bootstrap
+   itself never asserts `verified_fixed`: imported claims land as
+   `claimed_fixed`, and the bootstrap transaction derives
    `verified_fixed` only where the accompanying snapshots prove it.
 3. **Occurrence status preserves route-level tripwires.** Policy stays
    group-level; the server tracks each record as known, verified absent,
@@ -4562,18 +4466,19 @@ The implementation contract rests on these decisions:
    (`based_on_event_sequence`) is historical: recorded, never
    status-changing, never a regression, and it triggers an authoritative
    rescan instead, so a delayed offline upload cannot fake a regression
-   and a real one gets confirmed by fresh eyes. The shield covers CI
-   as a positive currency requirement: CI presence mutates state only
-   from a deployment that is current or atomically becomes current, so
+   and a real one gets confirmed by fresh eyes. The shield covers CI as
+   a positive currency requirement: CI presence mutates state only from
+   a deployment that is current or atomically becomes current, so
    unordered evidence is history, never authority. Stale code sightings
    set the durable `pending_fresh_evidence` flag rather than triggering
    a hosted rescan, which cannot see code; sightings of unseen
-   identities create status-less candidate records rather than
-   asserting presence from stale evidence; flagged records are exempt
-   from age-based compaction and the flag expires explicitly
+   identities create status-less candidate records rather than asserting
+   presence from stale evidence; flagged records are exempt from
+   age-based compaction and the flag expires explicitly
    (`evidence_request_expired`) after 90 unanswered days. Bootstrap
-   uses the genesis watermark `0`, safe because bootstrap precedes
-   every site event.
+   snapshots carry the watermark captured with their scan evidence; the
+   shield also applies when hosted observations arrived before
+   bootstrap.
 6. **A user claim is `claimed_fixed`, never `verified_fixed`**, and a
    failed claim returns to `active` with a recorded outcome, not a
    wake-up alert.
@@ -4616,13 +4521,11 @@ The implementation contract rests on these decisions:
     "replay returns the original result" cannot both hold, and the
     hash-only property wins: the `Idempotency-Key` record keeps only
     what was created, never the answer, and the refusal's `issued`
-    member names it; the remedy is revoke-and-recreate. The erasure
-    retry is the same principle carried through consistently: the
-    status token is minted once and never replaced, and erasure keeps
-    no `Idempotency-Key` record to replay. After deletion, a retried
-    account erase no longer reaches the deleted account; its original
-    status token reads the receipt. A retried site erase answers `404`
-    because the site is gone.
+    member names it; the remedy is revoke-and-recreate. Erasure keeps
+    no `Idempotency-Key` record to replay. After deletion, an account
+    erasure request no longer reaches the deleted account
+    (`403 account_required` for a valid dashboard session). A retried
+    site removal request answers `404` because the site is gone.
 16. **Correlation pairs are keyed by the credential's actor**, either
     `user:<subject>` or `token:<token_id>`, and merged as a validated union.
     Independent submission counters are never compared. Clients sharing
@@ -4632,22 +4535,18 @@ The implementation contract rests on these decisions:
     routes flagged and excluded from comparable verification.
 18. **Publish order and creation order are different authorities, and
     receipt order is never a publish authority.** Currency,
-    supersession, and causal attribution require `promotion` or
-    `publish_sequence`, and both require genuinely ordered facts: an
-    ordinal allocated atomically at successful publication, an exact
-    predecessor deployment id advanced by compare-and-swap, an
-    adapter-specific monotonic promotion sequence, or authoritative
-    current-state reconciliation; commit SHAs never qualify because one
-    SHA can deploy twice, unique-but-unordered event ids and tied
-    timestamps never break ties, and unorderable promotions stay
-    historical. Each environment has exactly one active ordering
-    authority with a concrete identity
+    supersession, and causal attribution require `publish_sequence`
+    with genuinely ordered facts: an ordinal allocated atomically at
+    successful publication or an exact predecessor deployment id
+    advanced by compare-and-swap. Commit SHAs never qualify because one
+    SHA can deploy twice; unique-but-unordered event ids and tied
+    timestamps never break ties. Each environment has exactly one active
+    ordering authority with a concrete identity
     `{ kind, authority_id, epoch }`, stored as environment state
     independent of the head and changed only through its own
     epoch-guarded endpoint; non-authoritative and pre-activation facts
     are recorded history, and every transition starts behind an
-    activation barrier (provider authority reconciles against the
-    provider's live answer; publish authority requires a fact causally
+    activation barrier (publish authority requires a fact causally
     rooted at the carried head or an explicitly seeded watermark), so a
     delayed pre-transition event can never rewind the carried head. A
     failed compare-and-swap stores the predecessor edge for
@@ -4671,9 +4570,8 @@ The implementation contract rests on these decisions:
 19. **One environment per site in v1**, fixed to `production`.
 20. **Accounts use WorkOS AuthKit organizations and subscription entitlement.**
     The dashboard holds sessions; direct clients use personal tokens.
-    Erasure status survives account deletion through a `sitecmd_ers_`
-    bearer in the `Authorization` header, never a URL. A deleted account
-    cannot reissue a lost status token.
+    Connect retains the completed erasure record for one year; no route
+    returns it.
 21. **Durable records have a per-site bound with disclosed compaction**
     (250,000 records; the snapshot is staged and its own prospective
     coverage counts toward retirements before the bound is judged, so
@@ -4687,12 +4585,7 @@ The implementation contract rests on these decisions:
 22. **Entitlement and credential validity are separate.** Operations that
     require watching, dispatch, or adding sites check `subscriptions`;
     invalid credentials receive uniform `401` responses.
-23. **Provider connections are a first-class resource** with
-    server-side code exchange, recorded scopes, exclusive project
-    binding, visible webhook provisioning state, and two-way
-    revocation; provider credentials are never exportable and never
-    touch the desktop.
-24. **`exact` provenance is earned, not asserted**: GitHub Actions
+23. **`exact` provenance is earned, not asserted**: GitHub Actions
     submissions bind OIDC claims against constraints pinned on the CI
     token at creation (repository, workflow ref pattern, audience,
     lifetime), out-of-constraint claims reject loudly, and generic CI
@@ -4700,7 +4593,7 @@ The implementation contract rests on these decisions:
     corroboration proves a deployment exists, not that submitted
     fingerprints came from its checkout, so it upgrades nothing. The
     residual boundary is the pinned workflow itself, stated openly.
-25. **Large applies are staged then flipped with every chunk fenced,
+24. **Large applies are staged then flipped with every chunk fenced,
     benchmarked at the contract maxima, and sharded by account from
     day one** (`site_id` partitions within the account): chunk
     inserts guard on phase and erasure epoch with cascading deletes
@@ -4708,17 +4601,18 @@ The implementation contract rests on these decisions:
     is the account because alert ordering, allowances, personal
     tokens, and account erasure are account-global - moving
     a hot account later is routing, not migration.
-26. **Allowance slots are leased, not toggled**: disconnect releases
+25. **Allowance slots are leased, not toggled**: disconnect releases
     a slot only after a cooldown. Subscription status controls watching,
     dispatch, and adding sites separately. Site limits apply at admission;
     existing sites are not ranked or suspended by an allowance change.
-27. **The public surface is a closed inventory.** Every route
-    reachable without a bearer token exists in one normative table
-    with its authentication, single-use, TTL, and rate-limit
-    behavior, split into server-to-server and browser-form classes;
-    capability tokens are enumerated beside the bearer
-    credentials; and a route not in the table does not exist
-    unauthenticated. Presence is tracked per vantage and absence
+26. **The public surface is a closed inventory.** Every route
+    reachable without a tenant bearer exists in one normative table
+    with its authentication, single-use, TTL, and rate-limit behavior,
+    split into server-to-server and browser-form classes. The inventory
+    includes `POST /v1/hooks/stripe` and the recovery-authenticated
+    `POST /v1/internal/restore/reapply`. Capability tokens are enumerated
+    beside the bearer credentials; a route not in the table does not
+    exist unauthenticated. Presence is tracked per vantage and absence
     clears same-vantage only (check-input equivalence is the one
     sound crossing), and reports are frozen, bounded, stored
     projections.

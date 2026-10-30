@@ -29,6 +29,10 @@ Cargo names the executable `target/release/sitecmd_cli` (`.exe` on Windows).
 Release packaging installs it as `sitecmd`. Neither variant depends on Tauri;
 the browser feature belongs to the runtime.
 
+`init` writes `.sitecmd/config.json` and `.sitecmd/.gitignore`. `scan`, including
+`--diff`, and `watch` export scan results into the project. These commands run
+locally without importing into an application database or launching another app.
+
 The desktop package owns app startup, IPC, capabilities, webviews, the OS
 keychain, and background adapters. The `desktop_core`, `desktop_integrations`,
 `desktop_licensing`, and `desktop_ssl_probe` modules adapt shared runtime

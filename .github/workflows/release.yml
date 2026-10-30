@@ -678,6 +678,8 @@ jobs:
           # Reuse matrix-scoped platform signing material from the app build.
           APPLE_CERTIFICATE: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_CERTIFICATE || '' }}
           APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_API_KEY_ID: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_API_ISSUER || '' }}
           AZURE_TENANT_ID: ${{ matrix.target == 'windows-x86_64' && secrets.AZURE_TENANT_ID || '' }}
           AZURE_CLIENT_ID: ${{ matrix.target == 'windows-x86_64' && secrets.AZURE_CLIENT_ID || '' }}
           AZURE_CLIENT_SECRET: ${{ matrix.target == 'windows-x86_64' && secrets.AZURE_CLIENT_SECRET || '' }}
@@ -686,6 +688,17 @@ jobs:
           AZURE_SIGN_PROFILE: ${{ matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_PROFILE || '' }}
         shell: bash
         run: bash .github/scripts/release/build-cli.sh
+      - name: Preserve CLI notarization evidence
+        if: ${{ always() && startsWith(matrix.target, 'darwin') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cli-notarization-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/cli-notarization/submission.json
+            ${{ runner.temp }}/cli-notarization/submission-id.txt
+            ${{ runner.temp }}/cli-notarization/notary-log.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Save platform fragment
         env:
           TARGET: ${{ matrix.target }}

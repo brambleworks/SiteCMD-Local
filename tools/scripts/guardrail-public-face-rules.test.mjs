@@ -77,6 +77,134 @@ describe("publicFaceFailures", () => {
     ).toContain("specifies a retired Connect crypto contract");
   });
 
+  it.each([
+    "/v1/provider-connections",
+    "/v1/hooks/vercel",
+    "/v1/hooks/netlify",
+    "/callbacks/{provider}",
+    "/callbacks/vercel",
+    "/callbacks/netlify",
+    "project_already_claimed",
+    "provider_connection",
+    "provider connection",
+    "provider-connection",
+    "provider\nconnections",
+    "provider-attested",
+    "provider attestation",
+    "provider door",
+    "provider hooks",
+    "provider webhook",
+    "provider projects",
+    "provider credential",
+    "provider authority",
+    "provider ordering",
+    "provider authorization",
+    "provider's authorization code",
+    "provider OAuth",
+    "the provider's OAuth flow",
+    "OAuth authorization for the provider",
+    "OAuth authorization\nfor the provider",
+    "provider and generic deploy hooks",
+    "promotion event",
+    "promotion sequence",
+    "provider_connection_id",
+    "the provider's connection_id",
+    "connection_id for the provider",
+    "external_project_id",
+    "webhook reprovisioning",
+    "reprovision the provider webhook",
+    "`promotion`",
+    '"kind": "provider"',
+    "Vercel deploy door",
+    "Vercel's webhook",
+    "callback for Netlify",
+  ])("rejects a spec line containing %s", (contract) => {
+    expect(
+      run((files) => {
+        files[PROTOCOL_SPEC] += `\nThe protocol uses ${contract}.\n`;
+      }),
+    ).toContain("specifies a retired Connect provider contract");
+  });
+
+  it.each(
+    ["Vercel", "Netlify"].flatMap((host) =>
+      [
+        "door",
+        "hook",
+        "webhook",
+        "connection",
+        "credential",
+        "OAuth",
+        "callback",
+        "promotion",
+        "publish event",
+        "authority",
+        "ordering",
+      ].flatMap((term) => [`${host} ${term}`, `${term} ${host}`]),
+    ),
+  )("rejects a deployment host in the retired context %s", (contract) => {
+    expect(
+      run((files) => {
+        files[PROTOCOL_SPEC] += `\nThe protocol uses ${contract}.\n`;
+      }),
+    ).toContain("specifies a retired Connect provider contract");
+  });
+
+  it.each([
+    "Reprovision CI after fingerprint-key rotation.",
+    "Vercel and Netlify identify hosts.",
+    "An OAuth delegation flow validates a single-use state at /callbacks/google.",
+    "An OAuth callback validates its single-use state before exchanging the authorization code.",
+    "A database connection_id identifies a local database session.",
+    "A provider record uses a revision. A database connection_id identifies its session.",
+    "A provider record uses a revision. An OAuth callback at /callbacks/google validates state.",
+    "The OAuth provider redirects to /callbacks/google with a single-use state.",
+    "An identity provider runs the OAuth flow, and its connection_id names the grant.",
+  ])("allows the kept description %s", (description) => {
+    expect(
+      run((files) => {
+        files[PROTOCOL_SPEC] += `\n${description}\n`;
+      }),
+    ).toBe("");
+  });
+
+  it("allows the host-project routes and their deployment host identifiers", () => {
+    expect(
+      run((files) => {
+        files[PROTOCOL_SPEC] +=
+          "\nGET and PUT `/v1/sites/{site}/host-project` read and write host-project bindings: " +
+          '`host: "vercel"` names `project_id` and `project_name`, ' +
+          'and `host: "netlify"` names `netlify_site_id`.\n';
+      }),
+    ).toBe("");
+  });
+
+  it("rejects a restored provider connection sentence", () => {
+    expect(
+      run((files) => {
+        files[PROTOCOL_SPEC] +=
+          "\nVercel and Netlify are connected through a first-class\n`provider_connection` resource.\n";
+      }),
+    ).toContain("specifies a retired Connect provider contract");
+  });
+
+  it("allows verified-good baseline promotion", () => {
+    expect(
+      run((files) => {
+        files[`${CONNECTED_SPECS}/hosted-scanner-spec.md`] +=
+          "\nVerified-good promotion requires a complete, clean observation.\n";
+      }),
+    ).toBe("");
+  });
+
+  it("restricts the provider contract rule to implementation specifications", () => {
+    expect(
+      run((files) => {
+        files[`${CONNECTED_SPECS}/maintained-surfaces.md`] += "\nprovider_connection\n";
+      }),
+    ).toBe("");
+  });
+
   // docs/product/get-value-in-5-minutes.md still reads as product intent ("SiteCMD
   // should ...") today; the rule module excludes it until the desktop-repo-public-face
   // plan's Task 8 rewrites the walkthrough. Prove the exclusion is narrow: the intent
@@ -87,6 +215,15 @@ describe("publicFaceFailures", () => {
         files["docs/product/fix-your-first-issue.md"] += "\nSiteCMD should do this.\n";
       }),
     ).toContain("reads as product intent");
+  });
+
+  it("rejects a README that sends readers to the retired download page", () => {
+    expect(
+      run((files) => {
+        files[README] +=
+          "\nDownload it from [sitecmd.com/download](https://sitecmd.com/download).\n";
+      }),
+    ).toContain("sitecmd.com/download");
   });
 
   it("rejects a docs index that still lists the executed cutover as an entry point", () => {

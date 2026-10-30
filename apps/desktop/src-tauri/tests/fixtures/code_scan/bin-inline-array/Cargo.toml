@@ -1,0 +1,5 @@
+bin = [{ name = "tool", path = "tools/tool.rs" }]
+[package]
+name = "probe"
+version = "0.1.0"
+edition = "2021"

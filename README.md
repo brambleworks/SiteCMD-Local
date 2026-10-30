@@ -46,18 +46,6 @@ guardrail.
 
 ## Install and try it
 
-### The desktop app
-
-Download it from [sitecmd.com/download](https://sitecmd.com/download). Release
-builds support macOS 11 or later with Safari/WebKit 16.2 or later (Apple
-silicon and Intel through one universal app), Windows 10 or later on x86_64
-with WebView2 111 or later, and Ubuntu 22.04 or a compatible x86_64 Linux
-distribution with WebKitGTK 2.40 or later as an AppImage.
-
-[Get value in five minutes](docs/product/get-value-in-5-minutes.md) is the
-shortest walkthrough, and [the MCP server README](apps/mcp-server/README.md)
-puts the same findings inside an AI coding tool.
-
 ### The CLI
 
 `sitecmd` runs a Web Scan against a live URL and the complete Code Scan against

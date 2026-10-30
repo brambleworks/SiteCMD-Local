@@ -119,24 +119,38 @@ broke, with counts by severity and class, not twelve emails. The dedup
 basis is `(site, observation)` for immediate alerts; digests aggregate
 everything in their window.
 
-**Storm control is a budget, not a hope.** Each site has a wake-up
-budget (default: 3 immediate alerts per rolling 24 hours). Overflow
-folds into the next digest and the hosted view with an explicit "N
-further alerts were folded into this digest" line, and the fold itself
-is visible in site state. Nothing is silently dropped; the guardian
-says when it is summarizing. Two classes are never allowed to wait for
-a weekly digest behind an exhausted budget: further `critical`-severity
-events and protection-degradation events instead fold into a **storm
-summary** - one additional immediate email per rolling 6 hours that
-says "the storm is continuing, N events since the last message, worst
-severity X" - so an incident's fourth critical is late by hours, never
-by a week, and the summary itself is bounded so a flapping site cannot
-turn the storm control back into a storm. Non-observation events
-(protection degradation, suppression, webhook auto-disable) carry an
-event-based idempotency key on the alert record, since they have no
-`(site, observation)` pair to dedup on; redelivery of the same
-underlying condition updates the existing alert rather than minting
-siblings.
+(1) **Storm control is a budget, not a hope.** Each alert routed to
+the immediate channel takes one lane. (2) The always-instant causes -
+a site confirmed down or back up, a firewall challenge answering the
+uptime probe, a certificate or domain entering an expiry warning band,
+and a first missed ownership check - are sent at once whatever the
+site's settings say, draw from no budget, and are not held by the
+daily send caps, except that flap handling (6) holds a flapping site's
+down and recovery alerts. (3) An alert whose worst immediate cause is
+`critical` is sent at once until the site has sent its hourly bundling
+point of them (default 5) in the rolling hour; past it, the alert
+folds into a **summary**, one additional immediate email at most every
+55 minutes that says how many alerts no message has told since the
+last one and the worst severity, so a burst of critical findings is
+late by an hour at most. (4) Every other immediate alert draws from
+the site's daily wake-up budget (default 3 per rolling 24 hours); past
+it, the alert folds into the next digest and the hosted view, visibly
+in site state. (5) The person sets the daily budget and the hourly
+bundling point for each site, each from 1 to 10. (6) Nothing is
+silently dropped, and the summary is itself bounded. Uptime alerts are
+bounded by flap handling: a site that goes down and comes back up
+three times within an hour gets one alert that it keeps doing so in
+place of further down and recovery alerts, which then wait until it
+has stayed up or stayed down for 30 minutes, when one message says how
+it settled; the person may change all three numbers for each site,
+both messages are always-instant, and no second down is sent while the
+last uptime message said down.
+
+Non-observation events (protection degradation, suppression, webhook
+auto-disable) carry an event-based idempotency key on the alert
+record, since they have no `(site, observation)` pair to dedup on;
+redelivery of the same underlying condition updates the existing alert
+rather than minting siblings.
 
 ## The wake-up policy
 
@@ -147,6 +161,9 @@ timeline shows everything, always, immediately).
 
 Immediate, by default:
 
+- a site confirmed down or back up, a firewall challenge answering the
+  uptime probe, a certificate or domain entering an expiry warning
+  band, and a first missed ownership check
 - A **new group** at severity `critical` or `high` (deterministic and
   clock-dependent classes).
 - A **regression of a verified fix** at `critical` or `high`. This is
@@ -180,14 +197,17 @@ because good news belongs in the morning paper, not a midnight call:
 verified fixes appear in-app immediately and in the digest with
 celebration, but they never page.
 
-User controls, v1, deliberately small: per-site mute (immediate class
-demoted to digest), a per-site severity floor for wake-ups, and digest
-cadence. Defaults are stated in-product; there is no configuration
-matrix to misconfigure. These controls, the content mode, and the
-outbound webhook lifecycle are the protocol spec's
+User controls, deliberately small: per-site mute (every immediate
+alert but the always-instant causes demoted to the digest), a per-site
+severity floor for wake-ups, the per-site daily wake-up budget and
+hourly bundling point, the per-site flap settings (cycle count, window
+and settle time), digest cadence, and a per-site switch that turns
+uptime monitoring off, which stops the probes and with them the down,
+recovery and challenge alerts. Certificate and domain warnings come
+from the expiry watch and continue. These controls, the content mode,
+and the outbound webhook lifecycle are the protocol spec's
 notification-settings, destination, and alert-webhook resources -
-revision-guarded, evented, exported, erased - not delivery-side
-prose.
+revision-guarded, evented, exported, erased - not delivery-side prose.
 
 ## The digest
 
@@ -304,11 +324,11 @@ destination, ever**:
   redelivery), and webhook-secret rotation with a dual-validity
   overlap mirroring the outbound contract. An unverifiable event is
   dropped and counted on the ops lane, never applied.
-- Per-destination and per-account daily send caps backstop every
-  class **except the security lane** (`token_found_in_public` notices bypass
-  the caps by design - a leaked-token notice must not queue behind a
-  noisy day); the caps are operational configuration with disclosed
-  defaults.
+- Per-destination and per-account daily send caps backstop every class
+  **except the security lane and the always-instant causes** (a
+  leaked-token notice must not wait behind a noisy day, and neither
+  may a site going down); the caps are operational configuration with
+  disclosed defaults.
 - **Every delivery class initiates through the protocol spec's
   attempt-and-claim machinery** - immediate alerts, digests, storm
   summaries, confirmation and re-verification mail, courtesy notes,
@@ -338,21 +358,22 @@ The matrix is the single authority on which message class may reach
 which destination, superseding any looser sentence elsewhere in this
 spec or the protocol:
 
-| Message class                             | Verification required               | Suppressed destination              | Policy bits                                        | Caps                                |
-| ----------------------------------------- | ----------------------------------- | ----------------------------------- | -------------------------------------------------- | ----------------------------------- |
-| Immediate alert                           | Verified                            | Never                               | Blocked by `immediate_disabled`                    | Capped                              |
-| Storm summary                             | Verified                            | Never                               | Blocked by `immediate_disabled`                    | Own rolling 6-hour rule             |
-| Digest                                    | Verified                            | Never                               | Blocked by `digest_disabled`                       | Capped                              |
-| Confirmation / re-verification            | Unverified by nature                | Only via the explicit resend action | Ignored                                            | Rate-limited per destination        |
-| Security notice (`token_found_in_public`) | Verified                            | Never                               | Ignored - unsubscribe must not hide a leaked token | Exempt                              |
-| Courtesy note (association switch)        | Old address must have been verified | Never; skipped silently             | Ignored                                            | Capped                              |
-| Fresh-link resend                         | Verified (current destination only) | Never                               | Blocked by `immediate_disabled`                    | Rate-limited per alert, destination |
+| Message class                             | Verification required               | Suppressed destination              | Policy bits                                        | Caps                                       |
+| ----------------------------------------- | ----------------------------------- | ----------------------------------- | -------------------------------------------------- | ------------------------------------------ |
+| Immediate alert                           | Verified                            | Never                               | Blocked by `immediate_disabled`                    | Capped, except the always-instant causes   |
+| Storm summary                             | Verified                            | Never                               | Blocked by `immediate_disabled`                    | Its own rule: at most one every 55 minutes |
+| Digest                                    | Verified                            | Never                               | Blocked by `digest_disabled`                       | Capped                                     |
+| Confirmation / re-verification            | Unverified by nature                | Only via the explicit resend action | Ignored                                            | Rate-limited per destination               |
+| Security notice (`token_found_in_public`) | Verified                            | Never                               | Ignored - unsubscribe must not hide a leaked token | Exempt                                     |
+| Courtesy note (association switch)        | Old address must have been verified | Never; skipped silently             | Ignored                                            | Capped                                     |
+| Fresh-link resend                         | Verified (current destination only) | Never                               | Blocked by `immediate_disabled`                    | Rate-limited per alert, destination        |
 
 The storm summary row states what "inherits immediate-alert
 eligibility" means exactly: same verification, suppression, and
 policy-bit gates as an immediate alert, differing only in its cap
-(it exists because the wake-up budget is exhausted, so its bound is
-its own rolling 6-hour rule). The fresh-link resend is
+(it exists because a site's critical alerts passed its hourly bundling
+point, so its bound is its own rule of one every 55 minutes). The
+fresh-link resend is
 human-initiated but re-delivers alert content, so it honors the
 alert gates: a suppressed destination gets nothing (the address is
 bouncing - the remedy is re-verification, not retrying it), and

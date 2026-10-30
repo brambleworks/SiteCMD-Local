@@ -6,6 +6,10 @@ static URL_CHARACTER_REFERENCE_RE: std::sync::LazyLock<regex::Regex> =
             .expect("static URL character-reference regex")
     });
 
+fn is_html_whitespace(character: char) -> bool {
+    matches!(character, '\t' | '\n' | '\x0c' | '\r' | ' ')
+}
+
 /// Decode character references before classifying browser-facing URLs.
 pub fn decode_url_character_references(value: &str) -> String {
     URL_CHARACTER_REFERENCE_RE
@@ -74,7 +78,7 @@ pub fn slice_offset(body: &str, slice: &str) -> usize {
 /// one whose value is empty or whitespace, since neither names a resource.
 pub fn url_attr_value(tag: &str, name: &str) -> Option<String> {
     let value = attr_value(tag, name)?;
-    let trimmed = value.trim();
+    let trimmed = value.trim_matches(is_html_whitespace);
     if trimmed.is_empty() {
         return None;
     }
@@ -129,7 +133,8 @@ fn opening_tag_slices_impl<'a>(body: &'a str, lower: &str, target: Option<&str>)
         let name_start = abs + 1;
         let mut name_end = name_start;
         while name_end < bytes.len()
-            && !matches!(bytes[name_end], b' ' | b'\t' | b'\n' | b'\r' | b'/' | b'>')
+            && !is_html_whitespace(bytes[name_end].into())
+            && !matches!(bytes[name_end], b'/' | b'>')
         {
             name_end += 1;
         }
@@ -141,7 +146,7 @@ fn opening_tag_slices_impl<'a>(body: &'a str, lower: &str, target: Option<&str>)
             out.push(&body[abs..=tag_end]);
         }
 
-        let opening_without_close = body[abs..tag_end].trim_end();
+        let opening_without_close = body[abs..tag_end].trim_end_matches(is_html_whitespace);
         let self_closing = opening_without_close.ends_with('/');
         pos = tag_end + 1;
         if !self_closing && is_raw_text_or_rcdata_element(element_name) {
@@ -216,7 +221,9 @@ fn raw_text_close_start(lower: &str, from: usize, element_name: &str) -> Option<
         let start = cursor + relative;
         let after_name = start + close.len();
         let boundary = lower.as_bytes().get(after_name).copied();
-        if matches!(boundary, Some(b' ' | b'\t' | b'\n' | b'\r' | b'/' | b'>')) {
+        if boundary
+            .is_some_and(|byte| is_html_whitespace(byte.into()) || matches!(byte, b'/' | b'>'))
+        {
             return Some(start);
         }
         cursor = after_name;
@@ -235,14 +242,34 @@ fn raw_text_element_end(body: &str, lower: &str, from: usize, element_name: &str
 
 /// Find the closing `>` without treating quoted values as tag boundaries.
 fn tag_end_offset(tag_and_rest: &str) -> Option<usize> {
-    let mut quote: Option<u8> = None;
-    for (index, byte) in tag_and_rest.bytes().enumerate() {
-        match quote {
-            Some(active) if byte == active => quote = None,
-            Some(_) => {}
-            None if matches!(byte, b'"' | b'\'') => quote = Some(byte),
-            None if byte == b'>' => return Some(index),
-            None => {}
+    enum State {
+        BeforeName,
+        Name,
+        BeforeValue,
+        Unquoted,
+        Quoted(u8),
+    }
+
+    let region = attr_region(tag_and_rest);
+    let offset = tag_and_rest.len() - region.len();
+    let mut state = State::BeforeName;
+    for (index, byte) in region.bytes().enumerate() {
+        match state {
+            State::Quoted(active) if byte == active => state = State::BeforeName,
+            State::Quoted(_) => {}
+            _ if byte == b'>' => return Some(offset + index),
+            State::BeforeValue if is_html_whitespace(byte.into()) => {}
+            State::BeforeValue if matches!(byte, b'"' | b'\'') => state = State::Quoted(byte),
+            State::BeforeValue => state = State::Unquoted,
+            State::Unquoted if is_html_whitespace(byte.into()) => state = State::BeforeName,
+            State::Unquoted => {}
+            State::Name if byte == b'=' => state = State::BeforeValue,
+            State::Name if byte == b'/' => state = State::BeforeName,
+            State::Name => {}
+            State::BeforeName if !is_html_whitespace(byte.into()) && byte != b'/' => {
+                state = State::Name
+            }
+            State::BeforeName => {}
         }
     }
     None
@@ -280,7 +307,10 @@ fn attr_region(tag: &str) -> &str {
     let mut i = 0;
     // ASCII delimiters never occur inside multi-byte UTF-8 sequences, so
     // every stop position is a char boundary.
-    while i < bytes.len() && !matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r' | b'/' | b'>') {
+    while i < bytes.len()
+        && !is_html_whitespace(bytes[i].into())
+        && !matches!(bytes[i], b'/' | b'>')
+    {
         i += 1;
     }
     &rest[i..]
@@ -300,7 +330,7 @@ impl<'a> Iterator for Attributes<'a> {
             let bytes = self.rest.as_bytes();
             let mut i = 0;
             // Skip whitespace and self-closing slashes between attributes.
-            while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r' | b'/') {
+            while i < bytes.len() && (is_html_whitespace(bytes[i].into()) || bytes[i] == b'/') {
                 i += 1;
             }
             if i >= bytes.len() || bytes[i] == b'>' {
@@ -310,7 +340,8 @@ impl<'a> Iterator for Attributes<'a> {
             // Attribute name runs to whitespace, `=`, `/`, or `>`.
             let name_start = i;
             while i < bytes.len()
-                && !matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r' | b'=' | b'/' | b'>')
+                && !is_html_whitespace(bytes[i].into())
+                && !matches!(bytes[i], b'=' | b'/' | b'>')
             {
                 i += 1;
             }
@@ -322,7 +353,7 @@ impl<'a> Iterator for Attributes<'a> {
             let name = self.rest[name_start..i].to_ascii_lowercase();
             // Optional whitespace around `=`.
             let mut j = i;
-            while j < bytes.len() && matches!(bytes[j], b' ' | b'\t' | b'\n' | b'\r') {
+            while j < bytes.len() && is_html_whitespace(bytes[j].into()) {
                 j += 1;
             }
             if j >= bytes.len() || bytes[j] != b'=' {
@@ -331,7 +362,7 @@ impl<'a> Iterator for Attributes<'a> {
                 return Some((name, None));
             }
             j += 1;
-            while j < bytes.len() && matches!(bytes[j], b' ' | b'\t' | b'\n' | b'\r') {
+            while j < bytes.len() && is_html_whitespace(bytes[j].into()) {
                 j += 1;
             }
             if j >= bytes.len() || bytes[j] == b'>' {
@@ -350,7 +381,8 @@ impl<'a> Iterator for Attributes<'a> {
                 _ => {
                     let mut k = j;
                     while k < bytes.len()
-                        && !matches!(bytes[k], b' ' | b'\t' | b'\n' | b'\r' | b'>')
+                        && !is_html_whitespace(bytes[k].into())
+                        && bytes[k] != b'>'
                     {
                         k += 1;
                     }
@@ -590,5 +622,102 @@ mod tests {
             raw_text_element_contents(body, &lower, "style"),
             vec![".hero { background: url(http://cdn.example.com/hero.png) }"]
         );
+    }
+
+    #[test]
+    fn stray_quotes_cannot_hide_following_tags_or_raw_text() {
+        for earlier in [
+            r#"<div broken">"#,
+            "<div broken'>",
+            r#"<div data-x=broken">"#,
+            "<div data-x=broken'>",
+        ] {
+            let body =
+                format!("{earlier}<meta name=generator content=Framer><script>payload</script>");
+            let lower = body.to_ascii_lowercase();
+            assert_eq!(
+                tag_slices(&body, &lower, "meta"),
+                ["<meta name=generator content=Framer>"],
+                "{earlier}"
+            );
+            assert_eq!(super::all_tag_slices(&body, &lower).len(), 3, "{earlier}");
+            assert_eq!(
+                raw_text_element_contents(&body, &lower, "script"),
+                ["payload"],
+                "{earlier}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_nameless_equals_cannot_open_a_quoted_attribute_value() {
+        let body = r#"<div ="x>"><meta name=generator content=Framer>"#;
+        assert_eq!(
+            super::all_tag_slices(body, &body.to_ascii_lowercase()),
+            [r#"<div ="x>"#, "<meta name=generator content=Framer>"]
+        );
+    }
+
+    #[test]
+    fn a_second_equals_cannot_extend_a_tag_as_a_quoted_value() {
+        let body = r#"<a b==" >"><meta name=generator content=Framer>"#;
+        assert_eq!(
+            super::all_tag_slices(body, &body.to_ascii_lowercase()),
+            [r#"<a b==" >"#, "<meta name=generator content=Framer>"]
+        );
+    }
+
+    #[test]
+    fn html_form_feeds_cannot_hide_tags_or_merge_attributes() {
+        for whitespace in ["\x0c", "\t", "\n", "\r", " "] {
+            let tag = format!(
+                "<a{whitespace}href=\"x>y\"{whitespace}target{whitespace}={whitespace}_blank{whitespace}download>"
+            );
+            assert_eq!(super::tag_end_offset(&tag), Some(tag.len() - 1));
+            assert_eq!(
+                tag_slices(&tag, &tag.to_ascii_lowercase(), "a"),
+                [tag.as_str()]
+            );
+            assert_eq!(
+                super::all_tag_slices(&tag, &tag.to_ascii_lowercase()),
+                [tag.as_str()]
+            );
+            assert_eq!(attr_value(&tag, "href").as_deref(), Some("x>y"));
+            assert_eq!(attr_value(&tag, "target").as_deref(), Some("_blank"));
+            assert!(has_attr(&tag, "download"));
+            let url = format!("<a href=\"{whitespace}/asset{whitespace}\">");
+            assert_eq!(url_attr_value(&url, "href").as_deref(), Some("/asset"));
+        }
+    }
+
+    #[test]
+    fn html_form_feeds_cannot_hide_raw_text_opening_or_closing_tags() {
+        for whitespace in ["\x0c", "\t", "\n", "\r", " "] {
+            let body = format!(
+                "<script{whitespace}type=\"application/json\">payload</script{whitespace}><img src=real>"
+            );
+            let lower = body.to_ascii_lowercase();
+            assert_eq!(
+                raw_text_element_contents(&body, &lower, "script"),
+                ["payload"]
+            );
+            assert_eq!(tag_slices(&body, &lower, "img"), ["<img src=real>"]);
+        }
+    }
+
+    #[test]
+    fn non_html_whitespace_cannot_be_trimmed_or_make_raw_text_self_closing() {
+        for whitespace in ["\x0b", "\u{a0}", "\u{2003}"] {
+            let value = format!("{whitespace}/asset{whitespace}");
+            let tag = format!("<a href=\"{value}\">");
+            assert_eq!(url_attr_value(&tag, "href"), Some(value));
+            let body = format!("<script/{whitespace}><img src=hidden></script><img src=real>");
+            assert_eq!(
+                tag_slices(&body, &body.to_ascii_lowercase(), "img"),
+                ["<img src=real>"]
+            );
+            let tag = format!("<a{whitespace}href=x>");
+            assert!(tag_slices(&tag, &tag.to_ascii_lowercase(), "a").is_empty());
+        }
     }
 }

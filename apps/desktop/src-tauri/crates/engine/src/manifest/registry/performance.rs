@@ -22,7 +22,10 @@ pub const ENTRIES: &[Entry] = &[
         .browser()
         .measurement(MeasurementUnit::Milliseconds),
     Entry::new("performance.fonts"),
-    Entry::new("performance.http2").compare_on(&[CompareDimension::TransportProfile]),
+    // The hosted runtime cannot observe the negotiated HTTP protocol.
+    Entry::new("performance.http2")
+        .unsupported()
+        .compare_on(&[CompareDimension::TransportProfile]),
     Entry::new("performance.images"),
     Entry::new("performance.images.dimensions"),
     Entry::new("performance.images.format"),

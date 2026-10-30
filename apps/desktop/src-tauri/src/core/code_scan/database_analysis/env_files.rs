@@ -1,16 +1,20 @@
 use super::*;
 
-pub(in crate::core::code_scan) fn collect_source_env_keys(files: &[SourceFile]) -> HashSet<String> {
-    let mut keys = HashSet::new();
-    for file in files {
-        keys.extend(collect_source_env_keys_from_file(file));
-    }
-    keys
-}
-
 pub(in crate::core::code_scan) fn collect_source_env_keys_from_file(
     file: &SourceFile,
 ) -> HashSet<String> {
+    collect_source_env_keys_with_build(file, None)
+}
+
+pub(super) fn collect_source_env_keys_with_build(
+    file: &SourceFile,
+    injected: Option<&HashSet<String>>,
+) -> HashSet<String> {
+    let path = Path::new(&file.relative_path);
+    let is_rust = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"));
     let content = &file.content;
     let structure = super::super::file_analysis::blank_non_code_for_env(file);
     let mut keys = HashSet::new();
@@ -35,6 +39,12 @@ pub(in crate::core::code_scan) fn collect_source_env_keys_from_file(
             else {
                 continue;
             };
+            let compile_time = is_rust
+                && (full_match.as_str().starts_with("env!")
+                    || full_match.as_str().starts_with("option_env!"));
+            if compile_time && injected.is_some_and(|keys| keys.contains(key)) {
+                continue;
+            }
             if !key.is_empty() {
                 keys.insert(key.to_string());
             }
@@ -54,7 +64,17 @@ mod source_env_key_tests {
             absolute_path: PathBuf::from(relative_path),
             relative_path: relative_path.to_string(),
             line_count: content.lines().count(),
+            inline_rust_tests: false,
             content: content.to_string(),
+        }
+    }
+
+    #[test]
+    fn rust_env_read_after_quote_characters_is_executable() {
+        for literal in [r#"'"'"#, r#"'\"'"#, r#"b'"'"#] {
+            let content = format!("fn start() {{ let _ = {literal}; let _ = std::env::var(\"RUNTIME_AFTER_QUOTE\"); }}");
+            let keys = collect_source_env_keys_from_file(&source_file("src/lib.rs", &content));
+            assert!(keys.contains("RUNTIME_AFTER_QUOTE"), "{literal}: {keys:?}");
         }
     }
 

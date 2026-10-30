@@ -888,40 +888,6 @@
       }
     },
     {
-      "check": "config.localhost_refs",
-      "expected": [
-        {
-          "category": "security",
-          "checkId": "config.localhost_refs",
-          "confidence": "needs_review",
-          "confidenceReason": "The reference is present in a local preview response, but production build substitution, deployment topology, and intentional local-companion behavior were not evaluated.",
-          "description": "Found 1 distinct URL reference to a localhost, loopback-IP, or unspecified-address target in recognized initial-HTML attributes, inline CSS, or non-comment inline-script text in the local preview. This does not establish a deployed defect: a production build may replace the value, or an intentional browser-to-local-service feature may require it. If the same browser-facing URL ships to ordinary remote users, it targets each user's device rather than your remote service.",
-          "fixPrompt": "Confirm whether the production artifact retains these loopback URLs; replace only unintended references with a relative URL or validated environment-specific server configuration.",
-          "manualFix": "Build the exact production artifact and inspect its rendered HTML, CSS, and client bundles. For unintended references, prefer same-origin relative URLs or a validated public configuration value. Keep intentional local-companion integrations explicit, user-consented, and restricted to the expected scheme, host, port, and protocol.",
-          "rawData": {
-            "distinct_url_count": 1,
-            "initial_html_only": true,
-            "samples": ["http://localhost:8080/api"]
-          },
-          "severity": "medium",
-          "status": "warn",
-          "title": "Loopback URLs appear in local preview output",
-          "whyItMatters": "An unintended loopback URL in a remote-user build targets the user's own device and can break links, assets, forms, or API calls; intentional localhost integrations require a different, explicit trust model."
-        }
-      ],
-      "name": "hardcoded_loopback_url_flags_predeploy_localhost_refs",
-      "page": {
-        "body": "<html><body><a href=\"http://localhost:8080/api\">api</a></body></html>",
-        "evaluation_time": "2026-08-05T00:00:00Z",
-        "headers": [],
-        "http_version": "HTTP/2.0",
-        "is_localhost": true,
-        "is_strict_localhost": true,
-        "status_code": 200,
-        "url": "http://localhost:3000/"
-      }
-    },
-    {
       "check": "security.email_exposure",
       "expected": [
         {

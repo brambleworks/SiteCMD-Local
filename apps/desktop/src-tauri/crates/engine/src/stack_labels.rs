@@ -51,5 +51,10 @@ define_labels! {
     CLOUDFLARE => "Cloudflare",
     GITHUB => "GitHub",
     AWS => "AWS",
+    CLOUDFLARE_PAGES => "Cloudflare Pages",
+    CLOUDFLARE_WORKERS => "Cloudflare Workers",
+    GITHUB_PAGES => "GitHub Pages",
+    FRAMER => "Framer",
+    WORDPRESS_COM => "WordPress.com",
     JQUERY => "jQuery",
 }

@@ -1362,7 +1362,7 @@
     {
       "ecosystem": "cargo",
       "name": "clipboard-win",
-      "version": "5.4.1",
+      "version": "5.4.3",
       "license": "BSL-1.0",
       "repository": "https://github.com/DoumanAsh/clipboard-win",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -2013,7 +2013,7 @@
     {
       "ecosystem": "cargo",
       "name": "ctutils",
-      "version": "0.4.2",
+      "version": "0.4.7",
       "license": "Apache-2.0 OR MIT",
       "repository": "https://github.com/RustCrypto/utils",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -8233,7 +8233,7 @@
     {
       "ecosystem": "cargo",
       "name": "rustls-webpki",
-      "version": "0.103.14",
+      "version": "0.103.16",
       "license": "ISC",
       "repository": "https://github.com/rustls/webpki",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -10640,7 +10640,7 @@
     {
       "ecosystem": "cargo",
       "name": "tokio",
-      "version": "1.53.1",
+      "version": "1.54.1",
       "license": "MIT",
       "repository": "https://github.com/tokio-rs/tokio",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -10705,6 +10705,7 @@
       "repository": "https://github.com/toml-rs/toml",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -10768,6 +10769,7 @@
       "repository": "https://github.com/toml-rs/toml",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -10789,6 +10791,7 @@
       "repository": "https://github.com/toml-rs/toml",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -10810,6 +10813,7 @@
       "repository": "https://github.com/toml-rs/toml",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12015,7 +12019,7 @@
     {
       "ecosystem": "cargo",
       "name": "webpki-root-certs",
-      "version": "1.0.9",
+      "version": "1.0.11",
       "license": "CDLA-Permissive-2.0",
       "repository": "https://github.com/rustls/webpki-roots",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -12278,7 +12282,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12343,7 +12346,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12408,7 +12410,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12452,7 +12453,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12517,7 +12517,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12582,7 +12581,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12647,7 +12645,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -12712,7 +12709,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -13169,7 +13165,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -13191,7 +13186,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -13278,7 +13272,6 @@
       "repository": "https://github.com/microsoft/windows-rs",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
-        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -13441,6 +13434,7 @@
       "repository": "https://github.com/winnow-rs/winnow",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scopes": [
+        "cli-rust",
         "desktop-rust"
       ],
       "licenseFiles": [
@@ -14162,7 +14156,7 @@
     {
       "ecosystem": "npm",
       "name": "@modelcontextprotocol/sdk",
-      "version": "1.31.0",
+      "version": "1.32.2",
       "license": "MIT",
       "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
       "source": "npm",
@@ -14873,7 +14867,7 @@
     {
       "ecosystem": "npm",
       "name": "body-parser",
-      "version": "2.3.0",
+      "version": "2.4.0",
       "license": "MIT",
       "repository": "expressjs/body-parser",
       "source": "npm",
@@ -15630,7 +15624,7 @@
     {
       "ecosystem": "npm",
       "name": "fast-uri",
-      "version": "3.1.8",
+      "version": "3.1.9",
       "license": "BSD-3-Clause",
       "repository": "git+https://github.com/fastify/fast-uri.git",
       "source": "npm",
@@ -16092,7 +16086,7 @@
     {
       "ecosystem": "npm",
       "name": "ip-address",
-      "version": "10.7.3",
+      "version": "10.7.5",
       "license": "MIT",
       "repository": "https://github.com/beaugunderson/ip-address.git",
       "source": "npm",
@@ -17364,7 +17358,7 @@
     {
       "ecosystem": "npm",
       "name": "qs",
-      "version": "6.16.0",
+      "version": "6.17.1",
       "license": "BSD-3-Clause",
       "repository": "https://github.com/ljharb/qs.git",
       "source": "npm",
@@ -18312,7 +18306,7 @@
     {
       "ecosystem": "npm",
       "name": "zod",
-      "version": "4.5.4",
+      "version": "4.6.7",
       "license": "MIT",
       "repository": "git+https://github.com/colinhacks/zod.git",
       "source": "npm",

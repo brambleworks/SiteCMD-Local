@@ -25,7 +25,6 @@ fn parse_init_args(mut args: impl Iterator<Item = String>) -> Result<InitArgs, S
     let mut url: Option<String> = None;
     let mut name: Option<String> = None;
     let mut yes = false;
-    let mut no_deep_link = false;
 
     while let Some(token) = args.next() {
         match token.as_str() {
@@ -38,9 +37,6 @@ fn parse_init_args(mut args: impl Iterator<Item = String>) -> Result<InitArgs, S
             }
             "--yes" | "-y" => {
                 yes = true;
-            }
-            "--no-deep-link" => {
-                no_deep_link = true;
             }
             t if t.starts_with('-') => {
                 return Err(format!("Unknown option: {}", t));
@@ -55,12 +51,7 @@ fn parse_init_args(mut args: impl Iterator<Item = String>) -> Result<InitArgs, S
         }
     }
 
-    Ok(InitArgs {
-        url,
-        name,
-        yes,
-        no_deep_link,
-    })
+    Ok(InitArgs { url, name, yes })
 }
 
 fn parse_scan_args(mut args: impl Iterator<Item = String>) -> Result<ScanArgs, String> {

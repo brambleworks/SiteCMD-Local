@@ -112,4 +112,17 @@ mod tests {
         let body = r#"<!-- <meta name="x" property="og:title" content="Ghost"> -->"#;
         assert_eq!(extract_meta(body, "og:title"), None);
     }
+
+    #[test]
+    fn a_stray_quote_in_an_earlier_tag_does_not_hide_seo_meta_content() {
+        let body = r#"<div broken"><meta name="description" content="Page description"><meta property="og:title" content="Page title">"#;
+        assert_eq!(
+            extract_meta(body, "description").as_deref(),
+            Some("Page description")
+        );
+        assert_eq!(
+            extract_meta(body, "og:title").as_deref(),
+            Some("Page title")
+        );
+    }
 }

@@ -1,6 +1,7 @@
 //! Evaluation answers the document's stack and a severity input for each verdict.
 
 use serde::Deserialize;
+use sitecmd_engine::dns::ResolverFacts;
 use sitecmd_engine::evaluation::{evaluate, EvaluationRequest, PageArtifact};
 use sitecmd_engine::severity_policy::WebSeverityInput;
 use sitecmd_engine::stack::DetectedStack;
@@ -12,6 +13,8 @@ const CHECKS_CORPUS: &str = include_str!("../fixtures/checks/golden.json");
 struct StackCase {
     name: String,
     page: PageArtifact,
+    #[serde(default)]
+    resolver_facts: Option<ResolverFacts>,
     expected: Option<DetectedStack>,
 }
 
@@ -48,7 +51,9 @@ fn replay_stack(value: serde_json::Value) {
             "{} needs an expected stack",
             case.name
         );
-        let response = evaluate(&request(case.page)).expect("corpus pages evaluate");
+        let mut request = request(case.page);
+        request.resolver_facts = case.resolver_facts;
+        let response = evaluate(&request).expect("corpus pages evaluate");
         assert_eq!(
             serde_json::to_value(response.stack).unwrap(),
             slot["expected"],

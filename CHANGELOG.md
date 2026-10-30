@@ -11,6 +11,84 @@ public repository history.
 
 ## [Unreleased]
 
+### Added
+
+- `sitecmd gate --outputs <FILE>` writes its verdict and the number of new
+  findings to a file for a workflow to read. The verdict is `pass`, `fail`, or
+  `inactive`, so automation can distinguish an account that was not graded
+  from a passing gate.
+
+### Changed
+
+- `sitecmd init`, `sitecmd scan`, including `--diff`, and `sitecmd watch` no
+  longer import project data into a desktop database or launch the desktop
+  app. Initialization writes the project configuration, and scans and watch
+  runs keep exporting their results into `.sitecmd/`.
+- `sitecmd gate`, `sitecmd submit`, `sitecmd deploy`, and the hosted autofix
+  job commands exit successfully with a notice when SiteCMD Connect reports
+  an inactive account. The gate says it graded nothing, and an autofix run
+  leaves nothing to publish. If work already happened before the refusal,
+  the notice says its result was not recorded.
+- The macOS `sitecmd` binary is now notarized by Apple as well as signed.
+  Release packaging requires an accepted notarization, and artifact checks
+  verify the binary's online notarization ticket.
+
+### Fixed
+
+- `sitecmd audit` no longer reports environment names that only tests read, or
+  that the project's own Cargo build script sets at compile time, as missing
+  from `.env.example`. Code Scan now also checks Rust code that follows an
+  inline test module or a `'"'` character literal, and no longer reports a
+  missing test for a Rust route file with inline tests.
+- Code Scan no longer mistakes Cloudflare Worker fetch handlers or asset
+  bindings for outbound HTTP calls, raw-HTML sink names in regular
+  expressions for executable sinks, or a private-key header without key
+  material for a committed secret. ESLint configuration files are no longer
+  flagged just for their size.
+- Code Scan recognizes Cloudflare rate-limiter binding calls and `logEvent`
+  helpers that serialize an event object before writing it. Reading
+  an upstream rate-limit response header no longer counts as protecting the
+  route with its own rate limit.
+- Open-redirect checks in JavaScript and TypeScript pair request fields with
+  redirects in the same route handler. A request field in one handler no
+  longer implicates an unrelated redirect in another, template destinations
+  built from recognized safe values are accepted, and bare `success` or
+  `cancel` flags no longer count as redirect destinations.
+- Code Scan reads peer requirements from a workspace's covering lockfile,
+  so a dependency used as a peer of an imported package is no longer reported
+  as unused just because the lockfile is at the workspace root.
+- Web Scan reads repeated cache, compression, and security policy header
+  lines together. Content Security Policy values containing comma-separated
+  policies are evaluated as separate enforced policies, and compression or
+  cache directives on later header lines are no longer missed.
+- Asset weight, heavy-image, and asset-caching checks report that they could
+  not measure the sample when none of the relevant requests received a
+  response. Pages with many asset references also use less memory during
+  sampling.
+- A `robots.txt` response with a server error now fails the check at High
+  severity. Rate limiting and bot challenges remain inconclusive. Readable
+  rules served as `text/html` are evaluated and produce a warning about the
+  content type, and the AI crawler check reports a pass when no recognized
+  crawler has a root-wide block.
+- The sitemap check rejects bodies that are not valid UTF-8 instead of
+  accepting XML whose invalid bytes were replaced during decoding.
+- The HTTP/2 check is skipped when the negotiated protocol was not observed,
+  instead of treating an unknown protocol as evidence of missing support.
+- The missing-page check no longer calls an unread HTTP 404 response body
+  minimal. It reports the confirmed status and says the body was not read.
+- Hosted autofix briefs keep source excerpts containing carriage returns
+  inside their code blocks and encode backticks and line endings in file
+  paths, so those values cannot introduce new Markdown sections in the brief.
+- Connected commands read the service's problem details and show its refusal
+  code and recovery guidance. Submission and deployment errors include the
+  server's retry delay when a request is still in progress or rate limited.
+
+### Removed
+
+- `sitecmd init --no-deep-link` has been removed because initialization no
+  longer opens the desktop app. Remove the option from scripts; passing it
+  now produces an unknown-option error.
+
 ## [1.5.0] - 2026-09-21
 
 ### Added

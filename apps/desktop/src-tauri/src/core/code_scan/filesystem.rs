@@ -10,6 +10,8 @@ pub(super) struct SourceFile {
     pub(super) relative_path: String,
     pub(super) content: String,
     pub(super) line_count: usize,
+    /// Inline test evidence from raw source, before test modules are stripped.
+    pub(super) inline_rust_tests: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -22,6 +24,7 @@ pub(super) struct ProjectFile {
 #[derive(Debug, Clone)]
 pub(super) struct ProjectInventory {
     pub(super) source_files: Vec<SourceFile>,
+    pub(super) rust_modules: scan_scope::RustModuleGraph,
     pub(super) project_files: Vec<ProjectFile>,
     /// Directories the walk refused to descend into.
     pub(super) skipped_scopes: CodeScanSkippedScopes,
@@ -48,9 +51,23 @@ struct CollectionLimits {
 
 #[derive(Debug, Default)]
 struct CollectionState {
+    rust_modules: scan_scope::RustModuleGraph,
     total_bytes: u64,
     visited_files: usize,
     skipped_scopes: CodeScanSkippedScopes,
+}
+
+impl CollectionState {
+    fn charge_text(&mut self, content: &String, limits: CollectionLimits) -> Result<(), String> {
+        self.total_bytes = self.total_bytes.saturating_add(content.capacity() as u64);
+        if self.total_bytes > limits.max_total_bytes {
+            return Err(format!(
+                "Code Scan stopped after reaching the {} byte source and configuration text budget. Choose a smaller project root or exclude generated folders.",
+                limits.max_total_bytes
+            ));
+        }
+        Ok(())
+    }
 }
 
 static IGNORED_DIRS: &[&str] = &[
@@ -208,8 +225,10 @@ pub(super) fn collect_project_inventory(root: &Path) -> Result<ProjectInventory,
         &mut state,
         0,
     )?;
+    state.rust_modules.finish(&canonical_root, &project_files);
     Ok(ProjectInventory {
         source_files,
+        rust_modules: state.rust_modules,
         project_files,
         skipped_scopes: state.skipped_scopes,
     })
@@ -323,6 +342,17 @@ fn collect_project_inventory_with_limits(
         };
         project_files.push(project_file.clone());
 
+        if file_name == "Cargo.toml" {
+            let content = read_project_file(&project_file, scan_scope::CARGO_MANIFEST_MAX_BYTES)
+                .and_then(|bytes| String::from_utf8(bytes).ok());
+            if let Some(content) = &content {
+                state.charge_text(content, limits)?;
+            }
+            state
+                .rust_modules
+                .add_cargo_manifest(Path::new(&relative_path), content.as_deref());
+        }
+
         // Keep ignored files in inventory for manifest and opted-in database checks,
         // but do not analyze them as source. Deployed config files are exempt.
         if scope.is_ignored(&path, false) && !is_deployed_config_basename(&file_name) {
@@ -367,6 +397,14 @@ fn collect_project_inventory_with_limits(
             Ok(content) => content,
             Err(_) => continue,
         };
+        state
+            .rust_modules
+            .add_file(Path::new(&relative_path), &content);
+        let inline_rust_tests = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
+            && super::has_inline_rust_tests(&content.to_ascii_lowercase());
         let content = sanitize_source_content(&path, content);
 
         // A Rust file that is entirely `#![cfg(test)]` (the #[path] sibling
@@ -382,18 +420,13 @@ fn collect_project_inventory_with_limits(
             continue;
         }
 
-        state.total_bytes = state.total_bytes.saturating_add(content.capacity() as u64);
-        if state.total_bytes > limits.max_total_bytes {
-            return Err(format!(
-                "Code Scan stopped after reaching the {} byte source budget. Choose a smaller project root or exclude generated folders.",
-                limits.max_total_bytes
-            ));
-        }
+        state.charge_text(&content, limits)?;
 
         source_files.push(SourceFile {
             absolute_path: canonical_path,
             relative_path,
             line_count: content.lines().count(),
+            inline_rust_tests,
             content,
         });
     }
@@ -424,43 +457,14 @@ pub(super) fn read_text_under_root(root: &Path, path: &Path) -> Option<String> {
     crate::core::safe_fs::read_bounded_text_under_root(root, path, MAX_FILE_BYTES)
 }
 
-fn sanitize_source_content(path: &Path, content: String) -> String {
+pub(super) fn sanitize_source_content(path: &Path, content: String) -> String {
     let Some(ext) = path.extension().and_then(|value| value.to_str()) else {
         return content;
     };
     if !ext.eq_ignore_ascii_case("rs") {
         return content;
     }
-    strip_rust_test_module(&content).unwrap_or(content)
-}
-
-fn strip_rust_test_module(content: &str) -> Option<String> {
-    let mut offset = 0usize;
-    let mut cfg_test_offset: Option<usize> = None;
-
-    for line in content.split_inclusive('\n') {
-        let trimmed = line.trim_start();
-        let trimmed = trimmed.trim_end_matches(['\r', '\n']);
-
-        if trimmed.starts_with("#[cfg(test)]") {
-            cfg_test_offset = Some(offset);
-            offset += line.len();
-            continue;
-        }
-
-        if trimmed.starts_with("mod tests") && trimmed.contains('{') {
-            let start = cfg_test_offset.unwrap_or(offset);
-            return Some(content[..start].to_string());
-        }
-
-        if !trimmed.is_empty() && !trimmed.starts_with("//") {
-            cfg_test_offset = None;
-        }
-
-        offset += line.len();
-    }
-
-    None
+    scan_scope::strip_rust_test_modules(&content).unwrap_or(content)
 }
 
 #[cfg(test)]

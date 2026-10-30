@@ -7,6 +7,11 @@ use serde::{Deserialize, Serialize};
 #[path = "stack_labels.rs"]
 mod labels;
 
+#[path = "stack_hosting.rs"]
+mod hosting;
+
+pub use hosting::detect_hosting;
+
 /// Technology stack detected from headers and HTML.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -29,6 +34,12 @@ pub struct DetectedStack {
     /// CDN / hosting platform
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cdn: Option<String>,
+    /// The platform that serves the site, where an answer names it
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hosting: Option<String>,
+    /// Whose nameservers answer for the site's domain
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dns_provider: Option<String>,
     /// Additional detected technologies
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub other: Vec<String>,
@@ -42,6 +53,8 @@ impl DetectedStack {
             && self.js_framework.is_none()
             && self.css_framework.is_none()
             && self.cdn.is_none()
+            && self.hosting.is_none()
+            && self.dns_provider.is_none()
             && self.other.is_empty()
     }
 
@@ -70,6 +83,12 @@ impl DetectedStack {
         }
         if let Some(ref c) = self.cdn {
             parts.push(format!("CDN/Hosting: {}", c));
+        }
+        if let Some(ref h) = self.hosting {
+            parts.push(format!("Hosting: {}", h));
+        }
+        if let Some(ref d) = self.dns_provider {
+            parts.push(format!("DNS: {}", d));
         }
         for o in &self.other {
             parts.push(o.clone());
@@ -102,7 +121,7 @@ pub fn detect_stack(headers: &http::HeaderMap, body: &str, lower: &str) -> Detec
     detect_other(lower, &mut stack);
 
     // Meta generator tag (catches many CMSs)
-    detect_meta_generator(body, lower, &mut stack);
+    detect_meta_generator(body, &mut stack);
 
     stack
 }
@@ -352,20 +371,16 @@ fn detect_other(lower: &str, stack: &mut DetectedStack) {
     }
 }
 
-fn detect_meta_generator(body: &str, lower: &str, stack: &mut DetectedStack) {
+/// The content of the page's `<meta name="generator">`: the CMS
+/// reader and the hosting reader both read it.
+fn generator_value(body: &str) -> Option<String> {
     // Find <meta name="generator" content="...">
-    if let Some(pos) = lower.find("name=\"generator\"") {
-        let region_start = crate::checks::floor_char_boundary(body, pos.saturating_sub(200));
-        let region_end = crate::checks::ceil_char_boundary(body, body.len().min(pos + 300));
-        let region = &body[region_start..region_end];
-        let region_lower = region.to_ascii_lowercase();
-        if let Some(cp) = region_lower.find("content=\"") {
-            let start = cp + 9;
-            if let Some(end) = region_lower[start..].find('"') {
-                let value = &region[start..start + end];
-                parse_generator(value, stack);
-            }
-        }
+    crate::checks::seo::parsing::extract_meta(body, "generator")
+}
+
+fn detect_meta_generator(body: &str, stack: &mut DetectedStack) {
+    if let Some(value) = generator_value(body) {
+        parse_generator(&value, stack);
     }
 }
 

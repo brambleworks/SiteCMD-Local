@@ -40,6 +40,7 @@
       "expected": {
         "cdn": "Vercel",
         "framework": "Next.js (likely)",
+        "hosting": "Vercel",
         "server": "Vercel"
       },
       "name": "vercel_headers",
@@ -219,7 +220,360 @@
         "status_code": 200,
         "url": "https://example.com/"
       }
+    },
+    {
+      "expected": {
+        "cdn": "Cloudflare",
+        "hosting": "Cloudflare Pages"
+      },
+      "name": "a_pages_dev_host_is_cloudflare_pages",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [
+          [
+            "cf-ray",
+            "8a1b2c3d4e5f6071-IAD"
+          ],
+          [
+            "server",
+            "cloudflare"
+          ]
+        ],
+        "status_code": 200,
+        "url": "https://shop.pages.dev/"
+      }
+    },
+    {
+      "expected": {
+        "cdn": "Cloudflare",
+        "hosting": "Cloudflare Workers"
+      },
+      "name": "a_workers_dev_host_is_cloudflare_workers",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [
+          [
+            "cf-ray",
+            "8a1b2c3d4e5f6071-IAD"
+          ]
+        ],
+        "status_code": 200,
+        "url": "https://api.example.workers.dev/"
+      }
+    },
+    {
+      "expected": {
+        "hosting": "Cloudflare Pages"
+      },
+      "name": "a_cname_to_pages_dev_names_cloudflare_pages",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://www.example.com/"
+      },
+      "resolver_facts": {
+        "apex_mx": {
+          "answer": "no_records"
+        },
+        "apex_txt": {
+          "answer": "no_records"
+        },
+        "caa": {
+          "answer": "no_records"
+        },
+        "dmarc_txt": {
+          "answer": "no_records"
+        },
+        "dnskey": {
+          "answer": "no_records"
+        },
+        "domain": "example.com",
+        "host_cname": {
+          "answer": "records",
+          "value": [
+            "shop.pages.dev."
+          ]
+        },
+        "ns": {
+          "answer": "records",
+          "value": [
+            "ns1.example.net.",
+            "ns2.example.net."
+          ]
+        },
+        "www_cname": {
+          "answer": "records",
+          "value": [
+            "shop.pages.dev."
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "cdn": "Cloudflare",
+        "dns_provider": "Cloudflare"
+      },
+      "name": "a_proxied_custom_domain_names_its_cdn_and_dns_and_no_host",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [
+          [
+            "cf-ray",
+            "8a1b2c3d4e5f6071-IAD"
+          ],
+          [
+            "server",
+            "cloudflare"
+          ]
+        ],
+        "status_code": 200,
+        "url": "https://www.example.com/"
+      },
+      "resolver_facts": {
+        "apex_mx": {
+          "answer": "no_records"
+        },
+        "apex_txt": {
+          "answer": "no_records"
+        },
+        "caa": {
+          "answer": "no_records"
+        },
+        "dmarc_txt": {
+          "answer": "no_records"
+        },
+        "dnskey": {
+          "answer": "no_records"
+        },
+        "domain": "example.com",
+        "host_cname": {
+          "answer": "no_records"
+        },
+        "ns": {
+          "answer": "records",
+          "value": [
+            "ada.ns.cloudflare.com.",
+            "bob.ns.cloudflare.com."
+          ]
+        },
+        "www_cname": {
+          "answer": "no_records"
+        }
+      }
+    },
+    {
+      "expected": {
+        "hosting": "Netlify"
+      },
+      "name": "an_apex_site_reads_its_www_cname",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      },
+      "resolver_facts": {
+        "apex_mx": {
+          "answer": "no_records"
+        },
+        "apex_txt": {
+          "answer": "no_records"
+        },
+        "caa": {
+          "answer": "no_records"
+        },
+        "dmarc_txt": {
+          "answer": "no_records"
+        },
+        "dnskey": {
+          "answer": "no_records"
+        },
+        "domain": "example.com",
+        "host_cname": {
+          "answer": "no_records"
+        },
+        "ns": {
+          "answer": "no_records"
+        },
+        "www_cname": {
+          "answer": "records",
+          "value": [
+            "example.netlify.app."
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "dns_provider": "Vercel",
+        "hosting": "Vercel"
+      },
+      "name": "a_vercel_project_cname",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://www.example.com/"
+      },
+      "resolver_facts": {
+        "apex_mx": {
+          "answer": "no_records"
+        },
+        "apex_txt": {
+          "answer": "no_records"
+        },
+        "caa": {
+          "answer": "no_records"
+        },
+        "dmarc_txt": {
+          "answer": "no_records"
+        },
+        "dnskey": {
+          "answer": "no_records"
+        },
+        "domain": "example.com",
+        "host_cname": {
+          "answer": "records",
+          "value": [
+            "d1e2f3a4b5.vercel-dns-017.com."
+          ]
+        },
+        "ns": {
+          "answer": "records",
+          "value": [
+            "ns1.vercel-dns.com.",
+            "ns2.vercel-dns.com."
+          ]
+        },
+        "www_cname": {
+          "answer": "records",
+          "value": [
+            "d1e2f3a4b5.vercel-dns-017.com."
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "hosting": "Squarespace"
+      },
+      "name": "a_squarespace_cname",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://www.example.com/"
+      },
+      "resolver_facts": {
+        "apex_mx": {
+          "answer": "no_records"
+        },
+        "apex_txt": {
+          "answer": "no_records"
+        },
+        "caa": {
+          "answer": "no_records"
+        },
+        "dmarc_txt": {
+          "answer": "no_records"
+        },
+        "dnskey": {
+          "answer": "no_records"
+        },
+        "domain": "example.com",
+        "host_cname": {
+          "answer": "records",
+          "value": [
+            "ext-cust.squarespace.com."
+          ]
+        },
+        "www_cname": {
+          "answer": "records",
+          "value": [
+            "ext-cust.squarespace.com."
+          ]
+        }
+      }
+    },
+    {
+      "expected": {},
+      "name": "a_failed_lookup_names_nothing",
+      "page": {
+        "body": "<html><body>Hello</body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://www.example.com/"
+      },
+      "resolver_facts": {
+        "apex_mx": {
+          "answer": "failed",
+          "value": "timed out"
+        },
+        "apex_txt": {
+          "answer": "failed",
+          "value": "timed out"
+        },
+        "caa": {
+          "answer": "failed",
+          "value": "timed out"
+        },
+        "dmarc_txt": {
+          "answer": "failed",
+          "value": "timed out"
+        },
+        "dnskey": {
+          "answer": "failed",
+          "value": "timed out"
+        },
+        "domain": "example.com",
+        "host_cname": {
+          "answer": "failed",
+          "value": "timed out"
+        },
+        "ns": {
+          "answer": "failed",
+          "value": "timed out"
+        },
+        "www_cname": {
+          "answer": "failed",
+          "value": "timed out"
+        }
+      }
+    },
+    {
+      "expected": {
+        "hosting": "Framer"
+      },
+      "name": "framer_generator_tag",
+      "page": {
+        "body": "<html><head><meta name=\"generator\" content=\"Framer 3f2a1b9\"></head><body><img src=\"https://framerusercontent.com/images/hero.png\"></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "expected": {},
+      "name": "brand_words_name_no_host",
+      "page": {
+        "body": "<html><body><p>We moved from Netlify to Framer, then to Vercel.</p></body></html>",
+        "evaluation_time": "2026-01-01T00:00:00Z",
+        "headers": [],
+        "status_code": 200,
+        "url": "https://example.com/"
+      }
     }
   ],
-  "comment": "Cross-runtime stack-detection fixtures. golden_stack pins detect_stack natively; the scan runner replays each page through the checks artifact's route calls and compares its stack. Expected blocks are written only by the ignored regenerate test."
+  "comment": "Cross-runtime stack-detection fixtures. golden_stack replays each page through evaluate natively, with its resolver facts where it has them; the scan runner replays each through the checks artifact's engine_evaluate and compares its stack. Expected blocks are written only by the ignored regenerate test."
 }

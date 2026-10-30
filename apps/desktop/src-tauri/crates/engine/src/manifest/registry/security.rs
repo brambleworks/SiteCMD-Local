@@ -46,7 +46,6 @@ pub const ENTRIES: &[Entry] = &[
         .clock_dependent()
         .needs(&[RuntimeFact::Rdap]),
     Entry::new("security.email_exposure"),
-    Entry::new("security.env_leak"),
     // One row for every `security.exposed_files.<path>` id the probe walk
     // produces from its sensitive-path list.
     Entry::new(EXPOSED_FILES_PREFIX).family().probe().origin(),
@@ -80,7 +79,6 @@ pub const ENTRIES: &[Entry] = &[
         .clock_dependent(),
     Entry::new("security.server_info.server_header"),
     Entry::new("security.server_info.x_powered_by"),
-    Entry::new("security.source_maps"),
     Entry::new("security.sri"),
     Entry::new("security.ssl.chain")
         .probe()
@@ -114,4 +112,7 @@ pub const ENTRIES: &[Entry] = &[
         .probe()
         .external_corpus()
         .needs(&[RuntimeFact::PageArtifact, RuntimeFact::VulnerabilityCorpus]),
+    // These checks require localhost, so a hosted page cannot produce them.
+    Entry::new("security.env_leak").unsupported(),
+    Entry::new("security.source_maps").unsupported(),
 ];
