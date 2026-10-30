@@ -163,11 +163,13 @@ const CHECKS_SCRIPT_BASE = [
   "  rustc: rustcVersion,",
   "  target: WASM_TARGET,",
   "  profile: WASM_PROFILE,",
+  "  rustflags: WASM_RUSTFLAGS,",
   "  artifact_sha256: sha256(artifact),",
   "  corpus_sha256: sha256(corpus),",
   "  session_corpus_sha256: sha256(sessionCorpus),",
   "  browser_assets_sha256: sha256(browserAssets),",
   "  manifest_digest: manifest.manifest_digest,",
+  "  capability_manifest_sha256: sha256(manifestBytes),",
   "};",
   "vendorSet({",
   "  outDir,",
@@ -189,6 +191,7 @@ const CHECKS_SCRIPT_BASE = [
 ].join("\n");
 
 const SCORER_SCRIPT_BASE = [
+  "const provenance = { rustflags: WASM_RUSTFLAGS };",
   'const corpusPath = path.join(cargoRoot, "crates", "engine", "fixtures", "score", "golden.json");',
   'const severityCorpusPath = path.join(cargoRoot, "crates", "engine", "fixtures", "severity", "golden.json");',
   "vendorSet({",

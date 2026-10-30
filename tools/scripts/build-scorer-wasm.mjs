@@ -15,6 +15,7 @@ import {
   sha256,
   vendorSet,
   WASM_PROFILE,
+  WASM_RUSTFLAGS,
   WASM_TARGET,
 } from "./lib/wasm-vendor.mjs";
 
@@ -60,6 +61,7 @@ const provenance = {
   rustc: run("rustc", ["--version"], { cwd: cargoRoot }),
   target: WASM_TARGET,
   profile: WASM_PROFILE,
+  rustflags: WASM_RUSTFLAGS,
   artifact_sha256: sha256(artifact),
   corpus_sha256: sha256(corpus),
   severity_corpus_sha256: sha256(severityCorpus),
