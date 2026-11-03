@@ -227,6 +227,7 @@ fn external_fact_plan(page: &PageContext) -> ExternalFactPlan {
             apex_txt_name: domain.clone(),
             apex_mx_name: domain.clone(),
             dmarc_txt_name: dmarc::dmarc_lookup_name(&domain),
+            dmarc_tree_walk_names: dmarc::dmarc_tree_walk_names(&domain),
             // This plan is authored before any DNS answer exists, so it
             // cannot know which provider the domain's SPF record names. It
             // gathers the common defaults plus every selector an SPF include

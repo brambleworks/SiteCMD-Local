@@ -6,6 +6,8 @@
 pub mod dangling_cname;
 pub mod dkim;
 pub mod dmarc;
+mod dmarc_discovery;
+mod dmarc_policy;
 pub mod domain_expiry;
 pub mod records;
 pub mod spf;

@@ -47,3 +47,27 @@ Dirty build inputs are refused unless `--allow-dirty` is supplied. Such records
 append `-dirty` to `engine_commit`; reproducing them also requires the same
 uncommitted changes. A digest mismatch requires checking all recorded build
 inputs, including the path remapping flags.
+
+## DMARC resolver facts
+
+DMARC policy discovery follows [RFC 9989](https://www.rfc-editor.org/rfc/rfc9989.html).
+The Author Domain remains the engine's existing registrable-domain target.
+`ResolverPlan.dmarc_txt_name` names its initial TXT question, and
+`dmarc_tree_walk_names` lists the possible parent TXT questions in discovery order.
+An adapter that gathers facts before evaluation must gather every listed name;
+evaluation ignores answers discovery does not reach.
+Each question must pass through the adapter's existing DNS accounting and request
+envelope. Do not hide recursive resolver work inside a single budgeted question.
+
+Return the initial answer as `ResolverFacts.dmarc_txt` and each answered parent
+question as a `{ name, txt }` entry in `dmarc_tree_walk`. An omitted parent answer
+is unavailable evidence, so evaluation skips when discovery needs that answer.
+Older facts still deserialize, but hosted consumers must gather the new facts
+before deploying this engine to preserve missing-policy findings. Native adapters
+drive `DmarcStep::NeedsTxt` one question at a time until `NeedsMx` or `Done`.
+
+The maximum is eight DMARC TXT questions, including the initial question, plus
+one MX question at the Author Domain. For targets with 2, 3, and 13 labels, the
+respective maxima are 3, 4, and 9 DNS questions. URL host labels removed by
+`registrable_domain_for_url` do not contribute to these counts. No other email or
+registration check changes its target.

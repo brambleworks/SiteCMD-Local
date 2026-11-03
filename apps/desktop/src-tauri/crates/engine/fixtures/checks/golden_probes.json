@@ -7240,9 +7240,13 @@
           "manualFix": null,
           "rawData": {
             "domain": "example.com",
+            "effective_policy": "reject",
             "has_mx": false,
             "lookup_name": "_dmarc.example.com",
-            "records": ["v=DMARC1; p=reject; sp=reject"]
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject; sp=reject"],
+            "test_mode": false
           },
           "severity": "low",
           "status": "pass",
@@ -7270,17 +7274,21 @@
           "confidence": "high",
           "description": "The DMARC record at _dmarc.example.com sets p=none. The requested DMARC disposition is monitoring only: the domain requests no quarantine or reject treatment for messages that fail DMARC alignment, while receivers can still apply their own local filtering. Monitoring is a valid rollout or diagnostic posture. If the domain's objective is active anti-spoofing enforcement, review alignment data before moving deliberately toward quarantine or reject.",
           "fixPrompt": null,
-          "manualFix": "Review the aggregate reports (the rua= address) for a few weeks to confirm your real senders pass SPF or DKIM alignment. Then tighten in steps: move to `p=quarantine` (optionally starting with pct=25 and ramping up), and finally `p=reject` once quarantine shows no legitimate mail failing.",
+          "manualFix": "Review the aggregate reports (the rua= address) for a few weeks to confirm your real senders pass SPF or DKIM alignment. Then tighten in steps: move to `p=quarantine`, and finally `p=reject` once quarantine shows no legitimate mail failing.",
           "rawData": {
             "domain": "example.com",
+            "effective_policy": "none",
             "has_mx": true,
             "lookup_name": "_dmarc.example.com",
-            "records": ["v=DMARC1; p=none; rua=mailto:dmarc@example.com"]
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=none; rua=mailto:dmarc@example.com"],
+            "test_mode": false
           },
           "severity": "medium",
           "status": "warn",
           "title": "DMARC policy is monitoring only (p=none)",
-          "whyItMatters": "A p=none policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
         }
       ],
       "input": {
@@ -7324,6 +7332,14 @@
         }
       ],
       "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          }
+        ],
         "domain": "example.com",
         "mx": {
           "answer": "no_records"
@@ -7341,19 +7357,25 @@
           "category": "security",
           "checkId": "security.dns.dmarc",
           "confidence": "high",
-          "description": "The DMARC record at _dmarc.example.com is not usable: the record is missing the required p= policy tag. Receivers that cannot parse a valid policy fall back to treating the domain as having no DMARC at all.",
+          "description": "The DMARC record at _dmarc.example.com cannot supply a usable policy: no valid p= policy tag. A valid rua= reporting URI makes receivers treat it as p=none, so the effective policy for example.com is none.",
           "fixPrompt": null,
-          "manualFix": "Publish exactly one TXT record at _dmarc.example.com that starts with v=DMARC1 and includes a policy tag, for example `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@example.com`.",
+          "manualFix": "Set a valid p= tag in the TXT record at _dmarc.example.com to none, quarantine, or reject. Review aggregate reports before choosing an enforcement policy.",
           "rawData": {
             "domain": "example.com",
+            "effective_policy": "none",
             "has_mx": true,
             "lookup_name": "_dmarc.example.com",
-            "records": ["v=DMARC1; rua=mailto:dmarc@example.com"]
+            "policy_domain": "example.com",
+            "policy_fallback": true,
+            "policy_problem": "no valid p= policy tag",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; rua=mailto:dmarc@example.com"],
+            "test_mode": false
           },
           "severity": "medium",
-          "status": "fail",
-          "title": "Malformed DMARC record",
-          "whyItMatters": "A DMARC record that receivers cannot parse does not publish a usable alignment policy, even though the DNS record exists."
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
         }
       ],
       "input": {
@@ -7372,7 +7394,7 @@
           "value": ["v=DMARC1; rua=mailto:dmarc@example.com"]
         }
       },
-      "name": "dmarc_malformed_record_on_a_mail_receiving_domain_fails"
+      "name": "dmarc_missing_p_with_reporting_uri_monitors"
     },
     {
       "check": "security.dns.dmarc",
@@ -7397,6 +7419,14 @@
         }
       ],
       "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          }
+        ],
         "domain": "example.com",
         "mx": {
           "answer": "records",
@@ -10383,6 +10413,1510 @@
         }
       },
       "name": "a_rate_limited_404_probe_produces_no_verdict"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies sp=none to mail.example.com. The effective policy is none. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": "Publish a TXT record at _dmarc.mail.example.com starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@mail.example.com`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
+          "rawData": {
+            "domain": "mail.example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "sp",
+            "records": ["v=DMARC1; p=reject; sp=none; psd=n"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=reject; sp=none; psd=n"]
+            }
+          }
+        ],
+        "domain": "mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_tree_sp_overrides_p"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies p=reject to mail.example.com. The effective policy is reject. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "mail.example.com",
+            "effective_policy": "reject",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject"],
+            "test_mode": false
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=reject"]
+            }
+          },
+          {
+            "name": "_dmarc.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          }
+        ],
+        "domain": "mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_tree_falls_back_to_p"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.mail.example.com applies p=reject to a.mail.example.com. The effective policy is reject. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "a.mail.example.com",
+            "effective_policy": "reject",
+            "has_mx": true,
+            "lookup_name": "_dmarc.mail.example.com",
+            "organizational_domain": "mail.example.com",
+            "policy_domain": "mail.example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject; psd=n"],
+            "test_mode": false
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.mail.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=reject; psd=n"]
+            }
+          }
+        ],
+        "domain": "a.mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_tree_psd_n_stops"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.mail.example.com applies p=reject to a.mail.example.com. The effective policy is reject. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "a.mail.example.com",
+            "effective_policy": "reject",
+            "has_mx": true,
+            "lookup_name": "_dmarc.mail.example.com",
+            "organizational_domain": "mail.example.com",
+            "policy_domain": "mail.example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject; psd=u"],
+            "test_mode": false
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.mail.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=reject; psd=u"]
+            }
+          },
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=none; psd=y"]
+            }
+          }
+        ],
+        "domain": "a.mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_tree_psd_y_selects_child"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies sp=quarantine to mail.example.com. The effective policy is quarantine. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "mail.example.com",
+            "effective_policy": "quarantine",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "mail.example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "sp",
+            "records": ["v=DMARC1; p=reject; sp=quarantine; psd=y"],
+            "test_mode": false
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=reject; sp=quarantine; psd=y"]
+            }
+          }
+        ],
+        "domain": "mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_tree_psd_policy_fallback"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies p=reject to a.mail.example.com. The effective policy is reject. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "a.mail.example.com",
+            "effective_policy": "reject",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject; psd=u"],
+            "test_mode": false
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.mail.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=none; psd=u"]
+            }
+          },
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=reject; psd=u"]
+            }
+          },
+          {
+            "name": "_dmarc.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          }
+        ],
+        "domain": "a.mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_tree_psd_u_selects_highest"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies p=reject to a.mail.example.com. The effective policy is reject. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "a.mail.example.com",
+            "effective_policy": "reject",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject; psd=n"],
+            "test_mode": false
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.mail.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC2; p=reject"]
+            }
+          },
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=reject; psd=n"]
+            }
+          }
+        ],
+        "domain": "a.mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC2; p=reject"]
+        }
+      },
+      "name": "dmarc_tree_non_version_records_discarded"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies p=reject to a.mail.example.com. The effective policy is reject. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "a.mail.example.com",
+            "effective_policy": "reject",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject; psd=n"],
+            "test_mode": false
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.mail.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=none", "v=DMARC1; p=reject"]
+            }
+          },
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=reject; psd=n"]
+            }
+          }
+        ],
+        "domain": "a.mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=none", "v=DMARC1; p=reject"]
+        }
+      },
+      "name": "dmarc_tree_duplicates_discarded"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies p=reject to example.com. The effective policy is quarantine. A receiver can still apply its own local policy. The record is in test mode (t=y); quarantine acts as none and reject acts as quarantine, while none is unchanged.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "quarantine",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject; t=y"],
+            "test_mode": true
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=reject; t=y"]
+        }
+      },
+      "name": "dmarc_test_mode_reject_is_quarantine"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies p=quarantine to example.com. The effective policy is none. A receiver can still apply its own local policy. The record is in test mode (t=y); quarantine acts as none and reject acts as quarantine, while none is unchanged.",
+          "fixPrompt": null,
+          "manualFix": "Review the aggregate reports to confirm your real senders pass SPF or DKIM alignment, then remove t=y when ready to apply the published policy at full strength.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=quarantine; t=y"],
+            "test_mode": true
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=quarantine; t=y"]
+        }
+      },
+      "name": "dmarc_test_mode_quarantine_is_none"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies p=none to example.com. The effective policy is none. A receiver can still apply its own local policy. The record is in test mode (t=y); quarantine acts as none and reject acts as quarantine, while none is unchanged.",
+          "fixPrompt": null,
+          "manualFix": "Review the aggregate reports (the rua= address) for a few weeks to confirm your real senders pass SPF or DKIM alignment. Then tighten in steps: move to `p=quarantine`, and finally `p=reject` once quarantine shows no legitimate mail failing.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=none; t=y"],
+            "test_mode": true
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=none; t=y"]
+        }
+      },
+      "name": "dmarc_test_mode_none_is_unchanged"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com sets p=none. The requested DMARC disposition is monitoring only: the domain requests no quarantine or reject treatment for messages that fail DMARC alignment, while receivers can still apply their own local filtering. Monitoring is a valid rollout or diagnostic posture. If the domain's objective is active anti-spoofing enforcement, review alignment data before moving deliberately toward quarantine or reject.",
+          "fixPrompt": null,
+          "manualFix": "Review the aggregate reports (the rua= address) for a few weeks to confirm your real senders pass SPF or DKIM alignment. Then tighten in steps: move to `p=quarantine`, and finally `p=reject` once quarantine shows no legitimate mail failing.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=none; pct=50; rf=afrf; ri=86400; future=value"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (p=none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=none; pct=50; rf=afrf; ri=86400; future=value"]
+        }
+      },
+      "name": "dmarc_removed_tags_are_ignored"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies p=none to mail.example.com. The effective policy is none. A receiver can still apply its own local policy. The record also publishes np=reject for non-existent subdomains; this scan does not apply that policy because it cannot determine whether a From address's subdomain exists.",
+          "fixPrompt": null,
+          "manualFix": "Publish a TXT record at _dmarc.mail.example.com starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@mail.example.com`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
+          "rawData": {
+            "domain": "mail.example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "np": "reject",
+            "organizational_domain": "example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=none; np=reject; psd=n"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=none; np=reject; psd=n"]
+            }
+          }
+        ],
+        "domain": "mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_np_is_evidence_only"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com sets p=none. The requested DMARC disposition is monitoring only: the domain requests no quarantine or reject treatment for messages that fail DMARC alignment, while receivers can still apply their own local filtering. Monitoring is a valid rollout or diagnostic posture. If the domain's objective is active anti-spoofing enforcement, review alignment data before moving deliberately toward quarantine or reject.",
+          "fixPrompt": null,
+          "manualFix": "Review the aggregate reports (the rua= address) for a few weeks to confirm your real senders pass SPF or DKIM alignment. Then tighten in steps: move to `p=quarantine`, and finally `p=reject` once quarantine shows no legitimate mail failing.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=none; sp=reject"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (p=none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=none; sp=reject"]
+        }
+      },
+      "name": "dmarc_author_p_overrides_sp"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies sp=reject to mail.example.com. The effective policy is quarantine. A receiver can still apply its own local policy. The record is in test mode (t=y); quarantine acts as none and reject acts as quarantine, while none is unchanged.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "mail.example.com",
+            "effective_policy": "quarantine",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "sp",
+            "records": ["v=DMARC1; p=none; sp=reject; t=y; psd=n"],
+            "test_mode": true
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=none; sp=reject; t=y; psd=n"]
+            }
+          }
+        ],
+        "domain": "mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_inherited_test_mode_applies_to_sp"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "No TXT record at _dmarc.a.b.c.d.e.f.g.h.i.j.mail.example.com. Without DMARC, the domain publishes no alignment-based request for receivers to quarantine or reject messages that use its visible From domain. Receivers can still apply their own filtering and authentication policy. This domain publishes no MX records, so it shows no inbound mail setup; a domain that sends no mail can publish `v=DMARC1; p=reject` directly so receivers reject anyone using it as a visible From domain.",
+          "fixPrompt": null,
+          "manualFix": "Publish a TXT record at _dmarc.a.b.c.d.e.f.g.h.i.j.mail.example.com starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@a.b.c.d.e.f.g.h.i.j.mail.example.com`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
+          "rawData": {
+            "domain": "a.b.c.d.e.f.g.h.i.j.mail.example.com",
+            "has_mx": false,
+            "lookup_name": "_dmarc.a.b.c.d.e.f.g.h.i.j.mail.example.com",
+            "records": []
+          },
+          "severity": "low",
+          "status": "warn",
+          "title": "No DMARC record",
+          "whyItMatters": "DMARC connects SPF or DKIM alignment to the visible From domain and publishes the domain owner's requested disposition. Without it, receivers have no domain-published DMARC disposition to apply, although their own filtering still governs delivery."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.g.h.i.j.mail.example.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          },
+          {
+            "name": "_dmarc.h.i.j.mail.example.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          },
+          {
+            "name": "_dmarc.i.j.mail.example.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          },
+          {
+            "name": "_dmarc.j.mail.example.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          },
+          {
+            "name": "_dmarc.mail.example.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          },
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          },
+          {
+            "name": "_dmarc.com",
+            "txt": {
+              "answer": "no_records"
+            }
+          }
+        ],
+        "domain": "a.b.c.d.e.f.g.h.i.j.mail.example.com",
+        "mx": {
+          "answer": "no_records"
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_tree_thirteen_labels_stays_bounded"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.bank is not usable: unknown policy value p=rejct and no valid rua= reporting URI, so receivers apply no DMARC processing.",
+          "fixPrompt": null,
+          "manualFix": "Publish exactly one TXT record at _dmarc.example.bank that starts with v=DMARC1 and includes a policy tag, for example `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@example.bank`.",
+          "rawData": {
+            "domain": "example.bank",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.bank",
+            "records": ["v=DMARC1; p=rejct"]
+          },
+          "severity": "medium",
+          "status": "fail",
+          "title": "DMARC policy is not applied",
+          "whyItMatters": "Receivers do not apply a DMARC policy when the record has no usable policy or reporting fallback, or when multiple DMARC records are published."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.bank",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=reject; psd=y"]
+            }
+          }
+        ],
+        "domain": "example.bank",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=rejct"]
+        }
+      },
+      "name": "dmarc_bad_author_policy_does_not_inherit_psd_pass"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com cannot supply a usable policy: no valid p= policy tag. A valid rua= reporting URI makes receivers treat it as p=none, so the effective policy for a.example.com is none.",
+          "fixPrompt": null,
+          "manualFix": "Publish a TXT record at _dmarc.a.example.com starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@a.example.com`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
+          "rawData": {
+            "domain": "a.example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "example.com",
+            "policy_fallback": true,
+            "policy_problem": "no valid p= policy tag",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; psd=n; rua=mailto:a@example.com"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; psd=n; rua=mailto:a@example.com"]
+            }
+          }
+        ],
+        "domain": "a.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_parent_without_p_stops_at_psd_n"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com cannot supply a usable policy: no valid p= policy tag. A valid rua= reporting URI makes receivers treat it as p=none, so the effective policy for a.example.com is none.",
+          "fixPrompt": null,
+          "manualFix": "Publish a TXT record at _dmarc.a.example.com starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@a.example.com`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
+          "rawData": {
+            "domain": "a.example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "a.example.com",
+            "policy_domain": "example.com",
+            "policy_fallback": true,
+            "policy_problem": "no valid p= policy tag",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; psd=y; rua=mailto:a@example.com"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; psd=y; rua=mailto:a@example.com"]
+            }
+          }
+        ],
+        "domain": "a.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_parent_without_p_stops_at_psd_y"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com is not usable: no valid p= policy tag and no valid rua= reporting URI, so receivers apply no DMARC processing.",
+          "fixPrompt": null,
+          "manualFix": "Publish exactly one TXT record at _dmarc.example.com that starts with v=DMARC1 and includes a policy tag, for example `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@example.com`.",
+          "rawData": {
+            "domain": "example.com",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "records": ["v=DMARC1"]
+          },
+          "severity": "medium",
+          "status": "fail",
+          "title": "DMARC policy is not applied",
+          "whyItMatters": "Receivers do not apply a DMARC policy when the record has no usable policy or reporting fallback, or when multiple DMARC records are published."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1"]
+        }
+      },
+      "name": "dmarc_missing_p_without_reporting_uri_is_not_applied"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com cannot supply a usable policy: unknown policy value p=rejct. A valid rua= reporting URI makes receivers treat it as p=none, so the effective policy for example.com is none.",
+          "fixPrompt": null,
+          "manualFix": "Set a valid p= tag in the TXT record at _dmarc.example.com to none, quarantine, or reject. Review aggregate reports before choosing an enforcement policy.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "policy_domain": "example.com",
+            "policy_fallback": true,
+            "policy_problem": "unknown policy value p=rejct",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=rejct; rua=mailto:r@example.com"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=rejct; rua=mailto:r@example.com"]
+        }
+      },
+      "name": "dmarc_bad_p_with_reporting_uri_monitors"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com is not usable: unknown policy value sp=bogus and no valid rua= reporting URI, so receivers apply no DMARC processing.",
+          "fixPrompt": null,
+          "manualFix": "Publish exactly one TXT record at _dmarc.example.com that starts with v=DMARC1 and includes a policy tag, for example `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@example.com`.",
+          "rawData": {
+            "domain": "example.com",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "records": ["v=DMARC1; p=reject; sp=bogus"]
+          },
+          "severity": "medium",
+          "status": "fail",
+          "title": "DMARC policy is not applied",
+          "whyItMatters": "Receivers do not apply a DMARC policy when the record has no usable policy or reporting fallback, or when multiple DMARC records are published."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=reject; sp=bogus"]
+        }
+      },
+      "name": "dmarc_bad_sp_without_reporting_uri_is_not_applied"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com is not usable: unknown policy value np=bogus and no valid rua= reporting URI, so receivers apply no DMARC processing.",
+          "fixPrompt": null,
+          "manualFix": "Publish exactly one TXT record at _dmarc.example.com that starts with v=DMARC1 and includes a policy tag, for example `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@example.com`.",
+          "rawData": {
+            "domain": "example.com",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "records": ["v=DMARC1; p=reject; np=bogus"]
+          },
+          "severity": "medium",
+          "status": "fail",
+          "title": "DMARC policy is not applied",
+          "whyItMatters": "Receivers do not apply a DMARC policy when the record has no usable policy or reporting fallback, or when multiple DMARC records are published."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=reject; np=bogus"]
+        }
+      },
+      "name": "dmarc_bad_np_without_reporting_uri_is_not_applied"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com cannot supply a usable policy: unknown policy value sp=bogus. A valid rua= reporting URI makes receivers treat it as p=none, so the effective policy for example.com is none.",
+          "fixPrompt": null,
+          "manualFix": "Correct or remove the invalid sp= tag in the TXT record at _dmarc.example.com. Valid policy values are none, quarantine, and reject. Review aggregate reports before applying the corrected policy.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "policy_domain": "example.com",
+            "policy_fallback": true,
+            "policy_problem": "unknown policy value sp=bogus",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject; sp=bogus; rua=mailto:r@example.com"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=reject; sp=bogus; rua=mailto:r@example.com"]
+        }
+      },
+      "name": "dmarc_bad_sp_with_reporting_uri_monitors"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com cannot supply a usable policy: unknown policy value np=bogus. A valid rua= reporting URI makes receivers treat it as p=none, so the effective policy for example.com is none.",
+          "fixPrompt": null,
+          "manualFix": "Correct or remove the invalid np= tag in the TXT record at _dmarc.example.com. Valid policy values are none, quarantine, and reject. Review aggregate reports before applying the corrected policy.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "np": "bogus",
+            "policy_domain": "example.com",
+            "policy_fallback": true,
+            "policy_problem": "unknown policy value np=bogus",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=reject; np=bogus; rua=mailto:r@example.com"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=DMARC1; p=reject; np=bogus; rua=mailto:r@example.com"]
+        }
+      },
+      "name": "dmarc_bad_np_with_reporting_uri_monitors"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.com cannot supply a usable policy: unknown policy value p=rejct. A valid rua= reporting URI makes receivers treat it as p=none, so the effective policy for example.com is none.",
+          "fixPrompt": null,
+          "manualFix": "Publish a TXT record at _dmarc.example.com starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@example.com`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "com",
+            "policy_fallback": true,
+            "policy_problem": "unknown policy value p=rejct",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=rejct; sp=reject; rua=mailto:r@example.com; psd=y"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=rejct; sp=reject; rua=mailto:r@example.com; psd=y"]
+            }
+          }
+        ],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_inherited_fallback_does_not_reapply_sp"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.com applies p=none to example.com. The effective policy is none. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": "Publish a TXT record at _dmarc.example.com starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@example.com`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=none; psd=y"],
+            "test_mode": false
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=none; psd=y"]
+            }
+          }
+        ],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_inherited_p_none_advises_an_author_record"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.com applies p=quarantine to example.com. The effective policy is none. A receiver can still apply its own local policy. The record is in test mode (t=y); quarantine acts as none and reject acts as quarantine, while none is unchanged.",
+          "fixPrompt": null,
+          "manualFix": "Publish a TXT record at _dmarc.example.com starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@example.com`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
+          "rawData": {
+            "domain": "example.com",
+            "effective_policy": "none",
+            "has_mx": true,
+            "lookup_name": "_dmarc.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "com",
+            "policy_tag": "p",
+            "records": ["v=DMARC1; p=quarantine; t=y; psd=y"],
+            "test_mode": true
+          },
+          "severity": "medium",
+          "status": "warn",
+          "title": "DMARC policy is monitoring only (effective policy: none)",
+          "whyItMatters": "A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture."
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v=DMARC1; p=quarantine; t=y; psd=y"]
+            }
+          }
+        ],
+        "domain": "example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "no_records"
+        }
+      },
+      "name": "dmarc_inherited_test_mode_advises_an_author_record"
+    },
+    {
+      "check": "security.dns.dmarc",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.dns.dmarc",
+          "confidence": "high",
+          "description": "The DMARC record at _dmarc.example.com applies p=reject to mail.example.com. The effective policy is reject. A receiver can still apply its own local policy.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "domain": "mail.example.com",
+            "effective_policy": "reject",
+            "has_mx": true,
+            "lookup_name": "_dmarc.example.com",
+            "organizational_domain": "example.com",
+            "policy_domain": "example.com",
+            "policy_tag": "p",
+            "records": ["v = DMARC1; p=reject; psd=n"],
+            "test_mode": false
+          },
+          "severity": "low",
+          "status": "pass",
+          "title": "DMARC record"
+        }
+      ],
+      "input": {
+        "dmarc_tree_walk": [
+          {
+            "name": "_dmarc.example.com",
+            "txt": {
+              "answer": "records",
+              "value": ["v = DMARC1; p=reject; psd=n"]
+            }
+          }
+        ],
+        "domain": "mail.example.com",
+        "mx": {
+          "answer": "records",
+          "value": [
+            {
+              "exchange": "mail.example.com",
+              "preference": 10
+            }
+          ]
+        },
+        "txt": {
+          "answer": "records",
+          "value": ["v=dmarc1; p=none; psd=n"]
+        }
+      },
+      "name": "dmarc_lowercase_version_is_discarded_and_whitespace_is_accepted"
     }
   ],
   "comment": "Cross-runtime golden probe-verdict fixtures: classified probe outcomes paired with the full expected CheckResult rows under a frozen evaluation_time (hosted scanner spec, probe tier). Embedded via include_str! so the SAME bytes run natively in desktop CI and through the wasm artifact in the hosted runner's CI. Regenerate expected blocks after an INTENTIONAL verdict change: cargo test -p sitecmd-engine --test golden_probes -- --ignored regenerate"
