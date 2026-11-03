@@ -1,9 +1,13 @@
-//! DMARC policy grading against RFC 7489. Graded postures are MX-gated, while
+//! DMARC policy grading against RFC 9989. Graded postures are MX-gated, while
 //! failed TXT lookups remain skipped.
 
-use super::{has_mx_from, missing_record_severity, skipped_dns_failure};
+pub use super::dmarc_discovery::{
+    dmarc_tree_walk_names, evaluate_dmarc_txt, DmarcStep, DmarcTreeWalk, PendingDmarc,
+    MAX_DMARC_TXT_QUESTIONS,
+};
+use super::dmarc_policy::AppliedPolicy;
+use super::missing_record_severity;
 use crate::checks::{CheckResult, CheckStatus, IssueConfidence, ScanCategory, Severity};
-use crate::dns::{DnsOutcome, MxRecord};
 
 pub const CHECK_ID: &str = "security.dns.dmarc";
 pub const TITLE: &str = "DMARC record";
@@ -18,8 +22,17 @@ pub fn is_dmarc_record(record: &str) -> bool {
     record
         .split(';')
         .next()
-        .map(str::trim)
-        .is_some_and(|first| first.eq_ignore_ascii_case("v=dmarc1"))
+        .and_then(|first| first.split_once('='))
+        .is_some_and(|(tag, value)| {
+            tag.trim().eq_ignore_ascii_case("v") && value.trim() == "DMARC1"
+        })
+}
+
+/// Discovery retains exactly one version-matching record regardless of policy validity.
+pub(super) fn single_dmarc_record(records: &[String]) -> Option<&str> {
+    let mut matching = records.iter().filter(|record| is_dmarc_record(record));
+    let first = matching.next()?;
+    matching.next().is_none().then_some(first.as_str())
 }
 
 /// Extract a DMARC tag value (lowercased) from a record, e.g. tag "p" from
@@ -42,8 +55,7 @@ pub enum DmarcEvaluation {
     PolicyNone,
     /// p=quarantine or p=reject: receivers act on failing mail.
     PolicyEnforced { policy: String },
-    /// A DMARC record exists but is unusable (no p=, duplicate records,
-    /// or an unknown policy value).
+    /// Duplicate records or an unusable policy without a reporting fallback.
     Malformed { reason: String },
     /// Only unrelated TXT records (e.g. a stray verification token) live at
     /// the _dmarc name. Receivers ignore them, so the domain effectively
@@ -66,71 +78,75 @@ pub fn evaluate_dmarc(records: &[String]) -> DmarcEvaluation {
         };
     }
 
+    if let Some(problem) = policy_problem(dmarc_records[0]) {
+        return if has_valid_reporting_uri(dmarc_records[0]) {
+            DmarcEvaluation::PolicyNone
+        } else {
+            DmarcEvaluation::Malformed {
+                reason: format!(
+                    "{} and no valid rua= reporting URI, so receivers apply no DMARC processing",
+                    problem.reason
+                ),
+            }
+        };
+    }
     match dmarc_tag(dmarc_records[0], "p").as_deref() {
-        None => DmarcEvaluation::Malformed {
-            reason: "the record is missing the required p= policy tag".into(),
-        },
         Some("none") => DmarcEvaluation::PolicyNone,
-        Some(policy @ ("quarantine" | "reject")) => DmarcEvaluation::PolicyEnforced {
+        Some(policy) => DmarcEvaluation::PolicyEnforced {
             policy: policy.to_string(),
         },
-        Some(other) => DmarcEvaluation::Malformed {
-            reason: format!("unknown policy value p={}", other),
-        },
+        None => unreachable!("policy_problem handles a missing p tag"),
     }
 }
 
-/// What the DMARC verdict needs next after the _dmarc TXT answer.
-pub enum DmarcStep {
-    Done(Vec<CheckResult>),
-    /// Every graded posture is MX-gated, so the runtime must answer one MX
-    /// question at the apex.
-    NeedsMx(PendingDmarc),
+pub(super) struct PolicyProblem {
+    pub tag: &'static str,
+    pub reason: String,
 }
 
-/// The pending DMARC verdict, waiting on the apex MX answer.
-pub struct PendingDmarc {
-    domain: String,
-    records: Vec<String>,
-}
-
-impl PendingDmarc {
-    /// The apex name whose MX records gate the severity.
-    pub fn domain(&self) -> &str {
-        &self.domain
-    }
-
-    pub fn evaluate(self, mx: &DnsOutcome<Vec<MxRecord>>) -> Vec<CheckResult> {
-        let dmarc_name = dmarc_lookup_name(&self.domain);
-        vec![dmarc_result(
-            CHECK_ID,
-            &self.domain,
-            &dmarc_name,
-            &self.records,
-            has_mx_from(mx),
-        )]
-    }
-}
-
-/// Grade the _dmarc TXT answer: a failed lookup completes as Skipped, every
-/// other posture waits on the MX gate.
-pub fn evaluate_dmarc_txt(domain: &str, txt: DnsOutcome<Vec<String>>) -> DmarcStep {
-    let records = match txt {
-        DnsOutcome::Failed(detail) => {
-            return DmarcStep::Done(vec![skipped_dns_failure(
-                CHECK_ID,
-                TITLE,
-                &dmarc_lookup_name(domain),
-                &detail,
-            )])
+pub(super) fn policy_problem(record: &str) -> Option<PolicyProblem> {
+    for tag in ["p", "sp", "np"] {
+        let reason = match dmarc_tag(record, tag).as_deref() {
+            None if tag == "p" => Some("no valid p= policy tag".into()),
+            Some(value) if !matches!(value, "none" | "quarantine" | "reject") => {
+                Some(format!("unknown policy value {tag}={value}"))
+            }
+            _ => None,
+        };
+        if let Some(reason) = reason {
+            return Some(PolicyProblem { tag, reason });
         }
-        DnsOutcome::NoRecords => Vec::new(),
-        DnsOutcome::Records(records) => records,
+    }
+    None
+}
+
+fn has_valid_reporting_uri(record: &str) -> bool {
+    let Some(rua) = dmarc_tag(record, "rua") else {
+        return false;
     };
-    DmarcStep::NeedsMx(PendingDmarc {
-        domain: domain.to_string(),
-        records,
+    rua.split(',').map(str::trim).any(|value| {
+        // URL parsing normalizes some invalid URI characters, so check them first.
+        let ascii_uri = value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-._~:/?#[]@!$&'()*+;=%".contains(&byte));
+        let escapes = value.split('%').skip(1).all(|suffix| {
+            suffix
+                .as_bytes()
+                .get(..2)
+                .is_some_and(|hex| hex.iter().all(u8::is_ascii_hexdigit))
+        });
+        ascii_uri
+            && escapes
+            && url::Url::parse(value)
+                .is_ok_and(|uri| uri.host_str().is_some() || !uri.path().is_empty())
     })
+}
+
+fn publish_own_record_advice(domain: &str) -> String {
+    format!(
+        "Publish a TXT record at {} starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@{}`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
+        dmarc_lookup_name(domain), domain
+    )
 }
 
 /// Build the missing-DMARC result, preserving any unrelated TXT evidence.
@@ -171,10 +187,7 @@ fn no_dmarc_result(
         status: CheckStatus::Warn,
         severity: missing_record_severity(has_mx),
         fix_prompt: None,
-        manual_fix: Some(format!(
-            "Publish a TXT record at {} starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@{}`. Review the aggregate reports to confirm your real senders pass, then graduate the policy to p=quarantine and finally p=reject.",
-            dmarc_name, domain
-        )),
+        manual_fix: Some(publish_own_record_advice(domain)),
         raw_data: Some(serde_json::json!({
             "domain": domain,
             "lookup_name": dmarc_name,
@@ -206,7 +219,12 @@ pub fn dmarc_result(
         "has_mx": has_mx,
     });
 
-    match evaluate_dmarc(records) {
+    let applied = AppliedPolicy::from_records(records, dmarc_name != dmarc_lookup_name(domain));
+    let evaluation = applied
+        .as_ref()
+        .map(AppliedPolicy::evaluation)
+        .unwrap_or_else(|| evaluate_dmarc(records));
+    let mut result = match evaluation {
         DmarcEvaluation::NoDmarcRecord => {
             no_dmarc_result(check_id, domain, dmarc_name, records, has_mx)
         }
@@ -221,11 +239,11 @@ pub fn dmarc_result(
             status: CheckStatus::Warn,
             severity: missing_record_severity(has_mx),
             fix_prompt: None,
-            manual_fix: Some("Review the aggregate reports (the rua= address) for a few weeks to confirm your real senders pass SPF or DKIM alignment. Then tighten in steps: move to `p=quarantine` (optionally starting with pct=25 and ramping up), and finally `p=reject` once quarantine shows no legitimate mail failing.".into()),
+            manual_fix: Some("Review the aggregate reports (the rua= address) for a few weeks to confirm your real senders pass SPF or DKIM alignment. Then tighten in steps: move to `p=quarantine`, and finally `p=reject` once quarantine shows no legitimate mail failing.".into()),
             raw_data: Some(raw_data),
             confidence: IssueConfidence::High,
             confidence_reason: None,
-            why_it_matters: Some("A p=none policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture.".into()),
+            why_it_matters: Some("A monitoring-only policy provides visibility but requests no DMARC quarantine or reject treatment for alignment failures, so it should be evaluated against the domain's intended enforcement posture.".into()),
         },
         DmarcEvaluation::PolicyEnforced { policy } => CheckResult {
             check_id: check_id.into(),
@@ -249,9 +267,9 @@ pub fn dmarc_result(
         DmarcEvaluation::Malformed { reason } => CheckResult {
             check_id: check_id.into(),
             category: ScanCategory::Security,
-            title: "Malformed DMARC record".into(),
+            title: "DMARC policy is not applied".into(),
             description: format!(
-                "The DMARC record at {} is not usable: {}. Receivers that cannot parse a valid policy fall back to treating the domain as having no DMARC at all.",
+                "The DMARC record at {} is not usable: {}.",
                 dmarc_name, reason
             ),
             // MX-gated like the missing branch: on a domain that receives
@@ -270,9 +288,16 @@ pub fn dmarc_result(
             raw_data: Some(raw_data),
             confidence: IssueConfidence::High,
             confidence_reason: None,
-            why_it_matters: Some("A DMARC record that receivers cannot parse does not publish a usable alignment policy, even though the DNS record exists.".into()),
+            why_it_matters: Some("Receivers do not apply a DMARC policy when the record has no usable policy or reporting fallback, or when multiple DMARC records are published.".into()),
         },
+    };
+    if let Some(applied) = applied {
+        applied.explain(&mut result, domain, dmarc_name);
     }
+    if result.manual_fix.is_some() && dmarc_name != dmarc_lookup_name(domain) {
+        result.manual_fix = Some(publish_own_record_advice(domain));
+    }
+    result
 }
 
 #[cfg(test)]

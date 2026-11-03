@@ -1,13 +1,21 @@
 use super::*;
+use crate::dns::{DnsOutcome, MxRecord};
+
+#[path = "dmarc_tree_tests.rs"]
+mod rfc9989;
 
 fn records(values: &[&str]) -> Vec<String> {
     values.iter().map(|v| v.to_string()).collect()
 }
 
 #[test]
-fn detects_dmarc_records_case_insensitively() {
+fn version_value_is_case_sensitive_and_equals_allows_whitespace() {
+    // Bug: discovery accepts the wrong version case and rejects legal whitespace.
     assert!(is_dmarc_record("v=DMARC1; p=none"));
-    assert!(is_dmarc_record("V=dmarc1 ; p=reject"));
+    assert!(is_dmarc_record("V = DMARC1 ; p=reject"));
+    assert!(is_dmarc_record("v\t=\tDMARC1; p=reject"));
+    assert!(!is_dmarc_record("v=dmarc1; p=reject"));
+    assert!(!is_dmarc_record("p=reject; v=DMARC1"));
     assert!(!is_dmarc_record("v=DMARC10; p=none"));
     assert!(!is_dmarc_record("google-site-verification=abc"));
 }
@@ -42,10 +50,11 @@ fn quarantine_and_reject_are_enforced() {
 }
 
 #[test]
-fn missing_policy_tag_is_malformed() {
+fn missing_policy_with_reporting_uri_is_monitoring() {
+    // Bug: RFC 9989 no longer requires p when a valid reporting URI permits fallback.
     assert!(matches!(
         evaluate_dmarc(&records(&["v=DMARC1; rua=mailto:r@example.com"])),
-        DmarcEvaluation::Malformed { .. }
+        DmarcEvaluation::PolicyNone
     ));
 }
 
@@ -106,7 +115,8 @@ fn p_none_severity_is_mx_gated() {
 
 #[test]
 fn malformed_record_is_mx_gated() {
-    let recs = records(&["v=DMARC1; rua=mailto:r@example.com"]);
+    // Bug: changing the optional-p fallback must preserve malformed-record severity gates.
+    let recs = records(&["v=DMARC1; p=rejct"]);
     let with_mx = dmarc_result(
         "security.dns.dmarc",
         "example.com",
@@ -207,13 +217,17 @@ fn a_failed_txt_lookup_skips_without_the_mx_question() {
 }
 
 #[test]
-fn every_answered_posture_waits_on_the_mx_gate() {
+fn every_answered_posture_reaches_the_mx_gate_after_discovery() {
     for txt in [
         DnsOutcome::NoRecords,
         DnsOutcome::Records(records(&["v=DMARC1; p=none"])),
         DnsOutcome::Records(records(&["some-verification=token"])),
     ] {
-        let DmarcStep::NeedsMx(pending) = evaluate_dmarc_txt("example.com", txt) else {
+        let mut step = evaluate_dmarc_txt("example.com", txt);
+        while let DmarcStep::NeedsTxt(pending) = step {
+            step = pending.evaluate(DnsOutcome::NoRecords);
+        }
+        let DmarcStep::NeedsMx(pending) = step else {
             panic!("an answered lookup must wait on the MX gate");
         };
         assert_eq!(pending.domain(), "example.com");

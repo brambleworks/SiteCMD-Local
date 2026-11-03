@@ -69,12 +69,26 @@ pub(super) fn resolver_grade(ctx: &ProbeContext) -> Vec<CheckResult> {
         },
     );
 
-    results.extend(
-        match dmarc::evaluate_dmarc_txt(&domain, facts.dmarc_txt.clone()) {
-            dmarc::DmarcStep::Done(results) => results,
-            dmarc::DmarcStep::NeedsMx(pending) => pending.evaluate(&facts.apex_mx),
-        },
-    );
+    let mut step = dmarc::evaluate_dmarc_txt(&domain, facts.dmarc_txt.clone());
+    results.extend(loop {
+        match step {
+            dmarc::DmarcStep::Done(results) => break results,
+            dmarc::DmarcStep::NeedsMx(pending) => break pending.evaluate(&facts.apex_mx),
+            dmarc::DmarcStep::NeedsTxt(pending) => {
+                let txt = facts
+                    .dmarc_tree_walk
+                    .iter()
+                    .find(|answer| answer.name.eq_ignore_ascii_case(pending.lookup_name()))
+                    .map(|answer| answer.txt.clone())
+                    .unwrap_or_else(|| {
+                        crate::dns::DnsOutcome::Failed(
+                            "the DMARC tree-walk TXT fact was not gathered".into(),
+                        )
+                    });
+                step = pending.evaluate(txt);
+            }
+        }
+    });
     results.extend(records::evaluate_dnssec(&domain, facts.dnskey.clone()));
     results.extend(records::evaluate_mx(&domain, facts.apex_mx.clone()));
     results.extend(

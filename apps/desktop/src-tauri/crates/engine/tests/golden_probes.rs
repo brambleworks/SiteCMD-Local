@@ -306,6 +306,8 @@ struct DnsTxtWithMxInput {
     domain: String,
     txt: DnsOutcome<Vec<String>>,
     #[serde(default)]
+    dmarc_tree_walk: Vec<sitecmd_engine::dns::DmarcTxtOutcome>,
+    #[serde(default)]
     mx: Option<DnsOutcome<Vec<MxRecord>>>,
 }
 
@@ -846,23 +848,40 @@ fn run_case(case: &Case) -> Vec<CheckResult> {
         "security.dns.dmarc" => {
             let input: DnsTxtWithMxInput =
                 serde_json::from_value(case.input.clone()).expect("dmarc input parses");
-            match dmarc::evaluate_dmarc_txt(&input.domain, input.txt) {
-                dmarc::DmarcStep::Done(results) => {
-                    assert!(
-                        input.mx.is_none(),
-                        "{}: mx answer provided but the TXT verdict completed",
-                        case.name
-                    );
-                    results
-                }
-                dmarc::DmarcStep::NeedsMx(pending) => {
-                    let mx = input.mx.unwrap_or_else(|| {
-                        panic!(
-                            "{}: an answered DMARC lookup requires an mx answer",
+            let mut step = dmarc::evaluate_dmarc_txt(&input.domain, input.txt);
+            loop {
+                match step {
+                    dmarc::DmarcStep::Done(results) => {
+                        assert!(
+                            input.mx.is_none(),
+                            "{}: mx answer provided but the TXT verdict completed",
                             case.name
-                        )
-                    });
-                    pending.evaluate(&mx)
+                        );
+                        break results;
+                    }
+                    dmarc::DmarcStep::NeedsTxt(pending) => {
+                        let txt = input
+                            .dmarc_tree_walk
+                            .iter()
+                            .find(|answer| answer.name == pending.lookup_name())
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "{}: missing TXT answer for {}",
+                                    case.name,
+                                    pending.lookup_name()
+                                )
+                            });
+                        step = pending.evaluate(txt.txt.clone());
+                    }
+                    dmarc::DmarcStep::NeedsMx(pending) => {
+                        let mx = input.mx.unwrap_or_else(|| {
+                            panic!(
+                                "{}: an answered DMARC lookup requires an mx answer",
+                                case.name
+                            )
+                        });
+                        break pending.evaluate(&mx);
+                    }
                 }
             }
         }
@@ -1005,6 +1024,52 @@ fn run_case(case: &Case) -> Vec<CheckResult> {
         }
         other => panic!("no probe-check driver registered for corpus id '{other}'"),
     }
+}
+
+#[test]
+fn passing_probe_rows_carry_no_manual_fix() {
+    // Bug: passing inherited DMARC fixtures prescribe a change that weakens enforcement.
+    let corpus = corpus();
+    let offenders: Vec<_> = corpus
+        .cases
+        .iter()
+        .filter(|case| {
+            case.expected
+                .as_ref()
+                .expect("expected rows")
+                .iter()
+                .any(|row| row.status == CheckStatus::Pass && row.manual_fix.is_some())
+        })
+        .map(|case| case.name.as_str())
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "Pass fixtures carrying manualFix: {offenders:?}"
+    );
+    for case in &corpus.cases {
+        for row in run_case(case) {
+            if row.status == CheckStatus::Pass {
+                assert!(
+                    row.manual_fix.is_none(),
+                    "{}: Pass carries manualFix",
+                    case.name
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn missing_policy_reporting_fallback_needs_no_parent_fixture_answer() {
+    // Bug: the missing-p fixture supplies a parent answer that discovery cannot request.
+    let corpus = corpus();
+    let case = corpus
+        .cases
+        .iter()
+        .find(|case| case.name == "dmarc_missing_p_with_reporting_uri_monitors")
+        .expect("missing-p fixture");
+    let input: DnsTxtWithMxInput = serde_json::from_value(case.input.clone()).expect("TXT input");
+    assert!(input.dmarc_tree_walk.is_empty());
 }
 
 #[test]
@@ -1749,8 +1814,8 @@ fn headline_verdicts_match_the_documented_checks() {
     );
     assert_eq!(status("dmarc_missing_record_warns"), CheckStatus::Warn);
     assert_eq!(
-        status("dmarc_malformed_record_on_a_mail_receiving_domain_fails"),
-        CheckStatus::Fail
+        status("dmarc_missing_p_with_reporting_uri_monitors"),
+        CheckStatus::Warn
     );
     assert_eq!(
         rows_of("dmarc_unrelated_txt_reports_no_record")[0].title,

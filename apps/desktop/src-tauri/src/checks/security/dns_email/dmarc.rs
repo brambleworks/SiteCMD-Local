@@ -32,11 +32,18 @@ impl AsyncCheck for DmarcCheck {
         };
 
         let txt = lookup_txt(&dmarc::dmarc_lookup_name(&domain)).await;
-        match dmarc::evaluate_dmarc_txt(&domain, txt) {
-            dmarc::DmarcStep::Done(results) => results,
-            dmarc::DmarcStep::NeedsMx(pending) => {
-                let mx = lookup_mx(pending.domain()).await;
-                pending.evaluate(&mx)
+        let mut step = dmarc::evaluate_dmarc_txt(&domain, txt);
+        loop {
+            match step {
+                dmarc::DmarcStep::Done(results) => return results,
+                dmarc::DmarcStep::NeedsTxt(pending) => {
+                    let txt = lookup_txt(pending.lookup_name()).await;
+                    step = pending.evaluate(txt);
+                }
+                dmarc::DmarcStep::NeedsMx(pending) => {
+                    let mx = lookup_mx(pending.domain()).await;
+                    return pending.evaluate(&mx);
+                }
             }
         }
     }

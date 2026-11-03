@@ -61,6 +61,13 @@ pub struct DkimSelectorOutcome {
     pub txt: DnsOutcome<Vec<String>>,
 }
 
+/// One answered DMARC tree-walk question, keyed by its full TXT lookup name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DmarcTxtOutcome {
+    pub name: String,
+    pub txt: DnsOutcome<Vec<String>>,
+}
+
 /// Address evidence for the target named by the `www` CNAME answer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DnsTargetAddresses {
@@ -82,6 +89,8 @@ pub struct ResolverFacts {
     pub apex_txt: DnsOutcome<Vec<String>>,
     pub apex_mx: DnsOutcome<Vec<MxRecord>>,
     pub dmarc_txt: DnsOutcome<Vec<String>>,
+    #[serde(default)]
+    pub dmarc_tree_walk: Vec<DmarcTxtOutcome>,
     #[serde(default)]
     pub dkim_txt: Vec<DkimSelectorOutcome>,
     pub dnskey: DnsOutcome<usize>,
@@ -113,6 +122,8 @@ pub struct ResolverPlan {
     pub apex_txt_name: String,
     pub apex_mx_name: String,
     pub dmarc_txt_name: String,
+    /// Gather every listed name; answers discovery does not reach are ignored.
+    pub dmarc_tree_walk_names: Vec<String>,
     pub dkim_txt_names: Vec<DkimSelectorQuestion>,
     pub dnskey_name: String,
     pub caa_name: String,

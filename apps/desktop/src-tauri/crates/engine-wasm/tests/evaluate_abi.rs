@@ -184,6 +184,62 @@ fn the_framed_evaluation_reads_the_supplied_facts() {
 }
 
 #[test]
+fn dmarc_tree_answers_cross_the_abi_and_missing_answers_skip() {
+    // Bug: hosted evaluation cannot consume the ancestor policy discovered by DNS.
+    let page = corpus().cases[0].page.clone();
+    let mut request = serde_json::json!({
+        "resolver_facts": {
+            "domain": "example.com",
+            "apex_txt": { "answer": "no_records" },
+            "apex_mx": { "answer": "no_records" },
+            "dmarc_txt": { "answer": "no_records" },
+            "dmarc_tree_walk": [{
+                "name": "_dmarc.com",
+                "txt": { "answer": "records", "value": ["v=DMARC1; p=none; sp=reject; psd=y; t=y; np=none"] }
+            }],
+            "dnskey": { "answer": "no_records" },
+            "caa": { "answer": "no_records" },
+            "www_cname": { "answer": "no_records" }
+        }
+    });
+    let opened: serde_json::Value =
+        serde_json::from_slice(&abi::open(&page)).expect("opened frame");
+    assert_eq!(
+        opened["external_fact_plan"]["resolver"]["dmarc_tree_walk_names"],
+        serde_json::json!(["_dmarc.com"])
+    );
+    let response: EvaluationResponse =
+        serde_json::from_slice(&abi::call_json(engine_route_evaluate, &request))
+            .expect("evaluated frame");
+    let dmarc = response
+        .results
+        .iter()
+        .find(|row| row.check_id == "security.dns.dmarc")
+        .expect("DMARC result");
+    assert_eq!(dmarc.status, sitecmd_engine::CheckStatus::Pass);
+    let raw = dmarc.raw_data.as_ref().expect("DMARC evidence");
+    assert_eq!(raw["organizational_domain"], "example.com");
+    assert_eq!(raw["policy_domain"], "com");
+    assert_eq!(raw["effective_policy"], "quarantine");
+    assert_eq!(raw["np"], "none");
+    request["resolver_facts"]
+        .as_object_mut()
+        .expect("facts object")
+        .remove("dmarc_tree_walk");
+    abi::open(&page);
+    let response: EvaluationResponse =
+        serde_json::from_slice(&abi::call_json(engine_route_evaluate, &request))
+            .expect("legacy frame");
+    let dmarc = response
+        .results
+        .iter()
+        .find(|row| row.check_id == "security.dns.dmarc")
+        .expect("DMARC result");
+    assert_eq!(dmarc.status, sitecmd_engine::CheckStatus::Skipped);
+    assert!(dmarc.description.contains("_dmarc.com"));
+}
+
+#[test]
 fn identical_requests_produce_identical_payloads() {
     for case in &corpus().cases {
         abi::open(&case.page);
