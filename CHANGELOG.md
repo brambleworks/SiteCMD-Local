@@ -11,6 +11,14 @@ public repository history.
 
 ## [Unreleased]
 
+### Added
+
+- `sitecmd rules` lists every Code Scan rule with its producer rule ID,
+  canonical check ID, domain, and `severitySource`. Fixed rules include their
+  normalized `defaultSeverity`; rules whose detector sets the grade have a
+  null `defaultSeverity` and `severitySource: "per_finding"`. `--format json`
+  prints a deterministic inventory with the CLI version for integrations.
+
 ## [2.0.0] - 2026-10-29
 
 ### Added

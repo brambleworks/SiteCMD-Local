@@ -13,6 +13,7 @@ use std::process::ExitCode;
 mod audit_dispatch;
 mod autofix_dispatch;
 mod help;
+mod rules_dispatch;
 #[cfg(test)]
 mod tests;
 mod validators;
@@ -613,6 +614,8 @@ fn main() -> ExitCode {
         },
 
         "audit" => dispatch_audit(argv),
+
+        "rules" => rules_dispatch::dispatch_rules(argv),
 
         "autofix" => dispatch_autofix(argv),
 
