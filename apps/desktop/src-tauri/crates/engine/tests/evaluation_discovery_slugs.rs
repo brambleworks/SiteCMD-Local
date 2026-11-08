@@ -29,6 +29,7 @@ fn long_word_slugs_with_whole_numeric_parts_are_discovered() {
 
 #[test]
 fn token_shapes_and_other_privacy_gates_are_still_refused() {
+    let key_route = format!("/blog/{}{}", "sk-proj-", "abcdefghij".repeat(4));
     let paths = [
         "/blog/123e4567-e89b-12d3-a456-426614174000",
         "/blog/aaaaaaaa-bbbb-cccc-dddd-123456789012",
@@ -39,7 +40,7 @@ fn token_shapes_and_other_privacy_gates_are_still_refused() {
         "/blog/reset-your-password-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
         "/blog/invite-your-team-XyZaBcDeFgHiJkLm-2026",
         "/blog/top-10-tips-for-joe@example.com",
-        "/blog/sk-proj-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // gitleaks:allow
+        key_route.as_str(),
         "/verify/top-10-ways-to-improve-your-website-speed",
     ];
     let links: String = paths

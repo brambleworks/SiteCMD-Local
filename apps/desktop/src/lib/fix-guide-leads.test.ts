@@ -15,6 +15,17 @@ function expectPlainLead(id: string, lead: string | undefined) {
 }
 
 describe("every bundled fix guide opens with a plain-English lead", () => {
+  it("describes gradients as blends of different colors", () => {
+    // A gradient guide can still describe tonal brand fields as excessive gradient styling.
+    const guide = getFixGuide("polish.gradient-backgrounds");
+    expect(guide?.lead).toBe(
+      "This page uses many gradients that blend different colors, which is worth a quick visual check.",
+    );
+    expect(guide?.steps[0]).toMatch(
+      /^Review the multi-color gradients on the pages we list in the rendered design, not their number alone;/,
+    );
+  });
+
   it.each(FIX_GUIDE_IDS)("web guide %s", (id) => {
     expectPlainLead(id, getFixGuide(id)?.lead);
   });

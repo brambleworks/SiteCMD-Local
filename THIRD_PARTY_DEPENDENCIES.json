@@ -1936,6 +1936,28 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "csscolorparser",
+      "version": "0.9.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/mazznoer/csscolorparser-rs",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scopes": [
+        "cli-rust",
+        "desktop-rust"
+      ],
+      "licenseFiles": [
+        {
+          "name": "LICENSE-APACHE",
+          "sha256": "5169af8004342d42c99e44aa3fbce3efd1068221cb2145e051a4b54672754bc6"
+        },
+        {
+          "name": "LICENSE-MIT",
+          "sha256": "54d5c177c5a7b24ec8b5b3182a5884d958c6a70c6be1ebb2fdd4627841415204"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "cssparser-macros",
       "version": "0.6.1",
       "license": "MPL-2.0",
@@ -5578,6 +5600,24 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "libm",
+      "version": "0.2.16",
+      "license": "MIT",
+      "repository": "https://github.com/rust-lang/compiler-builtins",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scopes": [
+        "cli-rust",
+        "desktop-rust"
+      ],
+      "licenseFiles": [
+        {
+          "name": "LICENSE.txt",
+          "sha256": "3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "libredox",
       "version": "0.1.20",
       "license": "MIT",
@@ -6920,8 +6960,44 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "phf_generator",
+      "version": "0.14.0",
+      "license": "MIT",
+      "repository": "https://github.com/rust-phf/rust-phf",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scopes": [
+        "cli-rust",
+        "desktop-rust"
+      ],
+      "licenseFiles": [
+        {
+          "name": "LICENSE",
+          "sha256": "0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "phf_macros",
       "version": "0.13.1",
+      "license": "MIT",
+      "repository": "https://github.com/rust-phf/rust-phf",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scopes": [
+        "cli-rust",
+        "desktop-rust"
+      ],
+      "licenseFiles": [
+        {
+          "name": "LICENSE",
+          "sha256": "0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "phf_macros",
+      "version": "0.14.0",
       "license": "MIT",
       "repository": "https://github.com/rust-phf/rust-phf",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -6956,8 +7032,44 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "phf_shared",
+      "version": "0.14.0",
+      "license": "MIT",
+      "repository": "https://github.com/rust-phf/rust-phf",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scopes": [
+        "cli-rust",
+        "desktop-rust"
+      ],
+      "licenseFiles": [
+        {
+          "name": "LICENSE",
+          "sha256": "0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "phf",
       "version": "0.13.1",
+      "license": "MIT",
+      "repository": "https://github.com/rust-phf/rust-phf",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scopes": [
+        "cli-rust",
+        "desktop-rust"
+      ],
+      "licenseFiles": [
+        {
+          "name": "LICENSE",
+          "sha256": "0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "phf",
+      "version": "0.14.0",
       "license": "MIT",
       "repository": "https://github.com/rust-phf/rust-phf",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -11161,6 +11273,28 @@
         {
           "name": "LICENSE",
           "sha256": "27ebda9d51f0a56b7e281ccd8230a27236dcb51c05f64b07869ecf6e965d68b0"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "uncased",
+      "version": "0.9.10",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/SergioBenitez/uncased",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "scopes": [
+        "cli-rust",
+        "desktop-rust"
+      ],
+      "licenseFiles": [
+        {
+          "name": "LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "name": "LICENSE-MIT",
+          "sha256": "361df454e66f5cd7f4d4f2ded7045dfec007580c6d8833ebf7db7a21fe461ab1"
         }
       ]
     },

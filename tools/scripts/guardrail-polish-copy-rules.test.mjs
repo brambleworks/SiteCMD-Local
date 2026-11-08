@@ -7,13 +7,17 @@ import { polishCopySafetyFailures } from "./lib/guardrail-polish-copy-rules.mjs"
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 const POLISH_RUST_FILES = [
-  "apps/desktop/src-tauri/src/checks/polish/ai_aesthetic.rs",
-  "apps/desktop/src-tauri/src/checks/polish/copy_content.rs",
-  "apps/desktop/src-tauri/src/checks/polish/css_architecture.rs",
-  "apps/desktop/src-tauri/src/checks/polish/framework_defaults.rs",
-  "apps/desktop/src-tauri/src/checks/polish/html_quality.rs",
-  "apps/desktop/src-tauri/src/checks/polish/meta_infra.rs",
-  "apps/desktop/src-tauri/src/checks/polish/titles.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/page_leftovers.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/ai_aesthetic.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/copy_content.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/css_architecture.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/framework_defaults.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/html_quality.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/meta_infra.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/titles.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/guidance.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/check_result.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/css_grade.rs",
 ];
 const POLISH_LEAD_FILE = "apps/desktop/src/lib/fix-guides/polish.ts";
 
@@ -37,6 +41,30 @@ function baseFixture() {
 }
 
 describe("polishCopySafetyFailures", () => {
+  it.each(["guidance.rs", "check_result.rs", "css_grade.rs", "page_leftovers.rs"])(
+    "flags a banned phrase in %s, whose copy reaches hosted results",
+    (name) => {
+      // Copy from a new polish source must not escape the wording guardrail.
+      const files = baseFixture();
+      const file = `apps/desktop/src-tauri/crates/engine/src/checks/polish/${name}`;
+      files[file] = 'pub fn reason() -> &str {\n    "A cookie-cutter layout"\n}\n';
+      files[POLISH_LEAD_FILE] = "export const POLISH_FIX_GUIDES = {};\n";
+      const h = harness(files);
+      const failures = polishCopySafetyFailures(h.read, h.exists, h.listFiles);
+      expect(failures.some((f) => f.startsWith(`${file}:2`))).toBe(true);
+    },
+  );
+
+  it("flags a banned phrase in a signal file moved into the engine", () => {
+    const files = baseFixture();
+    const moved = "apps/desktop/src-tauri/crates/engine/src/checks/polish/copy_content.rs";
+    files[moved] = 'pub fn detail() -> String {\n    "A suspicious amount of copy".into()\n}\n';
+    files[POLISH_LEAD_FILE] = "export const POLISH_FIX_GUIDES = {};\n";
+    const h = harness(files);
+    const failures = polishCopySafetyFailures(h.read, h.exists, h.listFiles);
+    expect(failures.some((f) => f.startsWith(`${moved}:2`) && /suspicious/i.test(f))).toBe(true);
+  });
+
   it("flags a judgmental word planted in a polish lead sentence (negative control)", () => {
     const files = baseFixture();
     files[POLISH_LEAD_FILE] =

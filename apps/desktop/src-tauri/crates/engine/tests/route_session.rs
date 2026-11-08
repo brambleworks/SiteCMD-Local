@@ -89,6 +89,7 @@ fn whole(page: &PageArtifact, outcomes: Option<Vec<ExecutedProbe>>) -> Evaluatio
         resolver_facts: None,
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: outcomes,
         browser_facts: None,
     }

@@ -168,6 +168,8 @@ fn is_platform_injected_env_key(key: &str) -> bool {
         "LOCALAPPDATA",
         "XDG_DATA_HOME",
         "CARGO_MANIFEST_DIR",
+        "CARGO_HOME",
+        "RUSTUP_HOME",
         "DEV",
         "MODE",
         "VITE_APP_VERSION",
@@ -220,6 +222,9 @@ mod tests {
         assert!(is_platform_injected_env_key("APPDATA"));
         assert!(is_platform_injected_env_key("VITE_APP_VERSION"));
         assert!(is_platform_injected_env_key("CARGO_PKG_VERSION"));
+        // The Rust toolchain's own home directories, like HOME and APPDATA.
+        assert!(is_platform_injected_env_key("CARGO_HOME"));
+        assert!(is_platform_injected_env_key("RUSTUP_HOME"));
         // Local and hosted PHP platforms inject their own markers.
         assert!(is_platform_injected_env_key("IS_DDEV_PROJECT"));
         assert!(is_platform_injected_env_key("DDEV_HOSTNAME"));

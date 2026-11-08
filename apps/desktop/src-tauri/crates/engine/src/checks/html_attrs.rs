@@ -296,6 +296,13 @@ pub fn has_attr(tag: &str, name: &str) -> bool {
     .any(|(attr, _)| attr == target)
 }
 
+/// Read real attribute names and values without treating quoted values as markup.
+pub fn attributes(tag: &str) -> impl Iterator<Item = (String, Option<&str>)> {
+    Attributes {
+        rest: attr_region(tag),
+    }
+}
+
 /// Skip a leading `<tagname` (and closing-tag slash) so callers can pass
 /// either a full tag or a pre-captured attribute region.
 fn attr_region(tag: &str) -> &str {

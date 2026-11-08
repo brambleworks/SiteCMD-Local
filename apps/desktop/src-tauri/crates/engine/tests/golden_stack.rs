@@ -36,6 +36,7 @@ fn detected(case: &Case) -> DetectedStack {
         resolver_facts: case.resolver_facts.clone(),
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: None,
         browser_facts: None,
     })

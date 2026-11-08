@@ -39,7 +39,7 @@ pub(in crate::core::code_scan) static HARDCODED_SECRET_PATTERNS: LazyLock<Vec<re
             regex::Regex::new(r#"(?i)("|')gho_[a-zA-Z0-9]{36,}("|')"#).unwrap(),
             regex::Regex::new(r#"(?i)("|')glpat-[a-zA-Z0-9\-_]{20,}("|')"#).unwrap(),
             regex::Regex::new(r#"(?i)("|')xox[bprs]-[a-zA-Z0-9\-]{10,}("|')"#).unwrap(),
-            regex::Regex::new(r#"(?i)("|')SG\.[a-zA-Z0-9\-_]{22,}("|')"#).unwrap(),
+            regex::Regex::new(r#"(?i)("|')SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}("|')"#).unwrap(),
             // Match PEM key material across quoted, heredoc, template, and
             // escaped-newline representations.
             regex::Regex::new(r"(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----[\s\S-]{64,}?KEY(?: BLOCK)?-----")
@@ -409,3 +409,31 @@ mod tests {
 #[cfg(test)]
 #[path = "quality/private_keys_tests.rs"]
 mod private_keys;
+
+#[cfg(test)]
+#[path = "quality/secret_formats_tests.rs"]
+mod secret_formats;
+
+#[cfg(test)]
+const CODE_ONLY_SECRET_RULES: &[(&str, &str)] = &[
+    (
+        r#"sk-[A-Za-z0-9_-]{20,}"#,
+        "Duplicates the served OpenAI format without its left boundary.",
+    ),
+    (
+        r#"(?i)["']?(api[_-]?key|access[_-]?token|auth[_-]?token|secret)["']?\s*[:=]\s*["'][^"'\n]{8,}["']"#,
+        "Duplicates the served name-value heuristic, which excludes access_token element names.",
+    ),
+    (
+        r#"(?i)("|')supersecretkey("|')"#,
+        "Weak default literals belong to a family that matches instructional text in real bundles.",
+    ),
+    (
+        r#"(?i)("|')changeme("|')"#,
+        "Matches instructional text in the desktop code-fix-guides production bundle.",
+    ),
+    (
+        r#"(?i)("|')password123("|')"#,
+        "Weak default literals belong to a family that matches instructional text in real bundles.",
+    ),
+];

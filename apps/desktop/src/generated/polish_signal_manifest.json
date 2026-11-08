@@ -17,11 +17,6 @@
       "weight": "medium"
     },
     {
-      "category": "css_architecture",
-      "id": "utility-to-custom-ratio",
-      "weight": "medium"
-    },
-    {
       "category": "html_quality",
       "id": "div-soup-ratio",
       "weight": "high"
@@ -45,6 +40,11 @@
       "category": "html_quality",
       "id": "missing-lang",
       "weight": "low"
+    },
+    {
+      "category": "html_quality",
+      "id": "dead-social-links",
+      "weight": "medium"
     },
     {
       "category": "copy_content",
@@ -77,6 +77,11 @@
       "weight": "lowmedium"
     },
     {
+      "category": "copy_content",
+      "id": "placeholder-text",
+      "weight": "medium"
+    },
+    {
       "category": "ai_aesthetic",
       "id": "gradient-backgrounds",
       "weight": "medium"
@@ -104,6 +109,16 @@
     {
       "category": "ai_aesthetic",
       "id": "floating-blobs",
+      "weight": "medium"
+    },
+    {
+      "category": "ai_aesthetic",
+      "id": "gradient-text",
+      "weight": "medium"
+    },
+    {
+      "category": "ai_aesthetic",
+      "id": "eyebrow-labels",
       "weight": "medium"
     },
     {

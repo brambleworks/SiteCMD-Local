@@ -1,0 +1,95 @@
+{
+  "files": [
+    {
+      "path": "code-scan-secret-patterns.rs.txt",
+      "source": "The code scan's HARDCODED_SECRET_PATTERNS table (src/core/code_scan/patterns/quality.rs lines 31 to 64 at 21057755): each new prefix as regular-expression text, not a key",
+      "license": "Apache-2.0 (first-party)",
+      "sha256": "589e2b68cd0f8752934d4cedbaf75f31255260ba6d4ff943bb383183691a9c5d",
+      "bytes": 2558
+    },
+    {
+      "path": "desktop-code-fix-guides.js",
+      "source": "The desktop app's code-fix-guides chunk, which carries the help-text literal 'changeme', from a production build of apps/desktop at 21057755",
+      "license": "Apache-2.0 (first-party)",
+      "sha256": "46709503718763b084e6f0cc6b401bcfe74244ea0320f9353730dcaae79fce55",
+      "bytes": 101398
+    },
+    {
+      "path": "desktop-redaction.js",
+      "source": "The desktop app's commands chunk, which carries a github_pat redaction regex, from a production build of apps/desktop at 21057755",
+      "license": "Apache-2.0 (first-party)",
+      "sha256": "65471ccf4dba43bebe0407107c14befccceb3df167bb1d0a7c79c6f9a7fa7aa1",
+      "bytes": 36601
+    },
+    {
+      "path": "desktop-vendor-largest.js",
+      "source": "The desktop app's largest vendor chunk (vendor-react-pdf-core) from a production build of apps/desktop at 21057755",
+      "license": "Apache-2.0 (first-party build; bundled dependencies keep their own licenses, listed in apps/desktop/package.json)",
+      "sha256": "9d1107df049f3beb8a3ffdb94cf630039af4da8c5d82ce6c29a1575005dab27b",
+      "bytes": 1202518
+    },
+    {
+      "path": "jose-key-import.js",
+      "source": "jose 6.2.12, dist/webapi/key/import.js: PEM armor headers as string literals in a key importer",
+      "license": "MIT (jose.LICENSE.md)",
+      "sha256": "ab2f57a9db99e8d48451a8d0a8adf75379381f65b0e3e28ba6c02aa5bb3ee5fa",
+      "bytes": 2279
+    },
+    {
+      "path": "jose.LICENSE.md",
+      "source": "jose 6.2.12 LICENSE.md",
+      "license": "MIT",
+      "sha256": "8078b0829d6c3e9ecde2f003e1966e4cad3efc6e7a640efbab0313cc166b1af1",
+      "bytes": 1079
+    },
+    {
+      "path": "near-misses.html",
+      "source": "Written for this corpus: the near-miss negatives (npm_config_ and npm_package_ names, a certificate and a public key block generated for it, an rk_live_ stub of 19 characters, a github_pat_ stub of 21, glpat- glued inside an identifier, and the glpat- placeholder; the sk_live_ placeholder is built at runtime in exposed_keys.rs, since GitHub refuses a committed Stripe-shaped key)",
+      "license": "Apache-2.0 (first-party)",
+      "sha256": "61f4c52748a831e4b7658edbd890fb806c05a6c19190d6baf2832c5cd3e519fd",
+      "bytes": 1418
+    },
+    {
+      "path": "package-manager-detector-detect.mjs",
+      "source": "package-manager-detector 1.8.0, dist/detect.mjs: the npm_config_user_agent environment name in a real module",
+      "license": "MIT (package-manager-detector.LICENSE.txt)",
+      "sha256": "29cbf0a1742942e07a030ffdb436472409969b8aadab76b871465a5f8c7bdc5d",
+      "bytes": 4455
+    },
+    {
+      "path": "package-manager-detector.LICENSE.txt",
+      "source": "package-manager-detector 1.8.0 LICENSE",
+      "license": "MIT",
+      "sha256": "05c365176db3cc00e951c44b921c809c75b8e99d2d724f7daf00381e26fb0850",
+      "bytes": 1102
+    },
+    {
+      "path": "react-dom-client.production.js",
+      "source": "react-dom 19.2.8, cjs/react-dom-client.production.js, from the repository's installed node_modules",
+      "license": "MIT (react-dom.LICENSE.txt)",
+      "sha256": "6cf4932e0c20a4572ae395035ca2e512a42d7d49c1a659fa73d6197069c28df0",
+      "bytes": 536016
+    },
+    {
+      "path": "react-dom.LICENSE.txt",
+      "source": "react-dom 19.2.8 LICENSE",
+      "license": "MIT",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+      "bytes": 1088
+    },
+    {
+      "path": "react-dom.production.js",
+      "source": "react-dom 19.2.8, cjs/react-dom.production.js, from the repository's installed node_modules",
+      "license": "MIT (react-dom.LICENSE.txt)",
+      "sha256": "291e0682e8b69643e8e213b6bc13849527fdd97800fef587d5be7b4a8f6a58ca",
+      "bytes": 6655
+    },
+    {
+      "path": "stripe-restricted-key-settings.html",
+      "source": "Written for this corpus: a settings page naming the rk_live_ prefix in prose and a field hint, as vendor documentation and dashboards do; no permissively licensed real page carrying it was found",
+      "license": "Apache-2.0 (first-party)",
+      "sha256": "fd1d9b9179db80057e71e718b2dc549d41aa58947ca499e4e9ca95876fc4df45",
+      "bytes": 598
+    }
+  ]
+}

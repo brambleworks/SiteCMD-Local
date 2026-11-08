@@ -93,6 +93,8 @@ pub enum RuntimeFact {
     Resolver,
     /// Peer-certificate facts from a TLS handshake.
     TlsFacts,
+    /// The negotiated HTTP protocol from the entry page connection.
+    NegotiatedProtocol,
     /// A real browser session.
     Browser,
     /// Registration data from RDAP.

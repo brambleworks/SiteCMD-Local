@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Near misses</title></head>
+<body>
+<!-- Strings that look like the served-page key formats but are not keys. None may raise a finding. -->
+<pre id="npm-env">npm_config_registry=https://registry.npmjs.org/
+npm_package_name=example-site
+npm_package_version=1.0.0</pre>
+<pre id="certificate">-----BEGIN CERTIFICATE-----
+MIIBYTCCAQigAwIBAgIUU3QO4sVlUX/yGTHsZXYrAT0XFc8wCgYIKoZIzj0EAwIw
+FzEVMBMGA1UEAwwMZXhhbXBsZS50ZXN0MB4XDTI2MTAzMTE5NDg0M1oXDTI2MTEw
+MTE5NDg0M1owFzEVMBMGA1UEAwwMZXhhbXBsZS50ZXN0MFkwEwYHKoZIzj0CAQYI
+KoZIzj0DAQcDQgAEqyYr6CtucGVhYlNAH8Id9ktij0C7CbUSVKdSZVYRPitmYnzC
+9NdEkLOFrO9gnuUvQvhZMhJf++aiNZ3q6MarBqMyMDAwHQYDVR0OBBYEFCKp1XPH
+Fr0SFOjtJo34F3IN7X25MA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDRwAw
+RAIgbOacZ5O/pNynt3FvuoszAeMO5mYdBnOin7GPoaNO7tYCIAjgs8I/cDn7LU8M
+8Sd5FtnOrTfOEMGSNQp4PImNBvCO
+-----END CERTIFICATE-----</pre>
+<pre id="public-key">-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEqyYr6CtucGVhYlNAH8Id9ktij0C7
+CbUSVKdSZVYRPitmYnzC9NdEkLOFrO9gnuUvQvhZMhJf++aiNZ3q6MarBg==
+-----END PUBLIC KEY-----</pre>
+<p id="stripe-stub">rk_live_abcdefghijklmnopqrs</p> <!-- gitleaks:allow -->
+<p id="github-stub">github_pat_abcdefghijklmnopqrstu</p>
+<p id="gitlab-glued">myglpat-abcdefghijklmnopqrstuvwx</p> <!-- gitleaks:allow -->
+<p id="gitlab-placeholder">glpat-xxxxxxxxxxxxxxxxxxxx</p> <!-- gitleaks:allow -->
+</body>
+</html>

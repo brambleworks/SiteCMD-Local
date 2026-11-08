@@ -165,7 +165,7 @@ fn polish_copy_signals_do_not_become_critical_issues() {
         SignalCategory::CopyContent,
         SignalWeight::High,
     );
-    let check = super::polish_result_to_check_result(&result);
+    let check = crate::checks::polish::polish_check_result(&result);
 
     assert_eq!(check.check_id, "polish.ai-buzzword-dictionary");
     assert_eq!(
@@ -181,7 +181,7 @@ fn polish_structure_heuristics_stay_at_editorial_review_severity() {
         SignalCategory::HtmlQuality,
         SignalWeight::High,
     );
-    let check = super::polish_result_to_check_result(&result);
+    let check = crate::checks::polish::polish_check_result(&result);
 
     assert_eq!(check.check_id, "polish.div-soup-ratio");
     assert_eq!(
@@ -197,64 +197,12 @@ fn polish_source_map_reference_is_review_level_until_access_is_confirmed() {
         SignalCategory::MetaInfrastructure,
         SignalWeight::Medium,
     );
-    let check = super::polish_result_to_check_result(&result);
+    let check = crate::checks::polish::polish_check_result(&result);
 
     assert_eq!(check.check_id, "polish.source-maps-production");
     assert_eq!(
         crate::core::severity_policy::normalized_web_issue_severity(&check),
         Severity::Medium
-    );
-}
-
-#[test]
-fn unavailable_linked_css_marks_only_unproven_css_signals_as_skipped() {
-    let clear_gradient = PolishResult::clear(
-        "gradient-backgrounds",
-        "Gradient Backgrounds",
-        SignalWeight::Medium,
-        SignalCategory::AiAesthetic,
-    );
-    let fired_glow = fired_polish_result(
-        "glow-shadows",
-        SignalCategory::AiAesthetic,
-        SignalWeight::Low,
-    );
-    let clear_scroll = PolishResult::clear(
-        "scroll-animations",
-        "Scroll Animations",
-        SignalWeight::Medium,
-        SignalCategory::AiAesthetic,
-    );
-    let mut results = vec![
-        super::polish_result_to_check_result(&clear_gradient),
-        super::polish_result_to_check_result(&fired_glow),
-        super::polish_result_to_check_result(&clear_scroll),
-    ];
-
-    super::mark_incomplete_polish_css_results(&mut results, 2, 1);
-
-    assert_eq!(results[0].status, CheckStatus::Skipped);
-    assert_eq!(
-        results[0].description,
-        "This signal could not be cleared because SiteCMD fetched 1 of 2 linked stylesheets. The unavailable stylesheet may contain matching CSS."
-    );
-    assert_eq!(
-        results[0].raw_data,
-        Some(serde_json::json!({
-            "stylesheets_discovered": 2,
-            "stylesheets_fetched": 1,
-            "coverage_complete": false,
-        }))
-    );
-    assert_eq!(
-        results[1].status,
-        CheckStatus::Fail,
-        "HTML or fetched CSS already proved the fired signal"
-    );
-    assert_eq!(
-        results[2].status,
-        CheckStatus::Pass,
-        "scroll animation detection uses HTML markers, not linked CSS"
     );
 }
 
@@ -746,7 +694,7 @@ async fn run_polish_phase_moves_body_instead_of_cloning() {
         None,
         &mut results,
         None::<&dyn Fn() -> bool>,
-        None,
+        false,
     )
     .await
     .expect("polish phase should succeed for a stylesheet-free body");
@@ -920,17 +868,9 @@ fn plain_page_routes(_base_url: &str) -> HashMap<String, TestResponse> {
 
 #[tokio::test]
 async fn run_scan_rejects_invalid_urls() {
-    let result = super::run_scan::<NoCancel>(
-        "not a url",
-        None,
-        None,
-        None,
-        ScanType::Health,
-        false,
-        None,
-        None,
-    )
-    .await;
+    let result =
+        super::run_scan::<NoCancel>("not a url", None, None, None, ScanType::Health, false, None)
+            .await;
     assert!(matches!(result, Err(super::ScanError::InvalidUrl(_))));
 }
 
@@ -945,7 +885,6 @@ async fn run_scan_fetch_failure_is_a_network_error() {
         None,
         ScanType::Health,
         false,
-        None,
         None,
     )
     .await;
@@ -985,7 +924,6 @@ async fn run_scan_uses_the_effective_response_url_as_its_result_identity() {
         ScanType::Polish,
         false,
         None,
-        None,
     )
     .await
     .expect("redirected scan completes");
@@ -1004,7 +942,6 @@ async fn run_scan_honors_cancellation_before_any_work() {
         ScanType::Health,
         false,
         Some(&cancel),
-        None,
     )
     .await;
     assert!(matches!(result, Err(super::ScanError::Cancelled)));
@@ -1021,7 +958,6 @@ async fn security_scan_type_collects_only_security_checks() {
         None,
         ScanType::Security,
         false,
-        None,
         None,
     )
     .await
@@ -1052,7 +988,7 @@ async fn security_scan_type_collects_only_security_checks() {
     );
 }
 
-// A Polish scan is a focused run of the 30 polish heuristics. It must not
+// A Polish scan is a focused run of the polish heuristics. It must not
 // silently include the normal live-site registry (or localhost predeploy
 // checks), because those findings would be mislabeled as a Polish artifact.
 #[tokio::test]
@@ -1066,7 +1002,6 @@ async fn polish_scan_type_collects_only_polish_checks() {
         ScanType::Polish,
         false,
         None,
-        None,
     )
     .await
     .expect("polish scan against the local fixture");
@@ -1074,8 +1009,8 @@ async fn polish_scan_type_collects_only_polish_checks() {
     assert_eq!(result.mode, "predeploy", "127.0.0.1 fixture is predeploy");
     assert_eq!(
         result.issues.len(),
-        30,
-        "the polish registry has 30 signals"
+        crate::checks::polish::POLISH_SIGNALS.len(),
+        "one result per polish signal"
     );
     assert!(
         result
@@ -1104,7 +1039,6 @@ async fn enabled_categories_bound_health_scan_collection() {
         None,
         ScanType::Health,
         false,
-        None,
         None,
     )
     .await
@@ -1170,7 +1104,6 @@ async fn skip_origin_checks_drops_origin_scoped_probes() {
         ScanType::Health,
         false,
         None,
-        None,
     )
     .await
     .expect("entry-page scan");
@@ -1183,7 +1116,6 @@ async fn skip_origin_checks_drops_origin_scoped_probes() {
         None,
         ScanType::Health,
         true,
-        None,
         None,
     )
     .await
@@ -1664,3 +1596,9 @@ async fn a_slow_origin_is_graded_rather_than_timed_out() {
         );
     }
 }
+
+#[path = "polish_stylesheets_tests.rs"]
+mod polish_stylesheets_tests;
+
+#[path = "negotiated_protocol_tests.rs"]
+mod negotiated_protocol_tests;

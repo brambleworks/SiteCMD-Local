@@ -2,6 +2,21 @@
 
 use super::*;
 use crate::checks::IssueConfidence;
+use crate::probe::ProbeOutcome;
+
+fn grade_path_probe(
+    path: &str,
+    description: &str,
+    severity: &Severity,
+    outcome: ProbeOutcome,
+) -> CheckResult {
+    super::grade_path_probe(
+        path,
+        description,
+        severity,
+        &crate::evaluation::sweep_reading(&outcome),
+    )
+}
 
 #[test]
 fn script_extraction_survives_truncated_closing_tag() {

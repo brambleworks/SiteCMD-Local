@@ -1,10 +1,12 @@
 //! Desktop transport for exposed-file probes and inline source-secret grading.
 //! The engine owns paths, classification, and summary assembly.
 
-use crate::checks::{probe_get, AsyncCheck, CheckContext, CheckResult, ScanCategory};
+use crate::checks::{probe, AsyncCheck, CheckContext, CheckResult, ScanCategory};
 use sitecmd_engine::checks::security::exposed_files::{
-    grade_path_probe, source_secrets_result, summarize_exposed_files, SENSITIVE_PATHS,
+    grade_path_probe, sensitive_path_request, source_secrets_result, summarize_exposed_files,
+    SENSITIVE_PATHS,
 };
+use sitecmd_engine::evaluation::sweep_reading;
 
 /// Probes for exposed sensitive files via HTTP requests
 pub struct ExposedFilesCheck;
@@ -41,13 +43,14 @@ impl AsyncCheck for ExposedFilesCheck {
         // Probe sensitive file paths concurrently, grading each outcome.
         let mut probe_futures = Vec::new();
         for (path, desc, severity) in SENSITIVE_PATHS {
-            let url = format!("{}{}", base, path);
+            let request = sensitive_path_request(&base, path);
             let client = ctx.client.clone();
             let path_str = path.to_string();
             let desc_str = desc.to_string();
             let sev = *severity;
             probe_futures.push(tokio::spawn(async move {
-                grade_path_probe(&path_str, &desc_str, &sev, probe_get(&client, &url).await)
+                let outcome = probe(&client, request).await;
+                grade_path_probe(&path_str, &desc_str, &sev, &sweep_reading(&outcome))
             }));
         }
 

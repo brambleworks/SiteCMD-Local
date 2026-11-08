@@ -1,9 +1,10 @@
 //! Desktop transport for portable directory-listing probes.
 
-use crate::checks::{probe_get, AsyncCheck, CheckContext, CheckResult, ScanCategory};
+use crate::checks::{probe, AsyncCheck, CheckContext, CheckResult, ScanCategory};
 use sitecmd_engine::checks::security::directory_listing::{
-    exposed_directories, grade_listing_probes, localhost_skip_result, PROBE_DIRS,
+    grade_listing_probes, listing_request, localhost_skip_result, PROBE_DIRS,
 };
+use sitecmd_engine::evaluation::sweep_reading;
 
 pub struct DirectoryListingCheck;
 
@@ -29,22 +30,27 @@ impl AsyncCheck for DirectoryListingCheck {
 
         let mut futures = Vec::new();
         for dir in PROBE_DIRS {
-            let url = format!("{}{}", base, dir);
+            let request = listing_request(&base, dir);
             let client = ctx.client.clone();
             let dir_path = dir.to_string();
             futures.push(tokio::spawn(async move {
-                (dir_path, probe_get(&client, &url).await)
+                (dir_path, sweep_reading(&probe(&client, request).await))
             }));
         }
 
-        let mut outcomes = Vec::new();
+        let mut readings = Vec::new();
         for future in futures {
-            if let Ok(outcome) = future.await {
-                outcomes.push(outcome);
+            if let Ok(reading) = future.await {
+                readings.push(reading);
             }
         }
 
-        vec![grade_listing_probes(exposed_directories(outcomes))]
+        vec![grade_listing_probes(
+            readings
+                .iter()
+                .map(|(dir, reading)| (dir.clone(), reading))
+                .collect(),
+        )]
     }
 }
 
@@ -80,13 +86,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unreachable_probes_pass_instead_of_failing() {
-        // A closed loopback port refuses every probe immediately; no
-        // reachable directory means Pass, exercising the full run wiring.
+    async fn unreachable_origin_reads_inconclusive() {
+        // A refused request cannot rule out a directory listing.
         let results = DirectoryListingCheck
             .run(&ctx("http://127.0.0.1:1", false))
             .await;
-        assert_eq!(results[0].status, CheckStatus::Pass);
-        assert!(results[0].description.contains("common paths we probed"));
+        assert_eq!(results[0].status, CheckStatus::Skipped);
+        assert_eq!(results[0].title, "Directory listing check incomplete");
+        assert_eq!(
+            results[0].description,
+            "None of the 19 directories answered, so this scan could not rule out a listing there."
+        );
     }
 }

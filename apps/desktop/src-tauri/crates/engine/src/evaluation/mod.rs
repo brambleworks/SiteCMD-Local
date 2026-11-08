@@ -8,13 +8,16 @@ mod origin_reads;
 mod probe_checks;
 mod probe_dns;
 mod probes;
+mod readings;
 mod route_session;
 mod runners;
+mod runners_polish;
 mod runners_seo;
 mod session_eval;
 mod session_facts;
 mod sitemap_children;
 
+pub use crate::checks::performance::protocol::NegotiatedProtocol;
 pub use crate::checks::seo::meta::LengthOutcome;
 pub use artifact::{EvaluationError, PageArtifact};
 pub use discovery::{DiscoveryResponse, SitemapRoutes};
@@ -24,11 +27,13 @@ pub use probes::{
     is_sitemap_probe_key, probe_key, probe_plan, unexecuted_probe, ExecutedProbe, PlannedProbe,
     ProbeContext, ProbeOutcomes, ProbePlan, EXCLUDED_PROBE_CHECKS,
 };
+pub use readings::{sweep_reading, Readings, SweepReading};
 pub use route_session::{
     RouteCall, RouteDiscoverRequest, RouteEvaluationRequest, RouteFacts, RouteOpenRequest,
     RouteOpened, RouteSession, RouteSessionPageRequest, RouteSitemapRoutesRequest,
 };
 pub use runners::{Runner, RUNNERS};
+pub use runners_polish::POLISH_RUNNERS;
 pub use runners_seo::{EXCLUDED_ARTIFACT_CHECKS, SEO_RUNNERS};
 pub use session_eval::{evaluate_session, SessionRequest, SessionResponse, SessionVerdictRow};
 pub use session_facts::{
@@ -76,6 +81,9 @@ pub struct EvaluationRequest {
     /// rustls handshake, or CDP during a hosted browser navigation).
     #[serde(default)]
     pub tls_facts: Option<TlsFacts>,
+    /// Negotiated HTTP protocol from the runtime's entry page connection.
+    #[serde(default)]
+    pub negotiated_protocol: Option<NegotiatedProtocol>,
     /// Executed [`probe_plan`] outcomes. `None` means probes were not gathered;
     /// an empty list means the plan ran and required no fetches.
     #[serde(default)]
@@ -289,6 +297,7 @@ pub fn evaluate(request: &EvaluationRequest) -> Result<EvaluationResponse, Evalu
         resolver_facts: request.resolver_facts.clone(),
         vulnerability_facts: request.vulnerability_facts.clone(),
         tls_facts: request.tls_facts.clone(),
+        negotiated_protocol: request.negotiated_protocol.clone(),
         browser_facts: request.browser_facts.clone(),
     }))
 }
@@ -341,9 +350,9 @@ fn partition(
 }
 
 /// Every artifact runner in response order: the shared table, then the SEO
-/// table beside it.
+/// and polish tables beside it.
 fn artifact_runners() -> impl Iterator<Item = &'static Runner> {
-    RUNNERS.iter().chain(SEO_RUNNERS)
+    RUNNERS.iter().chain(SEO_RUNNERS).chain(POLISH_RUNNERS)
 }
 
 /// Maps manifest ids to the runner indexes used by `ran`, with artifact

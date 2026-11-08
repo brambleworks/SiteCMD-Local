@@ -3,7 +3,7 @@
 //! Each control is evaluated against ARIA naming, a matching `label[for]`, or
 //! a wrapping label; unrelated labels do not count.
 
-use crate::checks::html_attrs::attr_value;
+use crate::checks::html_attrs::{attr_value, has_attr};
 use crate::checks::{Check, CheckResult, CheckStatus, PageContext, ScanCategory, Severity};
 use std::sync::LazyLock;
 
@@ -74,6 +74,12 @@ pub fn captured_value(caps: &regex::Captures) -> Option<String> {
         .map(|m| m.as_str().to_lowercase())
 }
 
+/// Whether a control is disabled and explicitly hidden from assistive technology.
+pub fn is_inert_hidden_control(tag: &str) -> bool {
+    has_attr(tag, "disabled")
+        && attr_value(tag, "aria-hidden").is_some_and(|value| value.eq_ignore_ascii_case("true"))
+}
+
 impl Check for FormLabelsCheck {
     fn id(&self) -> &str {
         "accessibility.form_labels"
@@ -115,7 +121,7 @@ impl Check for FormLabelsCheck {
         for cap in FORM_FIELD_RE.captures_iter(&scannable) {
             let attrs = cap.get(1).map(|m| m.as_str()).unwrap_or("");
             let tag = cap.get(0).map(|matched| matched.as_str()).unwrap_or("");
-            if HIDDEN_OR_BUTTON_TYPE_RE.is_match(attrs) {
+            if HIDDEN_OR_BUTTON_TYPE_RE.is_match(attrs) || is_inert_hidden_control(tag) {
                 continue;
             }
             input_count += 1;

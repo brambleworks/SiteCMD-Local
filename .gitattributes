@@ -1,5 +1,9 @@
 * text=auto eol=lf
 
+# Recorded fixtures must retain their hash-pinned bytes.
+apps/desktop/src-tauri/crates/engine/tests/fixtures/bundles/** -text
+apps/desktop/src-tauri/crates/engine/tests/fixtures/polish/*.html -text
+
 *.png binary
 *.jpg binary
 *.jpeg binary

@@ -6,7 +6,7 @@ use super::session_facts::{SessionPageFacts, SessionSitemapFacts, ELSEWHERE};
 use super::{CheckLayer, PlannedCheck, MANIFEST};
 use crate::manifest::CheckScope;
 use crate::session::{analyze_session, SessionPage, SessionSitemap};
-use crate::vocab::{CheckStatus, Severity};
+use crate::vocab::{CheckStatus, IssueConfidence, Severity};
 
 /// Every page the scan compared, one per completed route, in route order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +20,7 @@ pub struct SessionVerdictRow {
     pub check_id: String,
     pub status: CheckStatus,
     pub severity: Severity,
+    pub confidence: IssueConfidence,
     pub pages: Vec<usize>,
 }
 
@@ -78,6 +79,7 @@ pub fn evaluate_session(request: &SessionRequest) -> SessionResponse {
                 check_id: verdict.result.check_id,
                 status: verdict.result.status,
                 severity: verdict.result.severity,
+                confidence: verdict.result.confidence,
                 pages: verdict.pages,
             })
             .collect(),

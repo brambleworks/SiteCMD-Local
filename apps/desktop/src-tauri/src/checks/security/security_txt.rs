@@ -1,9 +1,9 @@
 //! Desktop transport shell for the engine's RFC 9116 security.txt check.
 
-use crate::checks::{probe_get, AsyncCheck, CheckContext, CheckResult, ScanCategory};
+use crate::checks::{probe, AsyncCheck, CheckContext, CheckResult, ScanCategory};
 use sitecmd_engine::checks::security::security_txt::{
-    classify_security_txt_probe, evaluate_legacy, evaluate_well_known, security_txt_urls,
-    SecurityTxtStep, CHECK_ID,
+    classify_security_txt_probe, evaluate_legacy, evaluate_well_known, security_txt_request,
+    security_txt_urls, SecurityTxtStep, CHECK_ID,
 };
 
 pub struct SecurityTxtCheck;
@@ -24,11 +24,15 @@ impl AsyncCheck for SecurityTxtCheck {
     async fn run(&self, ctx: &CheckContext) -> Vec<CheckResult> {
         let base = crate::checks::origin_with_port(&ctx.url);
         let (well_known, legacy) = security_txt_urls(&base);
-        let fetch = classify_security_txt_probe(probe_get(&ctx.client, &well_known).await);
+        let fetch = classify_security_txt_probe(
+            probe(&ctx.client, security_txt_request(&well_known)).await,
+        );
         match evaluate_well_known(self.id(), &base, fetch, ctx.evaluation_time) {
             SecurityTxtStep::Done(results) => results,
             SecurityTxtStep::ProbeLegacy { well_known_status } => {
-                let fetch = classify_security_txt_probe(probe_get(&ctx.client, &legacy).await);
+                let fetch = classify_security_txt_probe(
+                    probe(&ctx.client, security_txt_request(&legacy)).await,
+                );
                 evaluate_legacy(
                     self.id(),
                     &base,

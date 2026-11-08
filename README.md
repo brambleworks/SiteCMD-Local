@@ -37,7 +37,7 @@ available coverage depends on the selected mode, target, and platform.
 | Web Scan      |    157 | Security headers and TLS, SEO, performance, accessibility, compliance, and configuration, against a live URL  |
 | Code Scan     |    170 | Security, operations, architecture, supply chain, AI safety, and data handling, across a source checkout      |
 | Accessibility |     62 | axe-core WCAG 2 Level A and AA rules, run against the rendered page                                           |
-| Polish        |     30 | CSS architecture, HTML quality, copy, visual defaults, and framework leftovers that mark a page as unfinished |
+| Polish        |     33 | CSS architecture, HTML quality, copy, visual defaults, and framework leftovers that mark a page as unfinished |
 
 Dependency findings resolve across 8 package ecosystems. Every count above is
 derived from the registries themselves by `pnpm facts:generate`, published in

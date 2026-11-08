@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "manifest_digest": "422fa7f621edfb45",
+  "manifest_digest": "694491a058a4581f",
   "entries": [
     {
       "check": "accessibility.aria_usage",
@@ -59,7 +59,7 @@
     },
     {
       "check": "accessibility.form_labels",
-      "contract": "7c314ceaf567bb11",
+      "contract": "72aceea067b34fd6",
       "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
@@ -485,10 +485,10 @@
     {
       "check": "performance.http2",
       "contract": "ae3a2691d1cdb779",
-      "hosted": "unsupported",
+      "hosted": "probe_adapter",
       "class": "deterministic",
-      "scope": "page",
-      "requires": [],
+      "scope": "origin",
+      "requires": ["negotiated_protocol"],
       "compare_on": ["transport_profile"]
     },
     {
@@ -630,6 +630,222 @@
       "compare_on": []
     },
     {
+      "check": "polish.ai-buzzword-dictionary",
+      "contract": "7c0180380d87a2ee",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.ai-header-formulas",
+      "contract": "5ff96bd1382a9199",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.boilerplate-html",
+      "contract": "6a05500427499f49",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.button-vs-clickable-div",
+      "contract": "8cbee45a2dc61b65",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.console-log-production",
+      "contract": "33a32245ec87e038",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.dead-social-links",
+      "contract": "71377bebd891fe21",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.default-deployment-subdomain",
+      "contract": "1a2c5eeab980c309",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.default-error-page",
+      "contract": "ba86147d2a9f84eb",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.default-favicon",
+      "contract": "a6749ceab7c0bbc3",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.default-page-title",
+      "contract": "3eae9ebea93aca82",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.div-soup-ratio",
+      "contract": "2c3b6b140b351f60",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.em-dash-density",
+      "contract": "0c55a16918f682ec",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.emoji-as-icons",
+      "contract": "fed8c785c15dc6d3",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.excessive-border-radius",
+      "contract": "67939e8176ea8a3a",
+      "hosted": "probe_adapter",
+      "class": "deterministic",
+      "scope": "origin",
+      "requires": ["page_artifact", "fetch"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.eyebrow-labels",
+      "contract": "18b1428f2b393ac2",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.floating-blobs",
+      "contract": "e64e7fbce8dfa4bb",
+      "hosted": "probe_adapter",
+      "class": "deterministic",
+      "scope": "origin",
+      "requires": ["page_artifact", "fetch"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.form-accessibility",
+      "contract": "9135accd3e33054f",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.glassmorphism",
+      "contract": "9c8bfabd0a4f8fd2",
+      "hosted": "probe_adapter",
+      "class": "deterministic",
+      "scope": "origin",
+      "requires": ["page_artifact", "fetch"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.glow-shadows",
+      "contract": "e54ebd78aca880b2",
+      "hosted": "probe_adapter",
+      "class": "deterministic",
+      "scope": "origin",
+      "requires": ["page_artifact", "fetch"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.gradient-backgrounds",
+      "contract": "c5f0825329c463c2",
+      "hosted": "probe_adapter",
+      "class": "deterministic",
+      "scope": "origin",
+      "requires": ["page_artifact", "fetch"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.gradient-text",
+      "contract": "5d422e441c0b6f85",
+      "hosted": "probe_adapter",
+      "class": "deterministic",
+      "scope": "origin",
+      "requires": ["page_artifact", "fetch"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.heading-hierarchy",
+      "contract": "cfafcc2c96d073f9",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.inclusive-framing",
+      "contract": "f26e914165252620",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.inline-style-density",
+      "contract": "924ef8abb6591b2d",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
       "check": "polish.js-errors",
       "contract": "2579e4e5f659bb85",
       "hosted": "browser",
@@ -637,6 +853,87 @@
       "scope": "page",
       "requires": ["browser"],
       "compare_on": ["browser_engine", "browser_epoch"]
+    },
+    {
+      "check": "polish.missing-lang",
+      "contract": "3b0962ca0774b30f",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.missing-og-tags",
+      "contract": "c3e6cd789b737860",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.no-css-architecture",
+      "contract": "65936697e85919c2",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.no-sitemap-robots",
+      "contract": "d80b283a9c7f533c",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.placeholder-text",
+      "contract": "163878500060ff56",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.scroll-animations",
+      "contract": "a4942568c5d5d591",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.source-maps-production",
+      "contract": "38ac48cdc21f50e3",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.tailwind-class-density",
+      "contract": "463a4913e8f88a60",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
+    },
+    {
+      "check": "polish.three-column-grid",
+      "contract": "67edad4957dce98c",
+      "hosted": "artifact",
+      "class": "deterministic",
+      "scope": "page",
+      "requires": ["page_artifact"],
+      "compare_on": []
     },
     {
       "check": "security.cookies",
@@ -695,7 +992,7 @@
     },
     {
       "check": "security.directory_listing",
-      "contract": "cfc19ffce215ea19",
+      "contract": "f907a3815c36b18e",
       "hosted": "probe_adapter",
       "class": "deterministic",
       "scope": "origin",
@@ -1038,7 +1335,7 @@
     },
     {
       "check": "security.vibe.exposed_keys",
-      "contract": "cb9177423c5bab26",
+      "contract": "ed516331dab0d1af",
       "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",
@@ -1047,7 +1344,7 @@
     },
     {
       "check": "security.vibe.exposed_keys.public",
-      "contract": "578559b08680df4c",
+      "contract": "2b0dabf29fbacc74",
       "hosted": "artifact",
       "class": "deterministic",
       "scope": "page",

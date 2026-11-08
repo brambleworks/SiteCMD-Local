@@ -1,5 +1,6 @@
 import { runInNewContext } from "node:vm";
 
+import { polishSignals, WEB_CHECK_TREES } from "./guardrail-engine-lane-parsing.mjs";
 import { deriveHostedCheckCounts } from "./hosted-check-counts.mjs";
 import { PRODUCT_SURFACE_STATUS } from "./product-surfaces.mjs";
 
@@ -11,10 +12,13 @@ const ANALYZER = "apps/desktop/src-tauri/src/webview/analyzer.rs";
 const PRIVATE_NETWORK_RULES = "apps/desktop/src-tauri/src/webview/private_network_rules.rs";
 const AGENT = "apps/desktop/src-tauri/crates/engine/src/agent.rs";
 const PROBE = "apps/desktop/src-tauri/crates/engine/src/probe.rs";
+const DIRECTORY_LISTING =
+  "apps/desktop/src-tauri/crates/engine/src/checks/security/directory_listing.rs";
 const EXPOSED_FILES = "apps/desktop/src-tauri/crates/engine/src/checks/security/exposed_files.rs";
 const CONSTANTS = "apps/desktop/src-tauri/src/constants.rs";
 const ASSETS = "apps/desktop/src-tauri/crates/engine/src/checks/performance/assets/mod.rs";
-const CSS_FETCH = "apps/desktop/src-tauri/src/checks/polish/css_fetch.rs";
+const CSS_COUNTS = "apps/desktop/src-tauri/crates/engine/src/checks/polish/css_counts.rs";
+const POLISH_TABLE = "apps/desktop/src-tauri/crates/engine/src/checks/polish/mod.rs";
 const SITEMAP = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap.rs";
 const SITEMAP_DOCUMENT = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap_document.rs";
 const AXE_PAYLOAD = "apps/desktop/src-tauri/crates/engine/src/browser/payload.rs";
@@ -66,11 +70,7 @@ export function productionHalf(source) {
   return source;
 }
 
-/** The desktop's check tree and the engine crate's, which modules move into. */
-export const WEB_CHECK_TREES = {
-  desktop: "apps/desktop/src-tauri/src/checks",
-  engine: "apps/desktop/src-tauri/crates/engine/src/checks",
-};
+export { WEB_CHECK_TREES };
 
 /** Maps emitted web check ids to their source files. */
 export function webCheckIdSources(read, listFiles, trees = Object.values(WEB_CHECK_TREES)) {
@@ -81,6 +81,7 @@ export function webCheckIdSources(read, listFiles, trees = Object.values(WEB_CHE
       const add = (id) => sources.set(id, [...(sources.get(id) ?? []), file]);
       for (const [, id] of source.matchAll(/fn id\(&self\) -> &str \{\s*"([^"]+)"/g)) add(id);
       for (const [, id] of source.matchAll(/check_id: "([^"]+)"/g)) add(id);
+      for (const { id } of polishSignals(source) ?? []) add(`polish.${id}`);
       for (const [, name, id] of source.matchAll(
         /const ([A-Z_]*CHECK_IDS?[A-Z_]*): &str = "([^"]+)"/g,
       )) {
@@ -195,10 +196,11 @@ export function deriveCheckCounts(read, _listFiles) {
   // sub-ids that a regex scrape of `id()`/`check_id` literals cannot see.
   const web = JSON.parse(read("apps/desktop/src-tauri/check-inventory.json")).web.length;
 
-  const polishSource = read("apps/desktop/src-tauri/src/checks/polish/mod.rs");
-  const start = polishSource.indexOf("pub fn run_all_signals");
-  const polishBody = polishSource.slice(start, polishSource.indexOf("\n}", start));
-  const polish = [...polishBody.matchAll(/^\s+[a-z_]+::[a-z_]+\(ctx\),/gm)].length;
+  const signals = polishSignals(productionHalf(read(POLISH_TABLE)));
+  if (signals === null) {
+    throw new Error(`product-facts: could not find POLISH_SIGNALS in ${POLISH_TABLE}`);
+  }
+  const polish = signals.length;
 
   const registry = read("apps/desktop/src-tauri/crates/engine/src/code_rules.rs");
   const codeScan = [...registry.matchAll(/^\s*d\("[a-z0-9-]+"/gm)].length;
@@ -344,12 +346,24 @@ function scannerIdentity(read) {
     throw new Error(`product-facts: no SENSITIVE_PATHS entries found in ${EXPOSED_FILES}`);
   }
 
+  const directoryBlock = extract(
+    read(DIRECTORY_LISTING),
+    /PROBE_DIRS: &\[&str\] = &\[([\s\S]*?)\n\];/,
+    "PROBE_DIRS",
+    DIRECTORY_LISTING,
+  );
+  const directoryProbePaths = [...directoryBlock.matchAll(/"(\/[^"]+)"/g)].map(([, path]) => path);
+  if (directoryProbePaths.length === 0) {
+    throw new Error(`product-facts: no PROBE_DIRS entries found in ${DIRECTORY_LISTING}`);
+  }
+
   const constants = read(CONSTANTS);
   return {
     docsUrl,
     userAgentFormat,
     methods,
     sensitivePaths,
+    directoryProbePaths,
     sitemapWalk: sitemapWalk(read),
     limits: {
       redirectHops: rustNumber(constants, "MAX_REDIRECT_HOPS", CONSTANTS),
@@ -358,13 +372,18 @@ function scannerIdentity(read) {
       probeBodyMaxBytes: rustNumber(constants, "MAX_PROBE_BODY_SIZE", CONSTANTS),
       sitemapBodyMaxBytes: rustNumber(constants, "MAX_SITEMAP_SIZE", CONSTANTS),
       assetSampleLimit: rustNumber(read(ASSETS), "ASSET_SAMPLE_LIMIT", ASSETS),
-      stylesheetMaxCount: rustNumber(read(CSS_FETCH), "MAX_CSS_FILES", CSS_FETCH),
+      stylesheetMaxCount: rustNumber(read(CSS_COUNTS), "STYLESHEET_SAMPLE_LIMIT", CSS_COUNTS),
     },
   };
 }
 
 export function productFacts(read, listFiles) {
   const checkCounts = deriveCheckCounts(read, listFiles);
+  const { previewCheckCount, ...hostedCheckCounts } = deriveHostedCheckCounts(
+    read,
+    checkCounts.axe,
+    webCheckIdSources(read, listFiles),
+  );
   return {
     sentryIngestHost: extract(
       read(TELEMETRY_WRAPPER),
@@ -381,7 +400,8 @@ export function productFacts(read, listFiles) {
     commercialModel: JSON.parse(read(COMMERCIAL_MODEL)),
     productSurfaceStatus: PRODUCT_SURFACE_STATUS,
     checkCounts,
-    hostedCheckCounts: deriveHostedCheckCounts(read, checkCounts.axe),
+    hostedCheckCounts,
+    previewCheckCount,
     polishSignals: JSON.parse(read(POLISH_SIGNALS)).signals,
     telemetryEnvelopeTierIsPlaceholder: /tier:\s*"unknown"/.test(
       read(TELEMETRY_WRAPPER).slice(read(TELEMETRY_WRAPPER).indexOf("function buildEnvelope")),

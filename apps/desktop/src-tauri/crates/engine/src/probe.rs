@@ -163,11 +163,14 @@ impl ContentCoding {
 }
 
 /// Which size cap the runtime reads a body under. Every probe reads under the
-/// probe cap except a sitemap's: a walk candidate, or a child an index lists,
-/// can list thousands of pages and reads under the sitemap cap. Each runtime
-/// holds its own byte values (the desktop's `MAX_SITEMAP_SIZE`, the hosted
-/// transport's sitemap budget), and the published facts hold the two to one
-/// number.
+/// probe cap except a stylesheet's, which reads under the stylesheet cap, or a
+/// sitemap's: a walk candidate, or a child an index lists, can list thousands
+/// of pages and reads under the sitemap cap. Each runtime holds its own byte
+/// values (the desktop's `MAX_SITEMAP_SIZE`, the hosted transport's sitemap
+/// budget), and the published facts hold the two to one number.
+/// `Sweep` and `Stylesheet` answers are recorded alone: run them only once no
+/// ordinary probe remains, and record each answer before executing the next
+/// probe, so the engine can reduce a sweep to a reading and release its document.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BodyLimit {
@@ -178,6 +181,12 @@ pub enum BodyLimit {
     /// apart from a walk candidate, because a runtime records each child's
     /// answer on its own and the engine keeps its pages, never its document.
     SitemapChild,
+    /// A candidate-path sweep, read under the probe cap and keyed apart from
+    /// ordinary probes; the engine keeps a bounded, private reading.
+    Sweep,
+    /// A linked stylesheet, read under the stylesheet cap and keyed apart
+    /// from ordinary probes.
+    Stylesheet,
 }
 
 impl BodyLimit {

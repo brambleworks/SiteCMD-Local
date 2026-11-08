@@ -32,12 +32,6 @@ use {
     std::sync::Arc,
 };
 
-/// GET one probe URL under the standard probe timeout and body cap, with
-/// the common policies (follow redirects, 2xx body).
-pub(crate) async fn probe_get(client: &reqwest::Client, url: &str) -> ProbeOutcome {
-    probe(client, ProbeRequest::get(url)).await
-}
-
 /// Execute one probe request. `client` serves redirect-following requests;
 /// `RedirectPolicy::None` swaps in the shared no-redirect client so a 3xx
 /// classifies as the answer instead of being followed.
@@ -146,10 +140,7 @@ async fn exchange(
     if !read_body {
         return (ProbeOutcome::Response(head), None);
     }
-    let body_cap = match request.limit {
-        BodyLimit::Probe => crate::constants::MAX_PROBE_BODY_SIZE,
-        BodyLimit::Sitemap | BodyLimit::SitemapChild => crate::constants::MAX_SITEMAP_SIZE,
-    };
+    let body_cap = body_limit_cap(request.limit);
     let outcome = match crate::http_client::read_body_limited(
         response,
         body_cap,
@@ -169,6 +160,14 @@ async fn exchange(
         },
     };
     (outcome, None)
+}
+
+fn body_limit_cap(limit: BodyLimit) -> u64 {
+    match limit {
+        BodyLimit::Probe | BodyLimit::Sweep => crate::constants::MAX_PROBE_BODY_SIZE,
+        BodyLimit::Sitemap | BodyLimit::SitemapChild => crate::constants::MAX_SITEMAP_SIZE,
+        BodyLimit::Stylesheet => crate::constants::MAX_STYLESHEET_BODY_SIZE,
+    }
 }
 
 /// The bytes of a body its own headers do not size, counted and discarded
@@ -351,6 +350,10 @@ mod raw_tests;
 #[cfg(test)]
 #[path = "probe_adapter_missing_page_tests.rs"]
 mod missing_page_tests;
+
+#[cfg(test)]
+#[path = "probe_adapter_limits_tests.rs"]
+mod limits_tests;
 
 /// The loopback origins the transport tests drive. Re-exported so the
 /// open-redirect sweep test can reach them under the adapter's own path.

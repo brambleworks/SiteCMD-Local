@@ -1,11 +1,16 @@
 const POLISH_RUST_FILES = [
-  "apps/desktop/src-tauri/src/checks/polish/ai_aesthetic.rs",
-  "apps/desktop/src-tauri/src/checks/polish/copy_content.rs",
-  "apps/desktop/src-tauri/src/checks/polish/css_architecture.rs",
-  "apps/desktop/src-tauri/src/checks/polish/framework_defaults.rs",
-  "apps/desktop/src-tauri/src/checks/polish/html_quality.rs",
-  "apps/desktop/src-tauri/src/checks/polish/meta_infra.rs",
-  "apps/desktop/src-tauri/src/checks/polish/titles.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/page_leftovers.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/ai_aesthetic.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/copy_content.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/css_architecture.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/framework_defaults.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/html_quality.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/meta_infra.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/titles.rs",
+  // Guidance and confidence reasons reach hosted results with every fired signal.
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/guidance.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/check_result.rs",
+  "apps/desktop/src-tauri/crates/engine/src/checks/polish/css_grade.rs",
 ];
 
 // The bundled fix-guide lead sentences shown before the Rust finding copy;

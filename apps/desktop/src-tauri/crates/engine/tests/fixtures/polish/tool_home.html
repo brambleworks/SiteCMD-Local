@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pebble Measure | Count a passage</title>
+  <meta name="description" content="Count words and characters in a short passage.">
+  <meta property="og:title" content="Pebble Measure">
+  <meta property="og:description" content="A small text length tool.">
+  <meta property="og:image" content="https://pebble.invalid/measure.png">
+  <link rel="icon" href="/pebble-mark.svg">
+  <link rel="stylesheet" href="/measure.css">
+</head>
+<body class="measure-page">
+  <header><a href="/">Pebble Measure</a><nav aria-label="Main"><a href="#instructions">Instructions</a><a href="/about">About</a></nav></header>
+  <main>
+    <section><h1>Count a passage</h1><p>Paste a passage to count its words and characters.</p>
+      <form action="/measure" method="post"><label for="passage">Passage</label><textarea id="passage" name="passage" rows="8" required></textarea><button type="submit">Count words</button></form>
+      <output aria-live="polite">No passage counted yet.</output>
+    </section>
+    <section id="instructions"><h2>Using the counter</h2><ol><li>Paste or type a passage.</li><li>Choose Count words.</li><li>Read the totals below the form.</li></ol></section>
+    <section><h2>Reading the totals</h2><dl><dt>Words</dt><dd>Groups separated by spaces.</dd><dt>Characters</dt><dd>Letters, punctuation and spaces.</dd></dl></section>
+    <aside><p>Check a publication's own counting rules before submitting a passage.</p></aside>
+  </main>
+  <footer><nav aria-label="Footer"><a href="/privacy">Privacy</a><a href="/contact">Contact</a></nav><p>Pebble Measure</p></footer>
+</body>
+</html>

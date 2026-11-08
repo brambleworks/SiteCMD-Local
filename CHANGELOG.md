@@ -19,6 +19,43 @@ public repository history.
   null `defaultSeverity` and `severitySource: "per_finding"`. `--format json`
   prints a deterministic inventory with the CLI version for integrations.
 
+- Polish checks now report gradient fills clipped to text.
+
+- Polish checks now report placeholder copy, social links without a profile, and
+  repeated short labels above headings.
+
+- Web Scan recognizes Stripe restricted live keys, GitHub fine-grained tokens,
+  GitLab tokens, npm tokens, and PEM private-key blocks in served pages.
+
+### Changed
+
+- Gradient background checks now count only gradients that blend different hues.
+- Polish checks now read their word lists from a file that names a public source
+  for every entry. The buzzword and headline checks now match a narrower set of
+  marketing terms and headline patterns. The hype list now also reads AI writing
+  studies and drops words with an ordinary technical sense. The title, favicon,
+  starter-text, error-page and hosting-domain checks now match their recorded entries, so
+  some older matches, such as an "Untitled" title, no longer report; the CSS
+  architecture check no longer treats `emotion-` classes as CSS-in-JS evidence.
+- Web Scan no longer reports a credential placeholder as an exposed key: a token
+  whose segments after its prefix each repeat one character, or a PEM block
+  whose key material repeats one character.
+- Web Scan grades HTTP/2 support on a scan's first page alone.
+- Web Scan grades the six stylesheet-reading polish signals (`gradient-backgrounds`,
+  `glassmorphism`, `excessive-border-radius`, `glow-shadows`,
+  `floating-blobs`, and `gradient-text`) on a scan's first page alone, from that page
+  and its linked stylesheets. Later pages' inline styles and utility classes
+  are not graded for these signals. Stylesheets are counted independently,
+  so a declaration split across files does not count. Tailwind utility class
+  names, including gradient utilities, count only where the page uses them,
+  not where a stylesheet defines them.
+- Web Scan's directory listing check no longer passes when a directory it requested
+  did not answer. It reads inconclusive and says how many did not answer.
+
+### Removed
+
+- The `polish.utility-to-custom-ratio` signal, which never reported a finding.
+
 ### Fixed
 
 - CLI local database findings now use paths relative to the audit root in every
@@ -27,6 +64,13 @@ public repository history.
 - The runtime end-of-life check now uses each line's official end-of-life
   date. Seven Node.js lines carried their last release date instead, and
   Python 3.10 carried October 31, 2026 instead of October 1, 2026.
+- Web Scan no longer counts disabled task-list checkboxes that are hidden from
+  assistive technology as unlabeled form inputs. It also excludes syntax-highlighted
+  code blocks from inline-style density.
+- Code Scan recognizes complete two-segment SendGrid keys and ignores
+  single-segment fragments.
+- Code Scan no longer asks for `CARGO_HOME` or `RUSTUP_HOME` in `.env.example`;
+  the Rust toolchain supplies them.
 
 ## [2.0.0] - 2026-10-29
 

@@ -4,6 +4,11 @@ const WASM_LIB = "apps/desktop/src-tauri/crates/engine-wasm/src/lib.rs";
 const WASM_MANIFEST = "apps/desktop/src-tauri/crates/engine-wasm/Cargo.toml";
 const RUNNERS = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners.rs";
 const RUNNERS_SEO = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners_seo.rs";
+const RUNNERS_POLISH = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners_polish.rs";
+const POLISH_TABLE = "apps/desktop/src-tauri/crates/engine/src/checks/polish/mod.rs";
+const POLISH_PHASE = "apps/desktop/src-tauri/src/core/scanner.rs";
+const POLISH_VERIFY = "apps/desktop/src-tauri/src/core/scanner/verify.rs";
+const RUNTIME_POLISH = "apps/desktop/src-tauri/src/checks/polish/mod.rs";
 const PROBE_CHECKS = "apps/desktop/src-tauri/crates/engine/src/evaluation/probe_checks.rs";
 const PROBE_SCHEMA = "apps/desktop/src-tauri/crates/engine/src/evaluation/probes.rs";
 const SESSION = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
@@ -95,6 +100,47 @@ const RUNNERS_SEO_BASE = [
   "];",
 ].join("\n");
 
+const RUNNERS_POLISH_BASE = [
+  "pub const POLISH_RUNNERS: &[Runner] = &[",
+  "    Runner {",
+  '        covers: &["polish.missing-lang"],',
+  "        run: |inputs| signal_rows(inputs, html_quality::missing_lang),",
+  "    },",
+  "];",
+].join("\n");
+
+const POLISH_TABLE_BASE = [
+  "pub const POLISH_SIGNALS: &[PolishSignal] = &[",
+  "    PolishSignal {",
+  '        id: "missing-lang",',
+  "        category: SignalCategory::HtmlQuality,",
+  "        weight: SignalWeight::Low,",
+  "        reads_stylesheets: false,",
+  "        run: html_quality::missing_lang,",
+  "    },",
+  "];",
+  "pub fn run_all_signals(ctx: &PolishContext) -> Vec<PolishResult> {",
+  "    POLISH_SIGNALS.iter().map(|signal| (signal.run)(ctx)).collect()",
+  "}",
+].join("\n");
+
+const POLISH_PHASE_BASE = [
+  "let signal_results = polish::run_all_signals(&polish_ctx);",
+  "let rows = signal_results.iter().map(polish::polish_check_result);",
+  "polish::grade_stylesheet_coverage(&mut rows, discovered, fetched);",
+].join("\n");
+
+const POLISH_VERIFY_BASE = [
+  "let signal_results = crate::checks::polish::run_all_signals(&polish_ctx);",
+  "let rows = signal_results.iter().map(crate::checks::polish::polish_check_result);",
+  "crate::checks::polish::grade_stylesheet_coverage(&mut rows, discovered, fetched);",
+].join("\n");
+
+const RUNTIME_POLISH_BASE = [
+  "pub mod css_fetch;",
+  "pub use sitecmd_engine::checks::polish::*;",
+].join("\n");
+
 const PROBE_CHECKS_BASE = [
   "pub const PROBE_CHECKS: &[ProbeCheck] = &[",
   "    ProbeCheck {",
@@ -125,6 +171,7 @@ const MANIFEST_BASE = JSON.stringify({
     { check: "performance.page_weight", hosted: "artifact", requires: ["page_artifact"] },
     { check: "seo.headings.h1", hosted: "artifact", requires: ["page_artifact"] },
     { check: "seo.viewport", hosted: "artifact", requires: ["page_artifact"] },
+    { check: "polish.missing-lang", hosted: "artifact", requires: ["page_artifact"] },
     {
       check: "seo.orphan_pages",
       hosted: "artifact",
@@ -170,6 +217,7 @@ const CHECKS_SCRIPT_BASE = [
   "  browser_assets_sha256: sha256(browserAssets),",
   "  manifest_digest: manifest.manifest_digest,",
   "  capability_manifest_sha256: sha256(manifestBytes),",
+  "  key_patterns_sha256: sha256(keyPatterns),",
   "};",
   "vendorSet({",
   "  outDir,",
@@ -210,6 +258,11 @@ function run(overrides = {}) {
     [WASM_MANIFEST]: WASM_MANIFEST_BASE,
     [RUNNERS]: RUNNERS_BASE,
     [RUNNERS_SEO]: RUNNERS_SEO_BASE,
+    [RUNNERS_POLISH]: RUNNERS_POLISH_BASE,
+    [POLISH_TABLE]: POLISH_TABLE_BASE,
+    [POLISH_PHASE]: POLISH_PHASE_BASE,
+    [POLISH_VERIFY]: POLISH_VERIFY_BASE,
+    [RUNTIME_POLISH]: RUNTIME_POLISH_BASE,
     [PROBE_CHECKS]: PROBE_CHECKS_BASE,
     [PROBE_SCHEMA]: PROBE_SCHEMA_BASE,
     [SCHEMA]: SCHEMA_BASE,
@@ -250,6 +303,11 @@ export {
   WASM_MANIFEST,
   RUNNERS,
   RUNNERS_SEO,
+  RUNNERS_POLISH,
+  POLISH_TABLE,
+  POLISH_PHASE,
+  POLISH_VERIFY,
+  RUNTIME_POLISH,
   PROBE_CHECKS,
   PROBE_SCHEMA,
   SCHEMA,
@@ -265,6 +323,11 @@ export {
   ROUTE_SCHEMA_BASE,
   RUNNERS_BASE,
   RUNNERS_SEO_BASE,
+  RUNNERS_POLISH_BASE,
+  POLISH_TABLE_BASE,
+  POLISH_PHASE_BASE,
+  POLISH_VERIFY_BASE,
+  RUNTIME_POLISH_BASE,
   PROBE_CHECKS_BASE,
   PROBE_SCHEMA_BASE,
   REGISTRATION,

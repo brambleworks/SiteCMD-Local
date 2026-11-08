@@ -35,6 +35,7 @@ fn request(page: PageArtifact) -> EvaluationRequest {
         resolver_facts: None,
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: None,
         browser_facts: None,
     }

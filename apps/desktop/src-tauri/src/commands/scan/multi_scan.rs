@@ -101,11 +101,6 @@ pub(crate) async fn scan_multi_for_execution(
             None => None,
         };
 
-        // Sites link the same stylesheets from every page. One store per scan
-        // execution, dropped with this future, turns twenty pages sharing four
-        // stylesheets into four downloads instead of eighty.
-        let stylesheet_cache = Arc::new(crate::checks::polish::StylesheetCache::new());
-
         let loop_outcome = run_page_loop(
             &urls,
             session_id,
@@ -123,7 +118,6 @@ pub(crate) async fn scan_multi_for_execution(
                 let cancel_fn: std::sync::Arc<crate::scan_runtime::CancelFn> =
                     std::sync::Arc::new(move || scan_control_clone.is_cancelled(scan_request_id));
                 let enabled_categories = enabled_categories.clone();
-                let stylesheet_cache = stylesheet_cache.clone();
                 async move {
                     let mut result = crate::scan_runtime::run_scan_low_priority(
                         page_url.clone(),
@@ -133,7 +127,6 @@ pub(crate) async fn scan_multi_for_execution(
                         st,
                         skip_origin_checks,
                         Some(cancel_fn.clone()),
-                        Some(stylesheet_cache),
                     )
                     .await?;
                     let browser_runtime = super::web_scan::apply_webview_layer(
@@ -527,41 +520,6 @@ mod tests {
             .split_once("\nfn issue_group_change_counts(")
             .expect("issue_group_change_counts must follow session_sitemap")
             .0
-    }
-
-    /// The stylesheet cache is pure wiring: every page of a multi-page scan
-    /// reads the same linked stylesheets, and only the shared store keeps that
-    /// from being one download per page. Nothing observable changes when the
-    /// cache is dropped from the call, so no behavioral test can hold it. Pin
-    /// the wiring itself: one store per execution, handed to every page scan.
-    #[test]
-    fn one_stylesheet_cache_per_execution_reaches_every_page_scan() {
-        let body = scan_multi_for_execution_source();
-
-        let created = body.find("StylesheetCache::new()").expect(
-            "scan_multi_for_execution must create the execution's stylesheet cache itself; a \
-             cache created per page would download every stylesheet on every page",
-        );
-        let page_loop = body
-            .find("run_page_loop(")
-            .expect("scan_multi_for_execution must drive its pages through run_page_loop");
-        assert!(
-            created < page_loop,
-            "the stylesheet cache must be created before the page loop, so all pages share it"
-        );
-
-        let call_arguments = body
-            .split_once("run_scan_low_priority(")
-            .expect("the page scan must call run_scan_low_priority")
-            .1
-            .split_once(")\n")
-            .expect("the run_scan_low_priority argument list must end on its own line")
-            .0;
-        assert!(
-            call_arguments.contains("Some(stylesheet_cache)"),
-            "run_scan_low_priority must receive the execution's stylesheet cache; passing None \
-             silently re-downloads every page's stylesheets and no other test would notice"
-        );
     }
 
     /// A site whose sitemap lives at a path SiteCMD does not guess is exactly

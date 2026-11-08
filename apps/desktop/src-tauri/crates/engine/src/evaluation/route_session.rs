@@ -13,11 +13,13 @@ use super::probes::{
     is_sitemap_child_key, is_sitemap_probe_key, plan_probes, ExecutedProbe, ProbeContext,
     ProbeOutcomes, ProbePlan,
 };
+use super::readings::Readings;
 use super::session_facts::{page_facts, SessionPageFacts};
 use super::sitemap_children::ChildSitemaps;
 use super::{
     artifact_runners, external_fact_plan, partition, runner_index, BrowserFacts, EvaluationError,
-    EvaluationInputs, EvaluationResponse, ExternalFactPlan, PageArtifact, MANIFEST, PROBE_CHECKS,
+    EvaluationInputs, EvaluationResponse, ExternalFactPlan, NegotiatedProtocol, PageArtifact,
+    MANIFEST, PROBE_CHECKS,
 };
 use crate::checks::origin_with_port;
 use crate::checks::security::tls::TlsFacts;
@@ -38,6 +40,8 @@ pub struct RouteFacts {
     pub vulnerability_facts: Option<AdvisoryLookup>,
     #[serde(default)]
     pub tls_facts: Option<TlsFacts>,
+    #[serde(default)]
+    pub negotiated_protocol: Option<NegotiatedProtocol>,
     #[serde(default)]
     pub browser_facts: Option<BrowserFacts>,
 }
@@ -110,6 +114,7 @@ pub struct RouteSession {
     header_lines: HeaderLines,
     requested_url: Option<String>,
     outcomes: Vec<ExecutedProbe>,
+    readings: Readings,
     /// Set once a call carries outcomes, even none: that is what says the
     /// fetch lane ran.
     fetched: bool,
@@ -142,6 +147,7 @@ impl RouteSession {
             header_lines: lines,
             requested_url,
             outcomes: Vec::new(),
+            readings: Readings::default(),
             fetched: false,
             external_fact_plan,
             link_targets: OnceLock::new(),
@@ -170,6 +176,7 @@ impl RouteSession {
     /// is the one read. A joined session restores each response's field lines.
     /// A child sitemap's answer is kept without its body, once its page addresses are read.
     /// Invalid sitemap encodings retain their byte count and validity flag, without text.
+    /// Sweep answers keep their private reading and an answered marker, never the body.
     pub fn record(&mut self, outcomes: Option<Vec<ExecutedProbe>>) {
         if let Some(mut outcomes) = outcomes {
             for executed in &mut outcomes {
@@ -191,7 +198,9 @@ impl RouteSession {
             let (children, others): (Vec<_>, Vec<_>) = outcomes
                 .into_iter()
                 .partition(|probe| is_sitemap_child_key(&probe.key));
-            self.outcomes.extend(others);
+            for probe in others {
+                self.outcomes.push(self.readings.absorb(probe));
+            }
             if !children.is_empty() && !self.sitemap_children.knows_index() {
                 let outcomes = ProbeOutcomes::index(&self.outcomes);
                 if let Some(index) = found_index(&self.context(&outcomes, &RouteFacts::default())) {
@@ -224,8 +233,10 @@ impl RouteSession {
         let inputs = EvaluationInputs {
             page: &self.page,
             tls_facts: facts.tls_facts.as_ref(),
+            negotiated_protocol: facts.negotiated_protocol.as_ref(),
             browser_facts: facts.browser_facts.as_ref(),
             header_lines: self.header_lines,
+            polish: std::sync::OnceLock::new(),
         };
         let outcomes = ProbeOutcomes::index(&self.outcomes);
         let probe_context = self.context(&outcomes, facts);
@@ -233,6 +244,7 @@ impl RouteSession {
             self.fetched,
             facts.resolver_facts.is_some(),
             facts.tls_facts.is_some(),
+            facts.negotiated_protocol.is_some(),
             facts.browser_facts.is_some(),
             facts.vulnerability_facts.is_some(),
         );
@@ -260,6 +272,8 @@ impl RouteSession {
                 results.extend((runner.run)(&inputs));
             }
         }
+        // Release the polish context's lowercase before the probe grades.
+        drop(inputs);
         let probe_rows = results.len();
         for (check, executed) in PROBE_CHECKS.iter().zip(&ran[artifact_count..]) {
             if *executed {
@@ -332,6 +346,7 @@ impl RouteSession {
         ProbeContext {
             page: &self.page,
             outcomes,
+            readings: &self.readings,
             requested_url: self.requested_url.as_deref(),
             resolver_facts: facts.resolver_facts.as_ref(),
             vulnerability_facts: facts.vulnerability_facts.as_ref(),

@@ -1,3 +1,18 @@
+/** The native transport shells and the portable engine's check sources. */
+export const WEB_CHECK_TREES = {
+  desktop: "apps/desktop/src-tauri/src/checks",
+  engine: "apps/desktop/src-tauri/crates/engine/src/checks",
+};
+
+/** Whether a nonempty emitter list belongs entirely to the engine's preview checks. */
+export function isPreviewOnlySources(files) {
+  return (
+    Array.isArray(files) &&
+    files.length > 0 &&
+    files.every((file) => file.startsWith(`${WEB_CHECK_TREES.engine}/predeploy/`))
+  );
+}
+
 /** Return the Rust documentation and attributes directly above an item. */
 export function attributeBlock(source, index) {
   const prefix = source.slice(0, index);
@@ -5,11 +20,14 @@ export function attributeBlock(source, index) {
   return blank === -1 ? prefix : prefix.slice(blank);
 }
 
-// Return one Rust constant table through its closing bracket.
+// Return one Rust constant table through its closing bracket: the `&[];` of a
+// one-line empty table, or else the first `];` that opens a line, since a
+// row's own code can hold `];`.
 function tableBlock(source, tableConst) {
   const start = source.indexOf(tableConst);
   if (start === -1) return null;
-  const end = source.indexOf("\n];", start);
+  const empty = source.slice(start).match(/^[^\n]*=\s*&\[\];/);
+  const end = empty ? start + empty[0].length : source.indexOf("\n];", start);
   return source.slice(start, end === -1 ? source.length : end);
 }
 
@@ -34,6 +52,27 @@ export function excludedChecks(source, tableConst) {
   }));
 }
 
+/**
+ * The rows of a `POLISH_SIGNALS` table (bare id, whether it reads stylesheets,
+ * its function), or null when the source declares none.
+ */
+export function polishSignals(source) {
+  const table = tableBlock(source, "pub const POLISH_SIGNALS");
+  if (table === null) return null;
+  const rows = [
+    ...table.matchAll(
+      /\bid: "([a-z0-9-]+)",[^}]*?\breads_stylesheets: (true|false),\s*run: ([\w:]+),/g,
+    ),
+  ].map(([, id, reads, run]) => ({ id, readsStylesheets: reads === "true", run }));
+  const declared = (table.match(/\bPolishSignal \{/g) ?? []).length;
+  if (rows.length !== declared) {
+    throw new Error(
+      `POLISH_SIGNALS: the row pattern reads ${rows.length} of ${declared} rows; teach it the new formatting`,
+    );
+  }
+  return rows;
+}
+
 const FREE_FUNCTION_COVERS = [
   ["accessibility.axe."],
   [
@@ -53,8 +92,10 @@ export function runnerDispatches(source, tableConst) {
   if (table === null) return null;
   // Separate closure shapes to avoid nested quantifiers; free-function rows yield no type.
   const types = [
-    ...table.matchAll(/run: \|inputs\| ([\w:]+)(?:\.run|::evaluate)\(/g),
-    ...table.matchAll(/run: \|inputs\| \{\n\s*([\w:]+)(?:\.run|::evaluate)\(/g),
+    ...table.matchAll(/run: \|inputs\| ([\w:]+)\s*(?:\.(?:run|run_with_protocol)|::evaluate)\(/g),
+    ...table.matchAll(
+      /run: \|inputs\| \{\n\s*([\w:]+)\s*(?:\.(?:run|run_with_protocol)|::evaluate)\(/g,
+    ),
   ].map((match) => match[1].split("::").pop());
   const freeFunctions = [...table.matchAll(/covers:\s*&\[([^\]]*)\],\s*run:\s*\|inputs\|/g)].filter(
     (match) => {

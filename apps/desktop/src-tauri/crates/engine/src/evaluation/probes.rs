@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 use super::probe_checks::PROBE_CHECKS;
+use super::readings::Readings;
 use super::sitemap_children::ChildSitemaps;
 use super::{
     CheckLayer, EvaluationError, EvaluationRequest, NotEvaluated, NotEvaluatedReason, PlannedCheck,
@@ -110,6 +111,14 @@ pub fn probe_key(request: &ProbeRequest) -> String {
             key.push(KEY_SEPARATOR);
             key.push_str(SITEMAP_CHILD_FIELD);
         }
+        BodyLimit::Sweep => {
+            key.push(KEY_SEPARATOR);
+            key.push_str("limit=sweep");
+        }
+        BodyLimit::Stylesheet => {
+            key.push(KEY_SEPARATOR);
+            key.push_str("limit=stylesheet");
+        }
         BodyLimit::Probe => {}
     }
     if request.coding == ContentCoding::Raw {
@@ -133,6 +142,16 @@ pub fn probe_key(request: &ProbeRequest) -> String {
 pub(super) fn is_sitemap_child_key(key: &str) -> bool {
     key.rsplit_once(KEY_SEPARATOR)
         .is_some_and(|(_, field)| field == SITEMAP_CHILD_FIELD)
+}
+
+/// Whether a probe key names a sweep, before coding, timing or header fields.
+pub(super) fn is_sweep_key(key: &str) -> bool {
+    key.split(KEY_SEPARATOR).nth(4) == Some("limit=sweep")
+}
+
+/// Whether a probe key names a stylesheet before coding, timing or header fields.
+pub(super) fn is_stylesheet_key(key: &str) -> bool {
+    key.split(KEY_SEPARATOR).nth(4) == Some("limit=stylesheet")
 }
 
 /// Whether a probe key names a sitemap body limit, as `probe_key` writes it.
@@ -201,6 +220,8 @@ impl<'a> ProbeOutcomes<'a> {
 pub struct ProbeContext<'a> {
     pub page: &'a PageContext,
     pub outcomes: &'a ProbeOutcomes<'a>,
+    /// Compact readings of documents recorded alone, never serialized.
+    pub readings: &'a Readings,
     /// Pre-redirect URL, or `None` when this vantage cannot place the walk's start.
     pub requested_url: Option<&'a str>,
     pub resolver_facts: Option<&'a crate::dns::ResolverFacts>,
@@ -217,27 +238,9 @@ pub struct ProbeContext<'a> {
 }
 
 /// Probe entries not yet planned by this crate, paired with the required reason.
+// Kept on two lines when empty so the table parsers that read it find its end.
+#[rustfmt::skip]
 pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[
-    (
-        "security.directory_listing",
-        "the candidate-path sweep is still planned by the desktop shell",
-    ),
-    (
-        "security.exposed_files.",
-        "the candidate-path sweep is still planned by the desktop shell",
-    ),
-    (
-        "security.exposed_files.source_secrets",
-        "the candidate-path sweep is still planned by the desktop shell",
-    ),
-    (
-        "security.exposed_files.summary",
-        "the candidate-path sweep is still planned by the desktop shell",
-    ),
-    (
-        "security.security_txt",
-        "the well-known path sweep is still planned by the desktop shell",
-    ),
 ];
 
 /// The facts a fetch plan can supply. A probe-lane check declaring anything
@@ -381,3 +384,7 @@ fn sitemap_keys_match_only_sitemap_body_limits() {
         .iter()
         .all(|request| !is_sitemap_probe_key(&probe_key(request))));
 }
+
+#[cfg(test)]
+#[path = "probes_sweeps_tests.rs"]
+mod probes_sweeps_tests;

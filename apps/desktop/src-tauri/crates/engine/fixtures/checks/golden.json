@@ -665,6 +665,108 @@
         {
           "category": "accessibility",
           "checkId": "accessibility.form_labels",
+          "confidence": "high",
+          "description": "No form inputs found on this page.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": null,
+          "severity": "low",
+          "status": "pass",
+          "title": "Form labels"
+        }
+      ],
+      "name": "disabled_hidden_task_list_checkboxes_need_no_label",
+      "page": {
+        "body": "<ul><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li></ul>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/contact"
+      }
+    },
+    {
+      "check": "accessibility.form_labels",
+      "expected": [
+        {
+          "category": "accessibility",
+          "checkId": "accessibility.form_labels",
+          "confidence": "needs_review",
+          "confidenceReason": "This static HTML check recognizes labels, non-empty aria-label, aria-labelledby references to an observed id, and non-empty title fallbacks. Client rendering or a more complex accessible-name relationship can change the final accessibility tree.",
+          "description": "8 of 8 form inputs have no associated label or recognized accessible-name marker in the fetched HTML (0 appear named). If these controls render without a runtime-provided name, they fail WCAG 2.2 SC 4.1.2 (Name, Role, Value). WCAG 2.2 SC 3.3.2 (Labels or Instructions) separately requires a label or instructions when content requires user input; confirm that visible context in the rendered form.",
+          "fixPrompt": null,
+          "manualFix": "Inspect each surfaced control in the rendered accessibility tree first. Prefer a visible <label for=\"input-id\">Caption</label> paired with a unique input id, or wrap the control in its label. Use aria-labelledby when existing visible text should provide the name and aria-label only when no visible label is practical. Give related checkbox or radio groups a fieldset and legend, then verify keyboard and screen-reader output.",
+          "rawData": {
+            "inputs": 8,
+            "labeled_via_aria": 0,
+            "labeled_via_for": 0,
+            "labeled_via_title": 0,
+            "labeled_via_wrapping": 0,
+            "unlabeled": 8
+          },
+          "severity": "high",
+          "status": "fail",
+          "title": "Form inputs missing labels",
+          "whyItMatters": "A rendered control without an accessible name is difficult to identify with a screen reader or voice control. The static source finding must be confirmed against the rendered accessibility tree."
+        }
+      ],
+      "name": "disabled_checkboxes_still_exposed_need_labels",
+      "page": {
+        "body": "<ul><li><input type=\"checkbox\" disabled> item</li><li><input type=\"checkbox\" disabled> item</li><li><input type=\"checkbox\" disabled> item</li><li><input type=\"checkbox\" disabled> item</li><li><input type=\"checkbox\" disabled> item</li><li><input type=\"checkbox\" disabled> item</li><li><input type=\"checkbox\" disabled> item</li><li><input type=\"checkbox\" disabled> item</li></ul>",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/contact"
+      }
+    },
+    {
+      "check": "accessibility.form_labels",
+      "expected": [
+        {
+          "category": "accessibility",
+          "checkId": "accessibility.form_labels",
+          "confidence": "needs_review",
+          "confidenceReason": "This static HTML check recognizes labels, non-empty aria-label, aria-labelledby references to an observed id, and non-empty title fallbacks. Client rendering or a more complex accessible-name relationship can change the final accessibility tree.",
+          "description": "1 of 1 form input has no associated label or recognized accessible-name marker in the fetched HTML (0 appear named). If these controls render without a runtime-provided name, they fail WCAG 2.2 SC 4.1.2 (Name, Role, Value). WCAG 2.2 SC 3.3.2 (Labels or Instructions) separately requires a label or instructions when content requires user input; confirm that visible context in the rendered form.",
+          "fixPrompt": null,
+          "manualFix": "Inspect each surfaced control in the rendered accessibility tree first. Prefer a visible <label for=\"input-id\">Caption</label> paired with a unique input id, or wrap the control in its label. Use aria-labelledby when existing visible text should provide the name and aria-label only when no visible label is practical. Give related checkbox or radio groups a fieldset and legend, then verify keyboard and screen-reader output.",
+          "rawData": {
+            "inputs": 1,
+            "labeled_via_aria": 0,
+            "labeled_via_for": 0,
+            "labeled_via_title": 0,
+            "labeled_via_wrapping": 0,
+            "unlabeled": 1
+          },
+          "severity": "high",
+          "status": "fail",
+          "title": "Form inputs missing labels",
+          "whyItMatters": "A rendered control without an accessible name is difficult to identify with a screen reader or voice control. The static source finding must be confirmed against the rendered accessibility tree."
+        }
+      ],
+      "name": "text_input_beside_hidden_task_list_needs_label",
+      "page": {
+        "body": "<ul><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li><li><input type=\"checkbox\" disabled aria-hidden=\"true\"> item</li></ul><input type=\"text\">",
+        "evaluation_time": "2026-08-05T00:00:00Z",
+        "headers": [],
+        "http_version": "HTTP/2.0",
+        "is_localhost": false,
+        "is_strict_localhost": false,
+        "status_code": 200,
+        "url": "https://example.com/contact"
+      }
+    },
+    {
+      "check": "accessibility.form_labels",
+      "expected": [
+        {
+          "category": "accessibility",
+          "checkId": "accessibility.form_labels",
           "confidence": "needs_review",
           "confidenceReason": "This static HTML check recognizes labels, non-empty aria-label, aria-labelledby references to an observed id, and non-empty title fallbacks. Client rendering or a more complex accessible-name relationship can change the final accessibility tree.",
           "description": "1 of 1 form input has no associated label or recognized accessible-name marker in the fetched HTML (0 appear named). If these controls render without a runtime-provided name, they fail WCAG 2.2 SC 4.1.2 (Name, Role, Value). WCAG 2.2 SC 3.3.2 (Labels or Instructions) separately requires a label or instructions when content requires user input; confirm that visible context in the rendered form.",

@@ -58,6 +58,7 @@ import { unifiedScanArchitectureFailures } from "./lib/guardrail-unified-scan-ru
 import { desktopSeverityConsistencyFailures } from "./lib/guardrail-severity-rules.mjs";
 import { desktopSharedTypeFailures } from "./lib/guardrail-type-rules.mjs";
 import { polishCopySafetyFailures } from "./lib/guardrail-polish-copy-rules.mjs";
+import { polishWordListFailures } from "./lib/guardrail-polish-word-lists.mjs";
 import { telemetrySafetyFailures } from "./lib/guardrail-telemetry-rules.mjs";
 import { telemetryDisclosureFailures } from "./lib/guardrail-telemetry-disclosure-rules.mjs";
 import { telemetryConsentFailures } from "./lib/guardrail-telemetry-consent-rules.mjs";
@@ -516,6 +517,7 @@ export function repoGuardrailFailures({ root, read, readJson, exists, listFiles 
   );
 
   failures.push(...rustLineBudgetFailures(read, listFiles));
+  failures.push(...polishWordListFailures(read, exists, listFiles));
 
   failures.push(...desktopBoundaryFailures(read, readJson, exists, listFiles));
 

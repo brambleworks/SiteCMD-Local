@@ -364,7 +364,7 @@ export function rustLineBudgetFailures() {}
     // wherever `git rev-parse --git-path COMMIT_EDITMSG` says it lives
     // (never `<worktree>/.git/COMMIT_EDITMSG`, which does not exist).
     extraWorktree = fs.mkdtempSync(path.join(os.tmpdir(), "budget-ratchet-worktree-"));
-    git(repo, "worktree", "add", "-b", "budget-ratchet-worktree-branch", extraWorktree);
+    git(repo, "worktree", "add", "--quiet", "-b", "budget-ratchet-worktree-branch", extraWorktree);
 
     write(
       extraWorktree,

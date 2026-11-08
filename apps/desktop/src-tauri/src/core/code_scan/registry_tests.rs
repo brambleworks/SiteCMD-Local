@@ -759,8 +759,11 @@ fn confidence_policy_arms_reference_registered_slugs() {
     let start = content
         .find("fn code_issue_confidence")
         .expect("code_issue_confidence exists");
-    let end = content[start..]
-        .find("\npub fn ")
+    // The function ends at the next item or at the test module.
+    let end = ["\npub fn ", "\n#[cfg(test)]"]
+        .iter()
+        .filter_map(|marker| content[start..].find(marker))
+        .min()
         .map(|offset| start + offset)
         .unwrap_or(content.len());
     let slug_literal = regex::Regex::new(r#""([a-z][a-z0-9-]*)""#).unwrap();

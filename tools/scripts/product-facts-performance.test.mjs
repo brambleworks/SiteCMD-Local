@@ -35,10 +35,9 @@ describe("the performance facts the engine publishes", () => {
     expect(changed.scannerIdentity.limits.assetSampleLimit).toBe(31);
   });
 
-  it("counts each performance check the engine's probes produce", () => {
-    // Excluding any produced performance check must reduce the hosted count.
+  it("refuses to publish when any performance probe check is excluded", () => {
+    // Excluding a produced performance check silently reduces the hosted count.
     const PROBES = "apps/desktop/src-tauri/crates/engine/src/evaluation/probes.rs";
-    const published = productFacts(read, listFiles).hostedCheckCounts.web;
     for (const id of [
       "performance.asset_caching",
       "performance.asset_weight",
@@ -48,13 +47,14 @@ describe("the performance facts the engine publishes", () => {
       "performance.redirect_chain",
       "performance.ttfb",
     ]) {
-      const excluded = factsWith(PROBES, (source) =>
-        source.replace(
-          "pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[",
-          `pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[\n    ("${id}", "excluded for this case"),`,
+      expect(() =>
+        factsWith(PROBES, (source) =>
+          source.replace(
+            "pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[",
+            `pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[\n    ("${id}", "excluded for this case"),`,
+          ),
         ),
-      );
-      expect(excluded.hostedCheckCounts.web, id).toBe(published - 1);
+      ).toThrow(`${id} runs neither on the hosted lane nor as a preview check`);
     }
   });
 });

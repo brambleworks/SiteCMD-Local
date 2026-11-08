@@ -1164,7 +1164,6 @@ fn polish_subjective_signals_are_needs_review() {
         "default-error-page",
         "default-deployment-subdomain",
         "tailwind-class-density",
-        "utility-to-custom-ratio",
         "no-css-architecture",
         "inline-style-density",
         "div-soup-ratio",
@@ -1174,7 +1173,7 @@ fn polish_subjective_signals_are_needs_review() {
         "console-log-production",
     ];
     for id in needs_review_signals {
-        let (confidence, reason) = crate::core::confidence_policy::polish_signal_confidence(id);
+        let (confidence, reason) = crate::checks::polish::polish_signal_confidence(id);
         assert_eq!(
             confidence, NeedsReview,
             "polish signal {id} must ship as NeedsReview (heuristic with known FP risk)"
@@ -1188,7 +1187,7 @@ fn polish_subjective_signals_are_needs_review() {
     // Direct structural facts are Confirmed observations.
     let confirmed_signals = ["missing-lang", "missing-og-tags"];
     for id in confirmed_signals {
-        let (confidence, _) = crate::core::confidence_policy::polish_signal_confidence(id);
+        let (confidence, _) = crate::checks::polish::polish_signal_confidence(id);
         assert_eq!(
             confidence, Confirmed,
             "polish signal {id} is a direct structural fact - should be Confirmed"
@@ -1197,7 +1196,7 @@ fn polish_subjective_signals_are_needs_review() {
 
     // Unknown signal IDs default to NeedsReview (safer than High).
     let (unknown_confidence, unknown_reason) =
-        crate::core::confidence_policy::polish_signal_confidence("not-a-real-signal");
+        crate::checks::polish::polish_signal_confidence("not-a-real-signal");
     assert_eq!(unknown_confidence, NeedsReview);
     assert!(unknown_reason.is_some());
 }
@@ -1216,7 +1215,6 @@ fn polish_review_only_signals_are_low_severity() {
         "inline-style-density",
         "tailwind-class-density",
         "no-css-architecture",
-        "utility-to-custom-ratio",
         "div-soup-ratio",
         "default-page-title",
         "missing-og-tags",

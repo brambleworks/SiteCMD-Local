@@ -6,9 +6,20 @@ use crate::manifest::{capability_manifest, CheckScope};
 use crate::probe::{ProbeBody, ProbeFailure, ProbeFailureClass, ProbeResponse};
 use crate::vocab::{CheckResult, CheckStatus};
 
-// These two state nothing until robots.txt answers with a body or the walk
-// finds a sitemap, as on the desktop.
-const SILENT_WITHOUT_INPUT: [&str; 2] = ["seo.ai_crawler_blocking", "seo.sitemap_freshness"];
+// The first two state nothing until robots.txt answers with a body or the walk
+// finds a sitemap, as on the desktop; the source advisory needs a secret-named
+// identifier in an inline script.
+const SILENT_WITHOUT_INPUT: [&str; 3] = [
+    "seo.ai_crawler_blocking",
+    "seo.sitemap_freshness",
+    "security.exposed_files.source_secrets",
+];
+
+// A family id names every dynamic id under its prefix that no sibling id of
+// the same row covers.
+fn names(covers: &[&str], id: &str, row: &str) -> bool {
+    row == id || (id.ends_with('.') && row.starts_with(id) && !covers.contains(&row))
+}
 
 // Page fixture that makes two checks request the same relative privacy path.
 const PAGE: &str = concat!(
@@ -43,6 +54,7 @@ fn request(body: &str) -> EvaluationRequest {
         resolver_facts: None,
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: None,
         browser_facts: None,
     }
@@ -368,7 +380,10 @@ fn a_request_without_probe_outcomes_answers_as_it_did_before() {
                 "'{id}' must not be planned without the fetch fact"
             );
             assert!(
-                !evaluated.results.iter().any(|row| &row.check_id == id),
+                !evaluated
+                    .results
+                    .iter()
+                    .any(|row| names(check.covers, id, &row.check_id)),
                 "'{id}' must produce no verdict row without the fetch fact"
             );
             let reason = &evaluated
@@ -429,7 +444,10 @@ fn executing_the_plan_moves_every_covered_check_to_a_verdict() {
                 continue;
             }
             assert!(
-                response.results.iter().any(|row| &row.check_id == id),
+                response
+                    .results
+                    .iter()
+                    .any(|row| names(check.covers, id, &row.check_id)),
                 "'{id}' produced a verdict row"
             );
         }
@@ -730,13 +748,18 @@ fn a_cleartext_hosted_page_grades_the_https_origin_as_availability() {
 // A lane-wide transport failure emits every row without grading any verdict.
 #[test]
 fn a_lane_wide_transport_failure_produces_no_probe_lane_verdict() {
+    // Every probe row needs an input to fetch before a failed lane can disprove its execution.
+    let mut page = request(PAGE);
+    page.page
+        .body
+        .push_str(r#"<link rel="stylesheet" href="/site.css">"#);
     let failure = |_: &PlannedProbe| {
         ProbeOutcome::Failure(ProbeFailure {
             class: ProbeFailureClass::Transport,
             detail: "connection refused".into(),
         })
     };
-    let (evaluated, _) = drive_to_fixpoint(request(PAGE), failure);
+    let (evaluated, _) = drive_to_fixpoint(page, failure);
     let response = evaluate(&evaluated).expect("request evaluates");
 
     let mut graded = 0;
@@ -755,7 +778,7 @@ fn a_lane_wide_transport_failure_produces_no_probe_lane_verdict() {
             let rows: Vec<&CheckResult> = response
                 .results
                 .iter()
-                .filter(|row| &row.check_id == id)
+                .filter(|row| names(check.covers, id, &row.check_id))
                 .collect();
             assert!(!rows.is_empty(), "'{id}' still emits a row");
             for row in rows {

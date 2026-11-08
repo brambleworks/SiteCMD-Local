@@ -3,7 +3,7 @@
 //! Protocol and compression compare within a transport profile; timing samples
 //! remain outside finding lifecycle.
 
-use crate::manifest::{CompareDimension, Entry, MeasurementUnit};
+use crate::manifest::{CompareDimension, Entry, MeasurementUnit, RuntimeFact};
 
 pub const ENTRIES: &[Entry] = &[
     // Revision 2 declines to grade a sample nobody answered.
@@ -22,9 +22,11 @@ pub const ENTRIES: &[Entry] = &[
         .browser()
         .measurement(MeasurementUnit::Milliseconds),
     Entry::new("performance.fonts"),
-    // The hosted runtime cannot observe the negotiated HTTP protocol.
+    // The entry page protocol comes from the runtime's own connection observation.
     Entry::new("performance.http2")
-        .unsupported()
+        .probe()
+        .origin()
+        .needs(&[RuntimeFact::NegotiatedProtocol])
         .compare_on(&[CompareDimension::TransportProfile]),
     Entry::new("performance.images"),
     Entry::new("performance.images.dimensions"),

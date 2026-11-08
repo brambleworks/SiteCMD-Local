@@ -2,7 +2,7 @@
 //! review states rather than confirmed absence.
 
 use crate::checks::{CheckResult, CheckStatus, ScanCategory, Severity};
-use crate::probe::ProbeOutcome;
+use crate::probe::{ProbeOutcome, ProbeRequest};
 use serde::{Deserialize, Serialize};
 
 /// Canonical ID for the portable security.txt verdict.
@@ -65,6 +65,11 @@ pub fn classify_security_txt_probe(outcome: ProbeOutcome) -> SecurityTxtFetch {
             (status, _) => SecurityTxtFetch::Unavailable { status },
         },
     }
+}
+
+/// GET security.txt under the ordinary probe cap with a success-only body.
+pub fn security_txt_request(url: &str) -> ProbeRequest {
+    ProbeRequest::get(url)
 }
 
 /// RFC 9116 and legacy security.txt probe URLs for one origin.
