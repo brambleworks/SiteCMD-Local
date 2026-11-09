@@ -32,7 +32,7 @@ fn runtime_eol_flags_engines_node_past_end_of_life() {
         .contains("commercial or downstream support"));
     let evidence = issue.evidence.as_deref().unwrap_or_default();
     assert!(
-        evidence.contains("2025-03-27"),
+        evidence.contains("2025-04-30"),
         "evidence should carry the vendored EOL date: {evidence}"
     );
     assert!(

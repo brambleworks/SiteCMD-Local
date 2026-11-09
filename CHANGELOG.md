@@ -19,6 +19,12 @@ public repository history.
   null `defaultSeverity` and `severitySource: "per_finding"`. `--format json`
   prints a deterministic inventory with the CLI version for integrations.
 
+### Fixed
+
+- The runtime end-of-life check now uses each line's official end-of-life
+  date. Seven Node.js lines carried their last release date instead, and
+  Python 3.10 carried October 31, 2026 instead of October 1, 2026.
+
 ## [2.0.0] - 2026-10-29
 
 ### Added

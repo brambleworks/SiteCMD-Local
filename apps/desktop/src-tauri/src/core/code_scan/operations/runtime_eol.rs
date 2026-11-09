@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 const VERSION_FILE_MAX_BYTES: u64 = 64 * 1024;
 const CONFIG_FILE_MAX_BYTES: u64 = 250_000;
 
-/// Vendored runtime end-of-life tables, snapshotted July 2026 from the
+/// Vendored runtime end-of-life tables, snapshotted November 2026 from the
 /// upstream projects' official support schedules. The scanner never fetches
 /// these over the network; extend the tables when schedules change.
 struct EolEntry {
@@ -20,7 +20,7 @@ const NODE_EOL: &[EolEntry] = &[
     EolEntry {
         major: 16,
         minor: 0,
-        eol: "2023-08-08",
+        eol: "2023-09-11",
     },
     EolEntry {
         major: 17,
@@ -30,22 +30,22 @@ const NODE_EOL: &[EolEntry] = &[
     EolEntry {
         major: 18,
         minor: 0,
-        eol: "2025-03-27",
+        eol: "2025-04-30",
     },
     EolEntry {
         major: 19,
         minor: 0,
-        eol: "2023-04-10",
+        eol: "2023-06-01",
     },
     EolEntry {
         major: 20,
         minor: 0,
-        eol: "2026-03-24",
+        eol: "2026-04-30",
     },
     EolEntry {
         major: 21,
         minor: 0,
-        eol: "2024-04-10",
+        eol: "2024-06-01",
     },
     EolEntry {
         major: 22,
@@ -55,7 +55,7 @@ const NODE_EOL: &[EolEntry] = &[
     EolEntry {
         major: 23,
         minor: 0,
-        eol: "2025-05-14",
+        eol: "2025-06-01",
     },
     EolEntry {
         major: 24,
@@ -65,7 +65,7 @@ const NODE_EOL: &[EolEntry] = &[
     EolEntry {
         major: 25,
         minor: 0,
-        eol: "2026-03-31",
+        eol: "2026-06-01",
     },
 ];
 
@@ -88,7 +88,7 @@ const PYTHON_EOL: &[EolEntry] = &[
     EolEntry {
         major: 3,
         minor: 10,
-        eol: "2026-10-31",
+        eol: "2026-10-01",
     },
     EolEntry {
         major: 3,
@@ -599,6 +599,72 @@ mod tests {
     }
 
     #[test]
+    fn runtime_eol_tables_match_official_schedules() {
+        let schedules = [
+            // https://raw.githubusercontent.com/nodejs/Release/main/schedule.json (`end`)
+            (
+                Runtime::Node,
+                [
+                    (16, 0, "2023-09-11"),
+                    (17, 0, "2022-06-01"),
+                    (18, 0, "2025-04-30"),
+                    (19, 0, "2023-06-01"),
+                    (20, 0, "2026-04-30"),
+                    (21, 0, "2024-06-01"),
+                    (22, 0, "2027-04-30"),
+                    (23, 0, "2025-06-01"),
+                    (24, 0, "2028-04-30"),
+                    (25, 0, "2026-06-01"),
+                ]
+                .as_slice(),
+            ),
+            // https://devguide.python.org/versions/ (3.11 publishes only a month)
+            (
+                Runtime::Python,
+                [
+                    (3, 7, "2023-06-27"),
+                    (3, 8, "2024-10-07"),
+                    (3, 9, "2025-10-31"),
+                    (3, 10, "2026-10-01"),
+                    (3, 11, "2027-10"),
+                ]
+                .as_slice(),
+            ),
+            // https://www.php.net/eol.php (8.0, 8.1)
+            // https://www.php.net/supported-versions.php (8.2, 8.3 security support)
+            (
+                Runtime::Php,
+                [
+                    (8, 0, "2023-11-26"),
+                    (8, 1, "2025-12-31"),
+                    (8, 2, "2026-12-31"),
+                    (8, 3, "2027-12-31"),
+                ]
+                .as_slice(),
+            ),
+        ];
+        let mut mismatches = Vec::new();
+        for (runtime, expected) in schedules {
+            let actual = runtime.eol_table();
+            assert_eq!(actual.len(), expected.len(), "{runtime:?} row count");
+            for (entry, &(major, minor, eol)) in actual.iter().zip(expected) {
+                let actual_eol = if eol.len() == 7 {
+                    entry.eol.get(..7)
+                } else {
+                    Some(entry.eol)
+                };
+                if (entry.major, entry.minor, actual_eol) != (major, minor, Some(eol)) {
+                    mismatches.push(format!(
+                        "{runtime:?} {major}.{minor}: expected {eol}, got {}",
+                        entry.eol
+                    ));
+                }
+            }
+        }
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+    }
+
+    #[test]
     fn runtime_eol_range_minimum_resolution() {
         // Lower-bound comparators resolve to the version they admit.
         assert_eq!(minimum_admitted_version(">=18"), Some(version(18, None)));
@@ -646,15 +712,15 @@ mod tests {
     fn runtime_eol_status_respects_dates_and_table_bounds() {
         let today = day("2026-07-04");
 
-        // Node 18 (EOL 2025-03-27) is past end of life; Node 24 is not.
+        // Node 18 (EOL 2025-04-30) is past end of life; Node 24 is not.
         assert!(matches!(
             eol_status(Runtime::Node, version(18, None), today),
             Some(EolStatus::PastEol(entry)) if entry.major == 18
         ));
         assert!(eol_status(Runtime::Node, version(24, None), today).is_none());
         // Strictly after the date: the EOL day itself does not fire yet.
-        assert!(eol_status(Runtime::Node, version(20, None), day("2026-03-24")).is_none());
-        assert!(eol_status(Runtime::Node, version(20, None), day("2026-03-25")).is_some());
+        assert!(eol_status(Runtime::Node, version(20, None), day("2026-04-30")).is_none());
+        assert!(eol_status(Runtime::Node, version(20, None), day("2026-05-01")).is_some());
         // Versions older than the oldest tracked line are end of life.
         assert!(matches!(
             eol_status(Runtime::Node, version(14, None), today),
