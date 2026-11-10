@@ -186,17 +186,37 @@ fn inspect_local_sqlite_file(root: &Path, path: &Path) -> Option<LocalSqliteSnap
 
     Some(LocalSqliteSnapshot {
         absolute_path: path.to_path_buf(),
-        relative_path: path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/"),
+        relative_path: relative_database_path(root, path),
         tables,
         has_prisma_migrations_table,
         applied_prisma_migrations,
         has_drizzle_migrations_table,
         applied_drizzle_migration_count,
     })
+}
+
+fn relative_database_path(root: &Path, canonical_path: &Path) -> String {
+    let root = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let root = std::path::absolute(&root).unwrap_or(root);
+    let mut root_components = root.components().peekable();
+    let mut database_components = canonical_path.components().peekable();
+    while root_components.peek().is_some() && root_components.peek() == database_components.peek() {
+        root_components.next();
+        database_components.next();
+    }
+
+    let mut relative = PathBuf::new();
+    for component in root_components {
+        if matches!(component, std::path::Component::Normal(_)) {
+            relative.push("..");
+        }
+    }
+    for component in database_components {
+        if let std::path::Component::Normal(name) = component {
+            relative.push(name);
+        }
+    }
+    relative.to_string_lossy().replace('\\', "/")
 }
 
 fn quote_sqlite_identifier(value: &str) -> String {
@@ -206,6 +226,19 @@ fn quote_sqlite_identifier(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unavailable_audit_root_does_not_drop_the_database_snapshot() {
+        let temp = tempfile::tempdir().expect("temporary fixture");
+        let path = temp.path().join("local.db");
+        drop(Connection::open(&path).expect("fixture database"));
+        let root = temp.path().join("unavailable");
+
+        let snapshot = inspect_local_sqlite_file(&root, &path)
+            .expect("root canonicalization failure must not drop database evidence");
+
+        assert_eq!(snapshot.relative_path, "../local.db");
+    }
 
     #[test]
     fn incomplete_migration_schema_drops_the_snapshot_instead_of_fabricating_empty_evidence() {

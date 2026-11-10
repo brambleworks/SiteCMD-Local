@@ -21,6 +21,9 @@ public repository history.
 
 ### Fixed
 
+- CLI local database findings now use paths relative to the audit root in every
+  report format, and absolute audit targets display as `.` in report titles.
+  Databases outside the audit root display a relative path with `..` segments.
 - The runtime end-of-life check now uses each line's official end-of-life
   date. Seven Node.js lines carried their last release date instead, and
   Python 3.10 carried October 31, 2026 instead of October 1, 2026.
