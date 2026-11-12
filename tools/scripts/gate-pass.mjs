@@ -1,72 +1,113 @@
 #!/usr/bin/env node
-// Records the checked-out trees that passed the full pre-push gate. A push opens
-// its connection to GitHub before the hook runs, and GitHub drops one left idle
-// for about six minutes, so a long gate run inside the push can lose the push.
-// `pnpm gate` (`run`) runs the gate on a clean checkout ahead of the push and
-// records the tree; the pre-push hook skips only when `check` finds that record.
+// A push connects to GitHub before its pre-push hook runs, and GitHub drops a
+// push left idle for about six minutes, so the 20-minute gate cannot run inside
+// the push. `run` (`pnpm gate`) runs lefthook's `gate` hook on a clean checkout
+// and records the commit that passed. `check` is the whole pre-push hook: it
+// reads the pushed refs and refuses any commit without a record from the last
+// day.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+// Some gate checks read the network, such as dependency advisories, so a pass goes stale.
+const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const NO_OBJECT = /^0+$/;
+
 const git = (...args) =>
   execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 
-/** The checked-out tree, or null while any tracked or untracked file differs from it. */
-function cleanTree() {
-  if (git("status", "--porcelain", "--untracked-files=all") !== "") return null;
-  return git("rev-parse", "HEAD^{tree}");
+// Worktrees share records: a commit names the same files and history in every checkout.
+const recordPath = (commit) =>
+  path.join(git("rev-parse", "--path-format=absolute", "--git-common-dir"), "sitecmd-gate", commit);
+
+function passedRecently(commit) {
+  try {
+    const age =
+      Date.now() - Date.parse(JSON.parse(fs.readFileSync(recordPath(commit), "utf8")).passed);
+    return age >= 0 && age < MAX_AGE_MS;
+  } catch {
+    return false;
+  }
 }
 
-// Worktrees share the record: a tree hash names the same files in every checkout.
-const recordPath = (tree) =>
-  path.join(git("rev-parse", "--path-format=absolute", "--git-common-dir"), "sitecmd-gate", tree);
+/** HEAD, or null while any tracked or untracked file differs from it. */
+function cleanCommit() {
+  if (git("status", "--porcelain", "--untracked-files=all") !== "") return null;
+  return git("rev-parse", "HEAD");
+}
 
-function check() {
-  try {
-    const tree = cleanTree();
-    if (tree && fs.existsSync(recordPath(tree))) {
-      console.error(
-        `Skipped the pre-push gate: tree ${tree.slice(0, 12)} passed it under pnpm gate.`,
-      );
-      return 0;
-    }
-  } catch {
-    // Anything unreadable runs the gate.
+// Each line is `<local ref> <local object> <remote ref> <remote object>`.
+function check(input) {
+  const lines = input.split("\n").filter((line) => line.trim() !== "");
+  if (lines.length === 0) {
+    console.error("pre-push received no refs to check, so it refuses the push.");
+    return 1;
   }
+  const missing = [];
+  for (const line of lines) {
+    const [localRef, object = ""] = line.trim().split(/\s+/);
+    // A deletion pushes no commit.
+    if (NO_OBJECT.test(object)) continue;
+    let commit = object;
+    try {
+      commit = git("rev-parse", "--verify", `${object}^{commit}`);
+    } catch {
+      // Not a commit: no record can match it.
+    }
+    if (!passedRecently(commit)) missing.push(`${localRef} (${object.slice(0, 12)})`);
+  }
+  if (missing.length === 0) return 0;
+  console.error(
+    `No gate pass from the last day for ${missing.join(", ")}. Check out each one, run pnpm gate, then push again.`,
+  );
   return 1;
 }
 
 function run() {
-  const tree = cleanTree();
-  if (!tree) {
+  const commit = cleanCommit();
+  if (!commit) {
     console.error(
       "pnpm gate needs a clean checkout, because the gate tests the files on disk. Commit or remove every change first.",
     );
     return 1;
   }
-  if (fs.existsSync(recordPath(tree))) {
-    console.log(`Tree ${tree.slice(0, 12)} already passed the gate.`);
+  if (passedRecently(commit)) {
+    console.log(`Commit ${commit.slice(0, 12)} passed the gate within the last day.`);
     return 0;
   }
-  const gate = spawnSync("lefthook", ["run", "pre-push", "--all-files"], { stdio: "inherit" });
+  // LEFTHOOK=0, LEFTHOOK_EXCLUDE and LEFTHOOK_CONFIG would skip jobs and still exit 0.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith("LEFTHOOK")),
+  );
+  const lefthook = path.join(
+    git("rev-parse", "--show-toplevel"),
+    "node_modules",
+    ".bin",
+    "lefthook",
+  );
+  const gate = spawnSync(lefthook, ["run", "gate", "--all-files"], { stdio: "inherit", env });
+  if (gate.error) {
+    console.error(`Could not run ${lefthook}: ${gate.error.message}. Run pnpm install first.`);
+    return 1;
+  }
   if (gate.status !== 0) return gate.status ?? 1;
-  if (cleanTree() !== tree) {
+  if (cleanCommit() !== commit) {
     console.error("The checkout changed while the gate ran, so no pass was recorded.");
     return 1;
   }
-  fs.mkdirSync(path.dirname(recordPath(tree)), { recursive: true });
+  fs.mkdirSync(path.dirname(recordPath(commit)), { recursive: true });
   fs.writeFileSync(
-    recordPath(tree),
-    `${JSON.stringify({ commit: git("rev-parse", "HEAD"), passed: new Date().toISOString() })}\n`,
+    recordPath(commit),
+    `${JSON.stringify({ commit, passed: new Date().toISOString() })}\n`,
   );
-  console.log(
-    `Recorded a gate pass for tree ${tree.slice(0, 12)}. Pushing it skips the pre-push gate.`,
-  );
+  console.log(`Recorded a gate pass for commit ${commit.slice(0, 12)}. Push it within a day.`);
   return 0;
 }
 
-const command = { check, run }[process.argv[2]];
-if (!command) {
+const command = process.argv[2];
+if (command === "check") process.exitCode = check(fs.readFileSync(0, "utf8"));
+else if (command === "run") process.exitCode = run();
+else {
   console.error("Usage: gate-pass.mjs check|run");
   process.exitCode = 2;
-} else process.exitCode = command();
+}

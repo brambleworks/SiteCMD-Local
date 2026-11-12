@@ -215,7 +215,7 @@ utilities link to their installation instructions:
 - [Tauri's system dependencies for your OS](https://v2.tauri.app/start/prerequisites/),
   including the platform webview and native build tools.
 - The [Gitleaks CLI](https://github.com/gitleaks/gitleaks#installing), required
-  by the pre-push and publication-history secret scans.
+  by the gate's and the publication-history secret scans.
 - [cargo-audit](https://github.com/rustsec/rustsec/tree/master/cargo-audit),
   [cargo-deny](https://embarkstudios.github.io/cargo-deny/cli/index.html), and
   [cargo-nextest](https://nexte.st/docs/installation/pre-built-binaries/),

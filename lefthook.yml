@@ -39,12 +39,17 @@ commit-msg:
       run: node tools/scripts/check-budget-ratchet.mjs --staged
 
 pre-push:
+  # A push connects to GitHub before this hook runs, and GitHub drops a push
+  # left idle for about six minutes, so the gate below cannot run inside the
+  # push. `pnpm gate` runs it ahead of the push and records the commit; this
+  # hook refuses any pushed commit without a record from the last day.
+  commands:
+    gate-pass:
+      use_stdin: true
+      run: node tools/scripts/gate-pass.mjs check
+
+gate:
   # Full local mirror of release and pull-request checks.
-  #
-  # `pnpm gate` runs this block on a clean checkout and records its tree, so a
-  # push of that tree skips it instead of holding GitHub's connection open.
-  skip:
-    - run: node tools/scripts/gate-pass.mjs check
   commands:
     verify-push:
       run: pnpm verify:push

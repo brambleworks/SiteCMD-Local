@@ -62,7 +62,9 @@ headless CLI does not provide the checkout wrapper's `open` convenience command.
 - `pnpm format:check` - repository formatting.
 - `pnpm guardrails:repo` - architecture, publication, and repository policy checks.
 - `pnpm verify:push` - the full push gate. Run after committing, as it also validates the commit and declared Rust toolchain policy.
-- Lefthook runs the relevant subset on `pre-commit` and `pre-push`.
+- Lefthook runs the relevant subset on `pre-commit`. `pnpm gate` runs
+  `pnpm verify:push` and records the commit that passed, and `pre-push` refuses
+  a pushed commit without a pass from the last day.
 
 Run direct Rust checks from the native workspace so rustup selects its pinned toolchain:
 
