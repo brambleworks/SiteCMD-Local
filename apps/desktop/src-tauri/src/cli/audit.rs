@@ -142,7 +142,12 @@ pub fn run(args: &AuditArgs) -> Result<AuditOutcome, String> {
         Some(path) => read_baseline_fingerprints(path)?,
         None => std::collections::HashSet::new(),
     };
-    let rendered = format_audit_report(&audit, &args.project_path, args.format, &baseline)
+    let display_path = if args.project_path.is_absolute() {
+        std::path::Path::new(".")
+    } else {
+        &args.project_path
+    };
+    let rendered = format_audit_report(&audit, display_path, args.format, &baseline)
         .map_err(|error| format!("Could not render Code Scan report: {error}"))?;
 
     if let Some(output_path) = &args.output {
@@ -435,3 +440,7 @@ fn append_text_suppression_details(rendered: &mut String, audit: &SuppressedAudi
 #[cfg(test)]
 #[path = "audit_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "audit_database_tests.rs"]
+mod database_tests;

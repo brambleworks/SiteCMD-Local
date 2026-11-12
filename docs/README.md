@@ -13,6 +13,8 @@ Use `docs/` only for information that should be treated as current project truth
 
 ## High-Signal Entry Points
 
+- [Code Scan audit and rules](../README.md#code-scan-audit) (local CLI usage and rule inventory fields)
+
 - [Adding a detector](engineering/adding-a-detector.md) (a public-only walkthrough
   from input and regression fixtures to registration and local guidance)
 - [Connected service implementation specifications](engineering/connected-service/connected-protocol-spec.md) (protocol and state, hosted scanner, alert delivery, and maintained surfaces)

@@ -1,3 +1,5 @@
+import { cliDocumentationFailures } from "./cli-documentation.mjs";
+
 const CLI = "apps/desktop/src-tauri/crates/cli/src/main.rs";
 const CLI_MANIFEST = "apps/desktop/src-tauri/crates/cli/Cargo.toml";
 const APP_MANIFEST = "apps/desktop/src-tauri/Cargo.toml";
@@ -107,6 +109,11 @@ export function cliSurfaceFailures(read, exists, listFiles) {
     `${SCAN_TYPES} ScanType::as_str could not be read, so no message naming a scan type can be checked against it. Update guardrail-cli-surface-rules.mjs.`,
   );
   if (subcommands === null || types === null) return failures;
+
+  const commands = new Set(
+    [...subcommands].filter((name) => name !== "help" && !name.startsWith("-")),
+  );
+  failures.push(...cliDocumentationFailures(read, exists, commands));
 
   const files = [
     ...listFiles("apps/desktop/src-tauri/src/cli", (file) => file.endsWith(".rs")),

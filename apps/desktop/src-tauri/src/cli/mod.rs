@@ -10,6 +10,7 @@ pub mod export;
 pub mod fix;
 pub mod impact;
 pub mod init;
+pub mod rules;
 pub mod scan;
 pub mod watch;
 

@@ -1,0 +1,5 @@
+{
+  "producerRuleId": "ai-timeout",
+  "defaultSeverity": "medium",
+  "severitySource": "per_finding"
+}

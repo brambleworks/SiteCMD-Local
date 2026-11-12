@@ -88,6 +88,10 @@ binary; if that directory is not on your `PATH`, run the `export` command it
 prints. A signed Windows zip is linked from the
 [CLI documentation](https://sitecmd.com/docs/cli).
 
+Additional command options are available with `sitecmd init --help`,
+`sitecmd autofix --help`, `sitecmd fix --help`, `sitecmd watch --help`,
+`sitecmd check --help`, and `sitecmd deploy --help`.
+
 `sitecmd --help` lists the rest: `init`, `audit`, `autofix`, `scan`, `fix`,
 `watch`, `check`, `connected`, `deploy`, and `gate`.
 
@@ -306,6 +310,49 @@ pnpm sitecmd -- audit . --inspect-local-databases
   project; every PostgreSQL host must resolve to loopback or a local Unix
   socket. Remote targets are rejected.
 - CI guardrails live in `.github/workflows/app-guardrails.yml`.
+
+### Listing Code Scan rules
+
+`sitecmd rules [--format text|json]` lists every Code Scan rule from the same
+registry the audit uses, sorted by `producerRuleId`. It reads no project and
+requires no account or connection.
+
+```bash
+sitecmd rules
+sitecmd rules --format text
+sitecmd rules --format json
+```
+
+Use `sitecmd rules --help` or `sitecmd rules -h` for usage.
+
+The default text output is a plain table. JSON output is exactly one object
+with `version` (the CLI version) and a `rules` array. Every rule contains:
+
+| Field             | Meaning                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `producerRuleId`  | The producer slug carried by audit findings.                                                                                           |
+| `checkId`         | `code_scan.<producerRuleId>`, matching audit findings for every current registry rule.                                                 |
+| `domain`          | The domain carried by audit findings.                                                                                                  |
+| `defaultSeverity` | The effective severity after the audit's built-in policy, or `null` when the registry leaves severity to the emitter.                  |
+| `severitySource`  | `"fixed"` when the registry pins the grade; `"per_finding"` when the detector chooses the grade from evidence or at its emission site. |
+
+No titles are emitted because the registry has no title field. A finding's
+title can depend on its evidence. Rules without a fixed registry grade are
+shown as `null` with `severitySource: "per_finding"`; use each audit finding's
+`severity` for its actual grade. Fixed rules have `severitySource: "fixed"`
+and a non-null `defaultSeverity` matching the normalized audit grade. The text
+table includes both fields as columns.
+Allowed `domain` values are `database`, `ai-safety`, `security`, `architecture`,
+`operations`, `supply-chain`, and `ai-scaffolding`. Non-null `defaultSeverity`
+values are `critical`, `high`, `medium`, and `low`. Text output prints null
+literally, for example:
+
+```text
+producerRuleId	checkId	domain	defaultSeverity	severitySource
+agent-instructions-stub	code_scan.agent-instructions-stub	ai-scaffolding	null	per_finding
+```
+
+Successful listings exit 0. Invalid formats or arguments exit 2.
 
 ### Acknowledging Code Scan findings
 
