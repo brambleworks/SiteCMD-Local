@@ -78,6 +78,7 @@
     "cov:rust": "pnpm --filter @sitecmd/desktop run cov:rust",
     "cov:rust:html": "pnpm --filter @sitecmd/desktop run cov:rust:html",
     "cov:rust:lcov": "pnpm --filter @sitecmd/desktop run cov:rust:lcov",
+    "gate": "node tools/scripts/gate-pass.mjs run",
     "prepare": "node tools/scripts/linked-worktree.mjs || lefthook install",
     "facts:generate": "node tools/scripts/generate-product-facts.mjs",
     "legal:generate": "node tools/scripts/generate-third-party-artifacts.mjs",

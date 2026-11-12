@@ -40,6 +40,11 @@ commit-msg:
 
 pre-push:
   # Full local mirror of release and pull-request checks.
+  #
+  # `pnpm gate` runs this block on a clean checkout and records its tree, so a
+  # push of that tree skips it instead of holding GitHub's connection open.
+  skip:
+    - run: node tools/scripts/gate-pass.mjs check
   commands:
     verify-push:
       run: pnpm verify:push

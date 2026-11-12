@@ -84,6 +84,11 @@ CodeQL, and scheduled jobs that cannot be reproduced by one local command. Run
 it after committing, not as a pre-commit check. `pnpm verify:push:all` reports
 every failing tier in one run.
 
+`pnpm gate` runs the whole `pre-push` block on a clean checkout and records
+the tree that passed in the Git directory. A push of a recorded tree skips the
+hook, so the push does not hold GitHub's connection open through the gate
+(GitHub drops it after about six idle minutes).
+
 Hooks are load-bearing. Pre-commit runs fast type, lint, format, Rust format,
 and secret checks. Commit-msg enforces the plain-English message contract and
 budget ratchet. Pre-push runs the full gate. Never bypass a hook or guardrail
