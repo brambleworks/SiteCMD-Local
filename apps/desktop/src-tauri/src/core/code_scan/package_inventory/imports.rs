@@ -120,7 +120,7 @@ pub(in crate::core::code_scan) fn blank_js_comments(content: &str) -> String {
 
 /// Blank the interior of every string and template literal except the ones
 /// that are module specifiers (the literal directly after `from`, `import`,
-/// `require(`, or `import(`). Comment blanking must run first so a quote
+/// `require(`, `import(`, `require.resolve(`, or `import.meta.resolve(`). Comment blanking must run first so a quote
 /// inside a comment cannot open a literal. Byte positions are preserved and
 /// newlines are kept, so both line numbers and `(?m)` anchors stay correct.
 ///
@@ -188,7 +188,11 @@ fn precedes_module_specifier(before: &[u8]) -> bool {
     if before[end - 1] == b'(' {
         let callee_end = trim_trailing_ascii_whitespace(&before[..end - 1]);
         let callee = trailing_identifier(&before[..callee_end]);
-        return callee == b"require" || callee == b"import";
+        let receiver = &before[..callee_end - callee.len()];
+        return callee == b"require"
+            || callee == b"import"
+            || (callee == b"resolve"
+                && (receiver.ends_with(b"require.") || receiver.ends_with(b"import.meta.")));
     }
     let keyword = trailing_identifier(&before[..end]);
     keyword == b"from" || keyword == b"import"
@@ -408,6 +412,20 @@ mod tests {
 
     /// A package name quoted in ordinary code (a config value, a message) is
     /// not a dynamic import of that package.
+    /// A package read through its resolved path is used: SiteCMD-Web loaded
+    /// `@material-symbols/svg-400` icons this way and the scan called it unused.
+    #[test]
+    fn resolved_module_paths_are_package_references() {
+        let file = source_file(
+            "const icons = require.resolve(\"@material-symbols/svg-400/package.json\");\nconst url = import.meta.resolve('pino-pretty', base);\nconst local = path.resolve(\"ghost-pkg\");\n",
+        );
+        let names: Vec<_> = collect_js_package_refs(std::slice::from_ref(&file))
+            .into_iter()
+            .map(|reference| reference.package_name)
+            .collect();
+        assert_eq!(names, ["@material-symbols/svg-400", "pino-pretty"]);
+    }
+
     #[test]
     fn package_names_quoted_in_ordinary_code_are_not_references() {
         let file = source_file(

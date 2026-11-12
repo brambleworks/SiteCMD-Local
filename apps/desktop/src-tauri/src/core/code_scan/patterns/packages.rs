@@ -123,6 +123,12 @@ pub(in crate::core::code_scan) static IMPORT_CAPTURE_PATTERNS: LazyLock<Vec<rege
             // glued onto an identifier (e.g. `myrequire(`).
             regex::Regex::new(r#"\brequire\(\s*["']([^"']+)["']\s*\)"#).unwrap(),
             regex::Regex::new(r#"\bimport\(\s*["']([^"']+)["']\s*\)"#).unwrap(),
+            // A resolved module path reads the package as surely as `require`
+            // does, and may take an options argument after the specifier.
+            regex::Regex::new(r#"\brequire\.resolve\(\s*["']([^"']+)["']\s*[,)]"#)
+                .expect("static require.resolve regex"), // allow-expect: compile-time literal regex
+            regex::Regex::new(r#"\bimport\.meta\.resolve\(\s*["']([^"']+)["']\s*[,)]"#)
+                .expect("static import.meta.resolve regex"), // allow-expect: compile-time literal regex
         ]
     });
 
