@@ -11,7 +11,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry::new("accessibility.color_contrast_hints"),
     Entry::new("accessibility.empty_headings"),
     Entry::new("accessibility.focus_indicators"),
-    Entry::new("accessibility.form_labels"),
+    Entry::new("accessibility.form_labels").revision(2),
     Entry::new("accessibility.headings"),
     Entry::new("accessibility.iframe_title"),
     Entry::new("accessibility.image_alt"),

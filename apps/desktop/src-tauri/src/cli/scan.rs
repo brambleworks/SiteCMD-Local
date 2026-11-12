@@ -193,8 +193,6 @@ async fn run_scan_inner(
         args.scan_type,
         false,
         None,
-        // Single-page CLI scan: no other page to share stylesheets with.
-        None,
     )
     .await
     .map_err(|e| format!("{}", e))

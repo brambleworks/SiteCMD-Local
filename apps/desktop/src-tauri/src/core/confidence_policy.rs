@@ -1,4 +1,4 @@
-//! Confidence policy for code-scan and polish findings.
+//! Confidence policy for code-scan findings.
 //!
 //! Unmapped heuristics default to `NeedsReview`; stronger levels require an
 //! explicit policy entry.
@@ -178,59 +178,6 @@ pub fn code_issue_confidence(slug: &str) -> (IssueConfidence, Option<&'static st
     }
 }
 
-/// Confirms structural facts and marks subjective Polish signals for review.
-pub fn polish_signal_confidence(check_id: &str) -> (IssueConfidence, Option<&'static str>) {
-    use IssueConfidence::{Confirmed, NeedsReview};
-    let signal_id = check_id.strip_prefix("polish.").unwrap_or(check_id);
-    match signal_id {
-        "missing-lang" | "missing-og-tags" => (Confirmed, None),
-        // Create-React-App and similar templates ship the boilerplate markers
-        // this signal matches even on finished production sites.
-        "boilerplate-html" => (
-            NeedsReview,
-            Some("Framework boilerplate markers persist on many finished production sites; verify the page is actually unfinished."),
-        ),
-        "glassmorphism"
-        | "gradient-backgrounds"
-        | "scroll-animations"
-        | "excessive-border-radius"
-        | "glow-shadows"
-        | "floating-blobs"
-        | "three-column-grid"
-        | "emoji-as-icons" => (
-            NeedsReview,
-            Some("Subjective aesthetic signal; legitimate modern designs often match."),
-        ),
-        "em-dash-density"
-        | "source-maps-production"
-        | "default-page-title"
-        | "ai-buzzword-dictionary"
-        | "ai-header-formulas"
-        | "inclusive-framing"
-        | "default-favicon"
-        | "default-error-page"
-        | "default-deployment-subdomain" => (
-            NeedsReview,
-            Some("Heuristic pattern; verify against the surfaced evidence before acting."),
-        ),
-        "inline-style-density"
-        | "tailwind-class-density"
-        | "no-css-architecture"
-        | "utility-to-custom-ratio"
-        | "div-soup-ratio"
-        | "heading-hierarchy"
-        | "form-accessibility"
-        | "button-vs-clickable-div" => (
-            NeedsReview,
-            Some("Structural heuristic; may misread modern utility-first patterns."),
-        ),
-        _ => (
-            NeedsReview,
-            Some("Heuristic pattern; review the evidence before acting."),
-        ),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,17 +236,5 @@ mod tests {
                 "{slug}"
             );
         }
-    }
-
-    #[test]
-    fn polish_direct_facts_and_subjective_signals_stay_distinct() {
-        assert_eq!(
-            polish_signal_confidence("polish.missing-lang").0,
-            IssueConfidence::Confirmed
-        );
-        assert_eq!(
-            polish_signal_confidence("polish.gradient-backgrounds").0,
-            IssueConfidence::NeedsReview
-        );
     }
 }

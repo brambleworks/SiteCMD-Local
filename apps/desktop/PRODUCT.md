@@ -120,7 +120,7 @@ Constraints and durable product facts:
 - One score, never split by source. Unified scans, never fragmented into
   separate web/code navigation. These are core product theses, not preferences.
 - `product-facts.json` carries the derived check counts for this repository
-  (currently 427 total). The public "400+" floor is maintained and
+  (currently 430 total). The public "400+" floor is maintained and
   guardrail-enforced in the separate SiteCMD-Web product package.
 - Honest scoring: diminishing deductions from 100, reduced effective counts
   for needs-review findings, and explicit coverage state. Severity alone does
@@ -164,7 +164,7 @@ a descriptor in running prose);
 - A fully built, shipping product. `product-facts.json` marks the desktop app,
   MCP server, CLI, CI quality gates, and ticket mirroring as available.
 - Real, generated check counts live in `product-facts.json`; the current total
-  is 427 and the public marketing floor is 400+.
+  is 430 and the public marketing floor is 400+.
 - A marketing and documentation site plus a public top-of-funnel scanner exist
   in the separate SiteCMD-Web repository.
 - Accessibility is shipped as a product feature (axe-core WCAG A/AA), a standard

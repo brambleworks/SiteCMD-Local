@@ -5,6 +5,9 @@ import {
   WASM_MANIFEST,
   RUNNERS,
   RUNNERS_SEO,
+  RUNNERS_POLISH,
+  POLISH_TABLE,
+  POLISH_PHASE,
   PROBE_CHECKS,
   PROBE_SCHEMA,
   SCHEMA,
@@ -18,6 +21,8 @@ import {
   SCHEMA_BASE,
   RUNNERS_BASE,
   RUNNERS_SEO_BASE,
+  RUNNERS_POLISH_BASE,
+  POLISH_TABLE_BASE,
   PROBE_CHECKS_BASE,
   PROBE_SCHEMA_BASE,
   REGISTRATION,
@@ -112,6 +117,25 @@ describe("engineArtifactFailures", () => {
     expect(flags(failures, "performance.page_weight")).toBe(true);
   });
 
+  it("rejects a polish row with no runner", () => {
+    const failures = run({ [RUNNERS_POLISH]: "pub const POLISH_RUNNERS: &[Runner] = &[\n];" });
+    expect(flags(failures, "artifact-lane checks have no runner")).toBe(true);
+    expect(flags(failures, "polish.missing-lang")).toBe(true);
+  });
+
+  it.each([
+    [
+      "calls no table entry",
+      RUNNERS_POLISH,
+      RUNNERS_POLISH_BASE.replace("::missing_lang", "::lang"),
+    ],
+    ["calls another signal", POLISH_TABLE, POLISH_TABLE_BASE.replace('"missing-lang"', '"other"')],
+    ["needs stylesheets", POLISH_TABLE, POLISH_TABLE_BASE.replace("sheets: false", "sheets: true")],
+    ["runs outside the CLI's phase", POLISH_PHASE, "let signal_results = Vec::new();"],
+  ])("rejects a polish runner that %s", (_, file, source) => {
+    expect(flags(run({ [file]: source }), "POLISH_SIGNALS")).toBe(true);
+  });
+
   it("rejects an id claimed by two runners", () => {
     const failures = run({
       [RUNNERS]: RUNNERS_BASE.replace(
@@ -185,15 +209,18 @@ describe("engineArtifactFailures", () => {
     expect(flags(failures, "does not vendor through")).toBe(true);
   });
 
-  it.each(["corpus_sha256", "session_corpus_sha256", "rustflags", "capability_manifest_sha256"])(
-    "rejects a provenance record missing %s",
-    (field) => {
-      const failures = run({
-        [CHECKS_SCRIPT]: CHECKS_SCRIPT_BASE.replace(new RegExp(`^  ${field}:.*\\n`, "m"), ""),
-      });
-      expect(flags(failures, field)).toBe(true);
-    },
-  );
+  it.each([
+    "corpus_sha256",
+    "session_corpus_sha256",
+    "rustflags",
+    "capability_manifest_sha256",
+    "key_patterns_sha256",
+  ])("rejects a provenance record missing %s", (field) => {
+    const failures = run({
+      [CHECKS_SCRIPT]: CHECKS_SCRIPT_BASE.replace(new RegExp(`^  ${field}:.*\\n`, "m"), ""),
+    });
+    expect(flags(failures, field)).toBe(true);
+  });
 
   it("rejects a scorer record missing rustflags", () => {
     expect(run({ [SCORER_SCRIPT]: SCORER_SCRIPT_BASE.replace("rustflags:", "other:") })).toContain(

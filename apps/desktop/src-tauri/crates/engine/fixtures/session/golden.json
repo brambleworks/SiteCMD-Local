@@ -70,7 +70,7 @@
             }
           ],
           "compared": [0],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": []
         }
       },
@@ -183,46 +183,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "needs_review",
               "pages": [0, 1],
               "severity": "medium",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "needs_review",
               "pages": [0, 1],
               "severity": "low",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -353,46 +360,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -523,46 +537,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -693,46 +714,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "needs_review",
               "pages": [0, 1],
               "severity": "medium",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -883,46 +911,53 @@
             }
           ],
           "compared": [0, 1, 2],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "needs_review",
               "pages": [1, 2],
               "severity": "medium",
               "status": "fail"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -1067,46 +1102,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "needs_review",
               "pages": [0, 1],
               "severity": "low",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -1237,46 +1279,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "needs_review",
               "pages": [0, 1],
               "severity": "medium",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -1388,7 +1437,7 @@
             }
           ],
           "compared": [0],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": []
         }
       },
@@ -1535,46 +1584,53 @@
             }
           ],
           "compared": [0, 2],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -1783,46 +1839,53 @@
             }
           ],
           "compared": [0, 1, 2, 3, 4],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "needs_review",
               "pages": [4],
               "severity": "low",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -2094,46 +2157,53 @@
             }
           ],
           "compared": [0, 1, 2, 3, 4],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -2346,46 +2416,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "needs_review",
               "pages": [1],
               "severity": "medium",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -2554,46 +2631,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -2782,46 +2866,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -2994,46 +3085,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -8207,46 +8305,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -8410,46 +8515,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -8580,46 +8692,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -8750,46 +8869,53 @@
             }
           ],
           "compared": [0],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
@@ -8924,46 +9050,53 @@
             }
           ],
           "compared": [1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "needs_review",
               "pages": [1],
               "severity": "medium",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
@@ -14132,46 +14265,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "needs_review",
               "pages": [1],
               "severity": "medium",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -14339,46 +14479,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "needs_review",
               "pages": [1],
               "severity": "medium",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -14546,46 +14693,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "needs_review",
               "pages": [1],
               "severity": "medium",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -14788,46 +14942,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -15045,46 +15206,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -15303,46 +15471,53 @@
             }
           ],
           "compared": [0, 1, 2],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -15535,46 +15710,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -15801,46 +15983,53 @@
             }
           ],
           "compared": [1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
@@ -16022,46 +16211,53 @@
             }
           ],
           "compared": [0, 1, 2, 3],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -16294,46 +16490,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -16588,46 +16791,53 @@
             }
           ],
           "compared": [0, 1, 2],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -16812,46 +17022,53 @@
             }
           ],
           "compared": [0, 1],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -17138,46 +17355,53 @@
             }
           ],
           "compared": [0, 1, 2, 3, 4],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -17449,46 +17673,53 @@
             }
           ],
           "compared": [0, 1, 2, 3, 4],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "needs_review",
               "pages": [4],
               "severity": "low",
               "status": "warn"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "needs_review",
               "pages": [4],
               "severity": "medium",
               "status": "warn"
             },
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -17691,7 +17922,7 @@
             }
           ],
           "compared": [0],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": []
         }
       },
@@ -17868,46 +18099,53 @@
             }
           ],
           "compared": [0, 1, 2],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
@@ -18153,46 +18391,53 @@
             }
           ],
           "compared": [0, 1, 2, 3, 4],
-          "manifest_digest": "422fa7f621edfb45",
+          "manifest_digest": "694491a058a4581f",
           "verdicts": [
             {
               "check_id": "seo.duplicate_title_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_description_across_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.duplicate_h1",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.orphan_pages",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.noindex_in_sitemap",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "skipped"
             },
             {
               "check_id": "seo.canonical_loop",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"
             },
             {
               "check_id": "seo.hreflang_reciprocity",
+              "confidence": "high",
               "pages": [],
               "severity": "medium",
               "status": "pass"

@@ -24,7 +24,11 @@ pub const ENTRIES: &[Entry] = &[
     Entry::new("security.cookies.unreadable_headers"),
     Entry::new("security.cors"),
     Entry::new("security.cors_reflection").probe(),
-    Entry::new("security.directory_listing").probe().origin(),
+    // Revision 2 reads inconclusive when a planned directory did not answer.
+    Entry::new("security.directory_listing")
+        .probe()
+        .origin()
+        .revision(2),
     Entry::new("security.dns.caa").probe().origin().needs(DNS),
     Entry::new("security.dns.dangling_cname")
         .probe()
@@ -102,8 +106,8 @@ pub const ENTRIES: &[Entry] = &[
     Entry::new("security.vibe.client_auth"),
     Entry::new("security.vibe.csrf"),
     Entry::new("security.vibe.env_exposure"),
-    Entry::new("security.vibe.exposed_keys"),
-    Entry::new("security.vibe.exposed_keys.public"),
+    Entry::new("security.vibe.exposed_keys").revision(2),
+    Entry::new("security.vibe.exposed_keys.public").revision(2),
     Entry::new("security.vibe.hardcoded_secrets"),
     // Libraries come from the page; the verdict comes from a corpus that
     // moves without the site changing, so an identical library set with a

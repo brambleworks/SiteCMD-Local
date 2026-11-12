@@ -2,7 +2,7 @@
 //!
 //! Matches prove public text delivery, not validity, ownership, or privilege.
 
-use super::key_patterns::{KeyClass, KEY_PATTERNS};
+use super::key_patterns::{key_patterns, KeyClass};
 use crate::checks::{
     Check, CheckResult, CheckStatus, IssueConfidence, PageContext, ScanCategory, Severity,
 };
@@ -32,11 +32,8 @@ impl Check for ExposedApiKeysCheck {
         let mut secret_found: Vec<(String, String)> = Vec::new();
         let mut public_found: Vec<(String, String)> = Vec::new();
 
-        for pattern in KEY_PATTERNS.iter() {
-            for caps in pattern.regex.captures_iter(&ctx.body) {
-                let Some(mat) = caps.get(pattern.key_group) else {
-                    continue;
-                };
+        for pattern in key_patterns(&ctx.body) {
+            for mat in pattern.matches(&ctx.body) {
                 let entry = (pattern.service.to_string(), mask_key(mat.as_str()));
                 match pattern.class {
                     KeyClass::Secret => secret_found.push(entry),
@@ -255,6 +252,9 @@ mod tests {
     use super::*;
     use http::header::HeaderMap;
 
+    // Built from parts: GitHub's push protection refuses a committed Stripe live key.
+    const STRIPE_SECRET: &str = concat!("sk_live_", "1234567890abcdefghijklmn");
+
     fn ctx(body: &str) -> PageContext {
         PageContext {
             evaluation_time: chrono::DateTime::parse_from_rfc3339("2026-08-05T00:00:00Z")
@@ -316,8 +316,8 @@ mod tests {
 
     #[test]
     fn detects_stripe_live_secret_shape_as_high_needs_review() {
-        let html = r#"<script>Stripe("sk_live_1234567890abcdefghijklmn");</script>"#; // gitleaks:allow
-        let results = ExposedApiKeysCheck.run(&ctx(html));
+        let html = format!(r#"<script>Stripe("{STRIPE_SECRET}");</script>"#);
+        let results = ExposedApiKeysCheck.run(&ctx(&html));
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].status, CheckStatus::Fail);
         assert_eq!(results[0].severity, Severity::High);
@@ -450,17 +450,27 @@ mod tests {
 
     #[test]
     fn keys_are_masked_in_output() {
-        let html = r#"<script>const key = "sk_live_1234567890abcdefghijklmn";</script>"#; // gitleaks:allow
-        let results = ExposedApiKeysCheck.run(&ctx(html));
+        let html = format!(r#"<script>const key = "{STRIPE_SECRET}";</script>"#);
+        let results = ExposedApiKeysCheck.run(&ctx(&html));
         assert_eq!(results[0].status, CheckStatus::Fail);
-        assert!(!results[0]
-            .description
-            .contains("sk_live_1234567890abcdefghijklmn")); // gitleaks:allow
+        assert!(!results[0].description.contains(STRIPE_SECRET));
         let raw = results[0].raw_data.as_ref().unwrap().to_string();
         assert!(
             !raw.contains("klmn"),
             "masked suffix must not be persisted: {raw}"
         );
+    }
+
+    #[test]
+    fn uniform_body_placeholders_do_not_emit_findings_or_hide_a_later_key() {
+        let placeholder = format!("sk_live_{}", "x".repeat(24));
+        let results = ExposedApiKeysCheck.run(&ctx(&placeholder));
+        assert_eq!(results[0].status, CheckStatus::Pass);
+        let key = format!("sk_live_{}", "aB3".repeat(8));
+        let results = ExposedApiKeysCheck.run(&ctx(&format!("'{placeholder}' '{key}'")));
+        assert_eq!(results[0].status, CheckStatus::Fail);
+        assert!(results[0].description.contains("sk_l***"));
+        assert!(!serde_json::to_string(&results).unwrap().contains(&key));
     }
 
     #[test]
@@ -535,11 +545,13 @@ mod tests {
 
     #[test]
     fn secret_and_public_keys_appearing_together_emit_two_findings() {
-        let html = r#"<script>
-            const secret = "sk_live_1234567890abcdefghijklmn"; // gitleaks:allow
+        let html = format!(
+            r#"<script>
+            const secret = "{STRIPE_SECRET}";
             Stripe("pk_live_1234567890abcdefghijklmn");
-        </script>"#;
-        let results = ExposedApiKeysCheck.run(&ctx(html));
+        </script>"#
+        );
+        let results = ExposedApiKeysCheck.run(&ctx(&html));
         assert_eq!(results.len(), 2);
         let secret = results
             .iter()

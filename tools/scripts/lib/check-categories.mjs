@@ -17,6 +17,7 @@ const DIRECTORY_CATEGORIES = new Set([
   "accessibility",
   "compliance",
   "performance",
+  "polish",
   "security",
   "seo",
 ]);

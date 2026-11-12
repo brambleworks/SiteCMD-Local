@@ -97,8 +97,8 @@ describe("check-id extraction", () => {
       "apps/desktop/src-tauri/check-inventory.json": JSON.stringify({
         web: ["performance.lcp"],
       }),
-      "apps/desktop/src-tauri/src/checks/polish/mod.rs":
-        "pub fn run_all_signals(ctx: &Ctx) -> Vec<Signal> {\n    vec![\n        signals::one(ctx),\n    ]\n}",
+      "apps/desktop/src-tauri/crates/engine/src/checks/polish/mod.rs":
+        "pub const POLISH_SIGNALS: &[PolishSignal] = &[\n];",
       "apps/desktop/src-tauri/crates/engine/src/code_rules.rs": '    d("example-rule"),',
     };
     const fakeRead = (file) => sources[file] ?? read(file);
@@ -178,6 +178,7 @@ describe("the hosted check count", () => {
   const MANIFEST = "apps/desktop/src-tauri/crates/engine/manifest/capability_manifest.json";
   const RUNNERS_SEO = "apps/desktop/src-tauri/crates/engine/src/evaluation/runners_seo.rs";
   const PROBES = "apps/desktop/src-tauri/crates/engine/src/evaluation/probes.rs";
+  const POLISH_TABLE = "apps/desktop/src-tauri/crates/engine/src/checks/polish/mod.rs";
   const SITEMAP = "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap.rs";
   const SITEMAP_DOCUMENT =
     "apps/desktop/src-tauri/crates/engine/src/checks/seo/sitemap_document.rs";
@@ -208,55 +209,62 @@ describe("the hosted check count", () => {
       ],
     }),
     [RUNNERS_SEO]: "pub const EXCLUDED_ARTIFACT_CHECKS: &[(&str, &str)] = &[\n];",
-    [PROBES]: [
-      "pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[",
-      '    ("security.exposed_files.", "the desktop shell owns the candidate-path sweep"),',
-      "];",
-    ].join("\n"),
+    [POLISH_TABLE]: "pub const POLISH_SIGNALS: &[PolishSignal] = &[\n];",
+    [PROBES]: "pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[\n];",
   };
   const counts = (overrides = {}) =>
     deriveHostedCheckCounts(
       (file) => ({ ...tree, ...overrides })[file] ?? "",
       facts.checkCounts.axe,
+      new Map([
+        ["seo.c", ["apps/desktop/src-tauri/crates/engine/src/checks/predeploy/mod.rs"]],
+        ["seo.group.exact", ["apps/desktop/src-tauri/crates/engine/src/checks/predeploy/mod.rs"]],
+      ]),
     );
   const manifest = (entries) => ({ [MANIFEST]: JSON.stringify({ entries }) });
 
   it("counts the web checks a hosted lane produces, with the axe rules", () => {
     expect(counts()).toEqual({
-      web: 5,
+      web: 6,
+      previewCheckCount: 1,
       crossPage: 1,
       axe: facts.checkCounts.axe,
-      total: 5 + facts.checkCounts.axe,
+      polish: 0,
+      total: 6 + facts.checkCounts.axe,
     });
   });
 
-  it("leaves out a check whose producer this build excludes", () => {
+  it("refuses a check whose probe producer this build excludes", () => {
+    // A probe exclusion silently lowers the count instead of failing coverage.
     const excluded = [
       "pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[",
       '    ("security.exposed_files.", "the desktop shell owns the candidate-path sweep"),',
       '    ("seo.b", "the desktop shell owns the robots.txt fetch"),',
       "];",
     ].join("\n");
-    expect(counts({ [PROBES]: excluded })).toEqual({
-      web: 4,
-      crossPage: 1,
-      axe: facts.checkCounts.axe,
-      total: 4 + facts.checkCounts.axe,
-    });
+    expect(() => counts({ [PROBES]: excluded })).toThrow(
+      "seo.b runs neither on the hosted lane nor as a preview check",
+    );
   });
 
-  it("leaves out an artifact check whose producer this build excludes", () => {
-    expect(
+  it("refuses an artifact check whose producer this build excludes", () => {
+    // An artifact exclusion silently lowers the count instead of failing coverage.
+    expect(() =>
       counts({
         [RUNNERS_SEO]:
           'pub const EXCLUDED_ARTIFACT_CHECKS: &[(&str, &str)] = &[\n    ("seo.d", "this build has no producer"),\n];',
       }),
-    ).toEqual({
-      web: 4,
-      crossPage: 0,
-      axe: facts.checkCounts.axe,
-      total: 4 + facts.checkCounts.axe,
-    });
+    ).toThrow("seo.d runs neither on the hosted lane nor as a preview check");
+  });
+
+  it("refuses a web family whose probe producer this build excludes", () => {
+    // A family exclusion silently removes live-site checks from accounting.
+    expect(() =>
+      counts({
+        [PROBES]:
+          'pub const EXCLUDED_PROBE_CHECKS: &[(&str, &str)] = &[\n    ("security.exposed_files.", "excluded"),\n];',
+      }),
+    ).toThrow("security.exposed_files.x runs neither on the hosted lane nor as a preview check");
   });
 
   it("refuses to count when an exclusion table or a manifest entry is missing", () => {
@@ -281,7 +289,7 @@ describe("the hosted check count", () => {
         ...manifest(entries),
         [INVENTORY]: JSON.stringify({ web: ["seo.group.exact", "seo.group.other"] }),
       }),
-    ).toEqual({ web: 1, crossPage: 1, axe: 0, total: 1 });
+    ).toEqual({ web: 1, previewCheckCount: 1, crossPage: 1, axe: 0, polish: 0, total: 1 });
   });
 
   it("omits axe rules when their family has no hosted lane", () => {
@@ -294,7 +302,7 @@ describe("the hosted check count", () => {
           ),
         ),
       ),
-    ).toEqual({ web: 5, crossPage: 1, axe: 0, total: 5 });
+    ).toEqual({ web: 6, previewCheckCount: 1, crossPage: 1, axe: 0, polish: 0, total: 6 });
   });
 
   it("derives the published hosted count from the inventory", () => {
@@ -312,7 +320,7 @@ describe("the hosted check count", () => {
 
   it("publishes the count beside the total, never above it", () => {
     const hosted = facts.hostedCheckCounts;
-    expect(hosted.total).toBe(hosted.web + hosted.axe);
+    expect(hosted.total).toBe(hosted.web + hosted.axe + hosted.polish);
     expect(hosted.crossPage).toBeLessThan(hosted.web);
     expect(hosted.total).toBeLessThan(facts.checkCounts.total);
   });

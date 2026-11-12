@@ -13,6 +13,7 @@ pub mod compliance;
 pub mod config;
 pub mod html_attrs;
 pub mod performance;
+pub mod polish;
 pub mod predeploy;
 pub mod security;
 pub mod seo;
@@ -24,6 +25,10 @@ pub trait Check: Send + Sync {
     fn id(&self) -> &str;
     fn category(&self) -> ScanCategory;
     fn run(&self, ctx: &PageContext) -> Vec<CheckResult>;
+    /// Whether this check grades only the first page of a scan.
+    fn origin_scoped(&self) -> bool {
+        false
+    }
     fn skip_in_predeploy(&self) -> bool {
         false
     }

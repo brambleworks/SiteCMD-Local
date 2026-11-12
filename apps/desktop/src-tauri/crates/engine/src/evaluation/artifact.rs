@@ -118,6 +118,7 @@ pub(super) fn facts_in_order(
     fetch: bool,
     resolver: bool,
     tls: bool,
+    negotiated_protocol: bool,
     browser: bool,
     vulnerability: bool,
 ) -> Vec<RuntimeFact> {
@@ -132,6 +133,9 @@ pub(super) fn facts_in_order(
     }
     if tls {
         facts.push(RuntimeFact::TlsFacts);
+    }
+    if negotiated_protocol {
+        facts.push(RuntimeFact::NegotiatedProtocol);
     }
     if browser {
         facts.push(RuntimeFact::Browser);

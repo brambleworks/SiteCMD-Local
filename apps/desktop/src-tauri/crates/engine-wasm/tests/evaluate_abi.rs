@@ -251,7 +251,8 @@ fn identical_requests_produce_identical_payloads() {
 }
 
 #[test]
-fn http2_is_named_unsupported_even_when_a_page_carries_a_protocol() {
+fn http2_names_the_missing_fact_even_when_a_page_carries_a_protocol() {
+    // A page protocol must not erase the hosted lane's required runtime fact.
     for protocol in [None, Some("HTTP/1.1"), Some("HTTP/2.0"), Some("HTTP/3")] {
         let mut page = corpus().cases[0].page.clone();
         page.http_version = protocol.map(str::to_string);
@@ -272,8 +273,16 @@ fn http2_is_named_unsupported_even_when_a_page_carries_a_protocol() {
             .iter()
             .find(|row| row.check == "performance.http2")
             .expect("HTTP/2 is named not evaluated");
-        assert_eq!(named.reason, NotEvaluatedReason::UnsupportedLane);
-        assert_eq!(named.layer, None);
+        assert_eq!(
+            named.reason,
+            NotEvaluatedReason::MissingFact {
+                fact: RuntimeFact::NegotiatedProtocol,
+            }
+        );
+        assert_eq!(
+            named.layer,
+            Some(sitecmd_engine::evaluation::CheckLayer::Transport)
+        );
     }
 }
 
@@ -376,4 +385,57 @@ fn an_open_that_fails_leaves_no_route_open() {
         abi::refusal(&abi::call(engine_route_evaluate, b"{}")).as_deref(),
         Some("no route is open on this instance")
     );
+}
+
+#[test]
+fn a_recorded_sweep_answer_crosses_the_body_region() {
+    // The ABI must not refuse or mis-frame a 512 KiB sweep answer.
+    use sitecmd_engine::evaluation::{probe_key, ExecutedProbe, ProbePlan};
+    use sitecmd_engine::probe::{
+        decode_probe_body, BodyLimit, ProbeOutcome, ProbeRequest, ProbeResponse,
+    };
+
+    abi::open(&corpus().cases[0].page);
+    let request = ProbeRequest::get("https://example.com/probe").limit(BodyLimit::Sweep);
+    let text = "x".repeat(512 * 1024);
+    let executed = ExecutedProbe::new(
+        probe_key(&request),
+        ProbeOutcome::Response(ProbeResponse {
+            status: 200,
+            final_url: request.url,
+            content_type: Some("text/plain".into()),
+            content_length: Some(text.len() as u64),
+            headers: Vec::new(),
+            body: Some(decode_probe_body(text.into_bytes())),
+        }),
+    );
+    let payload = abi::call_json(
+        engine_route_plan,
+        &serde_json::json!({ "probe_outcomes": [executed] }),
+    );
+    let _: ProbePlan = serde_json::from_slice(&payload).expect("recorded route returns a plan");
+}
+
+#[test]
+fn evaluate_abi_grades_the_negotiated_protocol_fact() {
+    // Flattened route facts must survive the ABI rather than being silently ignored.
+    let page: PageArtifact = serde_json::from_value(serde_json::json!({
+        "url": "https://example.com/", "status_code": 200, "headers": [],
+        "body": "", "evaluation_time": "2026-10-30T00:00:00Z"
+    }))
+    .unwrap();
+    abi::open(&page);
+    let payload = abi::call_json(
+        engine_route_evaluate,
+        &serde_json::json!({
+            "negotiated_protocol": {"protocol": "h2", "observed_at": "2026-10-30T00:00:00Z"}
+        }),
+    );
+    let response: EvaluationResponse = serde_json::from_slice(&payload).unwrap();
+    let row = response
+        .results
+        .iter()
+        .find(|r| r.check_id == "performance.http2")
+        .expect("HTTP/2 row through ABI");
+    assert_eq!(row.status, sitecmd_engine::CheckStatus::Pass);
 }

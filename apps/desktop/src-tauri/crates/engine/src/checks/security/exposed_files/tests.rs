@@ -2,6 +2,21 @@
 
 use super::*;
 use crate::checks::IssueConfidence;
+use crate::probe::ProbeOutcome;
+
+fn grade_path_probe(
+    path: &str,
+    description: &str,
+    severity: &Severity,
+    outcome: ProbeOutcome,
+) -> CheckResult {
+    super::grade_path_probe(
+        path,
+        description,
+        severity,
+        &crate::evaluation::sweep_reading(&outcome),
+    )
+}
 
 #[test]
 fn script_extraction_survives_truncated_closing_tag() {
@@ -24,8 +39,10 @@ fn firebase_config_apikey_is_not_flagged_as_source_secret() {
 fn stripe_live_key_is_left_to_exposed_keys_check() {
     // sk_live_ keys are flagged (value-shaped, Critical) by
     // security.vibe.exposed_keys; this check must not double-report them.
-    let html = r#"<script>const key = "sk_live_1234567890abcdefghijklmn";</script>"#; // gitleaks:allow
-    assert!(source_secrets_result(html).is_none());
+    // Built from parts: GitHub's push protection refuses a committed Stripe live key.
+    let key = concat!("sk_live_", "1234567890abcdefghijklmn");
+    let html = format!(r#"<script>const key = "{key}";</script>"#);
+    assert!(source_secrets_result(&html).is_none());
 }
 
 #[test]

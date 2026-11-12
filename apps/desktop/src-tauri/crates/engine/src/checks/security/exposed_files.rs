@@ -3,7 +3,8 @@
 //! Catch-all responses and failed probes never prove exposure or absence.
 
 use crate::checks::{CheckResult, CheckStatus, ScanCategory, Severity};
-use crate::probe::ProbeOutcome;
+use crate::evaluation::SweepReading;
+use crate::probe::{BodyLimit, ProbeRequest};
 
 mod content_validation;
 use content_validation::{classify_env_body, expected_file_signature, EnvBodyVerdict};
@@ -52,6 +53,11 @@ pub const SENSITIVE_PATHS: &[(&str, &str, Severity)] = &[
     ),
     ("/database.sql", "SQL database dump", Severity::Critical),
 ];
+
+/// GET one sensitive path with the recorded-alone sweep policy.
+pub fn sensitive_path_request(origin: &str, path: &str) -> ProbeRequest {
+    ProbeRequest::get(format!("{origin}{path}")).limit(BodyLimit::Sweep)
+}
 
 /// High-signal secret identifier names not owned by value-shaped key checks.
 const SOURCE_SECRET_IDENTIFIERS: &[(&str, &str)] = &[
@@ -224,26 +230,22 @@ pub fn grade_path_probe(
     path: &str,
     description: &str,
     severity: &Severity,
-    outcome: ProbeOutcome,
+    reading: &SweepReading,
 ) -> CheckResult {
-    let resp = match outcome {
-        ProbeOutcome::Failure(_) => {
-            return inconclusive_probe_result(
-                path,
-                *severity,
-                InconclusiveReason::NoUsableResponse,
-                "The request failed before an HTTP response was received, so public exposure was not determined.",
-            )
-        }
-        ProbeOutcome::Response(response) => response,
+    let Some(status_code) = reading.status else {
+        return inconclusive_probe_result(
+            path,
+            *severity,
+            InconclusiveReason::NoUsableResponse,
+            "The request failed before an HTTP response was received, so public exposure was not determined.",
+        );
     };
-    let status_code = resp.status;
-    let content_type = resp
+    let content_type = reading
         .content_type
         .as_deref()
         .unwrap_or("")
         .to_ascii_lowercase();
-    let content_length = resp.content_length;
+    let content_length = reading.content_length;
 
     if status_code != 200 {
         return if matches!(status_code, 401 | 403 | 404 | 410) {
@@ -265,12 +267,8 @@ pub fn grade_path_probe(
         };
     }
 
-    let body = match resp.body {
-        Some(body) => body
-            .text
-            .chars()
-            .take(PROBE_SIGNATURE_SAMPLE_CHARS)
-            .collect::<String>(),
+    let body = match reading.sample.as_deref() {
+        Some(body) => body,
         None => {
             return inconclusive_probe_result(
                 path,
@@ -291,14 +289,14 @@ pub fn grade_path_probe(
             ),
         );
     }
-    if is_html_soft_404(path, &content_type, &body) {
+    if is_html_soft_404(path, &content_type, body) {
         return not_exposed_result(
             path,
             *severity,
             format!("{} returned the site's HTML catch-all/error page, not content matching the requested file.", path),
         );
     }
-    let Some(signature) = expected_file_signature(path, &content_type, &body) else {
+    let Some(signature) = expected_file_signature(path, &content_type, body) else {
         return inconclusive_probe_result(
             path,
             *severity,
@@ -308,7 +306,7 @@ pub fn grade_path_probe(
     };
 
     let effective_severity =
-        if path == "/.env" && classify_env_body(&body) == EnvBodyVerdict::EnvFormatOnly {
+        if path == "/.env" && classify_env_body(body) == EnvBodyVerdict::EnvFormatOnly {
             Severity::High
         } else {
             *severity

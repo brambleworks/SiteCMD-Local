@@ -13,6 +13,42 @@ const RUST_SRC = path.resolve(HERE, "../../src-tauri/src");
 const ENGINE_CHECKS = path.resolve(HERE, "../../src-tauri/crates/engine/src/checks");
 const ENGINE_SESSION = path.resolve(HERE, "../../src-tauri/crates/engine/src/session");
 
+describe("page polish baseline words", () => {
+  it.each([
+    [
+      "placeholder-text",
+      "This page shows placeholder content, such as sample text, a sample address or a stand-in image.",
+      "Open each page we list and look for sample text such as Lorem ipsum, sample addresses such as user@example.com, words in square or curly brackets, and images served by a placeholder image service. Replace each with real content or remove it.",
+      5,
+    ],
+    [
+      "dead-social-links",
+      "Some social icons on this page don't open a profile: they go nowhere or to the platform's home page.",
+      "On each page we list, click every social icon. Point each one that goes nowhere or to a platform's home page at your profile's full address, or remove the icon where you have no profile.",
+      5,
+    ],
+    [
+      "eyebrow-labels",
+      "Several headings on this page have a short label above them, which can repeat what the heading already says.",
+      "On each page we list, read every short label above a heading together with the heading. Remove labels that repeat the heading, and keep a label only where it adds something the heading does not say.",
+      10,
+    ],
+    [
+      "gradient-text",
+      "Some text on this page is filled with a gradient, which can be hard to read where its colors come close to the background.",
+      "On each page we list, find text whose color fades across its letters, often a large heading. Check its contrast at the lightest and darkest points against the background behind it, and use a solid color where any part is hard to read.",
+      10,
+    ],
+  ])("keeps the reviewed guide for %s", (id, lead, step, minutes) => {
+    // A new polish signal can ship without its specific baseline guide or with altered wording.
+    const guide = getFixGuide(`polish.${id}`);
+    expect(guide?.lead).toBe(lead);
+    expect(guide?.steps).toEqual([step]);
+    expect(guide?.effort).toBe("quick");
+    expect(guide?.effortMinutes).toBe(minutes);
+  });
+});
+
 function walkRustFiles(dir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const fullPath = path.join(dir, entry.name);

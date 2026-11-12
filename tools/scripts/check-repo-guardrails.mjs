@@ -10,6 +10,7 @@ import { supportEmailLiteralFailures } from "./lib/guardrail-support-email-rules
 import { supplyChainSafetyFailures } from "./lib/guardrail-supply-chain-rules.mjs";
 import { pricingConsistencyFailures } from "./lib/guardrail-pricing-rules.mjs";
 import { integrationUrlSecretFailures } from "./lib/guardrail-integration-url-secrets.mjs";
+import { stripeKeyLiteralFailures } from "./lib/guardrail-stripe-key-literal-rules.mjs";
 import { scanPersistOffThreadFailures } from "./lib/guardrail-scan-persist-offthread.mjs";
 import { asyncCommandDbBlockingFailures } from "./lib/guardrail-async-command-db-rules.mjs";
 import { desktopCategoryLabelFailures } from "./lib/guardrail-category-rules.mjs";
@@ -58,6 +59,7 @@ import { unifiedScanArchitectureFailures } from "./lib/guardrail-unified-scan-ru
 import { desktopSeverityConsistencyFailures } from "./lib/guardrail-severity-rules.mjs";
 import { desktopSharedTypeFailures } from "./lib/guardrail-type-rules.mjs";
 import { polishCopySafetyFailures } from "./lib/guardrail-polish-copy-rules.mjs";
+import { polishWordListFailures } from "./lib/guardrail-polish-word-lists.mjs";
 import { telemetrySafetyFailures } from "./lib/guardrail-telemetry-rules.mjs";
 import { telemetryDisclosureFailures } from "./lib/guardrail-telemetry-disclosure-rules.mjs";
 import { telemetryConsentFailures } from "./lib/guardrail-telemetry-consent-rules.mjs";
@@ -440,6 +442,7 @@ export function repoGuardrailFailures({ root, read, readJson, exists, listFiles 
   failures.push(...supportEmailLiteralFailures(read, exists, listFiles));
   failures.push(...pricingConsistencyFailures(read, exists));
   failures.push(...integrationUrlSecretFailures(read, exists, listFiles));
+  failures.push(...stripeKeyLiteralFailures(read, exists, listFiles));
   failures.push(...scanPersistOffThreadFailures(read, exists));
   failures.push(...asyncCommandDbBlockingFailures(read, listFiles));
   const retiredDesktopTrialCommandSources = [
@@ -516,6 +519,7 @@ export function repoGuardrailFailures({ root, read, readJson, exists, listFiles 
   );
 
   failures.push(...rustLineBudgetFailures(read, listFiles));
+  failures.push(...polishWordListFailures(read, exists, listFiles));
 
   failures.push(...desktopBoundaryFailures(read, readJson, exists, listFiles));
 

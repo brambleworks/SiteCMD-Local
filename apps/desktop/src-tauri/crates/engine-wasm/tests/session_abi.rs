@@ -396,3 +396,30 @@ fn a_malformed_discovery_request_is_an_error_frame_not_a_trap() {
     let bytes = abi::call(engine_route_discover, br#"{"limit": "many"}"#);
     assert!(abi::refusal(&bytes).is_some());
 }
+
+#[test]
+fn duplicate_title_confidence_survives_the_session_abi() {
+    // A cross-page finding's needs-review confidence is lost through the session ABI.
+    let pages = ["https://example.com/", "https://example.com/menu"]
+        .map(|url| session_page(&request(url)).expect("facts").expect("named"));
+    let bytes = abi::call(
+        engine_session_evaluate,
+        &serde_json::to_vec(&SessionRequest {
+            pages: pages.to_vec(),
+        })
+        .expect("request"),
+    );
+    let response: serde_json::Value = serde_json::from_slice(&bytes).expect("response");
+    let row = response["verdicts"]
+        .as_array()
+        .expect("verdicts")
+        .iter()
+        .find(|row| row["check_id"] == "seo.duplicate_title_across_pages")
+        .expect("duplicate title verdict");
+    assert_eq!(row["status"], "warn");
+    assert_eq!(row["pages"], serde_json::json!([0, 1]));
+    assert_eq!(
+        row.get("confidence"),
+        Some(&serde_json::json!("needs_review"))
+    );
+}

@@ -157,6 +157,7 @@ fn ai_policy_reads_leading_product_tokens_for_every_line_ending() {
             resolver_facts: None,
             vulnerability_facts: None,
             tls_facts: None,
+            negotiated_protocol: None,
             browser_facts: None,
             probe_outcomes: Some(vec![ExecutedProbe::new(
                 probe_key(&ProbeRequest::get(format!("{ORIGIN}/robots.txt"))),

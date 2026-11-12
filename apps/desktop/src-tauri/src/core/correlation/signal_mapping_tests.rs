@@ -375,12 +375,11 @@ fn emittable_web_producer_ids() -> std::collections::BTreeSet<String> {
             .map(|capture| capture[1].to_string()),
     );
 
-    let polish_ctx = crate::checks::polish::PolishContext {
-        url: url::Url::parse("https://example.com").expect("fixture url"),
-        html: "<!doctype html><html><head><title>t</title></head><body></body></html>".into(),
-        css: String::new(),
-        html_lower_cache: std::sync::OnceLock::new(),
-    };
+    let polish_ctx = crate::checks::polish::PolishContext::new(
+        url::Url::parse("https://example.com").expect("fixture url"),
+        "<!doctype html><html><head><title>t</title></head><body></body></html>".into(),
+        Default::default(),
+    );
     ids.extend(
         crate::checks::polish::run_all_signals(&polish_ctx)
             .iter()

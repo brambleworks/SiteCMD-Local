@@ -56,6 +56,11 @@ describe("WASM vendor records", () => {
         manifest,
       );
       expect(record.capability_manifest_sha256).toBe(sha256(manifest));
+      expect(record.key_patterns_sha256).toBe(
+        sha256(
+          readFileSync(path.join(cargoRoot, "crates/engine/src/checks/security/key_patterns.rs")),
+        ),
+      );
       expect(record.manifest_digest).toBe(JSON.parse(manifest.toString()).manifest_digest);
     }
   });

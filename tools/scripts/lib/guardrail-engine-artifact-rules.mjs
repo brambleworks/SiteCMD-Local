@@ -8,6 +8,7 @@ import {
   laneCoverageFailures,
   runnerDispatches,
 } from "./guardrail-engine-lane-parsing.mjs";
+import { polishDispatchFailures, RUNNERS_POLISH } from "./guardrail-engine-polish-rules.mjs";
 import { routeAbiFailures } from "./guardrail-engine-route-abi-rules.mjs";
 
 const WASM_LIB = "apps/desktop/src-tauri/crates/engine-wasm/src/lib.rs";
@@ -49,6 +50,7 @@ const REQUIRED_PROVENANCE = [
   "browser_assets_sha256",
   "manifest_digest",
   "capability_manifest_sha256",
+  "key_patterns_sha256",
 ];
 
 export function engineArtifactFailures(read, listFiles) {
@@ -128,14 +130,16 @@ export function engineArtifactFailures(read, listFiles) {
 
   const sharedClaims = claimedChecks(runners, "pub const RUNNERS");
   const seoClaims = claimedChecks(runnersSeo, "pub const SEO_RUNNERS");
-  const claimed =
-    sharedClaims === null || seoClaims === null ? null : [...sharedClaims, ...seoClaims];
+  const polishClaims = claimedChecks(read(RUNNERS_POLISH), "pub const POLISH_RUNNERS");
+  const claimed = [sharedClaims, seoClaims, polishClaims].includes(null)
+    ? null
+    : [...sharedClaims, ...seoClaims, ...polishClaims];
   const excluded = excludedChecks(runnersSeo, "pub const EXCLUDED_ARTIFACT_CHECKS");
   const planned = claimedChecks(probeChecks, "pub const PROBE_CHECKS");
   const probeExcluded = excludedChecks(probeSchema, "pub const EXCLUDED_PROBE_CHECKS");
   if (claimed === null || excluded === null) {
     failures.push(
-      `${RUNNERS} or ${RUNNERS_SEO} no longer declares \`RUNNERS\`, \`SEO_RUNNERS\` or \`EXCLUDED_ARTIFACT_CHECKS\`; update these rules with them`,
+      `${RUNNERS}, ${RUNNERS_SEO} or ${RUNNERS_POLISH} no longer declares \`RUNNERS\`, \`SEO_RUNNERS\`, \`POLISH_RUNNERS\` or \`EXCLUDED_ARTIFACT_CHECKS\`; update these rules with them`,
     );
   }
   if (planned === null || probeExcluded === null) {
@@ -161,7 +165,7 @@ export function engineArtifactFailures(read, listFiles) {
         ),
         claimed,
         excluded,
-        table: `${RUNNERS} and ${RUNNERS_SEO}`,
+        table: `${RUNNERS}, ${RUNNERS_SEO} and ${RUNNERS_POLISH}`,
         subject: "runner",
       }),
     );
@@ -322,6 +326,8 @@ export function engineArtifactFailures(read, listFiles) {
   if (!/\brustflags:/.test(scorerScript)) {
     failures.push(`${SCORER_SCRIPT}: the vendored record no longer carries \`rustflags\``);
   }
+
+  failures.push(...polishDispatchFailures(read, listFiles));
 
   const registered = REGISTRATION_SOURCES.map((file) => read(file)).join("\n");
   const tables = [

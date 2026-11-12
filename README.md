@@ -37,7 +37,7 @@ available coverage depends on the selected mode, target, and platform.
 | Web Scan      |    157 | Security headers and TLS, SEO, performance, accessibility, compliance, and configuration, against a live URL  |
 | Code Scan     |    170 | Security, operations, architecture, supply chain, AI safety, and data handling, across a source checkout      |
 | Accessibility |     62 | axe-core WCAG 2 Level A and AA rules, run against the rendered page                                           |
-| Polish        |     30 | CSS architecture, HTML quality, copy, visual defaults, and framework leftovers that mark a page as unfinished |
+| Polish        |     33 | CSS architecture, HTML quality, copy, visual defaults, and framework leftovers that mark a page as unfinished |
 
 Dependency findings resolve across 8 package ecosystems. Every count above is
 derived from the registries themselves by `pnpm facts:generate`, published in
@@ -215,7 +215,7 @@ utilities link to their installation instructions:
 - [Tauri's system dependencies for your OS](https://v2.tauri.app/start/prerequisites/),
   including the platform webview and native build tools.
 - The [Gitleaks CLI](https://github.com/gitleaks/gitleaks#installing), required
-  by the pre-push and publication-history secret scans.
+  by the gate's and the publication-history secret scans.
 - [cargo-audit](https://github.com/rustsec/rustsec/tree/master/cargo-audit),
   [cargo-deny](https://embarkstudios.github.io/cargo-deny/cli/index.html), and
   [cargo-nextest](https://nexte.st/docs/installation/pre-built-binaries/),

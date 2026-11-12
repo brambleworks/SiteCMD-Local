@@ -19,18 +19,20 @@
   },
   "checkCounts": {
     "web": 157,
-    "polish": 30,
+    "polish": 33,
     "codeScan": 170,
     "axe": 62,
     "dependencyEcosystems": 8,
-    "total": 427
+    "total": 430
   },
   "hostedCheckCounts": {
-    "web": 144,
+    "web": 149,
     "crossPage": 7,
     "axe": 62,
-    "total": 206
+    "polish": 33,
+    "total": 244
   },
+  "previewCheckCount": 8,
   "polishSignals": [
     {
       "category": "css_architecture",
@@ -45,11 +47,6 @@
     {
       "category": "css_architecture",
       "id": "no-css-architecture",
-      "weight": "medium"
-    },
-    {
-      "category": "css_architecture",
-      "id": "utility-to-custom-ratio",
       "weight": "medium"
     },
     {
@@ -76,6 +73,11 @@
       "category": "html_quality",
       "id": "missing-lang",
       "weight": "low"
+    },
+    {
+      "category": "html_quality",
+      "id": "dead-social-links",
+      "weight": "medium"
     },
     {
       "category": "copy_content",
@@ -108,6 +110,11 @@
       "weight": "lowmedium"
     },
     {
+      "category": "copy_content",
+      "id": "placeholder-text",
+      "weight": "medium"
+    },
+    {
       "category": "ai_aesthetic",
       "id": "gradient-backgrounds",
       "weight": "medium"
@@ -135,6 +142,16 @@
     {
       "category": "ai_aesthetic",
       "id": "floating-blobs",
+      "weight": "medium"
+    },
+    {
+      "category": "ai_aesthetic",
+      "id": "gradient-text",
+      "weight": "medium"
+    },
+    {
+      "category": "ai_aesthetic",
+      "id": "eyebrow-labels",
       "weight": "medium"
     },
     {
@@ -273,6 +290,27 @@
         "description": "SQL database dump",
         "severity": "critical"
       }
+    ],
+    "directoryProbePaths": [
+      "/images/",
+      "/assets/",
+      "/css/",
+      "/js/",
+      "/uploads/",
+      "/static/",
+      "/media/",
+      "/files/",
+      "/wp-content/uploads/",
+      "/wp-content/",
+      "/admin/",
+      "/backup/",
+      "/backups/",
+      "/storage/",
+      "/public/uploads/",
+      "/tmp/",
+      "/temp/",
+      "/old/",
+      "/test/"
     ],
     "sitemapWalk": {
       "declaredLimit": 20,

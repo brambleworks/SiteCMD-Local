@@ -1,62 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { capabilityManifestFailures } from "./lib/guardrail-capability-manifest-rules.mjs";
 
-const MANIFEST = "apps/desktop/src-tauri/crates/engine/manifest/capability_manifest.json";
-const REGISTRY = "apps/desktop/src-tauri/crates/engine/src/manifest/registry/mod.rs";
-const DESKTOP = "apps/desktop/src-tauri/src/checks";
-const ENGINE = "apps/desktop/src-tauri/crates/engine/src/checks";
-const SESSION = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
-
-function entry(check, overrides = {}) {
-  return {
-    check,
-    contract: "0000000000000000",
-    hosted: "artifact",
-    class: "deterministic",
-    scope: "page",
-    requires: ["page_artifact"],
-    compare_on: [],
-    ...overrides,
-  };
-}
-
-function emits(id, extra = "") {
-  return `pub fn run() -> CheckResult {\n    CheckResult { check_id: "${id}".into() }\n}\n${extra}`;
-}
-
-function repo({ entries = [], runners = [], desktop = {}, engine = {}, session = [] }) {
-  const files = {
-    [MANIFEST]: JSON.stringify({
-      schema_version: 1,
-      manifest_digest: "b5fef8de083e1976",
-      entries,
-    }),
-    [REGISTRY]: [
-      "pub const RUNNER_IDS: &[(&str, &str)] = &[",
-      ...runners.map(([id, why]) => `    (\n        "${id}",\n        "${why}",\n    ),`),
-      "];",
-    ].join("\n"),
-    [SESSION]: [
-      "pub const SESSION_CHECK_IDS: &[&str] = &[",
-      ...session.map((id) => `    "${id}",`),
-      "];",
-    ].join("\n"),
-  };
-  for (const [name, source] of Object.entries(desktop)) files[`${DESKTOP}/${name}`] = source;
-  for (const [name, source] of Object.entries(engine)) files[`${ENGINE}/${name}`] = source;
-
-  const read = (file) => {
-    if (!(file in files)) throw new Error(`no fixture for ${file}`);
-    return files[file];
-  };
-  const listFiles = (dir, predicate) =>
-    Object.keys(files).filter((file) => file.startsWith(`${dir}/`) && predicate(file));
-  return [read, listFiles];
-}
-
-function failures(fixture) {
-  return capabilityManifestFailures(...repo(fixture));
-}
+import {
+  MANIFEST,
+  entry,
+  emits,
+  repo,
+  failures,
+} from "./lib/capability-manifest-test-fixtures.mjs";
 
 describe("completeness", () => {
   it("passes when every emitted id has a row", () => {
@@ -154,7 +105,8 @@ describe("completeness", () => {
 });
 
 describe("lane truth", () => {
-  it("exempts unsupported HTTP/2 because the hosted runtime cannot observe the protocol", () => {
+  it("rejects unsupported HTTP/2 now that the engine grades an observed protocol", () => {
+    // An obsolete exception would silently discard an emitted hosted check.
     const id = "performance.http2";
     expect(
       failures({
@@ -162,8 +114,8 @@ describe("lane truth", () => {
           entry(id, { hosted: "unsupported", requires: [], compare_on: ["transport_profile"] }),
         ],
         engine: { "performance/protocol.rs": emits(id) },
-      }),
-    ).toEqual([]);
+      }).join("\n"),
+    ).toContain("marked unsupported");
   });
 
   it("still rejects another emitted performance check marked unsupported", () => {
@@ -233,6 +185,79 @@ describe("lane truth", () => {
 });
 
 describe("scope agreement", () => {
+  it("reports an unreadable constant-returning check id", () => {
+    // A non-literal id must not silently remove a check from scope comparison.
+    const engine = {
+      "performance/protocol.rs": `const CHECK_ID: &str = "performance.http2";
+      impl Check for Http2Check {
+        fn origin_scoped(&self) -> bool { true }
+        fn id(&self) -> &str { CHECK_ID }
+      }`,
+    };
+    const entries = [entry("performance.http2", { scope: "page" })];
+    expect(failures({ entries, engine }).join("\n")).toContain("cannot read check id");
+  });
+
+  it("reports a check implementation without a closing brace", () => {
+    // A block whose end cannot be found must not be treated as fully inspected.
+    const engine = {
+      "performance/protocol.rs": `impl Check for Http2Check {
+      fn id(&self) -> &str { "performance.http2" }
+      fn origin_scoped(&self) -> bool { true }
+    `,
+    };
+    const entries = [entry("performance.http2", { scope: "origin" })];
+    expect(failures({ entries, engine }).join("\n")).toContain("cannot bound Check implementation");
+  });
+
+  it("reads scope past impl words and braces in documentation", () => {
+    // An impl word or brace inside a comment must not cut the implementation short.
+    const engine = {
+      "performance/protocol.rs": `impl Check for Http2Check {
+      /// This impl grades a protocol, even when this comment contains }.
+      fn id(&self) -> &str { "performance.http2" }
+      fn origin_scoped(&self) -> bool { true }
+    }`,
+    };
+    expect(
+      failures({ entries: [entry("performance.http2", { scope: "origin" })], engine }),
+    ).toEqual([]);
+    expect(
+      failures({ entries: [entry("performance.http2", { scope: "page" })], engine }).join("\n"),
+    ).toContain("origin_scoped=true");
+  });
+
+  it("rejects an origin row when Http2Check inherits page scope", () => {
+    // Removing the override must not leave an origin row backed by a page check.
+    const engine = {
+      "performance/protocol.rs": `impl Check for Http2Check {
+      fn id(&self) -> &str { "performance.http2" }
+      fn run(&self, ctx: &PageContext) -> Vec<CheckResult> { vec![] }
+    }`,
+    };
+    const entries = [entry("performance.http2", { scope: "origin" })];
+    expect(failures({ entries, engine }).join("\n")).toContain("origin_scoped=false");
+  });
+
+  it.each([true, false])(
+    "compares the engine's HTTP/2 origin declaration %s with its row",
+    (origin) => {
+      // Reading only desktop adapters misses the synchronous engine check's scope.
+      const engine = {
+        "performance/protocol.rs": `impl Check for Http2Check {
+      fn origin_scoped(&self) -> bool { ${origin} }
+      fn id(&self) -> &str { "performance.http2" }
+    }`,
+      };
+      const matching = entry("performance.http2", { scope: origin ? "origin" : "page" });
+      expect(failures({ entries: [matching], engine })).toEqual([]);
+      const mismatch = { ...matching, scope: origin ? "page" : "origin" };
+      expect(failures({ entries: [mismatch], engine }).join("\n")).toContain(
+        `origin_scoped=${origin}`,
+      );
+    },
+  );
+
   const originCheck = (id) =>
     `fn origin_scoped(&self) -> bool {\n        true\n    }\n    fn id(&self) -> &str {\n        "${id}"\n    }\n`;
 
@@ -311,5 +336,43 @@ describe("the published document", () => {
         ? JSON.stringify({ schema_version: 1, entries: [entry("seo.title")] })
         : read(file);
     expect(capabilityManifestFailures(stripped, listFiles).join("\n")).toContain("manifest_digest");
+  });
+});
+
+describe("polish signals", () => {
+  const table = [
+    "pub const POLISH_SIGNALS: &[PolishSignal] = &[",
+    "    PolishSignal {",
+    '        id: "missing-lang",',
+    "        reads_stylesheets: false,",
+    "        run: html_quality::missing_lang,",
+    "    },",
+    "];",
+  ].join("\n");
+  const row = entry("polish.missing-lang");
+
+  it("reads the engine table's signals as emitted engine ids", () => {
+    expect(failures({ entries: [row], engine: { "polish/mod.rs": table } })).toEqual([]);
+  });
+
+  it("flags a polish row whose signal the table no longer lists", () => {
+    const found = failures({ entries: [row], engine: { "polish/mod.rs": "" } }).join("\n");
+    expect(found).toContain("no check tree emits");
+    expect(found).toContain("polish.missing-lang");
+  });
+
+  it("flags a hosted polish row whose signal table sits outside the engine", () => {
+    const found = failures({ entries: [row], desktop: { "polish/mod.rs": table } }).join("\n");
+    expect(found).toContain("outside the engine crate");
+    expect(found).toContain("polish.missing-lang");
+  });
+
+  it("flags a signal with no row", () => {
+    const found = failures({
+      entries: [entry("seo.title")],
+      engine: { "seo/meta.rs": emits("seo.title"), "polish/mod.rs": table },
+    }).join("\n");
+    expect(found).toContain("no capability-manifest entry");
+    expect(found).toContain("polish.missing-lang");
   });
 });

@@ -1,6 +1,11 @@
 use super::*;
 use crate::http_client::BodyReadError;
 
+/// GET one URL with the common probe policies.
+async fn probe_get(client: &reqwest::Client, url: &str) -> ProbeOutcome {
+    probe(client, ProbeRequest::get(url)).await
+}
+
 pub(crate) mod testing {
     //! A loopback origin for transport tests that reports the peak number of
     //! requests it had accepted and not yet answered.

@@ -31,6 +31,7 @@ fn request(body: &str) -> EvaluationRequest {
         resolver_facts: None,
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: None,
         browser_facts: None,
     }
@@ -236,9 +237,10 @@ fn every_artifact_lane_entry_is_claimed_once_or_excluded() {
     }
 }
 
-// Every id RUNNERS, SEO_RUNNERS or PROBE_CHECKS claims, in dispatch order. One list because
-// `runner_index` is one map: an id in multiple tables would resolve to whichever
-// was inserted last and silently retire the other producer.
+// Every id RUNNERS, SEO_RUNNERS, POLISH_RUNNERS or PROBE_CHECKS claims, in
+// dispatch order. One list because `runner_index` is one map: an id in multiple
+// tables would resolve to whichever was inserted last and silently retire the
+// other producer.
 fn all_claimed_ids() -> Vec<&'static str> {
     artifact_runners()
         .flat_map(|runner| runner.covers.iter().copied())
@@ -280,7 +282,7 @@ fn no_manifest_id_is_claimed_by_two_runners() {
     for check in all_claimed_ids() {
         assert!(
             !seen.contains(&check),
-            "'{check}' is claimed twice across the RUNNERS, SEO_RUNNERS and PROBE_CHECKS tables; its rows would be emitted twice"
+            "'{check}' is claimed twice across the RUNNERS, SEO_RUNNERS, POLISH_RUNNERS and PROBE_CHECKS tables; its rows would be emitted twice"
         );
         seen.push(check);
     }
@@ -589,6 +591,7 @@ fn verdicts_match_the_direct_check_call() {
         resolver_facts: None,
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: None,
         browser_facts: None,
     })

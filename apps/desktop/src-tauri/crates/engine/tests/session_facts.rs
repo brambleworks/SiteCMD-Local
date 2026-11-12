@@ -226,6 +226,7 @@ fn the_cross_page_checks_are_named_session_scope_by_one_route() {
         resolver_facts: None,
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: None,
         browser_facts: None,
     })

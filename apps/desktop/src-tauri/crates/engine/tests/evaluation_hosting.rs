@@ -20,6 +20,7 @@ fn request(url: &str, resolver_facts: Option<serde_json::Value>) -> EvaluationRe
         resolver_facts: resolver_facts.map(|wire| serde_json::from_value(wire).unwrap()),
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: None,
         browser_facts: None,
     }

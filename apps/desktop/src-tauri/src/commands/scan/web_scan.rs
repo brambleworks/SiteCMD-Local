@@ -196,8 +196,6 @@ async fn run_scan_with_progress(
         scan_type,
         false,
         Some(cancel_fn),
-        // Single-page scan: no other page to share stylesheets with.
-        None,
     )
     .await
 }

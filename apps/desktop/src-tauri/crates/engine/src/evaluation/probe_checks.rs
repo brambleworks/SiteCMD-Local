@@ -59,8 +59,12 @@ mod probe_legal;
 mod probe_links;
 #[path = "probe_performance.rs"]
 mod probe_performance;
+#[path = "probe_polish.rs"]
+mod probe_polish;
 #[path = "probe_redirects.rs"]
 mod probe_redirects;
+#[path = "probe_sweeps.rs"]
+mod probe_sweeps;
 
 /// One probe-lane check: the ids it produces, the probes it still needs, and
 /// the verdict it grades once they arrive.
@@ -191,6 +195,18 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
         grade: probe_performance::ttfb_grade,
     },
     ProbeCheck {
+        covers: &[
+            "polish.excessive-border-radius",
+            "polish.floating-blobs",
+            "polish.glassmorphism",
+            "polish.glow-shadows",
+            "polish.gradient-backgrounds",
+            "polish.gradient-text",
+        ],
+        plan: probe_polish::plan,
+        grade: probe_polish::grade,
+    },
+    ProbeCheck {
         covers: &["security.cors_reflection"],
         plan: |ctx| match reflection_probe(ctx) {
             Some(request) => vec![request],
@@ -200,6 +216,11 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
             Some(request) => evaluate_reflection(ctx.outcomes.owned(&request)),
             None => reflection_localhost_skip_result(),
         },
+    },
+    ProbeCheck {
+        covers: &["security.directory_listing"],
+        plan: probe_sweeps::listing_plan,
+        grade: probe_sweeps::listing_grade,
     },
     ProbeCheck {
         covers: &[
@@ -234,6 +255,15 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
                 domain_expiry::TITLE,
             )],
         },
+    },
+    ProbeCheck {
+        covers: &[
+            "security.exposed_files.",
+            "security.exposed_files.source_secrets",
+            "security.exposed_files.summary",
+        ],
+        plan: probe_sweeps::sensitive_plan,
+        grade: probe_sweeps::sensitive_grade,
     },
     ProbeCheck {
         covers: &["security.https_enforcement"],
@@ -273,6 +303,11 @@ pub const PROBE_CHECKS: &[ProbeCheck] = &[
             }
             evaluate_open_redirect(sweep)
         },
+    },
+    ProbeCheck {
+        covers: &["security.security_txt"],
+        plan: probe_sweeps::security_txt_plan,
+        grade: probe_sweeps::security_txt_grade,
     },
     ProbeCheck {
         covers: &["security.vulnerable_libraries"],

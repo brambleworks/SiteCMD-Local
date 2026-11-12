@@ -7,7 +7,6 @@ use std::sync::{Arc, LazyLock};
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 use tokio::runtime::{Builder, Runtime};
 
-use crate::checks::polish::StylesheetCache;
 use crate::core::scanner::{self, ProgressFn, ScanError, ScanResult, ScanType};
 
 /// Process-wide low-priority runtime for scan work.
@@ -34,11 +33,6 @@ pub fn handle() -> tokio::runtime::Handle {
 pub type CancelFn = dyn Fn() -> bool + Send + Sync + 'static;
 
 /// Run `scanner::run_scan` on the low-priority runtime with owned inputs.
-///
-/// `stylesheet_cache` is the current scan execution's shared stylesheet
-/// store. A
-/// multi-page scan passes one handle for every page so a site-wide stylesheet
-/// is downloaded once; single-page callers pass `None`.
 pub async fn run_scan_low_priority(
     url: String,
     progress: Option<Arc<ProgressFn>>,
@@ -47,7 +41,6 @@ pub async fn run_scan_low_priority(
     scan_type: ScanType,
     skip_origin_checks: bool,
     cancel_check: Option<Arc<CancelFn>>,
-    stylesheet_cache: Option<Arc<StylesheetCache>>,
 ) -> Result<ScanResult, ScanError> {
     handle()
         .spawn(async move {
@@ -59,7 +52,6 @@ pub async fn run_scan_low_priority(
                 scan_type,
                 skip_origin_checks,
                 cancel_check.as_deref(),
-                stylesheet_cache.as_deref(),
             )
             .await
         })

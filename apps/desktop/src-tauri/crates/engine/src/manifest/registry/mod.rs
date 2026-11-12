@@ -6,6 +6,7 @@ mod accessibility;
 mod compliance;
 mod config;
 mod performance;
+mod polish;
 mod security;
 mod seo;
 
@@ -21,6 +22,7 @@ pub const FAMILIES: &[&[Entry]] = &[
     compliance::ENTRIES,
     config::ENTRIES,
     performance::ENTRIES,
+    polish::ENTRIES,
     security::ENTRIES,
     seo::ENTRIES,
 ];

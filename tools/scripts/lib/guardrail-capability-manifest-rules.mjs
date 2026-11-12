@@ -1,4 +1,5 @@
-import { constList } from "./guardrail-engine-lane-parsing.mjs";
+import { constList, isPreviewOnlySources } from "./guardrail-engine-lane-parsing.mjs";
+import { stripComments, stripNonCode } from "./guardrail-source-text.mjs";
 
 import {
   productionHalf,
@@ -12,9 +13,6 @@ const REGISTRY = "apps/desktop/src-tauri/crates/engine/src/manifest/registry/mod
 // Cross-page verdicts are manifest entries but not public check-count inputs.
 const SESSION_CHECKS = "apps/desktop/src-tauri/crates/engine/src/session/mod.rs";
 
-// The hosted runtime cannot observe the negotiated protocol for these checks.
-const UNOBSERVABLE_HOSTED_CHECKS = ["performance.http2"];
-
 // Runner ids emit dynamic families rather than their own result rows.
 function runnerIds(read) {
   const source = read(REGISTRY);
@@ -22,6 +20,104 @@ function runnerIds(read) {
   return new Map(
     [...block.matchAll(/\(\s*"([^"]+)",\s*\n?\s*"([^"]*)",?\s*\)/g)].map((m) => [m[1], m[2]]),
   );
+}
+
+// Header type arguments can contain braces that do not open the implementation.
+function implementationOpen(code, start) {
+  let angles = 0;
+  let parentheses = 0;
+  let brackets = 0;
+  let braces = 0;
+  for (let index = start; index < code.length; index += 1) {
+    const char = code[index];
+    if (braces > 0) {
+      if (char === "{") braces += 1;
+      if (char === "}") braces -= 1;
+      continue;
+    }
+    if (char === "{") {
+      if (angles === 0 && parentheses === 0 && brackets === 0) return index;
+      braces = 1;
+      continue;
+    }
+    if (char === "}" || (char === ";" && angles === 0 && parentheses === 0 && brackets === 0))
+      return null;
+    if (char === "<") angles += 1;
+    if (char === ">" && code[index - 1] !== "-") angles = Math.max(0, angles - 1);
+    if (char === "(") parentheses += 1;
+    if (char === ")") parentheses -= 1;
+    if (char === "[") brackets += 1;
+    if (char === "]") brackets -= 1;
+  }
+  return null;
+}
+
+// Match braces in code while reading literal ids from the comment-free view.
+function engineScopes(source, file, failures) {
+  const code = stripNonCode(source, file);
+  const literals = stripComments(source, file);
+  const scopes = [];
+  const implementations = [...code.matchAll(/\bimpl\b/g)];
+  for (const match of code.matchAll(/\bCheck\s+for\b/g)) {
+    const start = implementations.findLast((item) => item.index < match.index)?.index;
+    const afterTrait = match.index + match[0].length;
+    const open = implementationOpen(code, afterTrait);
+    if (start === undefined || open === null) {
+      failures.push(
+        `${file}: cannot read Check implementation header; teach the scope parser the new formatting`,
+      );
+      continue;
+    }
+    const name = literals.slice(afterTrait, open).trim();
+    let depth = 0;
+    let close = null;
+    for (let index = open; index < code.length; index += 1) {
+      if (code[index] === "{") depth += 1;
+      if (code[index] === "}") depth -= 1;
+      if (depth === 0) {
+        close = index;
+        break;
+      }
+    }
+    if (close === null) {
+      failures.push(
+        `${file}: cannot bound Check implementation '${name}'; scope comparison requires its closing brace`,
+      );
+      continue;
+    }
+    const block = literals.slice(open, close + 1);
+    const methods = code.slice(open, close + 1);
+    const idStart = /\bfn\s+id\s*\(/.exec(methods)?.index;
+    const id =
+      idStart === undefined
+        ? undefined
+        : block
+            .slice(idStart)
+            .match(/^fn\s+id\s*\(\s*&self\s*\)\s*->\s*&str\s*\{\s*"([^"]+)"\s*\}/)?.[1];
+    if (!id) {
+      failures.push(
+        `${file}: cannot read check id in Check implementation '${name}'; teach the scope parser the new formatting`,
+      );
+      continue;
+    }
+    const scopeStart = /\bfn\s+origin_scoped\s*\(/.exec(methods)?.index;
+    const body =
+      scopeStart === undefined
+        ? undefined
+        : block
+            .slice(scopeStart)
+            .match(
+              /^fn\s+origin_scoped\s*\(\s*&self\s*\)\s*->\s*bool\s*\{\s*(true|false)\s*\}/,
+            )?.[1];
+    if (body === undefined && scopeStart !== undefined) {
+      failures.push(
+        `${file}: cannot read origin_scoped in Check implementation '${name}'; teach the scope parser the new formatting`,
+      );
+      continue;
+    }
+    scopes.push({ id, body: body ?? "false" });
+  }
+  return scopes;
 }
 
 export function capabilityManifestFailures(read, listFiles) {
@@ -93,14 +189,8 @@ export function capabilityManifestFailures(read, listFiles) {
   }
   const understated = manifest.entries
     .filter((entry) => entry.hosted === "unsupported" && engineIds.has(entry.check))
-    .filter((entry) => !UNOBSERVABLE_HOSTED_CHECKS.includes(entry.check))
     // Localhost-only checks have no hosted findings to preserve in comparisons.
-    .filter(
-      (entry) =>
-        !emitted
-          .get(entry.check)
-          ?.every((file) => file.startsWith(`${WEB_CHECK_TREES.engine}/predeploy/`)),
-    )
+    .filter((entry) => !isPreviewOnlySources(emitted.get(entry.check)))
     .map((entry) => entry.check);
   if (understated.length > 0) {
     failures.push(
@@ -120,6 +210,20 @@ export function capabilityManifestFailures(read, listFiles) {
       if (declaredOrigin !== (entry.scope === "origin")) {
         failures.push(
           `${file}: '${id}' is origin_scoped=${body} on the desktop but scope='${entry.scope}' in the capability manifest; the two decide the same coverage question and must not disagree`,
+        );
+      }
+    }
+  }
+
+  // Synchronous engine checks inherit page scope unless their implementation overrides it.
+  for (const file of listFiles(WEB_CHECK_TREES.engine, (f) => f.endsWith(".rs"))) {
+    const source = productionHalf(read(file));
+    for (const { id, body } of engineScopes(source, file, failures)) {
+      const entry = byId.get(id);
+      if (!entry) continue;
+      if ((body === "true") !== (entry.scope === "origin")) {
+        failures.push(
+          `${file}: '${id}' declares origin_scoped=${body} but scope='${entry.scope}' in the capability manifest; synchronous checks and their rows must agree`,
         );
       }
     }

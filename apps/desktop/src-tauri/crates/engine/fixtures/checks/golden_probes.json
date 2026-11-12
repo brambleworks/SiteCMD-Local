@@ -307,60 +307,6 @@
       "name": "one_exposed_directory_fails_high"
     },
     {
-      "check": "security.directory_listing",
-      "expected": [
-        {
-          "category": "security",
-          "checkId": "security.directory_listing",
-          "confidence": "high",
-          "description": "No directory listings were detected across the 19 common paths we probed.",
-          "fixPrompt": null,
-          "manualFix": null,
-          "rawData": null,
-          "severity": "high",
-          "status": "pass",
-          "title": "Directory listing"
-        }
-      ],
-      "input": {
-        "outcomes": [
-          [
-            "/images/",
-            {
-              "body": {
-                "bytes": 78,
-                "text": "<html><head><title>Gallery</title></head><body><h1>Our work</h1></body></html>",
-                "utf8_valid": true
-              },
-              "content_type": "text/html",
-              "final_url": "https://example.com/images/",
-              "kind": "response",
-              "status": 200
-            }
-          ],
-          [
-            "/backup/",
-            {
-              "class": "timeout",
-              "detail": "operation timed out",
-              "kind": "failure"
-            }
-          ],
-          [
-            "/tmp/",
-            {
-              "body": null,
-              "content_type": null,
-              "final_url": "https://example.com/tmp/",
-              "kind": "response",
-              "status": 404
-            }
-          ]
-        ]
-      },
-      "name": "clean_and_unreachable_probes_pass"
-    },
-    {
       "check": "security.exposed_files",
       "expected": [
         {
@@ -11917,6 +11863,347 @@
         }
       },
       "name": "dmarc_lowercase_version_is_discarded_and_whitespace_is_accepted"
+    },
+    {
+      "check": "security.directory_listing",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.directory_listing",
+          "confidence": "needs_review",
+          "description": "None of the 2 directories that answered lists its contents, but 17 of the 19 did not answer, so this scan could not rule out a listing there.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "answered": 2,
+            "planned": 19,
+            "unanswered": 17
+          },
+          "severity": "high",
+          "status": "skipped",
+          "title": "Directory listing check incomplete"
+        }
+      ],
+      "input": {
+        "outcomes": [
+          [
+            "/images/",
+            {
+              "body": {
+                "bytes": 78,
+                "text": "<html><head><title>Gallery</title></head><body><h1>Our work</h1></body></html>",
+                "utf8_valid": true
+              },
+              "content_type": "text/html",
+              "final_url": "https://example.com/images/",
+              "kind": "response",
+              "status": 200
+            }
+          ],
+          [
+            "/backup/",
+            {
+              "class": "timeout",
+              "detail": "operation timed out",
+              "kind": "failure"
+            }
+          ],
+          [
+            "/tmp/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/tmp/",
+              "kind": "response",
+              "status": 404
+            }
+          ]
+        ]
+      },
+      "name": "clean_and_unreachable_probes_are_inconclusive"
+    },
+    {
+      "check": "security.directory_listing",
+      "expected": [
+        {
+          "category": "security",
+          "checkId": "security.directory_listing",
+          "confidence": "high",
+          "description": "No directory listings were detected across the 19 common paths we probed.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": null,
+          "severity": "high",
+          "status": "pass",
+          "title": "Directory listing"
+        }
+      ],
+      "input": {
+        "outcomes": [
+          [
+            "/images/",
+            {
+              "body": {
+                "bytes": 78,
+                "text": "<html><head><title>Gallery</title></head><body><h1>Our work</h1></body></html>",
+                "utf8_valid": true
+              },
+              "content_type": "text/html",
+              "final_url": "https://example.com/images/",
+              "kind": "response",
+              "status": 200
+            }
+          ],
+          [
+            "/assets/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/assets/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/css/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/css/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/js/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/js/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/uploads/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/uploads/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/static/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/static/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/media/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/media/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/files/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/files/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/wp-content/uploads/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/wp-content/uploads/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/wp-content/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/wp-content/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/admin/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/admin/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/backup/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/backup/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/backups/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/backups/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/storage/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/storage/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/public/uploads/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/public/uploads/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/tmp/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/tmp/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/temp/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/temp/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/old/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/old/",
+              "kind": "response",
+              "status": 404
+            }
+          ],
+          [
+            "/test/",
+            {
+              "body": null,
+              "content_type": null,
+              "final_url": "https://example.com/test/",
+              "kind": "response",
+              "status": 404
+            }
+          ]
+        ]
+      },
+      "name": "every_directory_answers_without_a_listing_passes"
+    },
+    {
+      "check": "performance.http2",
+      "expected": [
+        {
+          "category": "performance",
+          "checkId": "performance.http2",
+          "confidence": "high",
+          "description": "The negotiated HTTP protocol was not observed, so this check did not grade it.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "reason": "protocol_not_observed"
+          },
+          "severity": "low",
+          "status": "skipped",
+          "title": "HTTP/2 Support"
+        }
+      ],
+      "input": {
+        "negotiated_protocol": null,
+        "page": {
+          "body": "",
+          "evaluation_time": "2026-10-30T00:00:00Z",
+          "headers": [],
+          "http_version": null,
+          "status_code": 200,
+          "url": "https://example.com/"
+        }
+      },
+      "name": "http2_without_a_protocol_observation_is_skipped"
+    },
+    {
+      "check": "performance.http2",
+      "expected": [
+        {
+          "category": "performance",
+          "checkId": "performance.http2",
+          "confidence": "high",
+          "description": "This request used HTTP/2, which provides multiplexing and header compression. HTTP/3 was not advertised in this response; that is optional and not a defect by itself.",
+          "fixPrompt": null,
+          "manualFix": null,
+          "rawData": {
+            "alt_svc_h3": false,
+            "http_version": "HTTP/2",
+            "scheme": "https"
+          },
+          "severity": "medium",
+          "status": "pass",
+          "title": "Modern HTTP protocol detected"
+        }
+      ],
+      "input": {
+        "negotiated_protocol": {
+          "observed_at": "2026-10-30T00:00:00Z",
+          "protocol": "h2"
+        },
+        "page": {
+          "body": "",
+          "evaluation_time": "2026-10-30T00:00:00Z",
+          "headers": [],
+          "http_version": null,
+          "status_code": 200,
+          "url": "https://example.com/"
+        }
+      },
+      "name": "http2_from_a_negotiated_protocol_fact_passes"
     }
   ],
   "comment": "Cross-runtime golden probe-verdict fixtures: classified probe outcomes paired with the full expected CheckResult rows under a frozen evaluation_time (hosted scanner spec, probe tier). Embedded via include_str! so the SAME bytes run natively in desktop CI and through the wasm artifact in the hosted runner's CI. Regenerate expected blocks after an INTENTIONAL verdict change: cargo test -p sitecmd-engine --test golden_probes -- --ignored regenerate"

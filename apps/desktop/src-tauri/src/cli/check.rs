@@ -252,8 +252,6 @@ async fn run_fresh_scan(url: &str, scan_type: ScanType) -> Result<ScanResult, St
         scan_type,
         false,
         None,
-        // Single-page CLI check: no other page to share stylesheets with.
-        None,
     )
     .await
     .map_err(|e| format!("{}", e))?;

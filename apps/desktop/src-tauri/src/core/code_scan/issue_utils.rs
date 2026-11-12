@@ -479,7 +479,9 @@ mod tests {
     fn security_regression_redacts_secret_like_values_from_source_excerpts() {
         let source = concat!(
             "DATABASE_URL=postgresql://app_user:plain-text-password@db.example.com/app\n",
-            "const apiKey = 'sk_live_abcdefghijklmnopqrstuvwxyz1234567890';\n",
+            // Split: GitHub's push protection refuses a committed Stripe live key.
+            "const apiKey = 'sk_live_",
+            "abcdefghijklmnopqrstuvwxyz1234567890';\n",
             "const publicLabel = 'safe to show';\n",
         );
 

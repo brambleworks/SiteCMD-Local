@@ -1,9 +1,7 @@
 //! Web-scan orchestration for fetch, checks, browser analysis, and scoring.
 
 use crate::checks::{accessibility, compliance, config, performance, predeploy, security, seo};
-use crate::checks::{
-    AsyncCheck, Check, CheckContext, CheckResult, CheckStatus, ScanCategory, Severity,
-};
+use crate::checks::{AsyncCheck, Check, CheckContext, CheckResult, ScanCategory};
 use crate::core::localhost;
 use crate::scoring::calculator;
 use std::future::Future;
@@ -73,7 +71,7 @@ where
 }
 
 /// Run all applicable checks against a URL, emitting progress events.
-#[tracing::instrument(skip(progress, enabled_categories, cancel_check, url_str, stylesheet_cache), fields(timeout_secs, scan_type = %scan_type))]
+#[tracing::instrument(skip(progress, enabled_categories, cancel_check, url_str), fields(timeout_secs, scan_type = %scan_type))]
 pub async fn run_scan<C>(
     url_str: &str,
     progress: Option<&ProgressFn>,
@@ -83,8 +81,6 @@ pub async fn run_scan<C>(
     // Multi-page scans skip origin-wide checks after the entry page.
     skip_origin_checks: bool,
     cancel_check: Option<&C>,
-    // Stylesheets already read by earlier pages of the same scan execution.
-    stylesheet_cache: Option<&crate::checks::polish::StylesheetCache>,
 ) -> Result<ScanResult, ScanError>
 where
     C: Fn() -> bool + ?Sized,
@@ -133,6 +129,7 @@ where
         sync_checks.clear();
     }
     if skip_origin_checks {
+        sync_checks.retain(|check| !check.origin_scoped());
         async_checks.retain(|check| !check.origin_scoped());
     }
     let total = sync_checks.len() + async_checks.len();
@@ -176,7 +173,7 @@ where
             progress,
             &mut all_results,
             cancel_check,
-            stylesheet_cache,
+            skip_origin_checks,
         )
         .await?;
     }
@@ -362,17 +359,14 @@ pub(crate) fn collect_checks(
     (sync_checks, async_checks)
 }
 
-/// Run Polish quality heuristics using the already-fetched page body.
-/// Fetches linked CSS stylesheets, then runs all polish signals and converts to CheckResults.
-/// `stylesheet_cache` holds the stylesheets earlier pages of this scan
-/// execution already read; it is `None` for a single-page scan.
+/// Run page polish, and the stylesheet signals on the entry page.
 async fn run_polish_phase<C>(
     ctx: &mut CheckContext,
     origin: crate::network_policy::LocalOrigin,
     progress: Option<&ProgressFn>,
     results: &mut Vec<CheckResult>,
     cancel_check: Option<&C>,
-    stylesheet_cache: Option<&crate::checks::polish::StylesheetCache>,
+    skip_origin_checks: bool,
 ) -> Result<(), ScanError>
 where
     C: Fn() -> bool + ?Sized,
@@ -380,36 +374,35 @@ where
     use crate::checks::polish::{self, css_fetch, PolishContext};
 
     ensure_not_cancelled(cancel_check)?;
-    emit_progress(
-        progress,
-        "polish-css",
-        ScanCategory::Polish,
-        "running",
-        0,
-        0,
-        0,
-    );
-
-    // Fetch linked CSS for polish analysis. Coverage travels with the content:
-    // a failed fetch must not turn an unobserved CSS pattern into a Pass.
-    let css_fetch = await_or_cancel(
-        css_fetch::fetch_stylesheets(&ctx.body, &ctx.url, &ctx.client, origin, stylesheet_cache),
-        cancel_check,
-    )
-    .await?;
-    let stylesheets_discovered = css_fetch.stylesheets_discovered;
-    let stylesheets_fetched = css_fetch.stylesheets_fetched;
-    ensure_not_cancelled(cancel_check)?;
-
-    emit_progress(
-        progress,
-        "polish-css",
-        ScanCategory::Polish,
-        "complete",
-        0,
-        0,
-        0,
-    );
+    let css_fetch = if skip_origin_checks {
+        css_fetch::StylesheetFetchResult::default()
+    } else {
+        emit_progress(
+            progress,
+            "polish-css",
+            ScanCategory::Polish,
+            "running",
+            0,
+            0,
+            0,
+        );
+        let fetched = await_or_cancel(
+            css_fetch::fetch_stylesheets(&ctx.body, &ctx.url, &ctx.client, origin),
+            cancel_check,
+        )
+        .await?;
+        ensure_not_cancelled(cancel_check)?;
+        emit_progress(
+            progress,
+            "polish-css",
+            ScanCategory::Polish,
+            "complete",
+            0,
+            0,
+            0,
+        );
+        fetched
+    };
     emit_progress(
         progress,
         "polish-signals",
@@ -422,15 +415,18 @@ where
 
     // Move the body into the final phase to avoid a MAX_BODY_SIZE clone. Build a
     // fresh lowercase cache because PolishContext uses Unicode lowercasing.
-    let polish_ctx = PolishContext {
-        url: ctx.url.clone(),
-        html: std::mem::take(&mut ctx.body),
-        css: css_fetch.css,
-        html_lower_cache: std::sync::OnceLock::new(),
-    };
+    let polish_ctx = PolishContext::new(
+        ctx.url.clone(),
+        std::mem::take(&mut ctx.body).into(),
+        css_fetch.counts,
+    );
 
     let signal_results = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        polish::run_all_signals(&polish_ctx)
+        if skip_origin_checks {
+            polish::run_page_signals(&polish_ctx)
+        } else {
+            polish::run_all_signals(&polish_ctx)
+        }
     }))
     .map_err(|_| {
         tracing::error!("Polish signal evaluation panicked; aborting incomplete scan");
@@ -439,12 +435,12 @@ where
     ensure_not_cancelled(cancel_check)?;
     let mut polish_issues: Vec<CheckResult> = signal_results
         .iter()
-        .map(polish_result_to_check_result)
+        .map(polish::polish_check_result)
         .collect();
-    mark_incomplete_polish_css_results(
+    polish::grade_stylesheet_coverage(
         &mut polish_issues,
-        stylesheets_discovered,
-        stylesheets_fetched,
+        css_fetch.stylesheets_discovered,
+        css_fetch.stylesheets_fetched,
     );
 
     let count = polish_issues.len();
@@ -466,46 +462,6 @@ where
         signal_results.len()
     );
     Ok(())
-}
-
-/// CSS-dependent Polish signals can still prove a finding from inline HTML or
-/// the stylesheets that were fetched. They cannot prove a clean result when a
-/// linked stylesheet was unavailable, so preserve that distinction as Skipped.
-fn mark_incomplete_polish_css_results(
-    results: &mut [CheckResult],
-    stylesheets_discovered: usize,
-    stylesheets_fetched: usize,
-) {
-    if stylesheets_fetched >= stylesheets_discovered {
-        return;
-    }
-    const CSS_DEPENDENT_SIGNALS: &[&str] = &[
-        "polish.gradient-backgrounds",
-        "polish.glassmorphism",
-        "polish.excessive-border-radius",
-        "polish.glow-shadows",
-        "polish.floating-blobs",
-    ];
-    for result in results.iter_mut().filter(|result| {
-        result.status == CheckStatus::Pass
-            && CSS_DEPENDENT_SIGNALS.contains(&result.check_id.as_str())
-    }) {
-        result.status = CheckStatus::Skipped;
-        result.description = format!(
-            "This signal could not be cleared because SiteCMD fetched {} of {} linked stylesheets. The unavailable stylesheet may contain matching CSS.",
-            stylesheets_fetched, stylesheets_discovered
-        );
-        result.raw_data = Some(serde_json::json!({
-            "stylesheets_discovered": stylesheets_discovered,
-            "stylesheets_fetched": stylesheets_fetched,
-            "coverage_complete": false,
-        }));
-        result.confidence = crate::checks::IssueConfidence::NeedsReview;
-        result.confidence_reason = Some(
-            "Linked stylesheet coverage was incomplete, so absence of the CSS pattern was not established."
-                .to_string(),
-        );
-    }
 }
 
 /// Emit a scan-progress event via the progress callback
@@ -539,58 +495,6 @@ fn format_http_version(version: reqwest::Version) -> Option<String> {
         reqwest::Version::HTTP_2 => Some("HTTP/2".into()),
         reqwest::Version::HTTP_3 => Some("HTTP/3".into()),
         _ => None,
-    }
-}
-
-/// Convert a PolishResult to a CheckResult for unified storage.
-fn polish_result_to_check_result(r: &crate::checks::polish::PolishResult) -> CheckResult {
-    // Preserve branch-specific signal severity unless policy overrides it.
-    let (status, severity) = if r.fired {
-        let weight_severity = match r.weight {
-            crate::checks::polish::SignalWeight::High => Severity::High,
-            crate::checks::polish::SignalWeight::Medium => Severity::Medium,
-            crate::checks::polish::SignalWeight::LowMedium
-            | crate::checks::polish::SignalWeight::Low => Severity::Low,
-        };
-        (CheckStatus::Fail, weight_severity)
-    } else {
-        (CheckStatus::Pass, Severity::Low)
-    };
-
-    // Polish signals are heuristics; grade confidence per-signal so the UI
-    // (and the SiteCMD scoring) can deprioritize subjective aesthetic
-    // matches relative to direct structural facts.
-    let (confidence, confidence_reason) =
-        crate::core::confidence_policy::polish_signal_confidence(&r.id);
-
-    // Fired signals get a finding-style headline; the signal name stays the
-    // identity for passing results.
-    let title = if r.fired {
-        crate::checks::polish::titles::polish_signal_fail_title(&r.id)
-            .map(str::to_string)
-            .unwrap_or_else(|| r.name.clone())
-    } else {
-        r.name.clone()
-    };
-    let guidance = if r.fired {
-        crate::checks::polish::guidance::polish_signal_guidance(&r.id)
-    } else {
-        None
-    };
-
-    CheckResult {
-        check_id: format!("polish.{}", r.id),
-        category: ScanCategory::Polish,
-        title,
-        description: r.detail.clone(),
-        status,
-        severity,
-        fix_prompt: guidance.map(|entry| entry.fix.to_string()),
-        manual_fix: guidance.map(|entry| entry.fix.to_string()),
-        raw_data: Some(r.data.clone()),
-        confidence,
-        confidence_reason: confidence_reason.map(|s| s.to_string()),
-        why_it_matters: guidance.map(|entry| entry.why_it_matters.to_string()),
     }
 }
 

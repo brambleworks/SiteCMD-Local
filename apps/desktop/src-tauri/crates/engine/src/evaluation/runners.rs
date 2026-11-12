@@ -1,8 +1,9 @@
 //! Registry mapping compiled verdicts to manifest IDs.
 //!
 //! Every page- and origin-scoped artifact-lane entry has exactly
-//! one runner, here or in `runners_seo.rs`, or an explicit exclusion
-//! there, and no runner may claim an unpublished ID.
+//! one runner, here, in `runners_seo.rs` or in `runners_polish.rs`, or an
+//! explicit exclusion in `runners_seo.rs`, and no runner may claim an
+//! unpublished ID.
 
 use super::EvaluationInputs;
 use crate::checks::seo::robots_conflicts::MetaRobotsConflictCheck;
@@ -407,6 +408,13 @@ pub const RUNNERS: &[Runner] = &[
             vec![crate::checks::performance::page_weight::html_size_result(
                 inputs.page.body.len(),
             )]
+        },
+    },
+    Runner {
+        covers: &["performance.http2"],
+        run: |inputs| {
+            crate::checks::performance::protocol::Http2Check
+                .run_with_protocol(inputs.page, inputs.negotiated_protocol)
         },
     },
     // TLS verdicts require caller-supplied handshake facts. Missing inputs emit

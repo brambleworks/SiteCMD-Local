@@ -30,6 +30,7 @@ fn request(body: &str, outcomes: Option<Vec<ExecutedProbe>>) -> EvaluationReques
         resolver_facts: None,
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: outcomes,
         browser_facts: None,
     }

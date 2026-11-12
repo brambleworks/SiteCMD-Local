@@ -22,8 +22,12 @@ use sitecmd_engine::checks::seo::robots_directives::evaluate_sitemap_in_robots;
 use sitecmd_engine::checks::seo::sitemap::{SitemapFetch, SitemapProbe, SitemapProbeObservation};
 use sitecmd_engine::checks::seo::{geo, links, og_image, robots, sitemap};
 use sitecmd_engine::dns::{CaaRecord, DnsOutcome, MxRecord};
+use sitecmd_engine::evaluation::sweep_reading;
 use sitecmd_engine::probe::{ProbeOutcome, ProbeResponse};
 use sitecmd_engine::{CheckResult, CheckStatus, IssueConfidence, PageContext, Severity};
+
+#[path = "support/golden_protocol.rs"]
+mod protocol_cases;
 
 const CORPUS: &str = include_str!("../fixtures/checks/golden_probes.json");
 
@@ -436,6 +440,7 @@ fn corpus() -> Corpus {
 
 fn run_case(case: &Case) -> Vec<CheckResult> {
     match case.check.as_str() {
+        "performance.http2" => protocol_cases::run(&case.input),
         "security.security_txt" => {
             let input: SecurityTxtInput =
                 serde_json::from_value(case.input.clone()).expect("security_txt input parses");
@@ -476,8 +481,16 @@ fn run_case(case: &Case) -> Vec<CheckResult> {
         "security.directory_listing" => {
             let input: DirectoryListingInput =
                 serde_json::from_value(case.input.clone()).expect("directory_listing input parses");
+            let readings: Vec<_> = input
+                .outcomes
+                .into_iter()
+                .map(|(dir, outcome)| (dir, sweep_reading(&outcome)))
+                .collect();
             vec![directory_listing::grade_listing_probes(
-                directory_listing::exposed_directories(input.outcomes),
+                readings
+                    .iter()
+                    .map(|(dir, reading)| (dir.clone(), reading))
+                    .collect(),
             )]
         }
         "security.exposed_files" => {
@@ -496,7 +509,7 @@ fn run_case(case: &Case) -> Vec<CheckResult> {
                 .iter()
                 .map(|(path, desc, severity): &(&str, &str, Severity)| {
                     let outcome = per_path.get(*path).cloned().unwrap_or_else(absent_probe);
-                    exposed_files::grade_path_probe(path, desc, severity, outcome)
+                    exposed_files::grade_path_probe(path, desc, severity, &sweep_reading(&outcome))
                 })
                 .collect();
             exposed_files::summarize_exposed_files(source_advisory, path_rows, 0)
@@ -1144,14 +1157,14 @@ fn headline_verdicts_match_the_documented_checks() {
         CheckStatus::Skipped
     );
     // One confirmed server-generated index fails; clean, blocked, and
-    // unreachable probes are not evidence of a listing.
+    // unreachable probes cannot rule out a listing.
     assert_eq!(
         status("one_exposed_directory_fails_high"),
         CheckStatus::Fail
     );
     assert_eq!(
-        status("clean_and_unreachable_probes_pass"),
-        CheckStatus::Pass
+        status("clean_and_unreachable_probes_are_inconclusive"),
+        CheckStatus::Skipped
     );
 
     // exposed_files emits multiple rows, so assert against the whole set.

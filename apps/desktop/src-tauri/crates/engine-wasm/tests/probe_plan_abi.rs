@@ -13,9 +13,20 @@ use sitecmd_engine::manifest::{capability_manifest, HostedLane, RuntimeFact};
 use sitecmd_engine::probe::{ProbeOutcome, ProbeResponse};
 use sitecmd_engine_wasm::{engine_route_evaluate, engine_route_open, engine_route_plan};
 
-// These two state nothing until robots.txt answers with a body or the walk
-// finds a sitemap, as on the desktop.
-const SILENT_WITHOUT_INPUT: [&str; 2] = ["seo.ai_crawler_blocking", "seo.sitemap_freshness"];
+// The first two state nothing until robots.txt answers with a body or the walk
+// finds a sitemap, as on the desktop; the source advisory needs a secret-named
+// identifier in an inline script.
+const SILENT_WITHOUT_INPUT: [&str; 3] = [
+    "seo.ai_crawler_blocking",
+    "seo.sitemap_freshness",
+    "security.exposed_files.source_secrets",
+];
+
+// A family id names every dynamic id under its prefix that no sibling id of
+// the same row covers.
+fn names(covers: &[&str], id: &str, row: &str) -> bool {
+    row == id || (id.ends_with('.') && row.starts_with(id) && !covers.contains(&row))
+}
 
 /// Record `fresh` on this thread's open route and answer its plan.
 fn plan_through_abi(fresh: &[ExecutedProbe]) -> ProbePlan {
@@ -62,6 +73,7 @@ fn request() -> EvaluationRequest {
         resolver_facts: None,
         vulnerability_facts: None,
         tls_facts: None,
+        negotiated_protocol: None,
         probe_outcomes: None,
         browser_facts: None,
     }
@@ -176,11 +188,17 @@ fn executing_the_framed_plan_produces_framed_verdicts() {
                 continue;
             }
             assert!(
-                after.results.iter().any(|row| &row.check_id == id),
+                after
+                    .results
+                    .iter()
+                    .any(|row| names(check.covers, id, &row.check_id)),
                 "'{id}' produced a verdict row through the ABI"
             );
             assert!(
-                before.results.iter().all(|row| &row.check_id != id),
+                !before
+                    .results
+                    .iter()
+                    .any(|row| names(check.covers, id, &row.check_id)),
                 "'{id}' produced no row before its probes were executed"
             );
         }

@@ -1,6 +1,30 @@
 import type { FixGuideEntry } from "./types";
 
 export const POLISH_FIX_GUIDES: Record<string, FixGuideEntry> = {
+  "placeholder-text": {
+    effort: "quick",
+    effortMinutes: 5,
+    lead: "This page shows placeholder content, such as sample text, a sample address or a stand-in image.",
+    default: [
+      "Open each page we list and look for sample text such as Lorem ipsum, sample addresses such as user@example.com, words in square or curly brackets, and images served by a placeholder image service. Replace each with real content or remove it.",
+    ],
+  },
+  "dead-social-links": {
+    effort: "quick",
+    effortMinutes: 5,
+    lead: "Some social icons on this page don't open a profile: they go nowhere or to the platform's home page.",
+    default: [
+      "On each page we list, click every social icon. Point each one that goes nowhere or to a platform's home page at your profile's full address, or remove the icon where you have no profile.",
+    ],
+  },
+  "eyebrow-labels": {
+    effort: "quick",
+    effortMinutes: 10,
+    lead: "Several headings on this page have a short label above them, which can repeat what the heading already says.",
+    default: [
+      "On each page we list, read every short label above a heading together with the heading. Remove labels that repeat the heading, and keep a label only where it adds something the heading does not say.",
+    ],
+  },
   "inline-style-density": {
     effort: "moderate",
     effortMinutes: 15,
@@ -23,14 +47,6 @@ export const POLISH_FIX_GUIDES: Record<string, FixGuideEntry> = {
     lead: "This scan found no recognizable styling structure on this page, though a valid setup it cannot detect may still exist.",
     default: [
       "Load the page in a real browser and confirm its linked, imported, runtime-injected, and shadow-DOM styles loaded; the scan did not recognize a stylesheet or CSS-in-JS marker, which does not prove the project lacks styling architecture, so mark the finding reviewed when a valid system exists. If the page is genuinely unstyled, document one approach that fits the existing stack, reusing current components and tokens before adding a framework.",
-    ],
-  },
-  "utility-to-custom-ratio": {
-    effort: "moderate",
-    effortMinutes: 15,
-    lead: "This page leans heavily toward utility classes over custom CSS, worth a quick sanity check on your team's convention.",
-    default: [
-      "This legacy ratio is not a defect criterion: utility-only markup, custom CSS, CSS Modules, and component-level styling can all be maintainable. Keep the project's established styling model, extract repeated semantic patterns only when that improves reuse or consistency, and mark the finding reviewed when the architecture is deliberate and documented.",
     ],
   },
   "div-soup-ratio": {
@@ -76,9 +92,9 @@ export const POLISH_FIX_GUIDES: Record<string, FixGuideEntry> = {
   "gradient-backgrounds": {
     effort: "quick",
     effortMinutes: 5,
-    lead: "This page uses an unusually high number of gradient backgrounds, which is worth a quick visual sanity check.",
+    lead: "This page uses many gradients that blend different colors, which is worth a quick visual check.",
     default: [
-      "Review the surfaced gradients in the rendered design, not the count alone; gradients are a legitimate brand and data-visualization tool, and this heuristic cannot decide whether they are excessive. Consolidate accidental near-duplicates, remove only treatments that compete with content or make controls unclear, verify text contrast at the weakest points, and mark intentional treatments reviewed.",
+      "Review the multi-color gradients on the pages we list in the rendered design, not their number alone; gradients are a legitimate brand and data-visualization tool, and this heuristic cannot decide whether they are excessive. Consolidate accidental near-duplicates, remove only treatments that compete with content or make controls unclear, verify text contrast at the weakest points, and mark intentional treatments reviewed.",
     ],
   },
   glassmorphism: {
@@ -113,6 +129,14 @@ export const POLISH_FIX_GUIDES: Record<string, FixGuideEntry> = {
       "Review each detected colored shadow in context; it may be intentional brand, focus, selection, or status emphasis, and color alone does not make a shadow unprofessional. Make state meaning clear without relying on glow alone, keep focus indicators distinguishable, consolidate repeated shadow recipes into tokens, and remove only glows that obscure edges or reduce contrast, testing light/dark themes and forced colors.",
     ],
   },
+  "gradient-text": {
+    effort: "quick",
+    effortMinutes: 10,
+    lead: "Some text on this page is filled with a gradient, which can be hard to read where its colors come close to the background.",
+    default: [
+      "On each page we list, find text whose color fades across its letters, often a large heading. Check its contrast at the lightest and darkest points against the background behind it, and use a solid color where any part is hard to read.",
+    ],
+  },
   "floating-blobs": {
     effort: "quick",
     effortMinutes: 3,
@@ -134,7 +158,7 @@ export const POLISH_FIX_GUIDES: Record<string, FixGuideEntry> = {
     effortMinutes: 15,
     lead: "This page's copy has a high density of marketing buzzwords, which can sometimes read as vague to visitors.",
     default: [
-      "Review each surfaced word in its sentence and product domain; a dictionary match is not proof of vague or AI-written copy, and terms such as robust can have a precise technical meaning. Replace a phrase only when it obscures the actual capability, constraint, or outcome, prefer a verified concrete description over an invented metric or promise, and have a product owner check factual claims.",
+      "Review each surfaced word in its sentence and product domain; a dictionary match is not proof of vague or AI-written copy, and terms such as cutting-edge can have a precise technical meaning. Replace a phrase only when it obscures the actual capability, constraint, or outcome, prefer a verified concrete description over an invented metric or promise, and have a product owner check factual claims.",
     ],
   },
   "ai-header-formulas": {

@@ -104,6 +104,9 @@ const provenance = {
   browser_assets_sha256: sha256(browserAssets),
   manifest_digest: manifest.manifest_digest,
   capability_manifest_sha256: sha256(manifestBytes),
+  key_patterns_sha256: sha256(
+    readFileSync(path.join(cargoRoot, "crates/engine/src/checks/security/key_patterns.rs")),
+  ),
 };
 
 vendorSet({

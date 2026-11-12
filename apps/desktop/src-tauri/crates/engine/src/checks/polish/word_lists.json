@@ -1,0 +1,4407 @@
+{
+  "sources": {
+    "ai-juzek-ward-delve": {
+      "url": "https://aclanthology.org/2025.coling-main.426/",
+      "title": "Why Does ChatGPT \"Delve\" So Much? Exploring the Sources of Lexical Overrepresentation in Large Language Models",
+      "publisher": "Association for Computational Linguistics, COLING 2025 (Juzek, Ward)",
+      "license": "CC BY 4.0",
+      "retrieved": "2026-11-08"
+    },
+    "ai-kobak-excess-vocab": {
+      "url": "https://arxiv.org/abs/2406.07016v5",
+      "title": "Delving into LLM-assisted writing in biomedical publications through excess vocabulary",
+      "publisher": "arXiv preprint v5, published in Science Advances, 2 Jul 2025, Vol. 11, No. 27 (Kobak, González-Márquez, Horvát, Lause)",
+      "license": "CC BY-SA 4.0",
+      "retrieved": "2026-11-08"
+    },
+    "ai-liang-peer-reviews": {
+      "url": "https://arxiv.org/abs/2403.07183v4",
+      "title": "Monitoring AI-Modified Content at Scale: A Case Study on the Impact of ChatGPT on AI Conference Peer Reviews",
+      "publisher": "arXiv preprint v4, ICML 2024 (Liang, Izzo, Zhang, Lepp, Cao, Zhao, Chen, Ye, Liu, Huang, McFarland, Zou)",
+      "license": "arXiv non-exclusive distribution license, quoted briefly",
+      "retrieved": "2026-11-08"
+    },
+    "ai-paech-antislop": {
+      "url": "https://arxiv.org/abs/2510.15061",
+      "title": "Antislop: A Comprehensive Framework for Identifying and Eliminating Repetitive Patterns in Language Models",
+      "publisher": "arXiv preprint (Paech, Roush, Goldfeder, Shwartz-Ziv)",
+      "license": "CC BY 4.0",
+      "retrieved": "2026-11-08"
+    },
+    "ai-wikiproject-signs": {
+      "url": "https://en.wikipedia.org/w/index.php?title=Wikipedia:Signs_of_AI_writing&oldid=1384336333",
+      "title": "Wikipedia:Signs of AI writing",
+      "publisher": "Wikipedia, WikiProject AI Cleanup, Wikimedia Foundation",
+      "license": "CC BY-SA 4.0",
+      "retrieved": "2026-11-08"
+    },
+    "copy-alfred-web-standards": {
+      "url": "https://my.alfred.edu/information-technology-services/web-standards/writing-for-the-web.cfm",
+      "title": "Web Standards: Writing for the Web",
+      "publisher": "Alfred University",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "copy-bath-course-content": {
+      "url": "https://www.bath.ac.uk/guides/writing-course-search-content-that-complies-with-the-competition-and-markets-authority/",
+      "title": "Writing Course Search content that complies with the Competition and Markets Authority",
+      "publisher": "University of Bath",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "copy-bertsch-puffery": {
+      "url": "https://aclanthology.org/2021.wnut-1.36.pdf",
+      "title": "Detection of Puffery on the English Wikipedia",
+      "publisher": "Association for Computational Linguistics, W-NUT 2021 (Bertsch, Bethard)",
+      "license": "CC BY 4.0",
+      "retrieved": "2026-11-04"
+    },
+    "copy-chakraborty-clickbait": {
+      "url": "https://arxiv.org/pdf/1610.09786",
+      "title": "Stop Clickbait: Detecting and Preventing Clickbaits in Online News Media",
+      "publisher": "arXiv preprint, ASONAM 2016 (Chakraborty, Paranjape, Kakarla, Ganguly)",
+      "license": "arXiv non-exclusive distribution license, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "copy-kovacs-ai-slogans": {
+      "url": "https://bop.unibe.ch/linguistik-online/article/download/13477/16311",
+      "title": "AI for slogans? A cross-platform, cross-language comparison of AI-generated slogans for sustainable brands",
+      "publisher": "Linguistik online 143 (Kovacs)",
+      "license": "CC BY 4.0",
+      "retrieved": "2026-11-04"
+    },
+    "copy-millar-nih-grants": {
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9412227/",
+      "title": "Trends in the Use of Promotional Language (Hype) in Abstracts of Successful National Institutes of Health Grant Applications, 1985-2020",
+      "publisher": "JAMA Network Open (Millar, Batalo, Budgell)",
+      "license": "CC BY",
+      "retrieved": "2026-11-04"
+    },
+    "copy-standrews-marketese": {
+      "url": "https://digitalcommunications.wp.st-andrews.ac.uk/2019/02/07/why-to-avoid-marketese-on-the-web/",
+      "title": "Why to avoid marketese on the web",
+      "publisher": "University of St Andrews, Digital Communications team",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "copy-wikipedia-puffery": {
+      "url": "https://en.wikipedia.org/wiki/Wikipedia:Manual_of_Style/Words_to_watch",
+      "title": "Wikipedia:Manual of Style/Words to watch (section \"Puffery\")",
+      "publisher": "Wikipedia, Wikimedia Foundation",
+      "license": "CC BY-SA 4.0",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-angular-cli-22-2-5": {
+      "url": "https://github.com/angular/angular-cli/tree/v22.2.5/packages/schematics/angular/application/files",
+      "title": "Angular CLI application schematic at v22.2.5",
+      "publisher": "Angular (angular/angular-cli)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-angularjs-1-8-3-docs": {
+      "url": "https://github.com/angular/angular.js/tree/v1.8.3",
+      "title": "AngularJS guides and directive documentation at v1.8.3",
+      "publisher": "Angular (angular/angular.js)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-apache-httpd-2-4-69": {
+      "url": "https://github.com/apache/httpd/tree/2.4.69",
+      "title": "Apache HTTP Server default page and error text at 2.4.69",
+      "publisher": "Apache Software Foundation (apache/httpd)",
+      "license": "Apache-2.0",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-astro-7-4-5": {
+      "url": "https://github.com/withastro/astro/tree/astro@7.4.5",
+      "title": "Astro examples and source at astro@7.4.5",
+      "publisher": "Astro (withastro/astro)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-bootstrap-5-3-8": {
+      "url": "https://github.com/twbs/bootstrap/tree/v5.3.8/site/src/content/docs/getting-started",
+      "title": "Bootstrap introduction starter template at v5.3.8",
+      "publisher": "Bootstrap (twbs/bootstrap)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-bulma-1-0-4": {
+      "url": "https://github.com/jgthms/bulma/tree/1.0.4/docs/_includes/docs/snippets",
+      "title": "Bulma getting started snippet at 1.0.4",
+      "publisher": "Bulma (jgthms/bulma)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-create-next-app-14-0-0": {
+      "url": "https://github.com/vercel/next.js/tree/v14.0.0/packages/create-next-app/templates",
+      "title": "create-next-app templates at v14.0.0",
+      "publisher": "Vercel (vercel/next.js)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-create-next-app-15-0-0": {
+      "url": "https://github.com/vercel/next.js/tree/v15.0.0/packages/create-next-app/templates",
+      "title": "create-next-app templates at v15.0.0",
+      "publisher": "Vercel (vercel/next.js)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-create-next-app-16-4-5": {
+      "url": "https://github.com/vercel/next.js/tree/v16.4.5/packages/create-next-app/templates",
+      "title": "create-next-app templates at v16.4.5",
+      "publisher": "Vercel (vercel/next.js)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-create-preact-0-6-0": {
+      "url": "https://github.com/preactjs/create-preact/tree/0.6.0/templates/base",
+      "title": "create-preact base template at 0.6.0",
+      "publisher": "Preact (preactjs/create-preact)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-create-react-app-5-0-1": {
+      "url": "https://github.com/facebook/create-react-app/tree/v5.0.1/packages/cra-template",
+      "title": "Create React App template at v5.0.1",
+      "publisher": "Meta (facebook/create-react-app)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-create-vite-8-3-0": {
+      "url": "https://github.com/vitejs/vite/tree/create-vite@8.3.0/packages/create-vite",
+      "title": "create-vite templates at create-vite@8.3.0",
+      "publisher": "Vite (vitejs/vite)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-create-vite-9-3-3": {
+      "url": "https://github.com/vitejs/vite/tree/create-vite@9.3.3/packages/create-vite",
+      "title": "create-vite templates at create-vite@9.3.3",
+      "publisher": "Vite (vitejs/vite)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-create-vue-3-24-0": {
+      "url": "https://github.com/vuejs/create-vue/tree/v3.24.0/template",
+      "title": "create-vue templates at v3.24.0",
+      "publisher": "Vue (vuejs/create-vue)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-django-6-1-3": {
+      "url": "https://github.com/django/django/tree/6.1.3/django/views",
+      "title": "Django views and templates at 6.1.3",
+      "publisher": "Django Software Foundation (django/django)",
+      "license": "BSD-3-Clause",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-docusaurus-3-10-2": {
+      "url": "https://github.com/facebook/docusaurus/tree/v3.10.2/packages",
+      "title": "Docusaurus classic template and source at v3.10.2",
+      "publisher": "Meta (facebook/docusaurus)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-emmet-2-4-11": {
+      "url": "https://github.com/emmetio/emmet/tree/v2.4.11/src/snippets",
+      "title": "Emmet HTML snippets at v2.4.11",
+      "publisher": "Emmet (emmetio/emmet)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-finalhandler-2-1-1": {
+      "url": "https://github.com/pillarjs/finalhandler/tree/v2.1.1",
+      "title": "finalhandler (Express default error handler) at v2.1.1",
+      "publisher": "Express (pillarjs/finalhandler)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-gatsby-5-16-1": {
+      "url": "https://github.com/gatsbyjs/gatsby/tree/gatsby@5.16.1",
+      "title": "Gatsby default starter and cache-dir at gatsby@5.16.1",
+      "publisher": "Gatsby (gatsbyjs/gatsby)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-html5-boilerplate-9-0-1": {
+      "url": "https://github.com/h5bp/html5-boilerplate/tree/v9.0.1/src",
+      "title": "HTML5 Boilerplate index.html at v9.0.1",
+      "publisher": "HTML5 Boilerplate (h5bp/html5-boilerplate)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-jekyll-4-4-1": {
+      "url": "https://github.com/jekyll/jekyll/tree/v4.4.1/lib/site_template",
+      "title": "Jekyll site template at v4.4.1",
+      "publisher": "Jekyll (jekyll/jekyll)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-laravel-13-11-0": {
+      "url": "https://github.com/laravel/laravel/tree/v13.11.0/resources/views",
+      "title": "Laravel application skeleton welcome view at v13.11.0",
+      "publisher": "Laravel (laravel/laravel)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-next-js-16-4-5": {
+      "url": "https://github.com/vercel/next.js/tree/v16.4.5/packages/next/src",
+      "title": "Next.js source at v16.4.5",
+      "publisher": "Vercel (vercel/next.js)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-nginx-1-30-0": {
+      "url": "https://github.com/nginx/nginx/tree/release-1.30.0",
+      "title": "nginx default page and error pages at release-1.30.0",
+      "publisher": "nginx (nginx/nginx)",
+      "license": "BSD-2-Clause",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-nuxt-4-6-4": {
+      "url": "https://github.com/nuxt/nuxt/tree/v4.6.4/packages",
+      "title": "Nuxt ui-templates and schema at v4.6.4",
+      "publisher": "Nuxt (nuxt/nuxt)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-petite-vue-0-4-1": {
+      "url": "https://github.com/vuejs/petite-vue/tree/v0.4.1",
+      "title": "petite-vue README at v0.4.1",
+      "publisher": "Vue (vuejs/petite-vue)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-polymer-3-5-2": {
+      "url": "https://github.com/Polymer/polymer/tree/v3.5.2/lib/elements",
+      "title": "Polymer dom-repeat documentation at v3.5.2",
+      "publisher": "Polymer Project (Polymer/polymer)",
+      "license": "BSD-3-Clause",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-rails-8-1-4-1": {
+      "url": "https://github.com/rails/rails/tree/v8.1.4.1",
+      "title": "Rails app generator templates and error pages at v8.1.4.1",
+      "publisher": "Ruby on Rails (rails/rails)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-react-router-8-5-1": {
+      "url": "https://github.com/remix-run/react-router/tree/react-router@8.5.1/packages/react-router/lib",
+      "title": "React Router source at react-router@8.5.1",
+      "publisher": "Remix (remix-run/react-router)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-remix-2-17-4": {
+      "url": "https://github.com/remix-run/remix/tree/remix@2.17.4/templates/remix",
+      "title": "Remix template at remix@2.17.4",
+      "publisher": "Remix (remix-run/remix)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-spring-boot-4-1-2": {
+      "url": "https://github.com/spring-projects/spring-boot/tree/v4.1.2/module/spring-boot-webmvc/src/main/java/org/springframework/boot/webmvc/autoconfigure/error",
+      "title": "Spring Boot Whitelabel error page at v4.1.2",
+      "publisher": "Spring (spring-projects/spring-boot)",
+      "license": "Apache-2.0",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-startbootstrap-agency-7-0-12": {
+      "url": "https://github.com/StartBootstrap/startbootstrap-agency/tree/v7.0.12/dist",
+      "title": "Start Bootstrap Agency template at v7.0.12",
+      "publisher": "Start Bootstrap (StartBootstrap/startbootstrap-agency)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-startbootstrap-clean-blog-6-0-9": {
+      "url": "https://github.com/StartBootstrap/startbootstrap-clean-blog/tree/v6.0.9/dist",
+      "title": "Start Bootstrap Clean Blog template at v6.0.9",
+      "publisher": "Start Bootstrap (StartBootstrap/startbootstrap-clean-blog)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-sv-1-3-0": {
+      "url": "https://github.com/sveltejs/cli/tree/sv@1.3.0/packages/sv/src/create/templates",
+      "title": "sv create templates at sv@1.3.0",
+      "publisher": "Svelte (sveltejs/cli)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-vitepress-2-0-0-alpha-21": {
+      "url": "https://github.com/vuejs/vitepress/tree/v2.0.0-alpha.21",
+      "title": "VitePress init and template at v2.0.0-alpha.21",
+      "publisher": "Vue (vuejs/vitepress)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-vue-cli-5-0-9": {
+      "url": "https://github.com/vuejs/vue-cli/tree/v5.0.9/packages/@vue/cli-service/generator/template",
+      "title": "Vue CLI generator template at v5.0.9",
+      "publisher": "Vue (vuejs/vue-cli)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-vue-core-3-5-44-dom": {
+      "url": "https://github.com/vuejs/core/tree/v3.5.44/packages",
+      "title": "Vue runtime-dom source and classic in-DOM examples at v3.5.44",
+      "publisher": "Vue (vuejs/core)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "scaffold-werkzeug-3-1-9": {
+      "url": "https://github.com/pallets/werkzeug/tree/3.1.9/src/werkzeug",
+      "title": "Werkzeug exceptions at 3.1.9",
+      "publisher": "Pallets (pallets/werkzeug)",
+      "license": "BSD-3-Clause",
+      "retrieved": "2026-11-04"
+    },
+    "web-astro-blog-about": {
+      "url": "https://github.com/withastro/astro/blob/astro@6.4.8/examples/blog/src/pages/about.astro",
+      "title": "Astro blog template about.astro at astro@6.4.8",
+      "publisher": "Astro",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "web-astro-blog-footer": {
+      "url": "https://github.com/withastro/astro/blob/astro@6.4.8/examples/blog/src/components/Footer.astro",
+      "title": "Astro blog template Footer.astro at astro@6.4.8",
+      "publisher": "Astro",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "web-aws-amplify-custom-domains": {
+      "url": "https://docs.aws.amazon.com/amplify/latest/userguide/custom-domains.html",
+      "title": "Setting up custom domains",
+      "publisher": "Amazon Web Services",
+      "license": "CC BY-SA 4.0 (content), MIT-0 (code samples)",
+      "retrieved": "2026-11-04"
+    },
+    "web-azure-app-service-ips": {
+      "url": "https://learn.microsoft.com/en-us/azure/app-service/overview-inbound-outbound-ips",
+      "title": "Inbound and outbound IP addresses in Azure App Service",
+      "publisher": "Microsoft",
+      "license": "CC BY 4.0 (content), MIT (code samples)",
+      "retrieved": "2026-11-04"
+    },
+    "web-azure-swa-custom-domain": {
+      "url": "https://learn.microsoft.com/en-us/azure/static-web-apps/custom-domain",
+      "title": "Set up a custom domain in Azure Static Web Apps",
+      "publisher": "Microsoft",
+      "license": "CC BY 4.0 (content), MIT (code samples)",
+      "retrieved": "2026-11-04"
+    },
+    "web-base44-custom-domain": {
+      "url": "https://docs.base44.com/Setting-up-your-app/setting-up-your-custom-domain",
+      "title": "Setting up your custom domain",
+      "publisher": "Base44",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-bolt-hosting": {
+      "url": "https://support.bolt.new/cloud/hosting.md",
+      "title": "Bolt hosting",
+      "publisher": "Bolt",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-cloudflare-pages-direct-upload": {
+      "url": "https://developers.cloudflare.com/pages/get-started/direct-upload/",
+      "title": "Direct Upload",
+      "publisher": "Cloudflare",
+      "license": "CC BY 4.0 (content), MIT (code samples)",
+      "retrieved": "2026-11-04"
+    },
+    "web-cloudflare-workers-devdomain": {
+      "url": "https://developers.cloudflare.com/workers/configuration/routing/workers-dev/",
+      "title": "workers.dev",
+      "publisher": "Cloudflare",
+      "license": "CC BY 4.0 (content), MIT (code samples)",
+      "retrieved": "2026-11-04"
+    },
+    "web-codeberg-pages": {
+      "url": "https://docs.codeberg.org/codeberg-pages/",
+      "title": "Codeberg Pages",
+      "publisher": "Codeberg",
+      "license": "CC BY-SA 4.0",
+      "retrieved": "2026-11-04"
+    },
+    "web-deno-deploy-classic-domains": {
+      "url": "https://docs.deno.com/deploy/manual/custom-domains",
+      "title": "Custom domains (Deno Deploy Classic)",
+      "publisher": "Deno",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "web-deno-deploy-domains": {
+      "url": "https://docs.deno.com/deploy/reference/domains/",
+      "title": "Domains",
+      "publisher": "Deno",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "web-do-app-spec": {
+      "url": "https://docs.digitalocean.com/products/app-platform/reference/app-spec/",
+      "title": "App spec reference",
+      "publisher": "DigitalOcean",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-dummyimage-com": {
+      "url": "https://dummyimage.com/",
+      "title": "Dynamic Dummy Image Generator",
+      "publisher": "DummyImage.com (Russell Heimlich)",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "web-expo-hosting-aliases": {
+      "url": "https://docs.expo.dev/eas/hosting/deployments-and-aliases/",
+      "title": "Deployments and aliases",
+      "publisher": "Expo",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "web-facebook-help-usernames": {
+      "url": "https://www.facebook.com/help/211813265517027",
+      "title": "How usernames and user IDs are used on Facebook profiles",
+      "publisher": "Meta (Facebook Help Center)",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-firebase-hosting-quickstart": {
+      "url": "https://firebase.google.com/docs/hosting/quickstart",
+      "title": "Get started with Firebase Hosting",
+      "publisher": "Google Firebase",
+      "license": "CC BY 4.0 (content), Apache 2.0 (code samples)",
+      "retrieved": "2026-11-04"
+    },
+    "web-fly-custom-domain": {
+      "url": "https://fly.io/docs/networking/custom-domain/",
+      "title": "Custom domains",
+      "publisher": "Fly.io",
+      "license": "Apache-2.0",
+      "retrieved": "2026-11-04"
+    },
+    "web-ftc-sample-complaint-letter": {
+      "url": "https://consumer.ftc.gov/articles/sample-customer-complaint-letter",
+      "title": "Sample Customer Complaint Letter",
+      "publisher": "U.S. Federal Trade Commission",
+      "license": "Public domain (US government work)",
+      "retrieved": "2026-11-04"
+    },
+    "web-gcloud-appengine-routing": {
+      "url": "https://cloud.google.com/appengine/docs/standard/how-requests-are-routed",
+      "title": "How requests are routed",
+      "publisher": "Google Cloud",
+      "license": "CC BY 4.0 (content), Apache 2.0 (code samples)",
+      "retrieved": "2026-11-04"
+    },
+    "web-gcloud-run-https": {
+      "url": "https://cloud.google.com/run/docs/triggering/https-request",
+      "title": "Invoke with an HTTPS request",
+      "publisher": "Google Cloud",
+      "license": "CC BY 4.0 (content), Apache 2.0 (code samples)",
+      "retrieved": "2026-11-04"
+    },
+    "web-github-docs-change-username": {
+      "url": "https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-user-account-settings/changing-your-github-username",
+      "title": "Changing your GitHub username",
+      "publisher": "GitHub",
+      "license": "CC BY 4.0",
+      "retrieved": "2026-11-04"
+    },
+    "web-github-pages-about": {
+      "url": "https://docs.github.com/en/pages/getting-started-with-github-pages/about-github-pages",
+      "title": "About GitHub Pages",
+      "publisher": "GitHub",
+      "license": "CC BY 4.0",
+      "retrieved": "2026-11-04"
+    },
+    "web-gitlab-pages": {
+      "url": "https://docs.gitlab.com/user/project/pages/",
+      "title": "GitLab Pages",
+      "publisher": "GitLab",
+      "license": "CC BY-SA 4.0",
+      "retrieved": "2026-11-04"
+    },
+    "web-heroku-custom-domains": {
+      "url": "https://devcenter.heroku.com/articles/custom-domains",
+      "title": "Custom domain names for apps",
+      "publisher": "Heroku",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-hf-spaces-embed": {
+      "url": "https://huggingface.co/docs/hub/spaces-embed",
+      "title": "Embed your Space in another website",
+      "publisher": "Hugging Face",
+      "license": "Apache-2.0",
+      "retrieved": "2026-11-04"
+    },
+    "web-instagram-help-web": {
+      "url": "https://help.instagram.com/471765489521608",
+      "title": "Instagram on the web",
+      "publisher": "Meta (Instagram Help Center)",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-jekyll-site-template-config": {
+      "url": "https://github.com/jekyll/jekyll/blob/v4.4.1/lib/site_template/_config.yml",
+      "title": "Jekyll new-site template _config.yml at v4.4.1",
+      "publisher": "Jekyll",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "web-koyeb-apps-reference": {
+      "url": "https://www.koyeb.com/docs/reference/apps",
+      "title": "Apps",
+      "publisher": "Koyeb",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-linkedin-help-public-url": {
+      "url": "https://www.linkedin.com/help/linkedin/answer/a522735/find-your-linkedin-public-profile-url",
+      "title": "Find your LinkedIn public profile URL",
+      "publisher": "LinkedIn",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-lovable-custom-domain": {
+      "url": "https://docs.lovable.dev/features/custom-domain",
+      "title": "Custom domain",
+      "publisher": "Lovable",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-neocities-about": {
+      "url": "https://neocities.org/about",
+      "title": "About Neocities",
+      "publisher": "Neocities",
+      "license": "BSD-2-Clause",
+      "retrieved": "2026-11-04"
+    },
+    "web-netlify-domains": {
+      "url": "https://docs.netlify.com/manage/domains/get-started-with-domains/",
+      "title": "Get started with domains",
+      "publisher": "Netlify",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-pages-themes-minimal-readme": {
+      "url": "https://github.com/pages-themes/minimal/blob/v0.2.0/README.md",
+      "title": "Minimal theme README at v0.2.0",
+      "publisher": "GitHub Pages themes (pages-themes)",
+      "license": "CC0-1.0",
+      "retrieved": "2026-11-04"
+    },
+    "web-picsum-photos": {
+      "url": "https://picsum.photos/",
+      "title": "Lorem Picsum",
+      "publisher": "Lorem Picsum",
+      "license": "MIT",
+      "retrieved": "2026-11-04"
+    },
+    "web-pinterest-help-profile": {
+      "url": "https://help.pinterest.com/en/article/edit-your-profile",
+      "title": "Edit your profile",
+      "publisher": "Pinterest",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-placebear-com": {
+      "url": "https://placebear.com/",
+      "title": "placebear",
+      "publisher": "placebear.com",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-placebeard-it": {
+      "url": "https://placebeard.it/",
+      "title": "PlaceBeard.it",
+      "publisher": "placebeard.it",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-placehold-co": {
+      "url": "https://placehold.co/",
+      "title": "Placehold",
+      "publisher": "Placehold.co",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-placeholder-pics": {
+      "url": "https://placeholder.pics/",
+      "title": "Placeholder pics",
+      "publisher": "placeholder.pics",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-pravatar-cc": {
+      "url": "https://pravatar.cc/",
+      "title": "Pravatar",
+      "publisher": "Pravatar",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-pythonanywhere-webapps": {
+      "url": "https://help.pythonanywhere.com/pages/WebAppBasics/",
+      "title": "Web app basics",
+      "publisher": "PythonAnywhere",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-railway-domains": {
+      "url": "https://docs.railway.com/networking/domains/working-with-domains",
+      "title": "Working with domains",
+      "publisher": "Railway",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-render-custom-domains": {
+      "url": "https://render.com/docs/custom-domains",
+      "title": "Custom domains on Render",
+      "publisher": "Render",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-replit-custom-domains": {
+      "url": "https://docs.replit.com/cloud-services/deployments/custom-domains",
+      "title": "Custom domains",
+      "publisher": "Replit",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-rfc5322-imf": {
+      "url": "https://www.rfc-editor.org/rfc/rfc5322.txt",
+      "title": "RFC 5322: Internet Message Format",
+      "publisher": "IETF",
+      "license": "IETF Trust Legal Provisions",
+      "retrieved": "2026-11-04"
+    },
+    "web-rfc6376-dkim": {
+      "url": "https://www.rfc-editor.org/rfc/rfc6376.txt",
+      "title": "RFC 6376: DomainKeys Identified Mail (DKIM) Signatures",
+      "publisher": "IETF",
+      "license": "IETF Trust Legal Provisions",
+      "retrieved": "2026-11-04"
+    },
+    "web-rfc7565-acct": {
+      "url": "https://www.rfc-editor.org/rfc/rfc7565.txt",
+      "title": "RFC 7565: The 'acct' URI Scheme",
+      "publisher": "IETF",
+      "license": "IETF Trust Legal Provisions",
+      "retrieved": "2026-11-04"
+    },
+    "web-rfc8620-jmap": {
+      "url": "https://www.rfc-editor.org/rfc/rfc8620.txt",
+      "title": "RFC 8620: The JSON Meta Application Protocol (JMAP)",
+      "publisher": "IETF",
+      "license": "IETF Trust Legal Provisions",
+      "retrieved": "2026-11-04"
+    },
+    "web-streamlit-deploy": {
+      "url": "https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy",
+      "title": "Deploy your app on Community Cloud",
+      "publisher": "Streamlit",
+      "license": "Apache-2.0",
+      "retrieved": "2026-11-04"
+    },
+    "web-surge-getting-started": {
+      "url": "https://surge.sh/docs/getting-started",
+      "title": "Getting started",
+      "publisher": "Surge",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-valtown-http": {
+      "url": "https://docs.val.town/vals/http/",
+      "title": "HTTP",
+      "publisher": "Val Town",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-vercel-domains": {
+      "url": "https://vercel.com/docs/domains/working-with-domains",
+      "title": "Working with domains",
+      "publisher": "Vercel",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-via-placeholder-com": {
+      "url": "https://via.placeholder.com/",
+      "title": "via.placeholder.com: free placeholder images",
+      "publisher": "placeholder ltd.",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-webflow-staging-subdomain": {
+      "url": "https://help.webflow.com/hc/en-us/articles/33961419650067-Webflow-staging-subdomain",
+      "title": "Webflow staging subdomain",
+      "publisher": "Webflow",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-wix-about-domains": {
+      "url": "https://support.wix.com/en/article/about-domains",
+      "title": "About domains",
+      "publisher": "Wix",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-word-insert-sample-text": {
+      "url": "https://support.microsoft.com/en-us/word/how-to-insert-sample-text-in-microsoft-office-word",
+      "title": "How to insert sample text in Microsoft Office Word",
+      "publisher": "Microsoft",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-wordpress-com-domains": {
+      "url": "https://wordpress.com/support/domains/",
+      "title": "Manage your WordPress.com domains",
+      "publisher": "Automattic (WordPress.com)",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-x-help-username-in-use": {
+      "url": "https://help.x.com/en/managing-your-account/when-email-phone-number-or-usernname-is-already-in-use",
+      "title": "Email, phone, or username already in use",
+      "publisher": "X Corp. (X Help Center)",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    },
+    "web-youtube-help-handle": {
+      "url": "https://support.google.com/youtube/answer/2657968",
+      "title": "Handles and channel URLs",
+      "publisher": "Google (YouTube Help)",
+      "license": "Copyright, quoted briefly",
+      "retrieved": "2026-11-04"
+    }
+  },
+  "marketing_terms": [
+    {
+      "value": "legendary",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "Words to watch: legendary, best, great, greatest, acclaimed, iconic, visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary"
+        }
+      ]
+    },
+    {
+      "value": "acclaimed",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "Words to watch: legendary, best, great, greatest, acclaimed, iconic, visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary"
+        },
+        {
+          "source": "copy-bertsch-puffery",
+          "quote": "actually positive ones (containing phrases like “strong corporate culture,” “widely acclaimed,”"
+        }
+      ]
+    },
+    {
+      "value": "visionary",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "Words to watch: legendary, best, great, greatest, acclaimed, iconic, visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary"
+        }
+      ]
+    },
+    {
+      "value": "celebrated",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "Words to watch: legendary, best, great, greatest, acclaimed, iconic, visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary"
+        }
+      ]
+    },
+    {
+      "value": "award-winning",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "Words to watch: legendary, best, great, greatest, acclaimed, iconic, visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary"
+        }
+      ]
+    },
+    {
+      "value": "cutting-edge",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "Words to watch: legendary, best, great, greatest, acclaimed, iconic, visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary"
+        },
+        {
+          "source": "copy-bath-course-content",
+          "quote": "ever-changing cutting-edge state-of-the-art dynamic forefront"
+        }
+      ]
+    },
+    {
+      "value": "innovative",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "Words to watch: legendary, best, great, greatest, acclaimed, iconic, visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary"
+        },
+        {
+          "source": "copy-millar-nih-grants",
+          "quote": "Novelty: creative, emerging, first, groundbreaking, innovative, latest, novel, revolutionary, unique, unparalleled, and unprecedented"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "imbalances, impacting, impede, impeding, imperative, impressive, inadequately, incorporates, incorporating, influencing, inherent, initially, innovative"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 2: Top 100 adjectives disproportionately used more frequently by AI. commendable innovative"
+        }
+      ]
+    },
+    {
+      "value": "revolutionary",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "Words to watch: legendary, best, great, greatest, acclaimed, iconic, visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary"
+        },
+        {
+          "source": "copy-standrews-marketese",
+          "quote": "This revolutionary solution will put all your woes to rest."
+        },
+        {
+          "source": "copy-millar-nih-grants",
+          "quote": "Novelty: creative, emerging, first, groundbreaking, innovative, latest, novel, revolutionary, unique, unparalleled, and unprecedented"
+        }
+      ]
+    },
+    {
+      "value": "extraordinary",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "iconic, visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable"
+        }
+      ]
+    },
+    {
+      "value": "brilliant",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "visionary, outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable, prestigious"
+        }
+      ]
+    },
+    {
+      "value": "famous",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "outstanding, leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable, prestigious, world-class"
+        },
+        {
+          "source": "copy-bertsch-puffery",
+          "quote": "related to puffery (e.g., “famous”)"
+        }
+      ]
+    },
+    {
+      "value": "renowned",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "leading, celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable, prestigious, world-class, respected"
+        },
+        {
+          "source": "copy-millar-nih-grants",
+          "quote": "Quality: ambitious, collegial, dedicated, exceptional, experienced, intellectual, longstanding, motivated, premier, prestigious, promising, qualified, renowned, senior, skilled, stellar, successful"
+        },
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing, exemplifies, commitment to, natural beauty, nestled, in the heart of, groundbreaking, renowned"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "poses, posing, predominantly, preserving, pressing, promise, pronounced, propelling, realm, realms, recognizing, refine, refines, refining, remarkable, renowned"
+        }
+      ]
+    },
+    {
+      "value": "remarkable",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "celebrated, popular, award-winning, landmark, cutting-edge, innovative, revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable, prestigious, world-class, respected, notable"
+        },
+        {
+          "source": "copy-millar-nih-grants",
+          "quote": "Attitude: attractive, confident, exciting, incredible, interesting, intriguing, notable, outstanding, remarkable, and surprising"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "posed, poses, posing, predominantly, preserving, pressing, promise, pronounced, propelling, realm, realms, recognizing, refine, refines, refining, remarkable"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "refreshing proficient intriguing thoughtful credible exceptional digestible prevalent interpretative remarkable"
+        }
+      ]
+    },
+    {
+      "value": "prestigious",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "popular, award-winning, landmark, cutting-edge, innovative, revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable, prestigious, world-class, respected, notable, virtuoso"
+        },
+        {
+          "source": "copy-millar-nih-grants",
+          "quote": "Quality: ambitious, collegial, dedicated, exceptional, experienced, intellectual, longstanding, motivated, premier, prestigious, promising, qualified, renowned, senior, skilled, stellar, successful"
+        }
+      ]
+    },
+    {
+      "value": "world-class",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "landmark, cutting-edge, innovative, revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable, prestigious, world-class, respected, notable, virtuoso, honorable, awesome, unique"
+        },
+        {
+          "source": "copy-bath-course-content",
+          "quote": "Avoid marketing clichés, higher education jargon and vague or complicated terms, for example: in addition thus furthermore broad range world-class"
+        }
+      ]
+    },
+    {
+      "value": "virtuoso",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "innovative, revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable, prestigious, world-class, respected, notable, virtuoso, honorable, awesome, unique, pioneering, phenomenal"
+        }
+      ]
+    },
+    {
+      "value": "honorable",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable, prestigious, world-class, respected, notable, virtuoso, honorable, awesome, unique, pioneering, phenomenal"
+        }
+      ]
+    },
+    {
+      "value": "awesome",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "revolutionary, extraordinary, brilliant, hit, famous, renowned, remarkable, prestigious, world-class, respected, notable, virtuoso, honorable, awesome, unique, pioneering, phenomenal"
+        },
+        {
+          "source": "copy-standrews-marketese",
+          "quote": "Your company is awesome. Let the awesomeness reveal itself through quality of service"
+        }
+      ]
+    },
+    {
+      "value": "pioneering",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "brilliant, hit, famous, renowned, remarkable, prestigious, world-class, respected, notable, virtuoso, honorable, awesome, unique, pioneering, phenomenal"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "nuanced, nuances, offering, optimizing, orchestrating, outlines, overlook, overlooking, paving, persist, pinpoint, pinpointed, pinpointing, pioneering"
+        }
+      ]
+    },
+    {
+      "value": "phenomenal",
+      "cites": [
+        {
+          "source": "copy-wikipedia-puffery",
+          "quote": "hit, famous, renowned, remarkable, prestigious, world-class, respected, notable, virtuoso, honorable, awesome, unique, pioneering, phenomenal"
+        }
+      ]
+    },
+    {
+      "value": "world-leading",
+      "cites": [
+        {
+          "source": "copy-bath-course-content",
+          "quote": "world-class world-leading or internationally excellent (unless referring specifically to a REF result)"
+        }
+      ]
+    },
+    {
+      "value": "internationally excellent",
+      "cites": [
+        {
+          "source": "copy-bath-course-content",
+          "quote": "world-class world-leading or internationally excellent (unless referring specifically to a REF result)"
+        }
+      ]
+    },
+    {
+      "value": "state-of-the-art",
+      "cites": [
+        {
+          "source": "copy-bath-course-content",
+          "quote": "ever-changing cutting-edge state-of-the-art dynamic forefront"
+        }
+      ]
+    },
+    {
+      "value": "forefront",
+      "cites": [
+        {
+          "source": "copy-bath-course-content",
+          "quote": "ever-changing cutting-edge state-of-the-art dynamic forefront"
+        }
+      ]
+    },
+    {
+      "value": "exciting",
+      "cites": [
+        {
+          "source": "copy-bath-course-content",
+          "quote": "avoid subjective adjectives such as ‘exciting’ or ‘interesting’ back up claims with evidence"
+        },
+        {
+          "source": "copy-millar-nih-grants",
+          "quote": "Attitude: attractive, confident, exciting, incredible, interesting, intriguing, notable, outstanding, remarkable, and surprising"
+        }
+      ]
+    },
+    {
+      "value": "internationally renowned",
+      "cites": [
+        {
+          "source": "copy-standrews-marketese",
+          "quote": "Our unique, internationally renowned course will turn you into a fantastic person all around."
+        }
+      ]
+    },
+    {
+      "value": "fantastic",
+      "cites": [
+        {
+          "source": "copy-standrews-marketese",
+          "quote": "Our unique, internationally renowned course will turn you into a fantastic person all around."
+        }
+      ]
+    },
+    {
+      "value": "amazing",
+      "cites": [
+        {
+          "source": "copy-standrews-marketese",
+          "quote": "You will have the amazing opportunity to explore this field further."
+        }
+      ]
+    },
+    {
+      "value": "hottest ever",
+      "cites": [
+        {
+          "source": "copy-standrews-marketese",
+          "quote": "boastful subjective claims (‘hottest ever’)"
+        }
+      ]
+    },
+    {
+      "value": "one-of-a-kind",
+      "cites": [
+        {
+          "source": "copy-alfred-web-standards",
+          "quote": "Avoid unnecessary use of superlatives and adjectives (e.g. our exemplary research facilities, our one-of-a-kind internship program, our unique students)"
+        }
+      ]
+    },
+    {
+      "value": "impressive",
+      "cites": [
+        {
+          "source": "copy-bertsch-puffery",
+          "quote": "peacock words, such as “great”, “successful”, and “impressive”"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "heighten, heightened, hinder, hinges, hinting, hold, holds, illuminates, illuminating, imbalances, impacting, impede, impeding, imperative, impressive"
+        }
+      ]
+    },
+    {
+      "value": "adept",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "accentuates, acknowledges, acknowledging, addresses, adept"
+        }
+      ]
+    },
+    {
+      "value": "boasts",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: Additionally (especially beginning a sentence), align with, boasts (meaning \"has\")"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "boasts 0.11 1.15 918.18"
+        }
+      ]
+    },
+    {
+      "value": "bolster",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "affirming, afflicted, aiding, akin, align, aligning, aligns, alongside, amidst, assessments, attains, attributed, augmenting, avenue, avenues, bolster"
+        }
+      ]
+    },
+    {
+      "value": "bolstered",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: Additionally (especially beginning a sentence), align with, boasts (meaning \"has\"), bolstered"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "afflicted, aiding, akin, align, aligning, aligns, alongside, amidst, assessments, attains, attributed, augmenting, avenue, avenues, bolster, bolstered"
+        }
+      ]
+    },
+    {
+      "value": "bolstering",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "aiding, akin, align, aligning, aligns, alongside, amidst, assessments, attains, attributed, augmenting, avenue, avenues, bolster, bolstered, bolstering"
+        }
+      ]
+    },
+    {
+      "value": "burgeoning",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "align, aligning, aligns, alongside, amidst, assessments, attains, attributed, augmenting, avenue, avenues, bolster, bolstered, bolstering, broader, burgeoning"
+        }
+      ]
+    },
+    {
+      "value": "commendable",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "avenue, avenues, bolster, bolstered, bolstering, broader, burgeoning, capabilities, capitalizing, categorized, categorizes, categorizing, combating, commendable"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "adjectives such as “commendable”, “meticulous”, and “intricate” showing 9.8, 34.7, and 11.2-fold increases"
+        }
+      ]
+    },
+    {
+      "value": "commitment to",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing, exemplifies, commitment to"
+        }
+      ]
+    },
+    {
+      "value": "compelling",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "bolster, bolstered, bolstering, broader, burgeoning, capabilities, capitalizing, categorized, categorizes, categorizing, combating, commendable, compelling"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "pertinent valuable invasive speedy inherent considerable holistic insightful operational substantial compelling"
+        }
+      ]
+    },
+    {
+      "value": "compellingly",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 3: Top 100 adverbs disproportionately used more frequently by AI. meticulously reportedly lucidly innovatively aptly methodically excellently compellingly"
+        }
+      ]
+    },
+    {
+      "value": "cultivating",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: highlighting/underscoring/emphasizing ..., ensuring ..., reflecting/symbolizing ..., contributing to ..., cultivating/fostering ..."
+        }
+      ]
+    },
+    {
+      "value": "deep dive",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: Additionally (especially beginning a sentence), align with, boasts (meaning \"has\"), bolstered, crucial, deep dive"
+        }
+      ]
+    },
+    {
+      "value": "deeply rooted",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "setting the stage for, marking/shaping the, represents/marks a shift, key turning point, evolving landscape, focal point, indelible mark, deeply rooted"
+        }
+      ]
+    },
+    {
+      "value": "delve",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: Additionally (especially beginning a sentence), align with, boasts (meaning \"has\"), bolstered, crucial, deep dive, delve"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "comprehending, comprising, consequently, consolidates, contributing, conversely, correlating, crafted, crafting, culminating, customizing, delineates, delve"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "with words like “delve,” “intricate,” and “underscore” appearing far more frequently"
+        }
+      ]
+    },
+    {
+      "value": "delved",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "comprising, consequently, consolidates, contributing, conversely, correlating, crafted, crafting, culminating, customizing, delineates, delve, delved"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "A List Of Focal Words Word opm opm Incr. 2020 2024 % delves 0.21 14.38 6697.14 delved 0.12 2.90 2240.47"
+        }
+      ]
+    },
+    {
+      "value": "delves",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "comprising, consequently, consolidates, contributing, conversely, correlating, crafted, crafting, culminating, customizing, delineates, delve, delved, delves"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "A List Of Focal Words Word opm opm Incr. 2020 2024 % delves 0.21 14.38 6697.14"
+        }
+      ]
+    },
+    {
+      "value": "delving",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "consequently, consolidates, contributing, conversely, correlating, crafted, crafting, culminating, customizing, delineates, delve, delved, delves, delving"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "A List Of Focal Words Word opm opm Incr. 2020 2024 % delves 0.21 14.38 6697.14 delved 0.12 2.90 2240.47 delving 0.12 2.38 1816.83"
+        }
+      ]
+    },
+    {
+      "value": "dependability",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "contributing, conversely, correlating, crafted, crafting, culminating, customizing, delineates, delve, delved, delves, delving, demonstrating, dependability"
+        }
+      ]
+    },
+    {
+      "value": "dependable",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Mid-2026 and on (GPT-6): challenge, clearer, dependable"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "conversely, correlating, crafted, crafting, culminating, customizing, delineates, delve, delved, delves, delving, demonstrating, dependability, dependable"
+        }
+      ]
+    },
+    {
+      "value": "diverse array",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing, exemplifies, commitment to, natural beauty, nestled, in the heart of, groundbreaking, renowned, featuring, diverse array"
+        }
+      ]
+    },
+    {
+      "value": "effortlessly",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "remarkably traditionally starkly promptly richly nonetheless elegantly smartly solidly inadequately effortlessly"
+        }
+      ]
+    },
+    {
+      "value": "elegantly",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "subtly synergistically productively purportedly remarkably traditionally starkly promptly richly nonetheless elegantly"
+        }
+      ]
+    },
+    {
+      "value": "elevate",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "detailing, detrimentally, diminishes, diminishing, discern, discerned, discernible, discerning, displaying, disrupts, distinctions, distinctive, elevate"
+        }
+      ]
+    },
+    {
+      "value": "elevates",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "detrimentally, diminishes, diminishing, discern, discerned, discernible, discerning, displaying, disrupts, distinctions, distinctive, elevate, elevates"
+        }
+      ]
+    },
+    {
+      "value": "elevating",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "diminishes, diminishing, discern, discerned, discernible, discerning, displaying, disrupts, distinctions, distinctive, elevate, elevates, elevating"
+        }
+      ]
+    },
+    {
+      "value": "empowers",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "elevating, elucidate, elucidates, elucidating, embracing, emerges, emphasises, emphasising, emphasize, emphasizes, emphasizing, employing, employs, empowers"
+        }
+      ]
+    },
+    {
+      "value": "enduring",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: Additionally (especially beginning a sentence), align with, boasts (meaning \"has\"), bolstered, crucial, deep dive, delve, emphasizing, enduring"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "employing, employs, empowers, emulating, emulation, enabling, encapsulates, encompass, encompassed, encompasses, encompassing, endeavors, endeavours, enduring"
+        }
+      ]
+    },
+    {
+      "value": "evolving landscape",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "contributing to the, setting the stage for, marking/shaping the, represents/marks a shift, key turning point, evolving landscape"
+        }
+      ]
+    },
+    {
+      "value": "excellently",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 3: Top 100 adverbs disproportionately used more frequently by AI. meticulously reportedly lucidly innovatively aptly methodically excellently"
+        }
+      ]
+    },
+    {
+      "value": "excels",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "endeavors, endeavours, enduring, enhancements, enhances, ensuring, equipping, escalating, evaluates, evolving, exacerbating, examines, exceeding, excels"
+        }
+      ]
+    },
+    {
+      "value": "exemplifies",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing, exemplifies"
+        }
+      ]
+    },
+    {
+      "value": "featuring",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing, exemplifies, commitment to, natural beauty, nestled, in the heart of, groundbreaking, renowned, featuring"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "exceptional, exceptionally, exerting, exhibiting, exhibits, expedite, expediting, exploration, explores, facilitated, facilitates, facilitating, featuring"
+        }
+      ]
+    },
+    {
+      "value": "formidable",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "exceptionally, exerting, exhibiting, exhibits, expedite, expediting, exploration, explores, facilitated, facilitates, facilitating, featuring, formidable"
+        }
+      ]
+    },
+    {
+      "value": "foster",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Mid-2026 and on (GPT-6): challenge, clearer, dependable, echoed, foster"
+        }
+      ]
+    },
+    {
+      "value": "fostering",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: Additionally (especially beginning a sentence), align with, boasts (meaning \"has\"), bolstered, crucial, deep dive, delve, emphasizing, enduring, enhance, fostering"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "exerting, exhibiting, exhibits, expedite, expediting, exploration, explores, facilitated, facilitates, facilitating, featuring, formidable, fostering"
+        }
+      ]
+    },
+    {
+      "value": "fosters",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "exerting, exhibiting, exhibits, expedite, expediting, exploration, explores, facilitated, facilitates, facilitating, featuring, formidable, fostering, fosters"
+        }
+      ]
+    },
+    {
+      "value": "garner",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: Additionally (especially beginning a sentence), align with, boasts (meaning \"has\"), bolstered, crucial, deep dive, delve, emphasizing, enduring, enhance, fostering, garner"
+        }
+      ]
+    },
+    {
+      "value": "garnered",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "expedite, expediting, exploration, explores, facilitated, facilitates, facilitating, featuring, formidable, fostering, fosters, foundational, furnish, garnered"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "garnered 2.44 13.13 437.19"
+        }
+      ]
+    },
+    {
+      "value": "garnering",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "expediting, exploration, explores, facilitated, facilitates, facilitating, featuring, formidable, fostering, fosters, foundational, furnish, garnered, garnering"
+        }
+      ]
+    },
+    {
+      "value": "groundbreaking",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing, exemplifies, commitment to, natural beauty, nestled, in the heart of, groundbreaking"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "facilitated, facilitates, facilitating, featuring, formidable, fostering, fosters, foundational, furnish, garnered, garnering, gauged, grappling, groundbreaking"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "groundbreaking 0.87 3.75 330.42 advancements 12.49 47.17 277.59 aligns 1.55 5.68 266.97 Table 2: Our 21 focal words."
+        }
+      ]
+    },
+    {
+      "value": "harnessing",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "formidable, fostering, fosters, foundational, furnish, garnered, garnering, gauged, grappling, groundbreaking, groundwork, harness, harnesses, harnessing"
+        }
+      ]
+    },
+    {
+      "value": "holistic",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "unique fuller authentic foundational distinctive pertinent valuable invasive speedy inherent considerable holistic"
+        }
+      ]
+    },
+    {
+      "value": "illuminating",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "grappling, groundbreaking, groundwork, harness, harnesses, harnessing, heighten, heightened, hinder, hinges, hinting, hold, holds, illuminates, illuminating"
+        }
+      ]
+    },
+    {
+      "value": "impressively",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 3: Top 100 adverbs disproportionately used more frequently by AI. meticulously reportedly lucidly innovatively aptly methodically excellently compellingly impressively"
+        }
+      ]
+    },
+    {
+      "value": "in the heart of",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing, exemplifies, commitment to, natural beauty, nestled, in the heart of"
+        }
+      ]
+    },
+    {
+      "value": "indelible mark",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "contributing to the, setting the stage for, marking/shaping the, represents/marks a shift, key turning point, evolving landscape, focal point, indelible mark"
+        }
+      ]
+    },
+    {
+      "value": "ingenious",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 2: Top 100 adjectives disproportionately used more frequently by AI. commendable innovative meticulous intricate notable versatile noteworthy invaluable pivotal potent fresh ingenious"
+        }
+      ]
+    },
+    {
+      "value": "innovatively",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 3: Top 100 adverbs disproportionately used more frequently by AI. meticulously reportedly lucidly innovatively"
+        }
+      ]
+    },
+    {
+      "value": "insightful",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "fuller authentic foundational distinctive pertinent valuable invasive speedy inherent considerable holistic insightful"
+        }
+      ]
+    },
+    {
+      "value": "interplay",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "align with, boasts (meaning \"has\"), bolstered, crucial, deep dive, delve, emphasizing, enduring, enhance, fostering, garner, highlight (as a verb), interplay"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "incorporates, incorporating, influencing, inherent, initially, innovative, inquiries, integrates, integrating, integration, interconnectedness, interplay"
+        }
+      ]
+    },
+    {
+      "value": "intricacies",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "bolstered, crucial, deep dive, delve, emphasizing, enduring, enhance, fostering, garner, highlight (as a verb), interplay, intricate/intricacies"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "incorporating, influencing, inherent, initially, innovative, inquiries, integrates, integrating, integration, interconnectedness, interplay, intricacies"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "intricacies 0.60 5.22 772.85"
+        }
+      ]
+    },
+    {
+      "value": "intricate",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "bolstered, crucial, deep dive, delve, emphasizing, enduring, enhance, fostering, garner, highlight (as a verb), interplay, intricate/intricacies"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "influencing, inherent, initially, innovative, inquiries, integrates, integrating, integration, interconnectedness, interplay, intricacies, intricate"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "with words like “delve,” “intricate,” and “underscore” appearing far more frequently"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "adjectives such as “commendable”, “meticulous”, and “intricate” showing 9.8, 34.7, and 11.2-fold increases"
+        }
+      ]
+    },
+    {
+      "value": "intricately",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "inherent, initially, innovative, inquiries, integrates, integrating, integration, interconnectedness, interplay, intricacies, intricate, intricately"
+        }
+      ]
+    },
+    {
+      "value": "invaluable",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "innovative, inquiries, integrates, integrating, integration, interconnectedness, interplay, intricacies, intricate, intricately, introduces, invaluable"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 2: Top 100 adjectives disproportionately used more frequently by AI. commendable innovative meticulous intricate notable versatile noteworthy invaluable"
+        }
+      ]
+    },
+    {
+      "value": "key turning point",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "symbolizing its ongoing/enduring/lasting, contributing to the, setting the stage for, marking/shaping the, represents/marks a shift, key turning point"
+        }
+      ]
+    },
+    {
+      "value": "laudable",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "versatile noteworthy invaluable pivotal potent fresh ingenious cogent ongoing tangible profound methodical laudable"
+        }
+      ]
+    },
+    {
+      "value": "meticulous",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "enduring, enhance, fostering, garner, highlight (as a verb), interplay, intricate/intricacies, landscape (as an abstract noun), meticulous/meticulously"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "intricate, intricately, introduces, invaluable, investigates, involves, juxtaposed, leverages, leveraging, maintaining, merges, methodologies, meticulous"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "adjectives such as “commendable”, “meticulous”, and “intricate” showing 9.8, 34.7, and 11.2-fold increases"
+        }
+      ]
+    },
+    {
+      "value": "meticulously",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "enduring, enhance, fostering, garner, highlight (as a verb), interplay, intricate/intricacies, landscape (as an abstract noun), meticulous/meticulously"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "intricately, introduces, invaluable, investigates, involves, juxtaposed, leverages, leveraging, maintaining, merges, methodologies, meticulous, meticulously"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 3: Top 100 adverbs disproportionately used more frequently by AI. meticulously"
+        }
+      ]
+    },
+    {
+      "value": "multifaceted",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Mid-2026 and on (GPT-6): challenge, clearer, dependable, echoed, foster, leverage, matters, multifaceted"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "introduces, invaluable, investigates, involves, juxtaposed, leverages, leveraging, maintaining, merges, methodologies, meticulous, meticulously, multifaceted"
+        }
+      ]
+    },
+    {
+      "value": "natural beauty",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing, exemplifies, commitment to, natural beauty"
+        }
+      ]
+    },
+    {
+      "value": "nestled",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing, exemplifies, commitment to, natural beauty, nestled"
+        }
+      ]
+    },
+    {
+      "value": "noteworthy",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "leveraging, maintaining, merges, methodologies, meticulous, meticulously, multifaceted, necessitate, necessitates, necessitating, necessity, notable, noteworthy"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 2: Top 100 adjectives disproportionately used more frequently by AI. commendable innovative meticulous intricate notable versatile noteworthy"
+        }
+      ]
+    },
+    {
+      "value": "paving",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "necessitates, necessitating, necessity, notable, noteworthy, nuanced, nuances, offering, optimizing, orchestrating, outlines, overlook, overlooking, paving"
+        }
+      ]
+    },
+    {
+      "value": "pivotal",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "enduring, enhance, fostering, garner, highlight (as a verb), interplay, intricate/intricacies, landscape (as an abstract noun), meticulous/meticulously, pivotal"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "nuances, offering, optimizing, orchestrating, outlines, overlook, overlooking, paving, persist, pinpoint, pinpointed, pinpointing, pioneering, pioneers, pivotal"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 2: Top 100 adjectives disproportionately used more frequently by AI. commendable innovative meticulous intricate notable versatile noteworthy invaluable pivotal"
+        }
+      ]
+    },
+    {
+      "value": "poised",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "offering, optimizing, orchestrating, outlines, overlook, overlooking, paving, persist, pinpoint, pinpointed, pinpointing, pioneering, pioneers, pivotal, poised"
+        }
+      ]
+    },
+    {
+      "value": "profound",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound"
+        },
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "intricate notable versatile noteworthy invaluable pivotal potent fresh ingenious cogent ongoing tangible profound"
+        },
+        {
+          "source": "ai-paech-antislop",
+          "quote": "intensifiers (“a profound sense”)"
+        }
+      ]
+    },
+    {
+      "value": "profoundly",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "impressively undoubtedly scholarly strategically intriguingly competently intelligently hitherto thoughtfully profoundly"
+        }
+      ]
+    },
+    {
+      "value": "remarkably",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "predominantly coherently evidently notably professionally subtly synergistically productively purportedly remarkably"
+        }
+      ]
+    },
+    {
+      "value": "resonate with",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "reflecting/symbolizing ..., contributing to ..., cultivating/fostering ..., encompassing ..., enhancing ..., valuable insights, align/resonate with"
+        }
+      ]
+    },
+    {
+      "value": "revolutionize",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "pressing, promise, pronounced, propelling, realm, realms, recognizing, refine, refines, refining, remarkable, renowned, revealing, reveals, revolutionize"
+        }
+      ]
+    },
+    {
+      "value": "revolutionizing",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "promise, pronounced, propelling, realm, realms, recognizing, refine, refines, refining, remarkable, renowned, revealing, reveals, revolutionize, revolutionizing"
+        }
+      ]
+    },
+    {
+      "value": "setting the stage for",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "underscores/highlights its importance/significance, reflects broader, symbolizing its ongoing/enduring/lasting, contributing to the, setting the stage for"
+        }
+      ]
+    },
+    {
+      "value": "showcase",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "fostering, garner, highlight (as a verb), interplay, intricate/intricacies, landscape (as an abstract noun), meticulous/meticulously, pivotal, robust, showcase"
+        }
+      ]
+    },
+    {
+      "value": "showcased",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "revolutionize, revolutionizing, revolves, scrutinize, scrutinized, scrutinizing, seamless, seamlessly, seeks, serves, serving, shaping, shedding, showcased"
+        }
+      ]
+    },
+    {
+      "value": "showcases",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "revolutionizing, revolves, scrutinize, scrutinized, scrutinizing, seamless, seamlessly, seeks, serves, serving, shaping, shedding, showcased, showcases"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "showcases 0.82 4.31 422.45"
+        }
+      ]
+    },
+    {
+      "value": "showcasing",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: boasts a, vibrant, rich, profound, enhancing, showcasing"
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "revolves, scrutinize, scrutinized, scrutinizing, seamless, seamlessly, seeks, serves, serving, shaping, shedding, showcased, showcases, showcasing"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "A List Of Focal Words Word opm opm Incr. 2020 2024 % delves 0.21 14.38 6697.14 delved 0.12 2.90 2240.47 delving 0.12 2.38 1816.83 showcasing 0.59 8.79 1396.03"
+        }
+      ]
+    },
+    {
+      "value": "streamlining",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "showcases, showcasing, signifying, solidify, spanned, spanning, spurred, stands, stemming, strategically, streamline, streamlined, streamlines, streamlining"
+        }
+      ]
+    },
+    {
+      "value": "surpass",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "spurred, stands, stemming, strategically, streamline, streamlined, streamlines, streamlining, struggle, substantiated, substantiates, surged, surmount, surpass"
+        }
+      ]
+    },
+    {
+      "value": "surpassed",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "stemming, strategically, streamline, streamlined, streamlines, streamlining, struggle, substantiated, substantiates, surged, surmount, surpass, surpassed"
+        }
+      ]
+    },
+    {
+      "value": "surpasses",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "strategically, streamline, streamlined, streamlines, streamlining, struggle, substantiated, substantiates, surged, surmount, surpass, surpassed, surpasses"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "surpasses 0.85 3.96 367.55 groundbreaking 0.87 3.75 330.42 advancements 12.49 47.17 277.59 aligns 1.55 5.68 266.97 Table 2: Our 21 focal words."
+        }
+      ]
+    },
+    {
+      "value": "surpassing",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "streamline, streamlined, streamlines, streamlining, struggle, substantiated, substantiates, surged, surmount, surpass, surpassed, surpasses, surpassing"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "surpassing 1.37 10.50 667.48"
+        }
+      ]
+    },
+    {
+      "value": "symbolizing",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: highlighting/underscoring/emphasizing ..., ensuring ..., reflecting/symbolizing ..."
+        }
+      ]
+    },
+    {
+      "value": "synergistically",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "convincingly comprehensively seamlessly predominantly coherently evidently notably professionally subtly synergistically"
+        }
+      ]
+    },
+    {
+      "value": "tapestry",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "interplay, intricate/intricacies, landscape (as an abstract noun), meticulous/meticulously, pivotal, robust, showcase, tapestry (as an abstract noun)"
+        },
+        {
+          "source": "ai-paech-antislop",
+          "quote": "It can suppress individual words (“tapestry”)"
+        }
+      ]
+    },
+    {
+      "value": "testament",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "interplay, intricate/intricacies, landscape (as an abstract noun), meticulous/meticulously, pivotal, robust, showcase, tapestry (as an abstract noun), testament"
+        }
+      ]
+    },
+    {
+      "value": "transformative",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "streamlining, struggle, substantiated, substantiates, surged, surmount, surpass, surpassed, surpasses, surpassing, swift, swiftly, thorough, transformative"
+        }
+      ]
+    },
+    {
+      "value": "uncharted",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "substantiates, surged, surmount, surpass, surpassed, surpasses, surpassing, swift, swiftly, thorough, transformative, typically, ultimately, uncharted"
+        }
+      ]
+    },
+    {
+      "value": "undeniably",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "undoubtedly scholarly strategically intriguingly competently intelligently hitherto thoughtfully profoundly undeniably"
+        }
+      ]
+    },
+    {
+      "value": "underscoring",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: highlighting/underscoring/emphasizing ..."
+        },
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "swift, swiftly, thorough, transformative, typically, ultimately, uncharted, uncovering, underexplored, underscore, underscored, underscores, underscoring"
+        },
+        {
+          "source": "ai-juzek-ward-delve",
+          "quote": "underscoring 2.70 17.17 536.94"
+        }
+      ]
+    },
+    {
+      "value": "undoubtedly",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 3: Top 100 adverbs disproportionately used more frequently by AI. meticulously reportedly lucidly innovatively aptly methodically excellently compellingly impressively undoubtedly"
+        }
+      ]
+    },
+    {
+      "value": "unparalleled",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "typically, ultimately, uncharted, uncovering, underexplored, underscore, underscored, underscores, underscoring, unexplored, unlocking, unparalleled"
+        }
+      ]
+    },
+    {
+      "value": "unprecedented",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "excellent keen cultural unauthorized strategic expansive prospective vivid consequential manageable unprecedented"
+        }
+      ]
+    },
+    {
+      "value": "unraveling",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "typically, ultimately, uncharted, uncovering, underexplored, underscore, underscored, underscores, underscoring, unexplored, unlocking, unparalleled, unraveling"
+        }
+      ]
+    },
+    {
+      "value": "unveil",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "ultimately, uncharted, uncovering, underexplored, underscore, underscored, underscores, underscoring, unexplored, unlocking, unparalleled, unraveling, unveil"
+        }
+      ]
+    },
+    {
+      "value": "unveiled",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "uncharted, uncovering, underexplored, underscore, underscored, underscores, underscoring, unexplored, unlocking, unparalleled, unraveling, unveil, unveiled"
+        }
+      ]
+    },
+    {
+      "value": "unveiling",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "uncovering, underexplored, underscore, underscored, underscores, underscoring, unexplored, unlocking, unparalleled, unraveling, unveil, unveiled, unveiling"
+        }
+      ]
+    },
+    {
+      "value": "unveils",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "underexplored, underscore, underscored, underscores, underscoring, unexplored, unlocking, unparalleled, unraveling, unveil, unveiled, unveiling, unveils"
+        }
+      ]
+    },
+    {
+      "value": "valuable insights",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: highlighting/underscoring/emphasizing ..., ensuring ..., reflecting/symbolizing ..., contributing to ..., cultivating/fostering ..., encompassing ..., enhancing ..., valuable insights"
+        }
+      ]
+    },
+    {
+      "value": "versatile",
+      "cites": [
+        {
+          "source": "ai-liang-peer-reviews",
+          "quote": "Table 2: Top 100 adjectives disproportionately used more frequently by AI. commendable innovative meticulous intricate notable versatile"
+        }
+      ]
+    },
+    {
+      "value": "versatility",
+      "cites": [
+        {
+          "source": "ai-kobak-excess-vocab",
+          "quote": "underscoring, unexplored, unlocking, unparalleled, unraveling, unveil, unveiled, unveiling, unveils, uphold, upholding, urging, utilizes, varying, versatility"
+        }
+      ]
+    },
+    {
+      "value": "vibrant",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "meticulous/meticulously, pivotal, robust, showcase, tapestry (as an abstract noun), testament, underscore (as a verb), valuable, vibrant"
+        }
+      ]
+    }
+  ],
+  "headline_formulas": [
+    {
+      "pattern": "(?i)\\byou won['’]t believe\\b",
+      "example": "You Won’t Believe",
+      "cites": [
+        {
+          "source": "copy-chakraborty-clickbait",
+          "quote": "several commonly used catch phrases in clickbait headlines exploit the “curiosity gap” of users, such as “Will Blow Your Mind”, “You Won’t Believe”"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bwill blow your mind\\b",
+      "example": "Will Blow Your Mind",
+      "cites": [
+        {
+          "source": "copy-chakraborty-clickbait",
+          "quote": "several commonly used catch phrases in clickbait headlines exploit the “curiosity gap” of users, such as “Will Blow Your Mind”, “You Won’t Believe”"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bcan you guess\\b",
+      "example": "Can You Guess",
+      "cites": [
+        {
+          "source": "copy-chakraborty-clickbait",
+          "quote": "she may be annoyed by the commonly occurring pattern “Can You Guess ... ”"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bwhich (?:\\w+ )+are you based on\\b",
+      "example": "Which Disney Song Are You Based On",
+      "cites": [
+        {
+          "source": "copy-chakraborty-clickbait",
+          "quote": "in the headlines “Which Disney Song Are You Based On Your Zodiac Sign” and “Which Badass Witch Are You Based On Your Birth Month”"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\b\\w+ is the new black\\b",
+      "example": "Sustainability is the new black",
+      "cites": [
+        {
+          "source": "copy-kovacs-ai-slogans",
+          "quote": "like sth. is the new black (= ‘something is very popular’) in the slogans “Sustainability is the new black”"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bgreen is the color of {quality}\\b",
+      "example": "Green is the color of hope",
+      "cites": [
+        {
+          "source": "copy-kovacs-ai-slogans",
+          "quote": "using the sentence structure: “Green is the color of hope/life/nature/harmony/balance”"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bnot only\\b.+\\bbut\\b",
+      "example": "Not only ... but ...",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "such as \"Not only ... but ...\" or \"It is not just ..., it's ...\""
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bnot just\\b.+\\bbut\\b",
+      "example": "Not just X, but also Y",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Not just X, but also Y"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bit is not just\\b[^,]*, it['’]s\\b",
+      "example": "It is not just ..., it's ...",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "such as \"Not only ... but ...\" or \"It is not just ..., it's ...\""
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bisn['’]t just\\b",
+      "example": "isn’t just sourcing",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "The issue here isn’t just sourcing"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bit['’]s not\\b[^,]*, it['’]s\\b",
+      "example": "It’s not X, it’s Y",
+      "cites": [
+        {
+          "source": "ai-paech-antislop",
+          "quote": "sentence-level constructions of the form “It’s not X, it’s Y” to be 6.3× more prevalent than human writing in some models"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bno\\b[^,]*, no\\b[^,]*, just\\b",
+      "example": "no ..., no ..., just ...",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Such constructions are often expressed as \"It's not ..., it's ...\" or \"no ..., no ..., just ...\""
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bchallenges and legacy\\b",
+      "example": "Challenges and Legacy",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: Despite its... faces several challenges..., Despite these challenges, Challenges and Legacy, Future Outlook"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bfuture outlook\\b",
+      "example": "Future Outlook",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "Words to watch: Despite its... faces several challenges..., Despite these challenges, Challenges and Legacy, Future Outlook"
+        }
+      ]
+    },
+    {
+      "pattern": "(?i)\\bfuture prospects\\b",
+      "example": "Future Prospects",
+      "cites": [
+        {
+          "source": "ai-wikiproject-signs",
+          "quote": "which may also include a separate section for \"Future Prospects.\""
+        }
+      ]
+    }
+  ],
+  "headline_word_slots": {
+    "quality": [
+      {
+        "value": "hope",
+        "cites": [
+          {
+            "source": "copy-kovacs-ai-slogans",
+            "quote": "using the sentence structure: “Green is the color of hope/life/nature/harmony/balance”"
+          }
+        ]
+      },
+      {
+        "value": "life",
+        "cites": [
+          {
+            "source": "copy-kovacs-ai-slogans",
+            "quote": "using the sentence structure: “Green is the color of hope/life/nature/harmony/balance”"
+          }
+        ]
+      },
+      {
+        "value": "nature",
+        "cites": [
+          {
+            "source": "copy-kovacs-ai-slogans",
+            "quote": "using the sentence structure: “Green is the color of hope/life/nature/harmony/balance”"
+          }
+        ]
+      },
+      {
+        "value": "harmony",
+        "cites": [
+          {
+            "source": "copy-kovacs-ai-slogans",
+            "quote": "using the sentence structure: “Green is the color of hope/life/nature/harmony/balance”"
+          }
+        ]
+      },
+      {
+        "value": "balance",
+        "cites": [
+          {
+            "source": "copy-kovacs-ai-slogans",
+            "quote": "using the sentence structure: “Green is the color of hope/life/nature/harmony/balance”"
+          }
+        ]
+      }
+    ]
+  },
+  "scaffold_titles": [
+    {
+      "value": "Vite App",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite App</title>"
+        },
+        {
+          "source": "scaffold-create-vue-3-24-0",
+          "quote": "<title>Vite App</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + JS",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + JS</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + TS",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + TS</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + TS</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + React",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + React</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + React</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + React + TS",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + React + TS</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + React + TS</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Vue",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Vue</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Vue</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Vue + TS",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Vue + TS</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Vue + TS</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Svelte",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Svelte</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Svelte</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Svelte + TS",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Svelte + TS</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Svelte + TS</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Preact",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Preact</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Preact</title>"
+        },
+        {
+          "source": "scaffold-create-preact-0-6-0",
+          "quote": "<title>Vite + Preact</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Preact + TS",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Preact + TS</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Preact + TS</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Lit",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Lit</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Lit</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Lit + TS",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Lit + TS</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Lit + TS</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Solid",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Solid</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Solid</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Solid + TS",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Solid + TS</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Solid + TS</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Qwik",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Qwik</title>"
+        }
+      ]
+    },
+    {
+      "value": "Vite + Qwik + TS",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<title>Vite + Qwik + TS</title>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<title>Vite + Qwik + TS</title>"
+        }
+      ]
+    },
+    {
+      "value": "Create Next App",
+      "cites": [
+        {
+          "source": "scaffold-create-next-app-16-4-5",
+          "quote": "<title>Create Next App</title>"
+        }
+      ]
+    },
+    {
+      "value": "React App",
+      "cites": [
+        {
+          "source": "scaffold-create-react-app-5-0-1",
+          "quote": "<title>React App</title>"
+        }
+      ]
+    },
+    {
+      "value": "Astro Basics",
+      "cites": [
+        {
+          "source": "scaffold-astro-7-4-5",
+          "quote": "<title>Astro Basics</title>"
+        }
+      ]
+    },
+    {
+      "value": "Astro",
+      "cites": [
+        {
+          "source": "scaffold-astro-7-4-5",
+          "quote": "<title>Astro</title>"
+        }
+      ]
+    },
+    {
+      "value": "Astro Blog",
+      "cites": [
+        {
+          "source": "scaffold-astro-7-4-5",
+          "quote": "export const SITE_TITLE = 'Astro Blog';"
+        }
+      ]
+    },
+    {
+      "value": "Welcome to Nuxt!",
+      "cites": [
+        {
+          "source": "scaffold-nuxt-4-6-4",
+          "quote": "\"title\": \"Welcome to Nuxt!\""
+        }
+      ]
+    },
+    {
+      "value": "Gatsby Default Starter",
+      "cites": [
+        {
+          "source": "scaffold-gatsby-5-16-1",
+          "quote": "title: `Gatsby Default Starter`,"
+        }
+      ]
+    },
+    {
+      "value": "My Site",
+      "cites": [
+        {
+          "source": "scaffold-docusaurus-3-10-2",
+          "quote": "title: 'My Site',"
+        }
+      ]
+    },
+    {
+      "value": "New Remix App",
+      "cites": [
+        {
+          "source": "scaffold-remix-2-17-4",
+          "quote": "{ title: \"New Remix App\" },"
+        }
+      ]
+    },
+    {
+      "value": "Your awesome title",
+      "cites": [
+        {
+          "source": "scaffold-jekyll-4-4-1",
+          "quote": "title: Your awesome title"
+        }
+      ]
+    },
+    {
+      "value": "My Awesome Project",
+      "cites": [
+        {
+          "source": "scaffold-vitepress-2-0-0-alpha-21",
+          "quote": "defaultValue: 'My Awesome Project'"
+        }
+      ]
+    },
+    {
+      "value": "Laravel",
+      "cites": [
+        {
+          "source": "scaffold-laravel-13-11-0",
+          "quote": "<title>{{ config('app.name', 'Laravel') }}</title>"
+        }
+      ]
+    },
+    {
+      "value": "Welcome to nginx!",
+      "cites": [
+        {
+          "source": "scaffold-nginx-1-30-0",
+          "quote": "<title>Welcome to nginx!</title>"
+        }
+      ]
+    },
+    {
+      "value": "It works! Apache httpd",
+      "cites": [
+        {
+          "source": "scaffold-apache-httpd-2-4-69",
+          "quote": "<title>It works! Apache httpd</title>"
+        }
+      ]
+    },
+    {
+      "value": "The install worked successfully! Congratulations!",
+      "cites": [
+        {
+          "source": "scaffold-django-6-1-3",
+          "quote": "<title>{% translate \"The install worked successfully! Congratulations!\" %}</title>"
+        }
+      ]
+    }
+  ],
+  "placeholder_titles": [
+    {
+      "value": "Document",
+      "cites": [
+        {
+          "source": "scaffold-emmet-2-4-11",
+          "quote": "title{${1:Document}}"
+        }
+      ]
+    },
+    {
+      "value": "Bootstrap demo",
+      "cites": [
+        {
+          "source": "scaffold-bootstrap-5-3-8",
+          "quote": "<title>Bootstrap demo</title>"
+        }
+      ]
+    },
+    {
+      "value": "Hello Bulma!",
+      "cites": [
+        {
+          "source": "scaffold-bulma-1-0-4",
+          "quote": "<title>Hello Bulma!</title>"
+        }
+      ]
+    }
+  ],
+  "scaffold_favicons": [
+    {
+      "value": "/vite.svg",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/vite.svg\" />"
+        },
+        {
+          "source": "scaffold-create-preact-0-6-0",
+          "quote": "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/vite.svg\" />"
+        }
+      ]
+    }
+  ],
+  "scaffold_markers": [
+    {
+      "value": "Click on the Vite and React logos to learn more",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "Click on the Vite and React logos to learn more"
+        }
+      ]
+    },
+    {
+      "value": "Click on the Vite and Vue logos to learn more",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<p class=\"read-the-docs\">Click on the Vite and Vue logos to learn more</p>"
+        }
+      ]
+    },
+    {
+      "value": "Click on the Vite and Svelte logos to learn more",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "Click on the Vite and Svelte logos to learn more"
+        }
+      ]
+    },
+    {
+      "value": "Click on the Vite and Preact logos to learn more",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "Click on the Vite and Preact logos to learn more"
+        }
+      ]
+    },
+    {
+      "value": "Click on the Vite and Solid logos to learn more",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "Click on the Vite and Solid logos to learn more"
+        }
+      ]
+    },
+    {
+      "value": "Click on the Vite and Qwik logos to learn more",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "Click on the Vite and Qwik logos to learn more"
+        }
+      ]
+    },
+    {
+      "value": "Click on the Vite and Lit logos to learn more",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "this.docsHint = 'Click on the Vite and Lit logos to learn more'"
+        }
+      ]
+    },
+    {
+      "value": "Click on the Vite and TypeScript logos to learn more",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "Click on the Vite and TypeScript logos to learn more"
+        }
+      ]
+    },
+    {
+      "value": "Click on the Vite logo to learn more",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "Click on the Vite logo to learn more"
+        }
+      ]
+    },
+    {
+      "value": "Hello Vite!",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<h1>Hello Vite!</h1>"
+        }
+      ]
+    },
+    {
+      "value": "and save to test HMR",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "Edit <code>src/App.jsx</code> and save to test HMR"
+        }
+      ]
+    },
+    {
+      "value": "Join the Vite community",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<p>Join the Vite community</p>"
+        }
+      ]
+    },
+    {
+      "value": "Get Started building Vite-powered Preact Apps",
+      "cites": [
+        {
+          "source": "scaffold-create-preact-0-6-0",
+          "quote": "<h1>Get Started building Vite-powered Preact Apps</h1>"
+        }
+      ]
+    },
+    {
+      "value": "You’ve successfully created a project with",
+      "cites": [
+        {
+          "source": "scaffold-create-vue-3-24-0",
+          "quote": "You’ve successfully created a project with"
+        }
+      ]
+    },
+    {
+      "value": "Looking for a starting point or more instructions?",
+      "cites": [
+        {
+          "source": "scaffold-create-next-app-16-4-5",
+          "quote": "Looking for a starting point or more instructions? Head over to{\" \"}"
+        }
+      ]
+    },
+    {
+      "value": "To get started, edit the",
+      "cites": [
+        {
+          "source": "scaffold-create-next-app-16-4-5",
+          "quote": "To get started, edit the{\" \"}"
+        }
+      ]
+    },
+    {
+      "value": "Get started by editing",
+      "cites": [
+        {
+          "source": "scaffold-create-next-app-15-0-0",
+          "quote": "Get started by editing <code>app/page.tsx</code>."
+        },
+        {
+          "source": "scaffold-create-next-app-14-0-0",
+          "quote": "Get started by editing&nbsp;"
+        }
+      ]
+    },
+    {
+      "value": "Save and see your changes instantly.",
+      "cites": [
+        {
+          "source": "scaffold-create-next-app-15-0-0",
+          "quote": "<li>Save and see your changes instantly.</li>"
+        }
+      ]
+    },
+    {
+      "value": "Generated by create next app",
+      "cites": [
+        {
+          "source": "scaffold-create-next-app-16-4-5",
+          "quote": "description: \"Generated by create next app\","
+        }
+      ]
+    },
+    {
+      "value": "and save to reload.",
+      "cites": [
+        {
+          "source": "scaffold-create-react-app-5-0-1",
+          "quote": "Edit <code>src/App.js</code> and save to reload."
+        }
+      ]
+    },
+    {
+      "value": "You need to enable JavaScript to run this app.",
+      "cites": [
+        {
+          "source": "scaffold-create-react-app-5-0-1",
+          "quote": "<noscript>You need to enable JavaScript to run this app.</noscript>"
+        }
+      ]
+    },
+    {
+      "value": "Web site created using create-react-app",
+      "cites": [
+        {
+          "source": "scaffold-create-react-app-5-0-1",
+          "quote": "content=\"Web site created using create-react-app\""
+        }
+      ]
+    },
+    {
+      "value": "Welcome to SvelteKit",
+      "cites": [
+        {
+          "source": "scaffold-sv-1-3-0",
+          "quote": "<h1>Welcome to SvelteKit</h1>"
+        }
+      ]
+    },
+    {
+      "value": "Svelte demo app",
+      "cites": [
+        {
+          "source": "scaffold-sv-1-3-0",
+          "quote": "<meta name=\"description\" content=\"Svelte demo app\" />"
+        }
+      ]
+    },
+    {
+      "value": "Welcome to your library project",
+      "cites": [
+        {
+          "source": "scaffold-sv-1-3-0",
+          "quote": "<h1>Welcome to your library project</h1>"
+        }
+      ]
+    },
+    {
+      "value": "To get started, open the",
+      "cites": [
+        {
+          "source": "scaffold-astro-7-4-5",
+          "quote": "To get started, open the{' '}"
+        }
+      ]
+    },
+    {
+      "value": "Hello, Astronaut!",
+      "cites": [
+        {
+          "source": "scaffold-astro-7-4-5",
+          "quote": "<h1>🧑‍🚀 Hello, Astronaut!</h1>"
+        }
+      ]
+    },
+    {
+      "value": "Remove this welcome page by replacing",
+      "cites": [
+        {
+          "source": "scaffold-nuxt-4-6-4",
+          "quote": "Remove this welcome page by replacing"
+        }
+      ]
+    },
+    {
+      "value": "We highly recommend you take a look at the Nuxt documentation to level up.",
+      "cites": [
+        {
+          "source": "scaffold-nuxt-4-6-4",
+          "quote": "We highly recommend you take a look at the Nuxt documentation to level up."
+        }
+      ]
+    },
+    {
+      "value": "Kick off your next, great Gatsby project with this default starter.",
+      "cites": [
+        {
+          "source": "scaffold-gatsby-5-16-1",
+          "quote": "description: `Kick off your next, great Gatsby project with this default starter."
+        }
+      ]
+    },
+    {
+      "value": "Congratulations! Your app is running.",
+      "cites": [
+        {
+          "source": "scaffold-angular-cli-22-2-5",
+          "quote": "<p>Congratulations! Your app is running. 🎉</p>"
+        }
+      ]
+    },
+    {
+      "value": "Dinosaurs are cool",
+      "cites": [
+        {
+          "source": "scaffold-docusaurus-3-10-2",
+          "quote": "tagline: 'Dinosaurs are cool',"
+        }
+      ]
+    },
+    {
+      "value": "Docusaurus Tutorial - 5min",
+      "cites": [
+        {
+          "source": "scaffold-docusaurus-3-10-2",
+          "quote": "Docusaurus Tutorial - 5min"
+        }
+      ]
+    },
+    {
+      "value": "My Project, Inc. Built with Docusaurus.",
+      "cites": [
+        {
+          "source": "scaffold-docusaurus-3-10-2",
+          "quote": "My Project, Inc. Built with Docusaurus."
+        }
+      ]
+    },
+    {
+      "value": "Welcome to Remix!",
+      "cites": [
+        {
+          "source": "scaffold-remix-2-17-4",
+          "quote": "{ name: \"description\", content: \"Welcome to Remix!\" },"
+        }
+      ]
+    },
+    {
+      "value": "Welcome to Jekyll!",
+      "cites": [
+        {
+          "source": "scaffold-jekyll-4-4-1",
+          "quote": "title:  \"Welcome to Jekyll!\""
+        }
+      ]
+    },
+    {
+      "value": "Write an awesome description for your new site here.",
+      "cites": [
+        {
+          "source": "scaffold-jekyll-4-4-1",
+          "quote": "Write an awesome description for your new site here."
+        }
+      ]
+    },
+    {
+      "value": "This is the base Jekyll theme.",
+      "cites": [
+        {
+          "source": "scaffold-jekyll-4-4-1",
+          "quote": "This is the base Jekyll theme."
+        }
+      ]
+    },
+    {
+      "value": "My great project tagline",
+      "cites": [
+        {
+          "source": "scaffold-vitepress-2-0-0-alpha-21",
+          "quote": "tagline: My great project tagline"
+        }
+      ]
+    },
+    {
+      "value": "A VitePress Site",
+      "cites": [
+        {
+          "source": "scaffold-vitepress-2-0-0-alpha-21",
+          "quote": "defaultValue: 'A VitePress Site'"
+        }
+      ]
+    },
+    {
+      "value": "Hello world! This is HTML5 Boilerplate.",
+      "cites": [
+        {
+          "source": "scaffold-html5-boilerplate-9-0-1",
+          "quote": "<p>Hello world! This is HTML5 Boilerplate.</p>"
+        }
+      ]
+    },
+    {
+      "value": "If you see this page, nginx is successfully installed and working.",
+      "cites": [
+        {
+          "source": "scaffold-nginx-1-30-0",
+          "quote": "<p>If you see this page, nginx is successfully installed and working."
+        }
+      ]
+    },
+    {
+      "value": "Thank you for using nginx.",
+      "cites": [
+        {
+          "source": "scaffold-nginx-1-30-0",
+          "quote": "<p><em>Thank you for using nginx.</em></p>"
+        }
+      ]
+    },
+    {
+      "value": "we suggest you start with the following",
+      "cites": [
+        {
+          "source": "scaffold-laravel-13-11-0",
+          "quote": "we suggest you start with the following:</p>"
+        }
+      ]
+    },
+    {
+      "value": "Welcome to Your Vue.js App",
+      "cites": [
+        {
+          "source": "scaffold-vue-cli-5-0-9",
+          "quote": "<h1>Welcome to Your Vue.js App</h1>"
+        }
+      ]
+    },
+    {
+      "value": "doesn't work properly without JavaScript enabled. Please enable it to continue.",
+      "cites": [
+        {
+          "source": "scaffold-vue-cli-5-0-9",
+          "quote": "doesn't work properly without JavaScript enabled. Please enable it to continue.</strong>"
+        }
+      ]
+    }
+  ],
+  "scaffold_root_ids": [
+    {
+      "value": "root",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<div id=\"root\"></div>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<div id=\"root\"></div>"
+        },
+        {
+          "source": "scaffold-create-react-app-5-0-1",
+          "quote": "<div id=\"root\"></div>"
+        }
+      ]
+    },
+    {
+      "value": "app",
+      "cites": [
+        {
+          "source": "scaffold-create-vite-9-3-3",
+          "quote": "<div id=\"app\"></div>"
+        },
+        {
+          "source": "scaffold-create-vite-8-3-0",
+          "quote": "<div id=\"app\"></div>"
+        },
+        {
+          "source": "scaffold-create-vue-3-24-0",
+          "quote": "<div id=\"app\"></div>"
+        },
+        {
+          "source": "scaffold-vue-cli-5-0-9",
+          "quote": "<div id=\"app\"></div>"
+        },
+        {
+          "source": "scaffold-create-preact-0-6-0",
+          "quote": "<div id=\"app\"></div>"
+        }
+      ]
+    },
+    {
+      "value": "__next",
+      "cites": [
+        {
+          "source": "scaffold-next-js-16-4-5",
+          "quote": "return <div id=\"__next\">{children}</div>"
+        }
+      ]
+    },
+    {
+      "value": "__nuxt",
+      "cites": [
+        {
+          "source": "scaffold-nuxt-4-6-4",
+          "quote": "id: rootId === false ? undefined : (rootId || '__nuxt'),"
+        }
+      ]
+    },
+    {
+      "value": "___gatsby",
+      "cites": [
+        {
+          "source": "scaffold-gatsby-5-16-1",
+          "quote": "id=\"___gatsby\""
+        }
+      ]
+    },
+    {
+      "value": "__docusaurus",
+      "cites": [
+        {
+          "source": "scaffold-docusaurus-3-10-2",
+          "quote": "<div id=\"__docusaurus\"></div>"
+        }
+      ]
+    }
+  ],
+  "error_page_markers": [
+    {
+      "value": "Application error: a client-side exception has occurred",
+      "cites": [
+        {
+          "source": "scaffold-next-js-16-4-5",
+          "quote": "Application error: a client-side exception has occurred"
+        }
+      ]
+    },
+    {
+      "value": "A server error occurred. Reload to try again.",
+      "cites": [
+        {
+          "source": "scaffold-next-js-16-4-5",
+          "quote": "A server error occurred. Reload to try again."
+        }
+      ]
+    },
+    {
+      "value": "__next_error__",
+      "cites": [
+        {
+          "source": "scaffold-next-js-16-4-5",
+          "quote": "<html id=\"__next_error__\">"
+        }
+      ]
+    },
+    {
+      "value": "Cannot GET",
+      "cites": [
+        {
+          "source": "scaffold-finalhandler-2-1-1",
+          "quote": ".expect(404, /<pre>Cannot GET \\/foo<\\/pre>/, done)"
+        }
+      ]
+    },
+    {
+      "value": "The requested resource was not found on this server.",
+      "cites": [
+        {
+          "source": "scaffold-django-6-1-3",
+          "quote": "\"details\": \"The requested resource was not found on this server.\","
+        }
+      ]
+    },
+    {
+      "value": "Django tried these URL patterns",
+      "cites": [
+        {
+          "source": "scaffold-django-6-1-3",
+          "quote": "Django tried these URL patterns, in this order:"
+        }
+      ]
+    },
+    {
+      "value": "The change you wanted was rejected.",
+      "cites": [
+        {
+          "source": "scaffold-rails-8-1-4-1",
+          "quote": "<p><strong>The change you wanted was rejected.</strong>"
+        }
+      ]
+    },
+    {
+      "value": "Whitelabel Error Page",
+      "cites": [
+        {
+          "source": "scaffold-spring-boot-4-1-2",
+          "quote": "<html><body><h1>Whitelabel Error Page</h1>"
+        }
+      ]
+    },
+    {
+      "value": "This application has no explicit mapping for /error, so you are seeing this as a fallback.",
+      "cites": [
+        {
+          "source": "scaffold-spring-boot-4-1-2",
+          "quote": "<p>This application has no explicit mapping for /error, so you are seeing this as a fallback.</p>"
+        }
+      ]
+    },
+    {
+      "value": "The requested URL was not found on the server.",
+      "cites": [
+        {
+          "source": "scaffold-werkzeug-3-1-9",
+          "quote": "\"The requested URL was not found on the server. If you entered\""
+        }
+      ]
+    },
+    {
+      "value": "<hr><center>nginx</center>",
+      "cites": [
+        {
+          "source": "scaffold-nginx-1-30-0",
+          "quote": "\"<hr><center>nginx</center>\" CRLF"
+        }
+      ]
+    },
+    {
+      "value": "The requested URL was not found on this server.",
+      "cites": [
+        {
+          "source": "scaffold-apache-httpd-2-4-69",
+          "quote": "return(\"<p>The requested URL was not found on this server.</p>\\n\");"
+        }
+      ]
+    },
+    {
+      "value": "exist... the sadness.",
+      "cites": [
+        {
+          "source": "scaffold-gatsby-5-16-1",
+          "quote": "<p>You just hit a route that doesn&#39;t exist... the sadness.</p>"
+        }
+      ]
+    },
+    {
+      "value": "Unexpected Application Error!",
+      "cites": [
+        {
+          "source": "scaffold-react-router-8-5-1",
+          "quote": "<h2>Unexpected Application Error!</h2>"
+        }
+      ]
+    }
+  ],
+  "hosting_suffixes": [
+    {
+      "value": ".vercel.app",
+      "cites": [
+        {
+          "source": "web-vercel-domains",
+          "quote": "we automatically assign it a domain based on your project name and ending in .vercel.app"
+        }
+      ]
+    },
+    {
+      "value": ".netlify.app",
+      "cites": [
+        {
+          "source": "web-netlify-domains",
+          "quote": "visible in your Netlify dashboard and in your default .netlify.app URL"
+        }
+      ]
+    },
+    {
+      "value": ".pages.dev",
+      "cites": [
+        {
+          "source": "web-cloudflare-pages-direct-upload",
+          "quote": "Your project will be served at <PROJECT_NAME>.pages.dev"
+        }
+      ]
+    },
+    {
+      "value": ".workers.dev",
+      "cites": [
+        {
+          "source": "web-cloudflare-workers-devdomain",
+          "quote": "workers.dev subdomains take the format: <YOUR_ACCOUNT_SUBDOMAIN>.workers.dev."
+        }
+      ]
+    },
+    {
+      "value": ".onrender.com",
+      "cites": [
+        {
+          "source": "web-render-custom-domains",
+          "quote": "available in the Render Dashboard. Example: svelte.onrender.com"
+        }
+      ]
+    },
+    {
+      "value": ".fly.dev",
+      "cites": [
+        {
+          "source": "web-fly-custom-domain",
+          "quote": "have HTTPS set up for you as it is with your .fly.dev domain"
+        }
+      ]
+    },
+    {
+      "value": ".herokuapp.com",
+      "cites": [
+        {
+          "source": "web-heroku-custom-domains",
+          "quote": "a Heroku app is available at its Heroku domain, which has the form APPNAME-IDENTIFIER.herokuapp.com"
+        }
+      ]
+    },
+    {
+      "value": ".github.io",
+      "cites": [
+        {
+          "source": "web-github-pages-about",
+          "quote": "Default site location http(s)://<owner>.github.io"
+        }
+      ]
+    },
+    {
+      "value": ".web.app",
+      "cites": [
+        {
+          "source": "web-firebase-hosting-quickstart",
+          "quote": "Firebase-provisioned subdomains: PROJECT_ID.web.app PROJECT_ID.firebaseapp.com"
+        }
+      ]
+    },
+    {
+      "value": ".firebaseapp.com",
+      "cites": [
+        {
+          "source": "web-firebase-hosting-quickstart",
+          "quote": "Firebase-provisioned subdomains: PROJECT_ID.web.app PROJECT_ID.firebaseapp.com"
+        }
+      ]
+    },
+    {
+      "value": ".up.railway.app",
+      "cites": [
+        {
+          "source": "web-railway-domains",
+          "quote": "Auto-generated *.up.railway.app domains for quick setup"
+        }
+      ]
+    },
+    {
+      "value": ".replit.app",
+      "cites": [
+        {
+          "source": "web-replit-custom-domains",
+          "quote": "Replit provides a free subdomain in the format <your-live-app-subdomain-name>.replit.app"
+        }
+      ]
+    },
+    {
+      "value": ".lovable.app",
+      "cites": [
+        {
+          "source": "web-lovable-custom-domain",
+          "quote": "instead of the default xxx.lovable.app URL"
+        }
+      ]
+    },
+    {
+      "value": ".surge.sh",
+      "cites": [
+        {
+          "source": "web-surge-getting-started",
+          "quote": "domain: lucid-example.surge.sh"
+        }
+      ]
+    },
+    {
+      "value": ".gitlab.io",
+      "cites": [
+        {
+          "source": "web-gitlab-pages",
+          "quote": "the GitLab default domain for GitLab Pages websites, *.gitlab.io"
+        }
+      ]
+    },
+    {
+      "value": ".azurestaticapps.net",
+      "cites": [
+        {
+          "source": "web-azure-swa-custom-domain",
+          "quote": "inspecting the default URL assigned to it: <random-prefix>.<slice>.azurestaticapps.net"
+        }
+      ]
+    },
+    {
+      "value": ".azurewebsites.net",
+      "cites": [
+        {
+          "source": "web-azure-app-service-ips",
+          "quote": "the default hostname (<app-name>.azurewebsites.net)"
+        }
+      ]
+    },
+    {
+      "value": ".amplifyapp.com",
+      "cites": [
+        {
+          "source": "web-aws-amplify-custom-domains",
+          "quote": "Amplify hosts it for you on the default amplifyapp.com domain with a URL such as https://branch-name.d1m7bkiki6tdw1.amplifyapp.com"
+        }
+      ]
+    },
+    {
+      "value": ".run.app",
+      "cites": [
+        {
+          "source": "web-gcloud-run-https",
+          "quote": "has the following format: https://[TAG---]SERVICE_NAME-PROJECT_NUMBER.REGION.run.app"
+        }
+      ]
+    },
+    {
+      "value": ".appspot.com",
+      "cites": [
+        {
+          "source": "web-gcloud-appengine-routing",
+          "quote": "https://PROJECT_ID.REGION_ID.r.appspot.com"
+        }
+      ]
+    },
+    {
+      "value": ".ondigitalocean.app",
+      "cites": [
+        {
+          "source": "web-do-app-spec",
+          "quote": "The default .ondigitalocean.app domain assigned to this app"
+        }
+      ]
+    },
+    {
+      "value": ".deno.dev",
+      "cites": [
+        {
+          "source": "web-deno-deploy-classic-domains",
+          "quote": "By default a project can be reached at its preview URL, which is $PROJECT_ID.deno.dev"
+        }
+      ]
+    },
+    {
+      "value": ".deno.net",
+      "cites": [
+        {
+          "source": "web-deno-deploy-domains",
+          "quote": "would have a default domain of acme-inc.deno.net"
+        }
+      ]
+    },
+    {
+      "value": ".wixsite.com",
+      "cites": [
+        {
+          "source": "web-wix-about-domains",
+          "quote": "your web address (URL) is in the following format: siteprefix.wixsite.com/siteaddress"
+        }
+      ]
+    },
+    {
+      "value": ".streamlit.app",
+      "cites": [
+        {
+          "source": "web-streamlit-deploy",
+          "quote": "Community Cloud will deploy an app to https://red-balloon.streamlit.app/"
+        }
+      ]
+    },
+    {
+      "value": ".hf.space",
+      "cites": [
+        {
+          "source": "web-hf-spaces-embed",
+          "quote": "<space-subdomain>.hf.space"
+        }
+      ]
+    },
+    {
+      "value": ".koyeb.app",
+      "cites": [
+        {
+          "source": "web-koyeb-apps-reference",
+          "quote": "<YOUR_APP_NAME>-<YOUR_KOYEB_ORGANIZATION>-<HASH>.koyeb.app"
+        }
+      ]
+    },
+    {
+      "value": ".base44.app",
+      "cites": [
+        {
+          "source": "web-base44-custom-domain",
+          "quote": "Every Base44 app is live on a free built-in URL (myapp.base44.app)"
+        }
+      ]
+    },
+    {
+      "value": ".expo.app",
+      "cites": [
+        {
+          "source": "web-expo-hosting-aliases",
+          "quote": "your production URL would be: https://my-app.expo.app/"
+        }
+      ]
+    },
+    {
+      "value": ".codeberg.page",
+      "cites": [
+        {
+          "source": "web-codeberg-pages",
+          "quote": "a human-friendly address ({username}.codeberg.page)"
+        }
+      ]
+    },
+    {
+      "value": ".neocities.org",
+      "cites": [
+        {
+          "source": "web-neocities-about",
+          "quote": "yoursite.neocities.org"
+        }
+      ]
+    },
+    {
+      "value": ".val.run",
+      "cites": [
+        {
+          "source": "web-valtown-http",
+          "quote": "HTTP triggers give your files a live URL, like solitaire-game.val.run"
+        }
+      ]
+    },
+    {
+      "value": ".bolt.host",
+      "cites": [
+        {
+          "source": "web-bolt-hosting",
+          "quote": "Bolt hosting lets you publish your project to a live URL in seconds, with a free `.bolt.host` domain included."
+        }
+      ]
+    },
+    {
+      "value": ".webflow.io",
+      "cites": [
+        {
+          "source": "web-webflow-staging-subdomain",
+          "quote": "your Webflow staging subdomain (e.g., yoursite.webflow.io)"
+        }
+      ]
+    },
+    {
+      "value": ".wordpress.com",
+      "cites": [
+        {
+          "source": "web-wordpress-com-domains",
+          "quote": "your site includes a .wordpress.com address (or .wpcomstaging.com on plugin-enabled sites)"
+        }
+      ]
+    },
+    {
+      "value": ".wpcomstaging.com",
+      "cites": [
+        {
+          "source": "web-wordpress-com-domains",
+          "quote": "your site includes a .wordpress.com address (or .wpcomstaging.com on plugin-enabled sites)"
+        }
+      ]
+    },
+    {
+      "value": ".pythonanywhere.com",
+      "cites": [
+        {
+          "source": "web-pythonanywhere-webapps",
+          "quote": "Your PythonAnywhere account comes with a website at http://your-username.pythonanywhere.com/"
+        }
+      ]
+    }
+  ],
+  "placeholder_phrases": [
+    {
+      "value": "user@example.com",
+      "shape": "reserved_address",
+      "cites": [
+        {
+          "source": "web-rfc7565-acct",
+          "quote": "\"user@example.com\" derived from \"acct:user@example.com\""
+        }
+      ]
+    },
+    {
+      "value": "bob@example.com",
+      "shape": "reserved_address",
+      "cites": [
+        {
+          "source": "web-rfc7565-acct",
+          "quote": "bob@example.com"
+        }
+      ]
+    },
+    {
+      "value": "your-email@example.com",
+      "shape": "reserved_address",
+      "cites": [
+        {
+          "source": "web-jekyll-site-template-config",
+          "quote": "email: your-email@example.com"
+        }
+      ]
+    },
+    {
+      "value": "john@example.com",
+      "shape": "reserved_address",
+      "cites": [
+        {
+          "source": "web-rfc8620-jmap",
+          "quote": "\"name\": \"john@example.com\""
+        }
+      ]
+    },
+    {
+      "value": "jane@example.com",
+      "shape": "reserved_address",
+      "cites": [
+        {
+          "source": "web-rfc8620-jmap",
+          "quote": "\"name\": \"jane@example.com\""
+        }
+      ]
+    },
+    {
+      "value": "jdoe@example.com",
+      "shape": "reserved_address",
+      "cites": [
+        {
+          "source": "web-rfc6376-dkim",
+          "quote": "using his corporate email address, jdoe@example.com"
+        }
+      ]
+    },
+    {
+      "value": "john.q.public@example.com",
+      "shape": "reserved_address",
+      "cites": [
+        {
+          "source": "web-rfc5322-imf",
+          "quote": "From: \"Joe Q. Public\" <john.q.public@example.com>"
+        }
+      ]
+    },
+    {
+      "value": "jdoe@example.org",
+      "shape": "reserved_address",
+      "cites": [
+        {
+          "source": "web-rfc5322-imf",
+          "quote": "Mary Smith <mary@x.test>, jdoe@example.org"
+        }
+      ]
+    },
+    {
+      "value": "mary@example.net",
+      "shape": "reserved_address",
+      "cites": [
+        {
+          "source": "web-rfc5322-imf",
+          "quote": "To: Mary Smith <mary@example.net>"
+        }
+      ]
+    },
+    {
+      "value": "[The title of your site]",
+      "shape": "bracketed",
+      "cites": [
+        {
+          "source": "web-pages-themes-minimal-readme",
+          "quote": "title: [The title of your site]"
+        }
+      ]
+    },
+    {
+      "value": "[A short description of your site's purpose]",
+      "shape": "bracketed",
+      "cites": [
+        {
+          "source": "web-pages-themes-minimal-readme",
+          "quote": "description: [A short description of your site's purpose]"
+        }
+      ]
+    },
+    {
+      "value": "[Your name]",
+      "shape": "bracketed",
+      "cites": [
+        {
+          "source": "web-ftc-sample-complaint-letter",
+          "quote": "Sincerely, [Your name] Enclosure(s)"
+        }
+      ]
+    },
+    {
+      "value": "[Your Mailing Address]",
+      "shape": "bracketed",
+      "cites": [
+        {
+          "source": "web-ftc-sample-complaint-letter",
+          "quote": "[Your Mailing Address] [Your City, State, Zip Code] [Your email address]"
+        }
+      ]
+    },
+    {
+      "value": "[Your City, State, Zip Code]",
+      "shape": "bracketed",
+      "cites": [
+        {
+          "source": "web-ftc-sample-complaint-letter",
+          "quote": "[Your Mailing Address] [Your City, State, Zip Code] [Your email address]"
+        }
+      ]
+    },
+    {
+      "value": "[Your email address]",
+      "shape": "bracketed",
+      "cites": [
+        {
+          "source": "web-ftc-sample-complaint-letter",
+          "quote": "[Your City, State, Zip Code] [Your email address] [Date you write the letter]"
+        }
+      ]
+    },
+    {
+      "value": "[Name of Business]",
+      "shape": "bracketed",
+      "cites": [
+        {
+          "source": "web-ftc-sample-complaint-letter",
+          "quote": "[Name of Business] [Business Street Address]"
+        }
+      ]
+    },
+    {
+      "value": "[Business Street Address]",
+      "shape": "bracketed",
+      "cites": [
+        {
+          "source": "web-ftc-sample-complaint-letter",
+          "quote": "[Name of Business] [Business Street Address]"
+        }
+      ]
+    },
+    {
+      "value": "Your name here",
+      "shape": "here_suffixed",
+      "cites": [
+        {
+          "source": "web-astro-blog-footer",
+          "quote": "{today.getFullYear()} Your name here. All rights reserved."
+        }
+      ]
+    },
+    {
+      "value": "Write an awesome description for your new site here",
+      "shape": "here_suffixed",
+      "cites": [
+        {
+          "source": "web-jekyll-site-template-config",
+          "quote": "Write an awesome description for your new site here."
+        }
+      ]
+    },
+    {
+      "value": "Lorem ipsum",
+      "shape": "filler",
+      "cites": [
+        {
+          "source": "web-astro-blog-about",
+          "quote": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut"
+        },
+        {
+          "source": "web-word-insert-sample-text",
+          "quote": "The sample text that is inserted resembles the following text: Lorem ipsum dolor sit amet, consectetuer adipiscing elit."
+        }
+      ]
+    },
+    {
+      "value": "© Your Website",
+      "shape": "copyright_placeholder",
+      "cites": [
+        {
+          "source": "scaffold-startbootstrap-clean-blog-6-0-9",
+          "quote": "Copyright &copy; Your Website"
+        },
+        {
+          "source": "scaffold-startbootstrap-agency-7-0-12",
+          "quote": "Copyright &copy; Your Website"
+        }
+      ]
+    }
+  ],
+  "placeholder_image_hosts": [
+    {
+      "value": "placehold.co",
+      "cites": [
+        {
+          "source": "web-placehold-co",
+          "quote": "A simple, fast and free image placeholder service. Documentation How does it work exactly? Size The size can be specified using the format width x height: https://placehold.co/600x400"
+        }
+      ]
+    },
+    {
+      "value": "picsum.photos",
+      "cites": [
+        {
+          "source": "web-picsum-photos",
+          "quote": "Easy to use, stylish placeholders Just add your desired image size (width & height) after our URL, and you'll get a random image. https://picsum.photos/200/300"
+        }
+      ]
+    },
+    {
+      "value": "via.placeholder.com",
+      "cites": [
+        {
+          "source": "web-via-placeholder-com",
+          "quote": "via.placeholder.com: free placeholder images, placehold.it syntax"
+        }
+      ]
+    },
+    {
+      "value": "dummyimage.com",
+      "cites": [
+        {
+          "source": "web-dummyimage-com",
+          "quote": "Dynamic Dummy Image Generator - DummyImage.com"
+        }
+      ]
+    },
+    {
+      "value": "pravatar.cc",
+      "cites": [
+        {
+          "source": "web-pravatar-cc",
+          "quote": "CC0 Avatar placeholders Share Tweet Random Avatar https://i.pravatar.cc/"
+        }
+      ]
+    },
+    {
+      "value": "placebear.com",
+      "cites": [
+        {
+          "source": "web-placebear-com",
+          "quote": "Just put your image size (width & height) after our URL and you'll get a placeholder. Like this: https://placebear.com/200/300"
+        }
+      ]
+    },
+    {
+      "value": "placebeard.it",
+      "cites": [
+        {
+          "source": "web-placebeard-it",
+          "quote": "PlaceBeard.it - Use beardy men as placeholder images."
+        }
+      ]
+    },
+    {
+      "value": "placeholder.pics",
+      "cites": [
+        {
+          "source": "web-placeholder-pics",
+          "quote": "Placeholder pics placeholder.pics The lightest way to include placeholder pictures in your designs."
+        }
+      ]
+    }
+  ],
+  "social_platforms": [
+    {
+      "domain": "x.com",
+      "names": ["X", "Twitter"],
+      "cites": [
+        {
+          "source": "web-x-help-username-in-use",
+          "quote": "try plugging the username into this URL: x.com/[enter username here]."
+        }
+      ]
+    },
+    {
+      "domain": "facebook.com",
+      "names": ["Facebook"],
+      "cites": [
+        {
+          "source": "web-facebook-help-usernames",
+          "quote": "A username is the web address for your profile or Page (example: Facebook.com/yourname)."
+        }
+      ]
+    },
+    {
+      "domain": "instagram.com",
+      "names": ["Instagram"],
+      "cites": [
+        {
+          "source": "web-instagram-help-web",
+          "quote": "anyone will be able to see your profile and posts by visiting instagram.com/[your username] on the web."
+        }
+      ]
+    },
+    {
+      "domain": "linkedin.com",
+      "names": ["LinkedIn"],
+      "cites": [
+        {
+          "source": "web-linkedin-help-public-url",
+          "quote": "an address that starts with www.linkedin.com/in"
+        }
+      ]
+    },
+    {
+      "domain": "youtube.com",
+      "names": ["YouTube"],
+      "cites": [
+        {
+          "source": "web-youtube-help-handle",
+          "quote": "They display as, for example, youtube.com/@youtubecreators."
+        }
+      ]
+    },
+    {
+      "domain": "pinterest.com",
+      "names": ["Pinterest"],
+      "cites": [
+        {
+          "source": "web-pinterest-help-profile",
+          "quote": "Pinterest has the username “Pinterest” and can be found at www.pinterest.com/Pinterest."
+        }
+      ]
+    },
+    {
+      "domain": "github.com",
+      "names": ["GitHub"],
+      "cites": [
+        {
+          "source": "web-github-docs-change-username",
+          "quote": "links to your previous profile page, such as https://github.com/previoususername"
+        }
+      ]
+    }
+  ],
+  "client_template_markers": [
+    {
+      "value": "v-cloak",
+      "cites": [
+        {
+          "source": "scaffold-vue-core-3-5-44-dom",
+          "quote": "container.removeAttribute('v-cloak')"
+        },
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-cloak`"
+        }
+      ]
+    },
+    {
+      "value": "v-scope",
+      "cites": [
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "Use `v-scope` to mark regions on the page that should be controlled by `petite-vue`."
+        }
+      ]
+    },
+    {
+      "value": "v-effect",
+      "cites": [
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "Use `v-effect` to execute **reactive** inline statements:"
+        }
+      ]
+    },
+    {
+      "value": "v-for",
+      "cites": [
+        {
+          "source": "scaffold-vue-core-3-5-44-dom",
+          "quote": "v-for=\"todo in filteredTodos\""
+        },
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-for`"
+        }
+      ]
+    },
+    {
+      "value": "v-model",
+      "cites": [
+        {
+          "source": "scaffold-vue-core-3-5-44-dom",
+          "quote": "v-model=\"newTodo\""
+        },
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-model` (all input types + non-string `:value` bindings)"
+        }
+      ]
+    },
+    {
+      "value": "v-show",
+      "cites": [
+        {
+          "source": "scaffold-vue-core-3-5-44-dom",
+          "quote": "<section class=\"main\" v-show=\"todos.length\">"
+        },
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-show`"
+        }
+      ]
+    },
+    {
+      "value": "v-html",
+      "cites": [
+        {
+          "source": "scaffold-vue-core-3-5-44-dom",
+          "quote": "<div v-html=\"compiledMarkdown\"></div>"
+        },
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-html`"
+        }
+      ]
+    },
+    {
+      "value": "v-if",
+      "cites": [
+        {
+          "source": "scaffold-vue-core-3-5-44-dom",
+          "quote": "<table v-if=\"filteredData.length\">"
+        },
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-if` / `v-else` / `v-else-if`"
+        }
+      ]
+    },
+    {
+      "value": "v-else",
+      "cites": [
+        {
+          "source": "scaffold-vue-core-3-5-44-dom",
+          "quote": "<p v-else>No matches found.</p>"
+        },
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-if` / `v-else` / `v-else-if`"
+        }
+      ]
+    },
+    {
+      "value": "v-bind",
+      "cites": [
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-bind` (including `:` shorthand and class/style special handling)"
+        }
+      ]
+    },
+    {
+      "value": "v-on",
+      "cites": [
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-on` (including `@` shorthand and all modifiers)"
+        }
+      ]
+    },
+    {
+      "value": "v-text",
+      "cites": [
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-text`"
+        }
+      ]
+    },
+    {
+      "value": "v-once",
+      "cites": [
+        {
+          "source": "scaffold-petite-vue-0-4-1",
+          "quote": "- `v-once`"
+        }
+      ]
+    },
+    {
+      "value": "ng-app",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "<html ng-app>"
+        }
+      ]
+    },
+    {
+      "value": "ng-cloak",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "[ng\\:cloak], [ng-cloak], [data-ng-cloak], [x-ng-cloak], .ng-cloak, .x-ng-cloak {"
+        }
+      ]
+    },
+    {
+      "value": "data-ng-cloak",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "[ng\\:cloak], [ng-cloak], [data-ng-cloak], [x-ng-cloak], .ng-cloak, .x-ng-cloak {"
+        }
+      ]
+    },
+    {
+      "value": "x-ng-cloak",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "[ng\\:cloak], [ng-cloak], [data-ng-cloak], [x-ng-cloak], .ng-cloak, .x-ng-cloak {"
+        }
+      ]
+    },
+    {
+      "value": "ng-controller",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "<div id=\"ctrl-exmpl\" ng-controller=\"SettingsController2\">"
+        }
+      ]
+    },
+    {
+      "value": "ng-repeat",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "<li ng-repeat=\"contact in contacts\">"
+        }
+      ]
+    },
+    {
+      "value": "ng-model",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "<select ng-model=\"contact.type\" id=\"select_{{$index}}\">"
+        }
+      ]
+    },
+    {
+      "value": "data-ng-model",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "<input data-ng-model=\"foo\">"
+        }
+      ]
+    },
+    {
+      "value": "ng-bind",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "Hello <span ng-bind=\"name\"></span>!"
+        }
+      ]
+    },
+    {
+      "value": "data-ng-bind",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "<span data-ng-bind=\"name\"></span>"
+        }
+      ]
+    },
+    {
+      "value": "x-ng-bind",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "<span x-ng-bind=\"name\"></span>"
+        }
+      ]
+    },
+    {
+      "value": "ng-init",
+      "cites": [
+        {
+          "source": "scaffold-angularjs-1-8-3-docs",
+          "quote": "<div ng-init=\"test1 = ($index | toString)\"></div>"
+        }
+      ]
+    },
+    {
+      "value": "dom-repeat",
+      "cites": [
+        {
+          "source": "scaffold-polymer-3-5-2",
+          "quote": "<dom-repeat items=\"{{employees}}\">"
+        }
+      ]
+    }
+  ]
+}

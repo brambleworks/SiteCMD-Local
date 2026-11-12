@@ -196,8 +196,6 @@ pub async fn verify_checks<F: Fn() -> bool>(
             &ctx.url,
             &ctx.client,
             crate::network_policy::LocalOrigin::classify(&ctx.url),
-            // Verification re-reads the page under test; never reuse scan CSS.
-            None,
         )
         .await;
         if let Some(f) = is_cancelled {
@@ -205,12 +203,11 @@ pub async fn verify_checks<F: Fn() -> bool>(
                 return Err(ScanError::Cancelled);
             }
         }
-        let polish_ctx = crate::checks::polish::PolishContext {
-            url: ctx.url.clone(),
-            html: ctx.body.clone(),
-            css: css_fetch.css,
-            html_lower_cache: std::sync::OnceLock::new(),
-        };
+        let polish_ctx = crate::checks::polish::PolishContext::new(
+            ctx.url.clone(),
+            ctx.body.as_str().into(),
+            css_fetch.counts,
+        );
         let signal_results = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::checks::polish::run_all_signals(&polish_ctx)
         }))
@@ -220,10 +217,10 @@ pub async fn verify_checks<F: Fn() -> bool>(
         })?;
         let mut polish_results = signal_results
             .iter()
-            .map(super::polish_result_to_check_result)
+            .map(crate::checks::polish::polish_check_result)
             .filter(|result| verification_ids.contains(&result.check_id))
             .collect::<Vec<_>>();
-        super::mark_incomplete_polish_css_results(
+        crate::checks::polish::grade_stylesheet_coverage(
             &mut polish_results,
             css_fetch.stylesheets_discovered,
             css_fetch.stylesheets_fetched,

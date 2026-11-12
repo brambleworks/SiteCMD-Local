@@ -87,7 +87,11 @@ const UNREACHABLE_MANIFEST_ROWS: &[&str] = &[
 
 #[test]
 fn every_non_family_manifest_row_is_emitted_or_allowlisted() {
-    let ids: HashSet<String> = web_check_ids().into_iter().collect();
+    // The polish phase emits one id per signal beside the registries.
+    let polish = crate::checks::polish::POLISH_SIGNALS
+        .iter()
+        .map(|signal| format!("polish.{}", signal.id));
+    let ids: HashSet<String> = web_check_ids().into_iter().chain(polish).collect();
     let missing: Vec<&str> = sitecmd_engine::manifest::registry::entries()
         .filter(|entry| !entry.family)
         .map(|entry| entry.check)

@@ -59,6 +59,7 @@ fn html_typed_robots_keeps_training_and_discovery_crawler_policies() {
             resolver_facts: None,
             vulnerability_facts: None,
             tls_facts: None,
+            negotiated_protocol: None,
             probe_outcomes: Some(vec![html_robots(&format!("{agents}\nDisallow: /"))]),
             browser_facts: None,
         })

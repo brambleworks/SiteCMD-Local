@@ -80,7 +80,8 @@ Pull requests and merge-queue candidates run deterministic checks for:
 - CodeQL, secret scanning, dependency advisories, licenses, and source policy
 - Tauri command registration, capabilities, bundle size, and release invariants
 
-`pnpm verify:push` is the local mirror and the primary pre-push gate. It is not a
+`pnpm verify:push` is the local mirror and the primary gate every pushed commit
+must pass. It is not a
 substitute for protected repository settings. The release workflow repeats its
 own critical checks so an explicitly pushed tag cannot publish unverified code.
 

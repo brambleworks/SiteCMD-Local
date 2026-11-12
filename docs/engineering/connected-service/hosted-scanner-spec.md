@@ -61,6 +61,17 @@ The capability manifest is the authoritative inventory. Avoid hardcoded trait or
 check counts in this specification; generated product facts own public totals,
 and registry tests keep the manifest aligned with the source registrations.
 
+`hostedCheckCounts` counts inventory Web checks and engine polish signals whose
+manifest rows name a hosted lane and whose lane's exclusion table does not name
+them. It includes the session-scoped Web checks in `crossPage` and the bundled
+axe rules when their family has a hosted lane. `previewCheckCount`
+counts inventory Web ids whose manifest rows are `unsupported` and whose
+emitters all live under `crates/engine/src/checks/predeploy/`. Those checks run
+only on local preview pages. The facts generator rejects any other unsupported
+or excluded Web check, and any unsupported or excluded polish signal. Thus
+`checkCounts.web` equals `hostedCheckCounts.web + previewCheckCount`, and
+`checkCounts.polish` equals `hostedCheckCounts.polish`.
+
 ## Parity tiers
 
 The RFC demands "the same versioned engine artifact or a conformance
@@ -456,7 +467,8 @@ against the source instead (`guardrail-capability-manifest-rules.mjs`):
 a row may claim a hosted lane other than `unsupported` only when the
 check's verdict code is in the engine crate, so the lane is checked
 against where the code lives rather than against intent; the entry's
-`scope` must agree with the desktop's own `AsyncCheck::origin_scoped`,
+`scope` must agree with the desktop's `AsyncCheck::origin_scoped` and the
+engine's synchronous `Check::origin_scoped`,
 because two answers to one coverage question is how coverage claims go
 wrong; and a check whose verdict reads `evaluation_time` must be
 classed `clock_dependent`, because classing one as deterministic
@@ -467,8 +479,18 @@ crate emits its id, because that silently drops hosted findings from
 cross-vantage comparison. One exception is a check whose id is emitted only
 from files under `crates/engine/src/checks/predeploy/`: those checks return
 nothing unless the page is localhost, so a hosted scan has no findings to
-compare. The explicit `performance.http2` exception covers an input the hosted
-runtime cannot observe: Workers `fetch` exposes no negotiated HTTP protocol.
+compare.
+
+`performance.http2` is origin-scoped and grades the first page alone in both
+CLI and hosted scans. Workers `fetch` exposes no negotiated HTTP protocol, so
+hosted scans supply `RouteFacts.negotiated_protocol` from the main document's
+CDP `Network.responseReceived` protocol during the hosted browser's own load
+of the entry URL, where Chromium connects to the site itself. The fact carries `protocol` and
+`observed_at`: `h2`, `h3`, `http/1.1`, and `http/1.0` map to `HTTP/2`, `HTTP/3`,
+`HTTP/1.1`, and `HTTP/1.0`; `other` is unobserved and skips grading. An absent
+fact remains `missing_fact`. The shared grader prefers a page's own
+`http_version` over the fact. Only the protocol determines the status;
+`Alt-Svc` changes descriptive text, which hosted observations do not retain.
 
 ## Execution architecture
 
@@ -913,6 +935,17 @@ pins:
   browser-like concurrency inside that route; every request still
   passes through interception, public-address validation, and the
   route's browser ledger before it is fulfilled.
+- **Candidate-path probes** use the engine's origin-scoped plans on the entry
+  route: every sensitive path and every directory the engine's tables list are planned
+  together in the route's first round. Their GET requests follow redirects and read success-only bodies
+  under the `sweep` limit. Each is executed alone after every ordinary probe
+  has completed, and its body is reduced at record to a private signature
+  sample and listing flag before the next request. No sweep body or sample
+  enters a result or stored output. The ordinary probe cap covers the
+  well-known security.txt GET and, only when its answer calls for it, the
+  legacy security.txt GET. Both runtimes grade the same engine readings.
+  A directory listing fails when confirmed, passes only when every path
+  answered without a listing, and otherwise reads inconclusive.
 - **Identity rules** by reference to the protocol spec's canonicalizer:
   final URL after redirects, preserved trailing slashes, stripped query
   with `query_dependent` flagging.
@@ -940,6 +973,32 @@ pins:
   interception budget across the whole session; version 1 read pages to
   10 MiB, with overrun scan-fatal as on desktop, and sitemaps to 5 MiB.
   Neither ran for a customer.
+- **Probes recorded alone:** `BodyLimit::Sweep` and
+  `BodyLimit::Stylesheet` serialize as `"sweep"` and `"stylesheet"`;
+  the default probe limit stays omitted, preserving existing request bytes
+  and keys. Sweeps use the 512 KiB probe cap and stylesheets the 2 MiB
+  stylesheet cap. Adapters defer both while any ordinary probe remains,
+  including ordinary probes requested by later rounds. Once none remain,
+  execute these probes one at a time and record each answer before the next
+  request. Child sitemaps keep their existing order. Recording a sweep
+  releases its body immediately and keeps only status, content type,
+  declared length, the first 4,096 characters of a successful body, a listing
+  flag read from the whole body, and any failure class and detail. The
+  reading and its potentially sensitive sample stay inside the engine:
+  no body content enters results, raw data, logs or serialized output.
+- **Stylesheet polish sample:** the six stylesheet-reading polish signals
+  are origin-scoped. Both the CLI and hosted lane grade the entry page's HTML
+  and its first `STYLESHEET_SAMPLE_LIMIT` (8) linked stylesheets in document
+  order, once per scan. The probe row plans the whole sample in one round.
+  Recording each answer keeps only `CssSignalCounts` and releases the body.
+  The engine counts the HTML and each stylesheet independently and sums the
+  counts and ORs the gradient-text facts before grading, so a declaration
+  cannot span files.
+  A missing, refused, oversized or non-successful stylesheet is not fetched.
+  A signal already over its threshold still fails; a signal that would pass
+  with fewer fetched than linked is skipped and reports both counts.
+  Follow-up pages do not grade these six signals, including their inline
+  styles and utility classes.
 - **Cloudflare's cache:** every hosted transport request except one for
   the route's own page, as requested or as served, is sent with
   `cache: "no-store"`, which sets `Pragma: no-cache` and

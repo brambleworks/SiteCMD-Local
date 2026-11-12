@@ -140,20 +140,8 @@ pub const MAX_BODY_SIZE: u64 = 10 * 1024 * 1024;
 /// Maximum body size for secondary checks that only inspect small text markers.
 pub const MAX_PROBE_BODY_SIZE: u64 = 512 * 1024;
 
-/// Sensitive-path probe sample large enough to include delayed file markers.
-pub const PROBE_SIGNATURE_SAMPLE_CHARS: usize = 4096;
-
 /// Maximum body size for each stylesheet fetched by the polish scanner.
 pub const MAX_STYLESHEET_BODY_SIZE: u64 = 2 * 1024 * 1024;
-
-/// Maximum distinct stylesheet URLs one scan execution keeps in memory. Eight
-/// stylesheets are fetched per page, so this holds the shared set of a large
-/// multi-page scan without growing with the page count.
-pub const MAX_STYLESHEET_CACHE_ENTRIES: usize = 64;
-
-/// Maximum total cached stylesheet bytes held for one scan execution, sized to
-/// eight stylesheets at the per-stylesheet body cap.
-pub const MAX_STYLESHEET_CACHE_BYTES: usize = 16 * 1024 * 1024;
 
 /// Maximum dependency manifest or lockfile size accepted by Updates and Code Scan.
 pub const MAX_DEPENDENCY_FILE_BYTES: u64 = 16 * 1024 * 1024;
