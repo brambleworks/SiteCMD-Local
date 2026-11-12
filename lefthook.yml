@@ -1,4 +1,5 @@
-# Pre-commit runs fast file checks; pre-push runs the exhaustive local CI mirror.
+# Pre-commit runs fast file checks; the gate hook, run by `pnpm gate`, runs the
+# exhaustive local CI mirror, and pre-push refuses a commit it has not passed.
 
 pre-commit:
   parallel: true

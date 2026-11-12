@@ -4,7 +4,7 @@
 // the push. `run` (`pnpm gate`) runs lefthook's `gate` hook on a clean checkout
 // and records the commit that passed. `check` is the whole pre-push hook: it
 // reads the pushed refs and refuses any commit without a record from the last
-// day.
+// day, unless a remote already has it.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -36,15 +36,21 @@ function cleanCommit() {
   return git("rev-parse", "HEAD");
 }
 
-// Each line is `<local ref> <local object> <remote ref> <remote object>`.
-function check(input) {
-  const lines = input.split("\n").filter((line) => line.trim() !== "");
-  if (lines.length === 0) {
-    console.error("pre-push received no refs to check, so it refuses the push.");
-    return 1;
+/** Whether a remote-tracking ref already reaches the commit, which the gate passed
+ *  or the remote made, such as a squash merge, when it got there. */
+function onRemote(commit) {
+  try {
+    return git("rev-list", "-n", "1", commit, "--not", "--remotes") === "";
+  } catch {
+    return false;
   }
+}
+
+// Each line is `<local ref> <local object> <remote ref> <remote object>`. A push
+// with nothing to send, such as `Everything up-to-date`, gets no lines.
+function check(input) {
   const missing = [];
-  for (const line of lines) {
+  for (const line of input.split("\n").filter((entry) => entry.trim() !== "")) {
     const [localRef, object = ""] = line.trim().split(/\s+/);
     // A deletion pushes no commit.
     if (NO_OBJECT.test(object)) continue;
@@ -54,7 +60,8 @@ function check(input) {
     } catch {
       // Not a commit: no record can match it.
     }
-    if (!passedRecently(commit)) missing.push(`${localRef} (${object.slice(0, 12)})`);
+    if (!onRemote(commit) && !passedRecently(commit))
+      missing.push(`${localRef} (${object.slice(0, 12)})`);
   }
   if (missing.length === 0) return 0;
   console.error(
