@@ -8,8 +8,12 @@ impl Database {
         self.run(move |conn| {
             let snapshot = tempfile::NamedTempFile::new()
                 .map_err(|error| format!("Failed to prepare database snapshot: {error}"))?;
-            conn.backup(rusqlite::MAIN_DB, snapshot.path(), None)
-                .map_err(|error| format!("Failed to back up database: {error}"))?;
+            conn.backup(
+                rusqlite::MAIN_DB,
+                snapshot.path(),
+                None::<fn(rusqlite::backup::Progress)>,
+            )
+            .map_err(|error| format!("Failed to back up database: {error}"))?;
             Ok(snapshot)
         })
         .await?
