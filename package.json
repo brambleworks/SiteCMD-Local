@@ -78,7 +78,7 @@
     "cov:rust": "pnpm --filter @sitecmd/desktop run cov:rust",
     "cov:rust:html": "pnpm --filter @sitecmd/desktop run cov:rust:html",
     "cov:rust:lcov": "pnpm --filter @sitecmd/desktop run cov:rust:lcov",
-    "prepare": "lefthook install",
+    "prepare": "node tools/scripts/install-git-hooks.mjs",
     "facts:generate": "node tools/scripts/generate-product-facts.mjs",
     "legal:generate": "node tools/scripts/generate-third-party-artifacts.mjs",
     "legal:check": "node tools/scripts/generate-third-party-artifacts.mjs --check",

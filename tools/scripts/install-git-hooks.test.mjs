@@ -1,0 +1,60 @@
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, expect, it } from "vitest";
+
+const SCRIPT = path.resolve("tools/scripts/install-git-hooks.mjs");
+// Scratch Git must not inherit the outer repository's GIT_DIR or GIT_WORK_TREE.
+const gitEnv = () =>
+  Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+let root;
+afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+it("prevents a linked worktree's install taking over the shared hooks", () => {
+  // Bug: `pnpm install` in a worktree ran `lefthook install`, which pointed every
+  // checkout's hooks at that worktree's binary.
+  root = mkdtempSync(path.join(tmpdir(), "sitecmd-install-hooks-"));
+  const main = path.join(root, "main");
+  const linked = path.join(root, "linked");
+  const log = path.join(root, "installs.log");
+  const git = (cwd, ...args) => execFileSync("git", args, { cwd, env: gitEnv(), stdio: "ignore" });
+  git(root, "init", "-q", main);
+  git(
+    main,
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@example.com",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-q",
+    "--allow-empty",
+    "-m",
+    "start",
+  );
+  git(main, "worktree", "add", "-q", linked);
+  const bin = path.join(root, "bin");
+  mkdirSync(bin);
+  writeFileSync(path.join(bin, "lefthook"), `#!/bin/sh\npwd >> '${log}'\n`);
+  chmodSync(path.join(bin, "lefthook"), 0o755);
+  const install = (cwd) =>
+    execFileSync(process.execPath, [SCRIPT], {
+      cwd,
+      encoding: "utf8",
+      env: { ...gitEnv(), PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+    });
+
+  expect(install(linked)).toContain("Skipped lefthook install");
+  install(main);
+  expect(
+    readFileSync(log, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => path.basename(line)),
+  ).toEqual(["main"]);
+  expect(JSON.parse(readFileSync("package.json", "utf8")).scripts.prepare).toBe(
+    "node tools/scripts/install-git-hooks.mjs",
+  );
+});
