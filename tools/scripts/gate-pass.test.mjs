@@ -88,11 +88,19 @@ function checkout() {
 }
 
 it("pins pre-push to the recorded-pass check and keeps the gate in its own hook", () => {
-  const config = readFileSync("lefthook.yml", "utf8");
-  expect(config).toMatch(
-    /^pre-push:\n(?: {2}#.*\n)* {2}commands:\n {4}gate-pass:\n {6}use_stdin: true\n {6}run: node tools\/scripts\/gate-pass\.mjs check\n(?! )/m,
-  );
-  expect(config).toMatch(/^gate:\n/m);
+  const lines = readFileSync("lefthook.yml", "utf8").split("\n");
+  const start = lines.indexOf("pre-push:");
+  const end = lines.findIndex((line, index) => index > start && /^\S/.test(line));
+  const block = lines
+    .slice(start + 1, end)
+    .filter((line) => line.trim() !== "" && !line.trimStart().startsWith("#"));
+  expect(block).toEqual([
+    "  commands:",
+    "    gate-pass:",
+    "      use_stdin: true",
+    "      run: node tools/scripts/gate-pass.mjs check",
+  ]);
+  expect(lines).toContain("gate:");
 });
 
 it("refuses a push without a pass, never running the gate inside it, and lets a passed one through", () => {

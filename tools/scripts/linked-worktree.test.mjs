@@ -22,6 +22,13 @@ it("prevents a linked worktree's install taking over the shared hooks", () => {
   const log = path.join(root, "installs.log");
   const git = (cwd, ...args) => execFileSync("git", args, { cwd, env: gitEnv(), stdio: "ignore" });
   git(root, "init", "-q", main);
+  // The checkout carries the probe at the path prepare names, so prepare runs unchanged.
+  mkdirSync(path.join(main, "tools", "scripts"), { recursive: true });
+  writeFileSync(
+    path.join(main, "tools", "scripts", "linked-worktree.mjs"),
+    readFileSync("tools/scripts/linked-worktree.mjs"),
+  );
+  git(main, "add", "tools");
   git(
     main,
     "-c",
@@ -32,7 +39,6 @@ it("prevents a linked worktree's install taking over the shared hooks", () => {
     "commit.gpgsign=false",
     "commit",
     "-q",
-    "--allow-empty",
     "-m",
     "start",
   );
@@ -43,15 +49,11 @@ it("prevents a linked worktree's install taking over the shared hooks", () => {
   chmodSync(path.join(bin, "lefthook"), 0o755);
   // pnpm runs the script through the shell from the checkout's root.
   const install = (cwd) =>
-    execFileSync(
-      "sh",
-      ["-c", PREPARE.replace("tools/scripts/", `${path.resolve("tools/scripts")}/`)],
-      {
-        cwd,
-        encoding: "utf8",
-        env: { ...gitEnv(), PATH: `${bin}${path.delimiter}${process.env.PATH}` },
-      },
-    );
+    execFileSync("sh", ["-c", PREPARE], {
+      cwd,
+      encoding: "utf8",
+      env: { ...gitEnv(), PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+    });
 
   expect(install(linked)).toContain("Skipped lefthook install");
   install(main);
