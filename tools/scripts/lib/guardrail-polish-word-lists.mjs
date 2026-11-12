@@ -12,12 +12,45 @@ function endOf(code, open, left, right) {
   return -1;
 }
 
+/** The `{` that opens the test module or function an attribute starts, or -1 for any other item. */
+function testItemBody(code, cursor) {
+  const skipSpace = () => {
+    while (/\s/.test(code[cursor] ?? "")) cursor += 1;
+  };
+  skipSpace();
+  // Further attributes, as in `#[cfg(test)] #[allow(dead_code)] mod tests {`.
+  while (code.startsWith("#[", cursor)) {
+    const close = code.indexOf("]", cursor);
+    if (close < 0) return -1;
+    cursor = close + 1;
+    skipSpace();
+  }
+  if (code.startsWith("pub", cursor)) {
+    let after = cursor + 3;
+    if (code[after] === "(") after = code.indexOf(")", after) + 1;
+    if (after > 0 && /\s/.test(code[after] ?? "")) {
+      cursor = after;
+      skipSpace();
+    }
+  }
+  const item = /(?:mod|fn)\s+\w+/y;
+  item.lastIndex = cursor;
+  if (item.exec(code) === null) return -1;
+  for (let i = item.lastIndex; i < code.length; i += 1) {
+    if (code[i] === "{") return i;
+    if (code[i] === ";") return -1;
+  }
+  return -1;
+}
+
 function productionCode(source, file) {
   let code = stripNonCode(source, file);
-  const tests =
-    /#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?(?:mod|fn)\s+\w+[^;{]*\{/g;
-  for (const match of code.matchAll(tests)) {
-    const end = endOf(code, match.index + match[0].length - 1, "{", "}");
+  for (const match of code.matchAll(/#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]/g)) {
+    // An attribute inside a test item blanked earlier is already gone.
+    if (code[match.index] !== "#") continue;
+    const open = testItemBody(code, match.index + match[0].length);
+    if (open < 0) continue;
+    const end = endOf(code, open, "{", "}");
     if (end >= 0)
       code =
         code.slice(0, match.index) +
@@ -53,9 +86,7 @@ function annotated(lines, line) {
 
 function sourceLine(source, code, index) {
   const line = source.slice(0, index).split("\n").length;
-  const declarations = [
-    ...code.slice(0, index).matchAll(/\b(?:const|static|let|fn)\s+(?:mut\s+)?\w+/g),
-  ];
+  const declarations = [...code.slice(0, index).matchAll(/\b(?:const|static|let|fn)\s+\w+/g)];
   const declaration = declarations.at(-1)?.index;
   return [line, declaration === undefined ? line : source.slice(0, declaration).split("\n").length];
 }

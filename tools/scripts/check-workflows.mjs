@@ -19,7 +19,9 @@ for (const candidate of candidates) {
     process.stderr.write(version.stderr || `Could not run ${candidate}.\n`);
     process.exit(version.status ?? 1);
   }
-  const actualVersion = version.stdout.trim().split(/\s+/)[0];
+  // `go install` builds print `v1.7.12`; Homebrew's print `1.7.12`.
+  const printed = version.stdout.trim().split(/\s+/)[0];
+  const actualVersion = printed && `v${printed.replace(/^v/, "")}`;
   if (actualVersion !== EXPECTED_VERSION) {
     process.stderr.write(
       `actionlint ${EXPECTED_VERSION} is required, found ${actualVersion || "unknown"}.\n` +
