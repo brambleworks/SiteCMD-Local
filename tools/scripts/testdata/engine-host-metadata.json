@@ -1,0 +1,65 @@
+{
+  "packages": [
+    { "name": "sitecmd-cli", "id": "sitecmd-cli", "dependencies": [], "features": {} },
+    {
+      "name": "sitecmd-engine-host",
+      "id": "sitecmd-engine-host",
+      "dependencies": [
+        {
+          "name": "wasmtime",
+          "kind": null,
+          "optional": false,
+          "rename": null,
+          "uses_default_features": false,
+          "features": ["runtime", "std"]
+        },
+        {
+          "name": "wasmtime",
+          "kind": "build",
+          "optional": false,
+          "rename": null,
+          "uses_default_features": false,
+          "features": ["cranelift", "std", "all-arch"]
+        },
+        {
+          "name": "wasmtime",
+          "kind": "dev",
+          "optional": false,
+          "rename": null,
+          "uses_default_features": false,
+          "features": ["cranelift"]
+        }
+      ],
+      "features": { "compile": ["wasmtime/cranelift"] }
+    },
+    { "name": "wasmtime", "id": "wasmtime", "dependencies": [], "features": {} }
+  ],
+  "workspace_members": ["sitecmd-cli", "sitecmd-engine-host"],
+  "resolve": {
+    "nodes": [
+      {
+        "id": "sitecmd-cli",
+        "deps": [{ "name": "sitecmd_engine_host", "pkg": "sitecmd-engine-host" }],
+        "features": []
+      },
+      {
+        "id": "sitecmd-engine-host",
+        "deps": [{ "name": "wasmtime", "pkg": "wasmtime" }],
+        "features": []
+      },
+      {
+        "id": "wasmtime",
+        "deps": [],
+        "features": [
+          "all-arch",
+          "cranelift",
+          "once_cell",
+          "pulley",
+          "runtime",
+          "std",
+          "wasmtime-jit-icache-coherence"
+        ]
+      }
+    ]
+  }
+}

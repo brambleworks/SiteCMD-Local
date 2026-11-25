@@ -17,7 +17,7 @@ function failuresWith(files) {
 
 it("prevents a committed Stripe live key that GitHub's push protection refuses", () => {
   // Bug: a near-miss fixture held a placeholder live key, and GitHub refused the push.
-  const file = "apps/desktop/src-tauri/crates/engine/tests/fixtures/bundles/near-misses.html";
+  const file = "apps/desktop/src-tauri/tests/fixtures/near-misses.html";
   expect(failuresWith({ [file]: `<p>ok</p>\n<p>${LIVE}</p> <!-- gitleaks:allow -->` })).toEqual([
     `${file}:2 - holds a Stripe live key literal, which GitHub's push protection refuses; build it from parts with concat! or format!.`,
   ]);

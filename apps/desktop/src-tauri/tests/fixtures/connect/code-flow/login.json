@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "kind": "login",
+    "token": "sitecmd_pat_FIXTURE",
+    "token_id": "TOKENIDFIXTURE",
+    "account_name": null
+  }
+}

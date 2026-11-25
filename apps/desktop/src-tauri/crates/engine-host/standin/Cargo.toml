@@ -1,0 +1,14 @@
+[package]
+name = "sitecmd-engine-standin"
+version = "0.1.0"
+description = "Synthetic SiteCMD engine module for host and CLI tests"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+rust-version = "1.95.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+sitecmd-protocol = { path = "../../protocol" }

@@ -1,6 +1,11 @@
 import { workflowJobEnvironments } from "./guardrail-text-utils.mjs";
 
-export function releaseArtifactSafetyFailures(read, exists, listFiles) {
+export function releaseArtifactSafetyFailures(
+  read,
+  exists,
+  listFiles,
+  { releaseWorkflow: hasRelease = true } = {},
+) {
   const failures = [];
   const check = (condition, message) => {
     if (!condition) failures.push(message);
@@ -11,12 +16,11 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
   const strayAppBins = exists(appBinDir) ? listFiles(appBinDir, (f) => f.endsWith(".rs")) : [];
   check(
     strayAppBins.length === 0,
-    `apps/desktop/src-tauri/src/bin must contain no Rust binaries (found: ${strayAppBins.join(", ")}). Put dev tools in apps/desktop/src-tauri/examples/ and shipped tools in a separate workspace package so tauri-bundler never ships them in the app.`,
+    `apps/desktop/src-tauri/src/bin must contain no Rust binaries (found: ${strayAppBins.join(", ")}). Put dev tools in apps/desktop/src-tauri/crates/runtime/examples/ and shipped tools in a separate workspace package so tauri-bundler never ships them in the app.`,
   );
 
   // Only the isolated publisher may upload immutable, hash-verified artifacts.
-  const releaseWorkflow = read(".github/workflows/release.yml");
-  const macosDmgScript = read(".github/scripts/release/build-macos-dmg.sh");
+  const releaseWorkflow = hasRelease ? read(".github/workflows/release.yml") : "";
   const releaseScript = read("tools/scripts/release.mjs");
   const tagReleaseScript = read("tools/scripts/tag-release.mjs");
   const publicHistoryScript = read("tools/scripts/prepare-public-history.mjs");
@@ -28,7 +32,6 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
     /\["tag",\s*"-s",\s*"--cleanup=verbatim",\s*"-m",\s*`Release \$\{tag\}`,\s*"-m",\s*`\$\{releaseNotes\}\\n`,\s*tag\]/.test(
       tagReleaseScript,
     );
-  const desktopBuildScript = read("apps/desktop/src-tauri/build_config.rs");
   const connectedClient = read("apps/desktop/src-tauri/src/connected_service.rs");
   const jobSection = (jobName) => {
     const match = releaseWorkflow.match(
@@ -40,23 +43,24 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
   const publishProbeJob = jobSection("validate-publish-key");
   const nonPublisherWorkflow = releaseWorkflow.replace(publishJob, "").replace(publishProbeJob, "");
   check(
-    publishJob.includes("needs: [prepare-candidate, verify-release]") &&
-      publishJob.includes("name: release-publish") &&
-      publishJob.includes("aws s3api head-object --bucket sitecmd-releases") &&
-      publishJob.includes('aws s3 cp "s3://sitecmd-releases/$object_key" "$existing"') &&
-      publishJob.includes('if [ "$actual_hash" != "$expected_hash" ]') &&
-      publishJob.includes("already exists with different bytes") &&
-      publishJob.includes('aws s3 cp "$local_path" "s3://sitecmd-releases/$object_key"') &&
-      !publishJob.includes("uses: actions/checkout@") &&
-      !nonPublisherWorkflow.includes("aws s3 cp ") &&
-      !nonPublisherWorkflow.includes("${{ secrets.R2_ACCESS_KEY_ID }}") &&
-      !nonPublisherWorkflow.includes("${{ secrets.R2_SECRET_ACCESS_KEY }}") &&
-      !nonPublisherWorkflow.includes("${{ secrets.R2_ACCOUNT_ID }}") &&
-      !nonPublisherWorkflow.includes("audience=https://releases.sitecmd.com") &&
-      publishProbeJob.includes("name: release-publish") &&
-      !publishProbeJob.includes("${{ secrets.R2_ACCESS_KEY_ID }}") &&
-      !publishProbeJob.includes("${{ secrets.R2_SECRET_ACCESS_KEY }}") &&
-      !publishProbeJob.includes("${{ secrets.R2_ACCOUNT_ID }}"),
+    !hasRelease ||
+      (publishJob.includes("needs: [prepare-candidate, verify-release]") &&
+        publishJob.includes("name: release-publish") &&
+        publishJob.includes("aws s3api head-object --bucket sitecmd-releases") &&
+        publishJob.includes('aws s3 cp "s3://sitecmd-releases/$object_key" "$existing"') &&
+        publishJob.includes('if [ "$actual_hash" != "$expected_hash" ]') &&
+        publishJob.includes("already exists with different bytes") &&
+        publishJob.includes('aws s3 cp "$local_path" "s3://sitecmd-releases/$object_key"') &&
+        !publishJob.includes("uses: actions/checkout@") &&
+        !nonPublisherWorkflow.includes("aws s3 cp ") &&
+        !nonPublisherWorkflow.includes("${{ secrets.R2_ACCESS_KEY_ID }}") &&
+        !nonPublisherWorkflow.includes("${{ secrets.R2_SECRET_ACCESS_KEY }}") &&
+        !nonPublisherWorkflow.includes("${{ secrets.R2_ACCOUNT_ID }}") &&
+        !nonPublisherWorkflow.includes("audience=https://releases.sitecmd.com") &&
+        publishProbeJob.includes("name: release-publish") &&
+        !publishProbeJob.includes("${{ secrets.R2_ACCESS_KEY_ID }}") &&
+        !publishProbeJob.includes("${{ secrets.R2_SECRET_ACCESS_KEY }}") &&
+        !publishProbeJob.includes("${{ secrets.R2_ACCOUNT_ID }}")),
     "release.yml must keep R2 credentials and the releases-audience OIDC token request in the checkout-free publish-release job, after secretless verification, and hash-compare any existing object before upload; only the release-publish-environment validate-publish-key probe may also request that token, and it must hold no R2 credentials.",
   );
 
@@ -85,14 +89,14 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
   const releasePublishJobs = environmentJobs("release-publish");
   check(
     releasePublishJobs.join(",") ===
-      releaseJobs("publish-release", "validate-publish-key").join(","),
+      (hasRelease ? releaseJobs("publish-release", "validate-publish-key").join(",") : ""),
     `Only release.yml's validate-publish-key and publish-release jobs may use the release-publish environment (found: ${releasePublishJobs.join(", ")}); every job there can mint the OIDC token the releases worker accepts, and an expression environment could resolve to it.`,
   );
   // npm trusted publishing accepts an OIDC token from release.yml in
   // npm-publish, so membership of that environment is the npm credential.
   const npmPublishJobs = environmentJobs("npm-publish");
   check(
-    npmPublishJobs.join(",") === releaseJobs("publish-npm").join(","),
+    npmPublishJobs.join(",") === (hasRelease ? releaseJobs("publish-npm").join(",") : ""),
     `Only release.yml's publish-npm job may use the npm-publish environment, and it must use no other (found: ${npmPublishJobs.join(", ")}); npm's trusted publisher accepts an OIDC token from any job there, and an expression environment could resolve to it.`,
   );
   const storedNpmTokenFiles = listFiles(".github", () => true).filter((file) =>
@@ -150,17 +154,9 @@ export function releaseArtifactSafetyFailures(read, exists, listFiles) {
   );
   check(
     connectedClient.includes('option_env!("SITECMD_CONNECTED_ENDPOINT")') &&
-      desktopBuildScript.includes('"SITECMD_CONNECTED_ENDPOINT"') &&
-      releaseWorkflow.includes('SITECMD_CONNECTED_ENDPOINT: "https://connect.sitecmd.com"'),
-    "release.yml and build.rs must bake SITECMD_CONNECTED_ENDPOINT (https://connect.sitecmd.com) into shipped desktop builds; otherwise Connected renders but every sync is disabled.",
-  );
-
-  // Hash-pin dmgbuild because it processes the signed release artifact.
-  const joinedWorkflow = `${releaseWorkflow}\n${macosDmgScript}`.replace(/\\\n\s*/g, " ");
-  check(
-    joinedWorkflow.includes('--require-hashes -r "$SRC/branding/dmgbuild-requirements.txt"') &&
-      !/\binstall\b[^\n]*\bdmgbuild\b(?!-requirements\.txt)/.test(joinedWorkflow),
-    "release.yml must install dmgbuild only via --require-hashes -r $SRC/branding/dmgbuild-requirements.txt; a bare pip install of dmgbuild runs unpinned PyPI code against the artifact signed with the Developer ID.",
+      (!hasRelease ||
+        releaseWorkflow.includes('SITECMD_CONNECTED_ENDPOINT: "https://connect.sitecmd.com"')),
+    "release.yml must bake SITECMD_CONNECTED_ENDPOINT (https://connect.sitecmd.com) into the shipped CLI so connected commands can reach the service.",
   );
 
   return failures;

@@ -1,0 +1,10 @@
+{
+  "version": "0.3.0",
+  "sha256": "9176413b6365c1cb9b31ba0b332f0b812581811cce1cd4ce01892ceb5edda405",
+  "abi_version": 2,
+  "url": "https://releases.sitecmd.com/engine/v0.3.0/local-engine.wasm",
+  "github_release": {
+    "repository": "brambleworks/SiteCMD-Engine-Releases",
+    "tag": "engine-v0.3.0"
+  }
+}

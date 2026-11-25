@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { syncPayloadFailures } from "./lib/guardrail-sync-payload-rules.mjs";
 
-const SYNC_DIR = "apps/desktop/src-tauri/crates/engine/src/sync";
+const SYNC_DIR = "apps/desktop/src-tauri/crates/protocol/src/sync";
 const FINGERPRINT = `${SYNC_DIR}/fingerprint.rs`;
 const MODULE = `${SYNC_DIR}/mod.rs`;
 

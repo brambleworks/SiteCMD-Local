@@ -26,28 +26,8 @@ CREATE TABLE IF NOT EXISTS connected_site_watermarks (
     PRIMARY KEY (project_id, env_url)
 );
 ALTER TABLE scan_executions ADD COLUMN based_on_event_sequence INTEGER NOT NULL DEFAULT 0;`,
-    [STORE]: `pub struct SubmissionTicket {
-    installation_id: String,
-    sequence: i64,
-}
-pub(super) fn site_event_watermark(conn: &Connection) -> Result<i64, DbError> {
+    [STORE]: `pub(super) fn site_event_watermark(conn: &Connection) -> Result<i64, DbError> {
     Ok(conn.query_row("SELECT event_sequence", [], |row| row.get(0)).optional()?.unwrap_or(0))
-}
-impl Database {
-    pub fn allocate_submission_sequence(&self, now_ms: i64) -> Result<SubmissionTicket, DbError> {
-        let tx = conn.unchecked_transaction()?;
-        tx.query_row("UPDATE connected_producer
-             SET submission_sequence = submission_sequence + 1
-             RETURNING installation_id, submission_sequence", [], read)?;
-        tx.commit()?;
-        Ok(ticket)
-    }
-    pub fn record_pulled_event_sequence(&self) -> Result<i64, DbError> {
-        conn.execute("INSERT INTO connected_site_watermarks VALUES (?1)
-             ON CONFLICT(project_id, env_url) DO UPDATE SET
-                 event_sequence = excluded.event_sequence
-             WHERE excluded.event_sequence > connected_site_watermarks.event_sequence", [])
-    }
 }`,
     [EXECUTIONS]: `let based_on_event_sequence = super::connected_producer::site_event_watermark(&tx)?;
 tx.execute(
@@ -123,36 +103,6 @@ describe("the schema", () => {
 });
 
 describe("allocating a submission number", () => {
-  it("fails when a ticket can be built outside the allocator", () => {
-    expect(
-      failures((files) => {
-        files[STORE] = files[STORE].replace(
-          "    installation_id: String,\n    sequence: i64,",
-          "    pub installation_id: String,\n    pub sequence: i64,",
-        );
-      }),
-    ).toContain("durably allocated");
-  });
-
-  it("fails when the number is handed out before it is committed", () => {
-    expect(
-      failures((files) => {
-        files[STORE] = files[STORE].replace("tx.commit()?;", "");
-      }),
-    ).toContain("burn the number");
-  });
-
-  it("fails when the counter takes a caller-supplied value", () => {
-    expect(
-      failures((files) => {
-        files[STORE] = files[STORE].replace(
-          "SET submission_sequence = submission_sequence + 1",
-          "SET submission_sequence = ?1",
-        );
-      }),
-    ).toContain("rewind the namespace");
-  });
-
   it("fails when the identity is keyed to a credential", () => {
     expect(
       failures((files) => {
@@ -163,17 +113,6 @@ describe("allocating a submission number", () => {
 });
 
 describe("the declared basis", () => {
-  it("fails when a stale pull can lower a site watermark", () => {
-    expect(
-      failures((files) => {
-        files[STORE] = files[STORE].replace(
-          "\n             WHERE excluded.event_sequence > connected_site_watermarks.event_sequence",
-          "",
-        );
-      }),
-    ).toContain("refuse to lower");
-  });
-
   it("fails when an absent watermark reads as something other than genesis", () => {
     expect(
       failures((files) => {

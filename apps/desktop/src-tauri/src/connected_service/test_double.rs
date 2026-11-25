@@ -43,17 +43,54 @@ pub(crate) async fn respond_once_with_headers(
 pub(crate) async fn respond_in_sequence(
     responses: Vec<(String, &'static str)>,
 ) -> (String, JoinHandle<Vec<String>>) {
+    respond_in_sequence_with_headers(
+        responses
+            .into_iter()
+            .map(|(body, status)| (body, status, &[][..]))
+            .collect(),
+    )
+    .await
+}
+
+pub(crate) async fn respond_in_sequence_with_headers(
+    responses: Vec<(String, &'static str, &'static [&'static str])>,
+) -> (String, JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let address = listener.local_addr().expect("address");
     let captured = tokio::spawn(async move {
         let mut requests = Vec::with_capacity(responses.len());
-        for (body, status) in responses {
+        for (body, status, headers) in responses {
             let (mut stream, _) = accept(&listener).await;
-            requests.push(read_and_answer(&mut stream, &body, status, &[]).await);
+            requests.push(read_and_answer(&mut stream, &body, status, headers).await);
         }
         requests
     });
     (format!("http://{address}"), captured)
+}
+
+/// Keep the listener alive until the flow completes, even between requests.
+#[cfg(unix)]
+pub(crate) async fn respond_during<T>(
+    responses: Vec<(String, &'static str)>,
+    run: impl AsyncFnOnce(String) -> T,
+) -> (T, Vec<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let address = listener.local_addr().expect("address");
+    let run = run(format!("http://{address}"));
+    tokio::pin!(run);
+    let mut requests = Vec::with_capacity(responses.len());
+    let serve = async {
+        for (body, status) in responses {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            requests.push(read_and_answer(&mut stream, &body, status, &[]).await);
+        }
+        drop(listener);
+    };
+    let outcome = tokio::select! {
+        () = serve => run.await,
+        outcome = &mut run => outcome,
+    };
+    (outcome, requests)
 }
 
 /// The method, path and version a captured request opened with.

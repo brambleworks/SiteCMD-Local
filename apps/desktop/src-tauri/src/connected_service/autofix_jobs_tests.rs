@@ -1,10 +1,43 @@
 //! Fix-job wire-contract tests.
 
-use super::{FindingOutcomeReport, PullRequestReport, ResultReport};
+use super::{ClaimedJob, FindingOutcomeReport, PullRequestReport, ResultReport};
 use crate::connected_service::test_double::respond_once;
 use crate::connected_service::ConnectedServiceClient;
 
 const CLAIM: &str = r#"{"job_id":"job_0123456789abcdef","attempt":1,"purpose":"execute","job_token":"sitecmd_job_execute_00000000000000000000000000000000","expires_at":"2026-09-20T10:30:00.000Z","base_sha":"0123456789abcdef0123456789abcdef01234567","site_url":"https://loop.example.com","repository":"example-org/example-site","default_branch":"main","agent":"claude","findings":[{"check_id":"security.headers.x_content_type_options","identity":"/","class":"template","category":"security","fallback_class":null}]}"#;
+
+#[test]
+fn a_claim_requires_an_absolute_http_site_url() {
+    // A space or a single letter used as site metadata can mask large parts of a brief.
+    let mut claim: serde_json::Value = serde_json::from_str(CLAIM).unwrap();
+    let invalid = [
+        " ",
+        "e",
+        "https:example.com",
+        "//example.com",
+        "ftp://example.com",
+    ];
+    let accepted: Vec<_> = invalid
+        .into_iter()
+        .filter(|url| {
+            claim["site_url"] = (*url).into();
+            serde_json::from_value::<ClaimedJob>(claim.clone()).is_ok()
+        })
+        .collect();
+    for url in ["http://localhost:8080/", "HTTPS://example.com/shop?x=1"] {
+        claim["site_url"] = url.into();
+        assert_eq!(
+            serde_json::from_value::<ClaimedJob>(claim.clone())
+                .unwrap()
+                .site_url,
+            url
+        );
+    }
+    assert!(
+        accepted.is_empty(),
+        "invalid site URLs accepted: {accepted:?}"
+    );
+}
 
 #[tokio::test]
 async fn claim_job_sends_the_oidc_witness_and_no_bearer() {
@@ -48,18 +81,21 @@ async fn report_job_result_carries_the_job_token_as_bearer() {
             &ResultReport {
                 attempt: 1,
                 findings: vec![FindingOutcomeReport {
-                    check_id: "security.headers.x_content_type_options".into(),
-                    identity: "/".into(),
-                    outcome: "applied".into(),
+                    check_id: "security.headers.x_content_type_options"
+                        .parse()
+                        .expect("fixture identifier"),
+                    identity: "/".parse().expect("fixture identifier"),
+                    outcome: "applied".parse().expect("fixture identifier"),
                 }],
                 issue_number: None,
-                outcome_code: "applied".into(),
+                outcome_code: "applied".parse().expect("fixture identifier"),
                 pull_request: Some(PullRequestReport {
-                    branch: "sitecmd/x-content-type-options-012345".into(),
-                    head_sha: "b".repeat(40),
+                    branch: "sitecmd/x-content-type-options-012345"
+                        .parse()
+                        .expect("fixture identifier"),
+                    head_sha: "b".repeat(40).parse().expect("fixture identifier"),
                     number: 12,
                 }),
-                summary: "Added the header".into(),
                 token_revoked: true,
             },
         )
@@ -70,6 +106,7 @@ async fn report_job_result_carries_the_job_token_as_bearer() {
     assert!(request.contains("authorization: bearer sitecmd_job_publish_1111"));
     assert!(request.contains(r#""outcome_code":"applied""#));
     assert!(!request.contains("issue_number"));
+    assert!(!request.contains("summary"));
 }
 
 #[tokio::test]

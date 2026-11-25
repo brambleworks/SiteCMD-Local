@@ -1,4 +1,5 @@
 import { configDefaults, defineConfig } from "vitest/config";
+import { workerCount } from "./tools/scripts/lib/test-workers.mjs";
 
 // Agent worktrees checked out under .claude/worktrees/ carry full copies of
 // tools/scripts; without this exclusion `vitest run tools/scripts` discovers
@@ -8,5 +9,6 @@ import { configDefaults, defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     exclude: [...configDefaults.exclude, "**/.claude/**"],
+    maxWorkers: workerCount(),
   },
 });

@@ -36,38 +36,12 @@ function countBareUnwrapsExcludingTests(source) {
   return count;
 }
 
-const RUST_PROD_DIRS = [
-  "apps/desktop/src-tauri/src/background",
-  "apps/desktop/src-tauri/src/commands",
-  "apps/desktop/src-tauri/src/core",
-  "apps/desktop/src-tauri/src/integrations",
-  "apps/desktop/src-tauri/src/db",
-  "apps/desktop/src-tauri/src/licensing",
-  "apps/desktop/src-tauri/src/scoring",
-  "apps/desktop/src-tauri/src/webview",
-];
-const RUST_PROD_SINGLE_FILES = ["apps/desktop/src-tauri/src/webhooks.rs"];
+const RUST_PROD_DIRS = ["apps/desktop/src-tauri/src/core", "apps/desktop/src-tauri/src/db"];
 
-// Budgets may only decrease; unlisted files default to zero.
-const UNWRAP_BUDGETS = new Map([
-  ["apps/desktop/src-tauri/src/core/code_scan/patterns/security/auth_session.rs", 179],
-  ["apps/desktop/src-tauri/src/core/code_scan/patterns/security/resilience_ai.rs", 131],
-  ["apps/desktop/src-tauri/src/core/code_scan/patterns/quality.rs", 111],
-  ["apps/desktop/src-tauri/src/core/code_scan/patterns/security/request_surface.rs", 110],
-  ["apps/desktop/src-tauri/src/core/code_scan/patterns/database.rs", 88],
-  ["apps/desktop/src-tauri/src/core/code_scan/patterns/operations.rs", 51],
-  ["apps/desktop/src-tauri/src/core/code_scan/patterns/security/commerce_redirects.rs", 49],
-  ["apps/desktop/src-tauri/src/core/code_scan/patterns/security/webhooks.rs", 16],
-  ["apps/desktop/src-tauri/src/core/code_scan/patterns/packages.rs", 8],
-  ["apps/desktop/src-tauri/src/commands/data/diagnostics.rs", 7],
-  ["apps/desktop/src-tauri/src/commands/mod.rs", 1],
-  ["apps/desktop/src-tauri/src/commands/scan/web_scan.rs", 1],
-  ["apps/desktop/src-tauri/src/webview/analyzer.rs", 1],
-]);
-
-export function collectProdRustFiles(exists, listFiles) {
+// Collect production sources for the Rust count ratchets.
+export function collectProdRustFiles(_exists, listFiles, directories = RUST_PROD_DIRS) {
   return [
-    ...RUST_PROD_DIRS.flatMap((dir) =>
+    ...directories.flatMap((dir) =>
       listFiles(dir, (file) => {
         if (!file.endsWith(".rs")) return false;
         if (/[/\\]tests[/\\]/.test(file)) return false;
@@ -75,19 +49,27 @@ export function collectProdRustFiles(exists, listFiles) {
         return !/(_tests?\.rs|^tests\.rs)$/.test(name);
       }),
     ),
-    ...RUST_PROD_SINGLE_FILES.filter((file) => exists(file)),
   ];
 }
 
-export function rustUnwrapBudgetFailures(read, exists, listFiles) {
-  const files = collectProdRustFiles(exists, listFiles);
+export function rustUnwrapBudgetFailures(
+  read,
+  exists,
+  listFiles,
+  {
+    directories,
+    unwrapBudgets = new Map(),
+    budgetFile = "tools/scripts/lib/guardrail-rust-rules.mjs",
+  } = {},
+) {
+  const files = collectProdRustFiles(exists, listFiles, directories);
   const failures = [];
   for (const file of files) {
     const count = countBareUnwrapsExcludingTests(read(file));
-    const budget = UNWRAP_BUDGETS.get(file) ?? 0;
+    const budget = unwrapBudgets.get(file) ?? 0;
     if (count > budget) {
       failures.push(
-        `${file}: ${count} bare \`.unwrap()\` (budget ${budget}); use \`.expect("static reason")\` or reduce the budget in tools/scripts/lib/guardrail-rust-rules.mjs`,
+        `${file}: ${count} bare \`.unwrap()\` (budget ${budget}); use \`.expect("static reason")\` or reduce the budget in ${budgetFile}`,
       );
     }
   }

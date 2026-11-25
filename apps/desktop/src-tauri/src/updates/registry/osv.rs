@@ -1,7 +1,7 @@
 //! OSV.dev batch vulnerability client.
 
 use crate::{
-    checks::Severity,
+    core::scan_types::Severity,
     updates::types::{Ecosystem, InstalledPackage},
 };
 use cvss::Cvss;
@@ -41,8 +41,6 @@ pub(crate) fn osv_ecosystem(eco: &Ecosystem) -> Option<&'static str> {
 /// Result of one OSV sweep over the installed packages.
 pub struct OsvScan {
     pub vulns: Vec<VulnerabilityInfo>,
-    /// True when failed batches make vulnerability absences unproven.
-    pub partial: bool,
 }
 
 const OSV_API_BASE: &str = "https://api.osv.dev";
@@ -63,33 +61,22 @@ async fn check_vulnerabilities_at(packages: &[InstalledPackage], api_base: &str)
         .collect();
 
     if queryable.is_empty() {
-        // Nothing to ask: an authoritative (empty) sweep, not a partial one.
-        return OsvScan {
-            vulns: Vec::new(),
-            partial: false,
-        };
+        return OsvScan { vulns: Vec::new() };
     }
 
     let client = crate::http_client::client().clone();
 
     // OSV batch API accepts up to 1000 queries per request
     let mut all_vulns = Vec::new();
-    let mut partial = false;
 
     for chunk in queryable.chunks(crate::constants::OSV_BATCH_SIZE) {
         match query_batch(&client, chunk, api_base).await {
             Ok(vulns) => all_vulns.extend(vulns),
-            Err(e) => {
-                tracing::warn!("OSV batch query failed: {}", e);
-                partial = true;
-            }
+            Err(e) => tracing::warn!("OSV batch query failed: {}", e),
         }
     }
 
-    OsvScan {
-        vulns: all_vulns,
-        partial,
-    }
+    OsvScan { vulns: all_vulns }
 }
 
 #[derive(Serialize)]

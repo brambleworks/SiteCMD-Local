@@ -1,5 +1,4 @@
 const BOOTSTRAP = "apps/desktop/src-tauri/src/db/connected_bootstrap.rs";
-const LIFECYCLE = "apps/desktop/src-tauri/src/db/issue_states.rs";
 const REGISTRY = "apps/desktop/src-tauri/src/db/mod.rs";
 
 // Wire vocabulary belongs to the payload builder, not local derivation.
@@ -45,7 +44,7 @@ function count(source, pattern) {
  * @param {(file: string) => boolean} exists
  * @param {(dir: string, predicate: (file: string) => boolean) => string[]} listFiles
  */
-export function connectedBootstrapFailures(read, exists, listFiles) {
+export function connectedBootstrapFailures(read, exists, listFiles, extraRoots = []) {
   const failures = [];
   const check = (condition, message) => {
     if (!condition) failures.push(message);
@@ -58,7 +57,7 @@ export function connectedBootstrapFailures(read, exists, listFiles) {
   const derive = functionBody(bootstrap, "derive_bootstrap_set");
   check(
     derive !== null && /read_projection\(/.test(derive) && /read_overrides\(/.test(derive),
-    `${BOOTSTRAP} derive_bootstrap_set must union the current projection with every lifecycle override. The projection alone loses every terminal group, and the overrides alone leave the service to meet ordinary open issues later as new findings.`,
+    `${BOOTSTRAP} derive_bootstrap_set must union the current projection with the eligible lifecycle overrides. The projection alone loses every terminal group, and the overrides alone leave the service to meet ordinary open issues later as new findings.`,
   );
   check(
     derive !== null && /unchecked_transaction/.test(derive),
@@ -79,7 +78,7 @@ export function connectedBootstrapFailures(read, exists, listFiles) {
   const overrides = functionBody(bootstrap, "read_overrides");
   check(
     overrides !== null && /FROM project_issue_states/.test(overrides),
-    `${BOOTSTRAP} read_overrides must read every lifecycle row, including the terminal groups whose findings are gone.`,
+    `${BOOTSTRAP} read_overrides must read lifecycle overrides, including the terminal groups whose findings are gone.`,
   );
 
   check(
@@ -99,12 +98,6 @@ export function connectedBootstrapFailures(read, exists, listFiles) {
     count(bootstrap, /-> Result<BootstrapState/g) === 1,
     `${BOOTSTRAP} must build a BootstrapState in exactly one place, by decoding a stored row. A second constructor is a caller asserting a state instead of reporting one.`,
   );
-  const lifecycle = source(LIFECYCLE);
-  check(
-    /pub enum IssueLifecycle/.test(lifecycle) && !/^\s*Regressed[,\s{]/m.test(lifecycle),
-    `${LIFECYCLE} IssueLifecycle must still have no Regressed constructor. A regression is observed, never declared, and only the read vocabulary may name it.`,
-  );
-
   const decode = functionBody(bootstrap, "state_from_row");
   check(
     decode !== null &&
@@ -119,13 +112,36 @@ export function connectedBootstrapFailures(read, exists, listFiles) {
       `${BOOTSTRAP} mentions ${word}: the wire mapping belongs to the payload builder. This module derives the local facts it reads, and a second mapping is how two of them start disagreeing.`,
     );
   }
+  const lineCounting = new Set([
+    "line: Option<u32>,",
+    "if entry.code_instances.insert((row.line, row.finding_id)) {",
+    "|(check_id, rule, path, line, finding_id, severity, confidence)| FindingRow {",
+    "line,",
+    "finding.confidence, finding.line,",
+    "line: row.get(6)?,",
+    "finding.severity, finding.confidence, finding.line,",
+  ]);
+  const identityCode = code
+    .split("\n")
+    .filter((line) => !lineCounting.has(line.trim()))
+    .join("\n");
+  const identity = /pub (?:enum OccurrenceLocation|struct OccurrenceIdentity) \{[^]*?\n\}/g;
   check(
-    !/\bline\b/.test(code),
+    !/\bline\b/.test(identityCode) &&
+      [...bootstrap.matchAll(identity)].every(
+        ([definition]) => !/\bline\b/.test(codeOnly(definition)),
+      ),
     `${BOOTSTRAP} must not carry a line number into an occurrence identity. Lines churn under ordinary editing, and an identity that dies whenever a neighbor moves cannot support verification.`,
   );
   check(
     /File \{\s*rule: String,\s*path: String,?\s*\}/.test(bootstrap),
     `${BOOTSTRAP} a code occurrence is the producer rule and the repository-relative path, and nothing else. Multiplicity is preserved as instance_count.`,
+  );
+  check(
+    [...bootstrap.matchAll(identity)].every(
+      ([definition]) => !/\b(?:finding_id|occurrence_id)\b/.test(codeOnly(definition)),
+    ),
+    `${BOOTSTRAP} local finding IDs belong only in instance counting and must stay out of the occurrence identity.`,
   );
 
   // Evidence reads require actionable verdicts from complete runs.
@@ -135,7 +151,7 @@ export function connectedBootstrapFailures(read, exists, listFiles) {
     `${BOOTSTRAP} must read only actionable findings. A passing check is evidence that the issue is absent, and reporting it as an occurrence inverts the meaning of the snapshot.`,
   );
   check(
-    count(code, /status = 'complete'/g) >= 3,
+    count(code, /status = 'complete'/g) >= findingQueries,
     `${BOOTSTRAP} must read only complete runs. A failed or partial collector proves nothing, and its findings are not the picture the service should be handed.`,
   );
 
@@ -144,14 +160,19 @@ export function connectedBootstrapFailures(read, exists, listFiles) {
     lastKnown !== null &&
       /PARTITION BY check_id\b/.test(lastKnown) &&
       /ORDER BY started_at DESC, execution_id DESC/.test(lastKnown),
-    `${BOOTSTRAP} last_known_occurrences must pick the newest EXECUTION that saw the group. One site scan writes one run per page, so picking the newest run hands the verifier a single route and calls it the whole set.`,
+    `${BOOTSTRAP} last_known_occurrences must pick the newest EXECUTION that saw the group. The verifier needs all observations from that execution.`,
   );
 
-  const sourceOf = functionBody(bootstrap, "evidence_source_of");
+  const latest = functionBody(bootstrap, "latest_evidence");
   check(
-    sourceOf !== null &&
-      /"web_scan" \| "site_scan" => Some\(ScanEvidenceSource::WebScan\)/.test(sourceOf),
-    `${BOOTSTRAP} must fold site_scan back into web evidence. It is the projection's label for a cross-page WEB run, not a third producer, and treating it as one would give a group a source no scanner has.`,
+    projection !== null &&
+      /source = 'code_scan'/.test(projection) &&
+      lastKnown !== null &&
+      count(lastKnown, /run\.source = 'code_scan'/g) === 2 &&
+      latest !== null &&
+      count(latest, /\bsource = 'code_scan'/g) === 3 &&
+      !/ScanEvidenceSource::WebScan/.test(code),
+    `${BOOTSTRAP} must derive local evidence and groups from code scans only.`,
   );
 
   const registry = source(REGISTRY);
@@ -161,7 +182,9 @@ export function connectedBootstrapFailures(read, exists, listFiles) {
   );
 
   // One derivation, and never on the CI path.
-  const rustFiles = listFiles("apps/desktop/src-tauri/src", (file) => file.endsWith(".rs"));
+  const rustFiles = ["apps/desktop/src-tauri/src", ...extraRoots].flatMap((dir) =>
+    listFiles(dir, (file) => file.endsWith(".rs")),
+  );
   check(
     rustFiles.length > 100,
     `connected-bootstrap guardrail scanned only ${rustFiles.length} Rust files; the enumeration broke. Update guardrail-connected-bootstrap-rules.mjs.`,
@@ -176,7 +199,6 @@ export function connectedBootstrapFailures(read, exists, listFiles) {
   const ciFiles = [
     ...listFiles("apps/desktop/src-tauri/src/cli", (file) => file.endsWith(".rs")),
     ...listFiles("apps/desktop/src-tauri/crates/cli/src", (file) => file.endsWith(".rs")),
-    ...listFiles("apps/desktop/src-tauri/examples", (file) => file.endsWith(".rs")),
   ];
   check(
     ciFiles.length > 0,

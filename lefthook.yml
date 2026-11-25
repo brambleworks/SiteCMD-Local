@@ -1,13 +1,10 @@
-# Pre-commit runs fast file checks; the gate hook, run by `pnpm gate`, runs the
-# exhaustive local CI mirror, and pre-push refuses a commit it has not passed.
+# Pre-commit runs fast file checks, and pre-push checks public remote history.
+
+rc: ./.lefthook/rc.sh
 
 pre-commit:
   parallel: true
   commands:
-    typecheck:
-      glob: "*.{ts,tsx}"
-      # The desktop solution config requires build mode to follow references.
-      run: pnpm --filter @sitecmd/desktop exec tsc -b
     eslint:
       glob: "*.{ts,tsx,js,mjs}"
       run: pnpm exec eslint {staged_files}
@@ -38,19 +35,11 @@ commit-msg:
       # Budget raises require `[budget-raised: <reason>]` in the commit message;
       # CI repeats the check over the merge range.
       run: node tools/scripts/check-budget-ratchet.mjs --staged
-
 pre-push:
-  # A push connects to GitHub before this hook runs, and GitHub drops a push
-  # left idle for about six minutes, so the gate below cannot run inside the
-  # push. `pnpm gate` runs it ahead of the push and records the commit; this
-  # hook refuses any pushed commit without a record from the last day.
   commands:
-    gate-pass:
+    public-tree:
       use_stdin: true
-      run: node tools/scripts/gate-pass.mjs check
-
-gate:
-  # Full local mirror of release and pull-request checks.
-  commands:
-    verify-push:
-      run: pnpm verify:push
+      run: >-
+        sh .lefthook/pre-push/public-tree.sh
+        "${SITECMD_PUSH_REMOTE?Run pnpm exec lefthook install to refresh Git hooks}"
+        "${SITECMD_PUSH_URL?Run pnpm exec lefthook install to refresh Git hooks}"

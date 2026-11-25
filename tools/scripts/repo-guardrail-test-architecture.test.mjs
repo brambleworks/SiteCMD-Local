@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const COVERAGE_SUITES = [
   "repo-guardrail-coverage-product.test.mjs",
-  "repo-guardrail-coverage-desktop.test.mjs",
   "repo-guardrail-coverage-quality.test.mjs",
   "repo-guardrail-coverage-security.test.mjs",
 ];

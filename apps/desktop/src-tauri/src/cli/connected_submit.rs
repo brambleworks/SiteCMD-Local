@@ -2,12 +2,18 @@
 
 use std::path::PathBuf;
 
+use sitecmd_protocol::engine_abi::{AuditReport, EngineInfo};
 use zeroize::Zeroizing;
 
 use crate::connected_ci::{ci_submission_body, DeploymentFacts, PublishOrdering};
 use crate::connected_export::{decrypt_site_connection, ImportedSiteConnection};
 use crate::connected_service::{CiDeploymentHead, ConnectedServiceClient, ConnectedServiceError};
-use crate::db::Database;
+use crate::core::audit::{
+    code_producer_rule_id, resolved_issue_id, INCONSISTENT_CODE_RULE, UNKNOWN_CODE_RULE,
+};
+use crate::db::{collapse_code_observations, Database, ObservedOccurrence};
+
+use super::audit_suppressions::SuppressedAudit;
 
 use super::connected::{build_candidate_snapshot, read_connection_export, scan_this_checkout};
 use super::{settle, ConnectStop};
@@ -66,7 +72,9 @@ fn open_connection(
 fn open_database(db_path: Option<PathBuf>) -> Result<Database, String> {
     let db_path = db_path
         .or_else(super::default_desktop_db_path)
-        .ok_or_else(|| "could not locate the SiteCMD desktop database".to_string())?;
+        .ok_or_else(|| {
+            "could not locate the local SiteCMD SQLite database (sitecmd.db)".to_string()
+        })?;
     crate::app_identity::validate_private_file_target(&db_path)
         .map_err(|error| format!("refused unsafe SiteCMD database path: {error}"))?;
     Database::open(db_path)
@@ -107,6 +115,8 @@ async fn submit(
         .map(|token| connect(token.trim()))
         .transpose()?;
     let head = if let Some(client) = &client {
+        // Compile the engine before opening the submission's request sequence.
+        sitecmd_engine_host::load().map_err(|error| error.to_string())?;
         Some(
             client
                 .ci_deployment_head(&connection.site_id)
@@ -134,7 +144,12 @@ async fn submit(
     if let Some(notice) = audit_summary.notice() {
         eprintln!("{notice}");
     }
-    let snapshot = build_candidate_snapshot(&db, &connection, Some(&args.deployment.commit_sha))?;
+    let snapshot = build_candidate_snapshot(
+        &db,
+        &connection,
+        &audit_summary,
+        Some(&args.deployment.commit_sha),
+    )?;
     let findings = snapshot.occurrences.len();
     let basis = snapshot.code_basis.kind;
     let body = ci_submission_body(&connection.site_id, &snapshot, &args.deployment)?;
@@ -179,6 +194,52 @@ async fn submit(
         lines.push(format!("  site event sequence: {event_sequence}"));
     }
     Ok(lines.join("\n"))
+}
+
+/// Project the current module report onto the closed connected evidence fields.
+pub(super) fn submission_observations(
+    report: &AuditReport,
+    audit: &SuppressedAudit,
+    info: &EngineInfo,
+) -> Result<Vec<ObservedOccurrence>, String> {
+    let issues_with_rules = report
+        .issues
+        .iter()
+        .map(|issue| {
+            let rule = info.code_rule(&issue.rule_id).ok_or(UNKNOWN_CODE_RULE)?;
+            Ok((issue, rule))
+        })
+        .collect::<Result<Vec<_>, &str>>()?;
+    let inconsistent = || INCONSISTENT_CODE_RULE.to_string();
+    if audit.retained_indices.len() != audit.report.issues.len() {
+        return Err(inconsistent());
+    }
+
+    let rows = audit
+        .retained_indices
+        .iter()
+        .zip(&audit.report.issues)
+        .map(|(&index, native)| {
+            let (issue, metadata) = issues_with_rules.get(index).ok_or_else(inconsistent)?;
+            let rule = issue.rule_id.as_str();
+            if code_producer_rule_id(&native.id) != rule
+                || resolved_issue_id(issue, &native.relative_path).as_deref()
+                    != Ok(native.id.as_str())
+            {
+                return Err(inconsistent());
+            }
+            Ok((
+                metadata.check_id.clone(),
+                rule,
+                native.relative_path.as_str(),
+                native.line,
+                native.id.as_str(),
+                issue.severity,
+                issue.confidence,
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(collapse_code_observations(rows.into_iter()))
 }
 
 /// Explain credential-derived ordering omitted from an otherwise exact preview.
@@ -320,7 +381,7 @@ fn apply_publish_ordering_from_head(
         Some(predecessor) => (None, Some(predecessor.clone())),
         None => {
             let watermark = authority.publish_sequence.ok_or_else(|| {
-                "this deployment authority is still behind its activation barrier; select or seed the governing CI workflow in the desktop app first"
+                "this deployment authority is still behind its activation barrier; select or seed the governing CI workflow in the SiteCMD dashboard first"
                     .to_string()
             })?;
             let watermark = u64::try_from(watermark).map_err(|_| {
@@ -334,17 +395,19 @@ fn apply_publish_ordering_from_head(
     };
     deployment.published = true;
     deployment.ordering = Some(PublishOrdering {
-        authority_id: authority.authority_id.clone(),
+        authority_id: authority.authority_id.as_str().try_into()?,
         epoch,
-        kind: "publish_sequence".into(),
-        predecessor_deployment_id,
+        kind: "publish_sequence".parse().expect("fixed ordering code"),
+        predecessor_deployment_id: predecessor_deployment_id
+            .map(TryInto::try_into)
+            .transpose()?,
         publish_sequence,
     });
     Ok(())
 }
 
-fn basis_label(kind: sitecmd_engine::sync::CodeBasisKind) -> &'static str {
-    use sitecmd_engine::sync::CodeBasisKind;
+fn basis_label(kind: sitecmd_protocol::sync::CodeBasisKind) -> &'static str {
+    use sitecmd_protocol::sync::CodeBasisKind;
     match kind {
         // Named as the desktop's own claim rather than the CI door's attested
         // `exact`: the service assigns provenance on this door, and a clean
@@ -388,7 +451,7 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
     // are answered before the table of fixed sentences.
     if error.code == "unauthorized" {
         return Some(format!(
-            "The CI token in {token_env} is unknown or revoked. Mint a fresh one for this site in the desktop app and replace the secret."
+            "The CI token in {token_env} is unknown or revoked. Mint a fresh one for this site in the SiteCMD dashboard and replace the secret."
         ));
     }
     // The two refusals that say when to come back name the wait the service's
@@ -412,7 +475,7 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
             .map(|id| format!(" ({id})"))
             .unwrap_or_default();
         return Some(format!(
-            "This request already created a secret{issued}, which is shown only once. Revoke it in the desktop app and create a new one."
+            "This request already created a secret{issued}, which is shown only once. Revoke it in the SiteCMD dashboard and create a new one."
         ));
     }
     let action = match error.code.as_str() {
@@ -423,13 +486,13 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
             "This token is bound to one site, and it is not the site this command named. Check that the CI token and the connection came from the same site."
         }
         "bootstrap_required" => {
-            "Connect this site in the desktop app and let it sync once. CI evidence informs a baseline; it cannot create one."
+            "Connect this site in the SiteCMD dashboard and let it sync once. CI evidence informs a baseline; it cannot create one."
         }
         "deployment_conflict" => {
             "A deployment identity or causal publish position already carries different facts. Keep one id per deploy and do not reuse a publish sequence or predecessor edge for two deployments."
         }
         "deployment_authority_mismatch" => {
-            "This CI token does not own the selected publishing workflow. Export or mint the token for the workflow selected in the desktop app, then replace the pipeline secret."
+            "This CI token does not own the selected publishing workflow. Export or mint the token for the workflow selected in the SiteCMD dashboard, then replace the pipeline secret."
         }
         "provenance_rejected" => {
             match error
@@ -439,7 +502,7 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
                 .and_then(serde_json::Value::as_str)
             {
                 Some("repository_mismatch" | "repository_id_mismatch") => {
-                    "This job does not match the trusted repository. If the repository was transferred or renamed, mint a new CI token in the desktop app and replace the secret."
+                    "This job does not match the trusted repository. If the repository was transferred or renamed, mint a new CI token in the SiteCMD dashboard and replace the secret."
                 }
                 Some("workflow_mismatch") => {
                     "This job does not match the trusted workflow. Run the submission from the workflow chosen when this CI token was created, or mint a new token for this workflow."
@@ -451,10 +514,10 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
                     "The submitted --commit is not the commit GitHub attested. Pass the checked-out GITHUB_SHA."
                 }
                 Some("token_pins_no_workflow") => {
-                    "This CI token has no trusted workflow. Mint a new token in the desktop app with Repository and Trusted workflow filled in."
+                    "This CI token has no trusted workflow. Mint a new token in the SiteCMD dashboard with Repository and Trusted workflow filled in."
                 }
                 _ => {
-                    "Check that this job's repository, workflow, ref, and commit match the pins chosen in the desktop app. If the repository was transferred or renamed, mint a new CI token and replace the secret."
+                    "Check that this job's repository, workflow, ref, and commit match the pins chosen in the SiteCMD dashboard. If the repository was transferred or renamed, mint a new CI token and replace the secret."
                 }
             }
         }
@@ -467,7 +530,7 @@ fn next_action(error: &ConnectedServiceError, token_env: &str) -> Option<String>
         "concurrent_write" => "Another write landed first and nothing was applied. Re-run this step.",
         "stale_key_version" | "key_commitment_mismatch" | "unclaimed_key_version"
         | "rotation_incomplete" => {
-            "The connection export in this pipeline was made under a different project fingerprint key. Export a fresh connection from the desktop app and replace the secret."
+            "The connection export in this pipeline was made under a different project fingerprint key. From the repository checkout, run `sitecmd connect <url>` with the site's URL. To replace the keys for an existing connection, run `sitecmd connect <url> --rotate`. After approval, SiteCMD writes SITECMD_CONNECTION_EXPORT and SITECMD_CONNECTION_PASSPHRASE to the repository's GitHub Actions secrets."
         }
         "malformed_request" => {
             "The service could not read this payload. That usually means the CLI is older than the service's schema; install the current release."
@@ -493,3 +556,12 @@ fn retry_wait(seconds: Option<u64>, fallback: &str) -> String {
 #[cfg(test)]
 #[path = "connected_submit_tests.rs"]
 mod tests;
+
+#[cfg(feature = "test-support")]
+pub fn submission_observations_for_test(
+    report: &AuditReport,
+    audit: &SuppressedAudit,
+    info: &EngineInfo,
+) -> Result<Vec<ObservedOccurrence>, String> {
+    submission_observations(report, audit, info)
+}

@@ -1,48 +1,48 @@
-use crate::checks::{CheckStatus, ScanCategory};
+use std::collections::{BTreeSet, HashMap};
+
 use crate::cli::export::labels::category_display_name;
-use crate::core::scanner::ScanResult;
+use crate::core::scan_types::{actionable, Category, ScanResult};
 
 pub(super) fn build_rules_md(result: &ScanResult) -> String {
-    let all_categories = [
-        ScanCategory::Security,
-        ScanCategory::Performance,
-        ScanCategory::Accessibility,
-        ScanCategory::Seo,
-        ScanCategory::Compliance,
-        ScanCategory::Config,
-        ScanCategory::Polish,
-    ];
+    render_rules_md(
+        &result.url,
+        actionable(&result.issues).filter_map(|issue| {
+            Some((
+                issue.category?,
+                issue.check_id.as_str(),
+                issue.title.as_str(),
+            ))
+        }),
+    )
+}
+
+pub(in crate::cli) fn render_rules_md<'a>(
+    url: &str,
+    findings: impl Iterator<Item = (Category, &'a str, &'a str)>,
+) -> String {
+    let all_categories = Category::ALL;
 
     let mut out = String::with_capacity(1024);
 
     out.push_str(&format!(
-        "# SiteCMD Rules - {}\n# Reference from CLAUDE.md: See .sitecmd/rules.md for Web Scan coding rules\n",
-        result.url,
+        "# SiteCMD Rules - {url}\n# Reference from CLAUDE.md: See .sitecmd/rules.md for Web Scan coding rules\n",
     ));
 
+    let mut by_category = HashMap::<Category, BTreeSet<String>>::new();
+    for (category, check_id, title) in findings {
+        by_category
+            .entry(category)
+            .or_default()
+            .insert(derive_rule(check_id, title));
+    }
     for cat in &all_categories {
-        let cat_label = category_display_name(cat);
-
-        // Collect rules relevant to this category from failing checks
-        let rules: Vec<String> = result
-            .issues
-            .iter()
-            .filter(|r| {
-                matches!(r.status, CheckStatus::Fail | CheckStatus::Warn) && &r.category == cat
-            })
-            .map(|r| derive_rule(&r.check_id, &r.title))
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-
-        if rules.is_empty() {
+        let Some(rules) = by_category.get(cat) else {
             continue;
-        }
+        };
 
+        let cat_label = category_display_name(cat);
         out.push_str(&format!("\n## {}\n", cat_label));
-        let mut sorted_rules = rules;
-        sorted_rules.sort();
-        for rule in &sorted_rules {
+        for rule in rules {
             out.push_str(&format!("- {}\n", rule));
         }
     }
@@ -76,10 +76,10 @@ fn derive_rule(check_id: &str, title: &str) -> String {
         "security.headers.permissions_policy" | "security_headers.permissions_policy" => {
             return "Use Permissions-Policy to disable browser capabilities the product does not need and allow required capabilities only to intended origins".to_string();
         }
-        "seo.meta.title" | "seo.title" => {
+        "seo.title" => {
             return "Give each indexable page a descriptive title; review rendered width and search intent instead of enforcing a fixed character count".to_string();
         }
-        "seo.meta.description" | "seo.description" => {
+        "seo.meta_description" => {
             return "Give important indexable pages a useful meta description, while allowing for query-dependent search snippets and search-engine rewrite behavior".to_string();
         }
         _ => {}
@@ -123,4 +123,21 @@ fn derive_rule_from_title(title: &str) -> String {
     // "Missing X" or "No X" into a universal coding standard. Preserve the
     // finding as a review instruction instead of inventing an absolute rule.
     format!("Review finding: {}", title)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn unknown_seo_ids_use_the_generic_rule() {
+        // Fake SEO ids select specialized guidance despite having no registered check.
+        for id in ["seo.meta.title", "seo.meta.description", "seo.description"] {
+            assert_eq!(
+                super::derive_rule(id, "Unknown check"),
+                "Review finding: Unknown check"
+            );
+        }
+        assert!(super::derive_rule("seo.title", "Title").starts_with("Give each indexable page"));
+        assert!(super::derive_rule("seo.meta_description", "Description")
+            .starts_with("Give important indexable pages"));
+    }
 }

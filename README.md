@@ -1,60 +1,34 @@
 # SiteCMD
 
-[![Code Scan](https://github.com/brambleworks/SiteCMD-Local/actions/workflows/app-guardrails.yml/badge.svg?branch=main)](https://github.com/brambleworks/SiteCMD-Local/actions/workflows/app-guardrails.yml)
-[![CodeQL](https://github.com/brambleworks/SiteCMD-Local/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/brambleworks/SiteCMD-Local/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/brambleworks/SiteCMD-Local)](https://github.com/brambleworks/SiteCMD-Local/releases)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Source license](https://img.shields.io/badge/source%20license-Apache--2.0-blue)](LICENSE)
 
-Desktop website health scanner and command center. SiteCMD scans websites and
-linked codebases for security, performance, SEO, accessibility, compliance, and
-configuration issues, ranks them by real risk, and hands the fix to the editor
-or coding agent you already work in.
-
-![SiteCMD desktop dashboard showing issues, updates, score, alerts, traffic, search, and deploy signals](https://sitecmd.com/images/features-hero-poster.png)
+SiteCMD scans websites and source code for security, performance, SEO,
+accessibility, compliance, and configuration issues.
 
 ## What ships
 
-| Surface           | Purpose                                                                                                  | Account required   |
-| ----------------- | -------------------------------------------------------------------------------------------------------- | ------------------ |
-| Desktop app       | Local website and source scanning, project history, correlations, reports, and fix guidance              | No                 |
-| `sitecmd` CLI     | Local Web Scan and Code Scan, machine-readable reports, git hooks, and connected CI gates                | No for local scans |
-| MCP server        | Gives supported AI coding tools local findings and fix briefs, then hands attempts back for verification | No                 |
-| Connected service | Hosted scheduled scans, deploy verification, alerts, shared reports, and baseline-aware CI decisions     | Yes                |
+| Surface           | Purpose                                                                                                                                      | Account required                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `sitecmd` CLI     | Code Scan and checks of a site on your own computer, hosted scans of your sites, machine-readable reports, git hooks, and connected CI gates | No for code audits and local sites; yes for public sites |
+| Connected service | Hosted scheduled scans, deploy verification, alerts, shared reports, and baseline-aware CI decisions                                         | Yes                                                      |
 
-The desktop app, CLI, and MCP server in this repository are the complete local
-product. The connected service is a separate hosted product; local scan detail
-is not withheld to create the paid tier.
-
-## What it checks
-
-A Full scan combines the applicable Web Scan checks with Code Scan when a
-source folder is linked, then merges findings into one ranked list. The
-inventory below spans scan categories and optional browser capabilities;
-available coverage depends on the selected mode, target, and platform.
-
-| Engine        | Checks | Covers                                                                                                        |
-| ------------- | -----: | ------------------------------------------------------------------------------------------------------------- |
-| Web Scan      |    157 | Security headers and TLS, SEO, performance, accessibility, compliance, and configuration, against a live URL  |
-| Code Scan     |    170 | Security, operations, architecture, supply chain, AI safety, and data handling, across a source checkout      |
-| Accessibility |     62 | axe-core WCAG 2 Level A and AA rules, run against the rendered page                                           |
-| Polish        |     33 | CSS architecture, HTML quality, copy, visual defaults, and framework leftovers that mark a page as unfinished |
-
-Dependency findings resolve across 8 package ecosystems. Every count above is
-derived from the registries themselves by `pnpm facts:generate`, published in
-[product-facts.json](product-facts.json), and held to that file by a repository
-guardrail.
+The CLI in this repository audits code and checks a site on your own computer with no account.
+Scans of public sites run on SiteCMD's hosted scanner, which the CLI calls when you're signed in.
 
 ## Install and try it
 
 ### The CLI
 
-`sitecmd` runs a Web Scan against a live URL and the complete Code Scan against
-a source checkout. Neither needs an account. npm is the quickest way to try
-one, and carries the platform binary for macOS, Linux (x86_64 and arm64), or
-Windows:
+`sitecmd` scans local websites and source checkouts without an account.
+Public sites use SiteCMD's hosted scanner. Run `sitecmd login` or set
+`SITECMD_TOKEN` in CI, then scan a site in your account. Add `--latest` to
+read the last finished hosted scan. npm carries the platform binary for macOS,
+Linux (x86_64 and arm64), and Windows:
 
 ```bash
 npx @sitecmd/cli audit .
+npx @sitecmd/cli login
 npx @sitecmd/cli scan --url https://example.com
 ```
 
@@ -92,8 +66,12 @@ Additional command options are available with `sitecmd init --help`,
 `sitecmd autofix --help`, `sitecmd fix --help`, `sitecmd watch --help`,
 `sitecmd check --help`, and `sitecmd deploy --help`.
 
-`sitecmd --help` lists the rest: `init`, `audit`, `autofix`, `scan`, `fix`,
-`watch`, `check`, `connected`, `deploy`, and `gate`.
+`sitecmd --help` lists the rest: `init`, `audit`, `rules`, `engine info`,
+`autofix`, `scan`, `fix`, `watch`, `check`, `connected`, `deploy`, and `gate`.
+
+`sitecmd login` signs in to SiteCMD on this computer, and `sitecmd logout`
+signs out and revokes this computer's token. `sitecmd connect <url>` connects
+a site's GitHub repository to SiteCMD.
 
 ## Verify your download
 
@@ -136,25 +114,26 @@ back-filled by hand before the workflow change carry none.
 ## Where your data lives
 
 Source-processing code in this repository runs on the execution host: your
-machine for the desktop app and CLI, or the CI runner executing an action.
+machine for the CLI, or the CI runner executing an action.
 SiteCMD does not upload source code or raw file paths from that host to its
-connected service. Report output that you configure a CI workflow to publish is
-handled by that CI provider. A configured AI editor can read all projects in
-the local SiteCMD database, and evidence or source excerpts returned through
-MCP may reach its model provider under that editor's settings. Desktop integration credentials are stored locally
-by the desktop app and sent only to the provider they authenticate, never to
-SiteCMD. SiteCMD does not transmit scan findings to its connected service unless
+connected service. CLI reports, autofix artifacts, and published fix briefs
+contain file and line metadata without source text or source-derived digests.
+Human CLI summaries also omit excerpts. Code findings return the rule, file,
+and line with SiteCMD's guidance. Report output published by a CI workflow is
+handled by that CI provider. SiteCMD does not transmit scan findings to its connected service unless
 you explicitly connect a site, which is off until you set it up.
 
 That claim is checkable rather than asserted, which is the reason this
 repository is public:
 
-- The filesystem and network boundaries are in this source. What the scanner
-  requests, what the code audit reads, and where either can send anything are
-  all here to be read, and [sitecmd.com/trust](https://sitecmd.com/trust)
-  names each fixed host and describes dynamic destinations by class.
-- The sync payload builder is in this source too. The app's inspection view and
-  `sitecmd connected --dry-run` render a concrete snapshot with the same public
+- The filesystem and network boundaries are in this source. Every file the
+  code audit reads, every request the CLI makes and every byte it can send are
+  decided by code here. SiteCMD's checks run in a compiled engine module with
+  no imports, so it can't reach the network, your files or anything else on
+  your machine; it sees only what this code hands it.
+  [docs/engineering/engine-boundary.md](docs/engineering/engine-boundary.md)
+  shows how to check that yourself.
+- The sync payload builder is in this source too. `sitecmd connected --dry-run` renders a concrete snapshot with the same public
   wire schema and serializer used for transmission, without sending it. The
   displayed bytes are the exact serialization of that inspected snapshot. A
   later sync rebuilds the payload from current local and connected state, so its
@@ -169,18 +148,18 @@ The paid product is the connected service: hosted scans between deploys,
 deploy-anchored verification, baseline-aware regression alerting, and the CI
 merge gate's server side. The line is not how much of the local product you
 get; it is whether SiteCMD's servers have to exist for the capability to exist
-at all. Code that runs on your machine is here under Apache-2.0. Code that runs
-on SiteCMD infrastructure is not part of this repository.
+at all. The code that reads your files and makes network requests is here
+under Apache-2.0. SiteCMD's checks aren't: on your machine they run inside a
+sandboxed engine module compiled from SiteCMD's private source, and site scans
+run on SiteCMD's infrastructure.
 
 ## Repo map
 
-This repository is a pnpm monorepo. The root contains orchestration, CI, shared
-tooling, and repository documentation; deployable code lives under `apps/`.
+The root contains CI, shared tooling, and repository documentation.
 
 ```txt
 apps/
-  desktop/            Tauri v2 desktop app: React frontend + Rust backend
-  mcp-server/         MCP server package
+  desktop/src-tauri/ Rust workspace for the CLI
 .github/actions/
   setup-sitecmd/      GitHub Action: verify and install an exact CLI release
   sitecmd-gate/       GitHub Action: fail a PR on findings new against the
@@ -191,12 +170,7 @@ tools/                Repository tooling and guardrail scripts
 install.sh            The installer sitecmd.com/install.sh serves
 ```
 
-The marketing site, the public scanner page, and the Cloudflare Workers live in
-the separate SiteCMD-Web repository. `product-facts.json` publishes the values
-that side has to restate accurately: check counts, the commercial boundary and
-surface status, the Sentry ingest host, and the license-activation deep-link
-scheme. Regenerate it with `pnpm facts:generate` after changing any of their
-sources.
+The SiteCMD website and hosted services live outside this repository.
 
 ## Prerequisites
 
@@ -206,16 +180,14 @@ utilities link to their installation instructions:
 - Rust, on the toolchain `apps/desktop/src-tauri/rust-toolchain.toml` pins.
   rustup applies it automatically to any cargo work under that directory;
   local dev, `verify:push`, and the release build all read the same pin.
-- Rust 1.89.0, installed with `rustup toolchain install 1.89.0`, for the MSRV
+- Rust 1.95.0, installed with `rustup toolchain install 1.95.0`, for the MSRV
   checks mirrored by `verify:push` and CI.
 - Node.js, on the version `.nvmrc` pins. CI workflows read the same file via
   `node-version-file`.
 - pnpm, on the version the `packageManager` field in `package.json` pins
   (`corepack enable` makes that automatic).
-- [Tauri's system dependencies for your OS](https://v2.tauri.app/start/prerequisites/),
-  including the platform webview and native build tools.
 - The [Gitleaks CLI](https://github.com/gitleaks/gitleaks#installing), required
-  by the gate's and the publication-history secret scans.
+  for local verification and publication-history secret scans.
 - [cargo-audit](https://github.com/rustsec/rustsec/tree/master/cargo-audit),
   [cargo-deny](https://embarkstudios.github.io/cargo-deny/cli/index.html), and
   [cargo-nextest](https://nexte.st/docs/installation/pre-built-binaries/),
@@ -228,59 +200,14 @@ utilities link to their installation instructions:
 
 ```bash
 pnpm install
-pnpm tauri:dev
-```
-
-Common root commands delegate into the right workspace:
-
-```bash
-pnpm dev
-pnpm build
 pnpm test
-pnpm test:desktop
-pnpm test:mcp
-pnpm e2e
-pnpm quality:mcp
 pnpm sitecmd -- audit .
 ```
 
 The checkout wrapper forwards CLI commands, including `scan`, `--help`, and
-`--version`, to the Rust binary. To navigate an installed desktop app, use the
-explicit checkout shortcut `pnpm sitecmd -- open dashboard`.
+`--version`, to the Rust binary.
 
-For a focused introduction to the scanner, follow
-[Adding a detector](docs/engineering/adding-a-detector.md).
-
-`pnpm build` builds the desktop web frontend and validates and bundles the MCP
-server. It does not create a native desktop package. Contributors can build the
-native app without an updater signing key with:
-
-```bash
-pnpm tauri:build:contributor
-```
-
-Tauri prints the generated artifact locations. `pnpm tauri:build:release` is
-reserved for release operators with the required signing credentials.
-
-Direct workspace examples:
-
-```bash
-pnpm --filter @sitecmd/desktop run tauri:dev
-pnpm --filter sitecmd-mcp run test
-```
-
-The desktop app and the MCP server each document themselves through their own
-`AGENTS.md`. Start there before changing either.
-
-## Desktop app workspace
-
-The desktop app lives in `apps/desktop/`.
-
-```txt
-apps/desktop/src/          React frontend
-apps/desktop/src-tauri/    Rust backend, Tauri config, capabilities, CLI
-apps/desktop/e2e/          Playwright smoke tests
-```
+## Rust workspace
 
 Run the complete Rust workspace from its directory so rustup applies the pinned
 toolchain:
@@ -299,7 +226,7 @@ pnpm sitecmd -- audit . --format github --fail-on high
 pnpm sitecmd -- audit . --inspect-local-databases
 ```
 
-- Local Code Scan is free and needs no account, license, desktop database, or
+- Local Code Scan is free and needs no account, license, local database, or
   connected-service credential.
 - The installed release runs as `sitecmd audit`; `pnpm sitecmd -- audit` is the
   source-checkout wrapper for contributors.
@@ -309,7 +236,14 @@ pnpm sitecmd -- audit . --inspect-local-databases
   never application table rows. SQLite targets must be inside the audited
   project; every PostgreSQL host must resolve to loopback or a local Unix
   socket. Remote targets are rejected.
-- CI guardrails live in `.github/workflows/app-guardrails.yml`.
+- The public repository runs Code Scan on pull requests.
+
+Live provider-format secrets are graded Critical in code only when the file is
+in git's index. Untracked and ignored files retain their existing grade. When
+tracking cannot be established, including missing git, a timeout, or a
+foreign-owned checkout rejected by git, the audit keeps the existing grade
+without reporting a tracking error. The hardened runner ignores global and
+system git configuration, including their `safe.directory` entries.
 
 ### Listing Code Scan rules
 
@@ -332,34 +266,52 @@ with `version` (the CLI version) and a `rules` array. Every rule contains:
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `producerRuleId`  | The producer slug carried by audit findings.                                                                                           |
 | `checkId`         | `code_scan.<producerRuleId>`, matching audit findings for every current registry rule.                                                 |
-| `domain`          | The domain carried by audit findings.                                                                                                  |
+| `category`        | The category key carried by audit findings, one of the ten category keys.                                                              |
 | `defaultSeverity` | The effective severity after the audit's built-in policy, or `null` when the registry leaves severity to the emitter.                  |
 | `severitySource`  | `"fixed"` when the registry pins the grade; `"per_finding"` when the detector chooses the grade from evidence or at its emission site. |
 
-No titles are emitted because the registry has no title field. A finding's
-title can depend on its evidence. Rules without a fixed registry grade are
+No titles are emitted because the registry has no title field. Published audit
+titles identify the rule without including source-derived wording. Rules without
+a fixed registry grade are
 shown as `null` with `severitySource: "per_finding"`; use each audit finding's
 `severity` for its actual grade. Fixed rules have `severitySource: "fixed"`
 and a non-null `defaultSeverity` matching the normalized audit grade. The text
 table includes both fields as columns.
-Allowed `domain` values are `database`, `ai-safety`, `security`, `architecture`,
-`operations`, `supply-chain`, and `ai-scaffolding`. Non-null `defaultSeverity`
-values are `critical`, `high`, `medium`, and `low`. Text output prints null
-literally, for example:
+Allowed `category` values, in canonical order, are `security`, `domain_https`,
+`email`, `seo`, `ai_visibility`, `performance`, `accessibility`, `privacy`,
+`polish`, and `reliability`. Their labels are Security, Domain and HTTPS, Email,
+SEO, AI visibility, Performance, Accessibility, Privacy and policies, Polish,
+and Reliability. Web Scan uses the same keys with `sitecmd scan --categories
+security,email` and `sitecmd fix --category email`. Non-null `defaultSeverity`
+values are `critical`, `high`,
+`medium`, and `low`. Text output prints null literally, for example:
 
 ```text
-producerRuleId	checkId	domain	defaultSeverity	severitySource
-agent-instructions-stub	code_scan.agent-instructions-stub	ai-scaffolding	null	per_finding
+producerRuleId	checkId	category	defaultSeverity	severitySource
+agent-instructions-stub	code_scan.agent-instructions-stub	reliability	null	per_finding
 ```
 
 Successful listings exit 0. Invalid formats or arguments exit 2.
+
+### Embedded engine
+
+`sitecmd engine info [--json] [--save <path>]` prints the embedded engine's version,
+SHA-256, ABI, import count, and exports. Use `--save` to write the embedded module
+to a file.
 
 ### Acknowledging Code Scan findings
 
 Commit reviewed suppressions in `.sitecmd/config.json`. A suppression may match
 an exact canonical rule, a gitignore-style project-relative path, an occurrence
-fingerprint from JSON output, or a combination of those fields. Every entry
-requires a reason; `expires` is optional and uses `YYYY-MM-DD`.
+fingerprint from JSON output, or a combination of those fields. Published
+fingerprints use rule, normalized path, and the finding's ordinal within that
+rule and file, ordered by line. They use the `sitecmd/v3:sha256:` prefix and the
+SARIF key `sitecmd/v3`; earlier baselines and suppressions must be regenerated.
+Unrelated line shifts preserve fingerprints. Baselines and suppressions compare
+per-rule, per-file counts, including line-less findings: growth reports extra
+findings and shrinkage reports stale entries. A suppression's `count` defaults
+to 1 per matching rule and file; fingerprint entries always have count 1.
+Every entry requires a reason; `expires` is optional and uses `YYYY-MM-DD`.
 
 ```json
 {
@@ -418,12 +370,18 @@ documented in
 Issues and discussion are open. Unsolicited code contributions are not accepted
 yet, and pull requests are limited to invited collaborators while the public
 maintenance process is established; [CONTRIBUTING](CONTRIBUTING.md) has the
-current policy and the local quality gates.
+current policy and quality checks.
+
+Open a pull request against `main` in `brambleworks/SiteCMD-Local`. GitHub runs
+the required checks on the pull request. Use `pnpm verify:push` for optional
+local verification.
 
 ## License
 
-Brambleworks-authored source is licensed under the
-[Apache License 2.0](LICENSE). Bundled third-party material retains its own
+Brambleworks-authored source in this repository is licensed under the
+[Apache License 2.0](LICENSE). Release builds embed SiteCMD's engine module,
+which isn't in this repository and is licensed under the SiteCMD Engine
+Module License; see LICENSE. Bundled third-party material retains its own
 license; see [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
 
 SiteCMD names and logos are trademarks of Brambleworks LLC. The software

@@ -1,6 +1,10 @@
 import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { invocationFor, run } from "./sitecmd.mjs";
+import { invocationFor, isEntryPoint, run } from "./sitecmd.mjs";
 
 describe("checkout CLI", () => {
   it.each([
@@ -32,22 +36,6 @@ describe("checkout CLI", () => {
     expect(invocationFor(["--", ...args])).toEqual(invocationFor(args));
   });
 
-  it("opens desktop navigation only under the open subcommand", () => {
-    const invocation = invocationFor(["open", "scan", "--project", "12"], "darwin");
-    expect(invocation).toEqual({
-      command: "open",
-      args: ["sitecmd://open?page=scans&projectId=12"],
-    });
-    expect(invocationFor(["scan"]).command).toBe("cargo");
-  });
-
-  it.each([{ args: ["--project", "NaN"] }, { args: ["--unknown", "value"] }, { args: ["--url"] }])(
-    "rejects invalid desktop options $args",
-    ({ args }) => {
-      expect(() => invocationFor(["open", "dashboard", ...args])).toThrow();
-    },
-  );
-
   it.each([0, 1, 2])("preserves child exit status %i", async (status) => {
     const child = new EventEmitter();
     const launch = vi.fn(() => child);
@@ -68,4 +56,22 @@ describe("checkout CLI", () => {
     await expect(result).rejects.toThrow("cargo is unavailable");
     expect(process.listenerCount("SIGINT")).toBe(before);
   });
+});
+
+it("runs when started through a linked bin", () => {
+  // Bug: the entry check compared path.resolve(argv[1]) with this file, so a
+  // globally linked `sitecmd` exited 0 having run nothing.
+  const script = fileURLToPath(new URL("./sitecmd.mjs", import.meta.url));
+  const directory = mkdtempSync(path.join(tmpdir(), "sitecmd-bin-"));
+  try {
+    const link = path.join(directory, "sitecmd");
+    symlinkSync(script, link);
+    expect(path.resolve(link)).not.toBe(script);
+    expect(isEntryPoint(link)).toBe(true);
+    expect(isEntryPoint(script)).toBe(true);
+    expect(isEntryPoint(path.join(directory, "missing"))).toBe(false);
+    expect(isEntryPoint(undefined)).toBe(false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

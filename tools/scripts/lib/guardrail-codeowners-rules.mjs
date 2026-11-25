@@ -11,26 +11,15 @@ const REQUIRED_PATTERNS = [
   "/SECURITY.md",
   "/install.sh",
   "/tools/scripts/",
-  "/apps/desktop/package.json",
   "/apps/desktop/src-tauri/Cargo.toml",
   "/apps/desktop/src-tauri/Cargo.lock",
-  "/apps/desktop/src-tauri/build.rs",
   "/apps/desktop/src-tauri/build_config.rs",
   "/apps/desktop/src-tauri/crates/runtime/",
   "/apps/desktop/src-tauri/src/runtime.rs",
-  "/apps/desktop/src-tauri/tauri.conf.json",
-  "/apps/desktop/src-tauri/branding/",
-  "/apps/desktop/src-tauri/capabilities/",
-  "/apps/desktop/src-tauri/permissions/",
   "/apps/desktop/src-tauri/src/network_policy.rs",
-  "/apps/desktop/src-tauri/src/commands/privileged_command_broker/",
-  "/apps/desktop/src-tauri/src/licensing/",
+  "/apps/desktop/src-tauri/crates/protocol/src/network_class.rs",
+  "/apps/desktop/src-tauri/crates/protocol/src/database_env.rs",
   "/apps/desktop/src-tauri/src/updates/",
-  "/apps/desktop/src-tauri/src/catalog/",
-  "/apps/desktop/src-tauri/src/commands/telemetry.rs",
-  "/apps/desktop/src-tauri/src/commands/telemetry_schema.rs",
-  "/apps/desktop/src/components/privacy/",
-  "/apps/mcp-server/package.json",
 ];
 
 export function codeOwnerSafetyFailures(read) {
@@ -46,6 +35,6 @@ export function codeOwnerSafetyFailures(read) {
   return missing.length === 0
     ? []
     : [
-        `CODEOWNERS must protect every release, dependency, network, catalog, and privacy boundary: ${missing.join(", ")}`,
+        `CODEOWNERS must protect every release, dependency, network and privacy boundary: ${missing.join(", ")}`,
       ];
 }

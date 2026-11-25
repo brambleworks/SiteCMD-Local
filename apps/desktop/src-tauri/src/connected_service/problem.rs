@@ -2,7 +2,7 @@
 //! uniform refusal a body without them reads as, and the wait a refusal's
 //! `Retry-After` names.
 
-use reqwest::header::{HeaderMap, RETRY_AFTER};
+use reqwest::header::{HeaderMap, DATE, RETRY_AFTER};
 use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
@@ -73,20 +73,35 @@ pub(super) fn parse_error(status: StatusCode, bytes: &[u8]) -> ConnectedServiceE
     }
 }
 
-/// A refusal with the wait its `Retry-After` header names, in the
-/// delay-seconds form Connect sends. The HTTP-date form, which Connect never
-/// sends, and anything unreadable name no wait.
+/// A refusal with the wait its `Retry-After` header names.
 pub(super) fn refusal(
     status: StatusCode,
     headers: &HeaderMap,
     bytes: &[u8],
+    now: Option<jiff::Timestamp>,
 ) -> ConnectedServiceError {
-    let retry_after = headers
-        .get(RETRY_AFTER)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.trim().parse::<u64>().ok());
     ConnectedServiceError {
-        retry_after,
+        retry_after: retry_after(headers, now),
         ..parse_error(status, bytes)
     }
+}
+
+pub(super) fn response_date(headers: &HeaderMap) -> Option<jiff::Timestamp> {
+    parse_http_date(headers.get(DATE)?.to_str().ok()?.trim())
+}
+
+fn parse_http_date(value: &str) -> Option<jiff::Timestamp> {
+    jiff::fmt::rfc2822::DateTimeParser::new()
+        .parse_timestamp(value)
+        .ok()
+}
+
+fn retry_after(headers: &HeaderMap, now: Option<jiff::Timestamp>) -> Option<u64> {
+    let value = headers.get(RETRY_AFTER)?.to_str().ok()?.trim();
+    if value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return value.parse().ok();
+    }
+    let timestamp = parse_http_date(value)?;
+    let delay = std::time::Duration::try_from(timestamp.duration_since(now?)).unwrap_or_default();
+    Some(delay.as_secs() + u64::from(delay.subsec_nanos() > 0))
 }

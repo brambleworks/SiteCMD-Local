@@ -1,6 +1,6 @@
-# Releasing the desktop app
+# Releasing the CLI
 
-How to prepare a desktop release through a protected pull request, create the
+How to prepare a CLI release through a protected pull request, create the
 signed tag on the merged commit, and read download / install numbers afterward.
 The push that actually ships is deliberately manual.
 
@@ -103,25 +103,22 @@ done
 
 Configure these GitHub environments:
 
-| Environment               | Protection                                                                                 | Values                                                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `release-tag-trust`       | Deployment tags limited to `v*`; protected from workflow-authenticated writes              | `RELEASE_ALLOWED_SIGNERS`, matching `.github/allowed-signers`                                                                             |
-| `release-signing`         | One required reviewer, admin bypass disabled, deployment tags limited to `v*`              | License configuration, desktop OAuth credentials, Sentry DSN, Apple credentials, Azure secrets                                            |
-| `release-updater-signing` | Deployment tags limited to `v*`; reachable only after the approved platform builds succeed | `TAURI_SIGNING_PRIVATE_KEY` and its optional password                                                                                     |
-| `release-publish`         | Deployment tags limited to `v*`; no reviewer or timer                                      | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`; no releases-worker key, because publishing presents the job's OIDC token |
-| `npm-publish`             | Deployment tags limited to `v*`; no reviewer or timer                                      | None; npm trusted publishing accepts the `publish-npm` job's OIDC token ([npm credential](#npm-credential))                               |
+| Environment               | Protection                                                                           | Values                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `release-tag-trust`       | Deployment tags limited to `v*`; protected from workflow-authenticated writes        | `RELEASE_ALLOWED_SIGNERS`, matching `.github/allowed-signers`                                                                             |
+| `release-signing`         | One required reviewer, admin bypass disabled, deployment tags limited to `v*`        | Apple credentials and Azure secrets                                                                                                       |
+| `release-updater-signing` | Deployment tags limited to `v*`; holds the signing key probe and the isolated signer | `TAURI_SIGNING_PRIVATE_KEY` and its optional password                                                                                     |
+| `release-publish`         | Deployment tags limited to `v*`; no reviewer or timer                                | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`; no releases-worker key, because publishing presents the job's OIDC token |
+| `npm-publish`             | Deployment tags limited to `v*`; no reviewer or timer                                | None; npm trusted publishing accepts the `publish-npm` job's OIDC token ([npm credential](#npm-credential))                               |
 
 Put `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, and `AZURE_SIGN_PROFILE` in the
 `release-signing` environment as variables. Move the listed secrets out of
 repository scope after the environments work. Duplicate repository secrets
 defeat the intended boundary.
 
-Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` as `release-signing` environment
-secrets from the same Google **Desktop app** OAuth client. The build preflight
-rejects missing values. Both are embedded in the desktop binary, as Google's
-installed-app flow requires; the client secret is not a confidentiality boundary.
-PKCE and callback-state validation remain required. After OAuth changes, test a
-new connection and an expired-token refresh in a release candidate.
+Configure `SITECMD_ENGINE_TOKEN` as a repository Actions secret with read
+access only to `brambleworks/SiteCMD-Engine-Releases`. The token is scoped to
+each fetch step. Without it, the fetch starts with the public module URL.
 
 While there is one maintainer, leave "prevent self-review" disabled on
 `release-signing`; otherwise the person who starts the release cannot approve
@@ -152,11 +149,9 @@ database-inspection changes; manually dispatch it when no qualifying run does.
 git switch -c release/vX-y-z
 pnpm release <patch|minor|major|X.Y.Z>
 git diff --check
-git add CHANGELOG.md apps/desktop/package.json apps/desktop/src-tauri/tauri.conf.json \
-  apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/crates/cli/Cargo.toml \
+git add CHANGELOG.md apps/desktop/src-tauri/crates/cli/Cargo.toml \
   apps/desktop/src-tauri/crates/runtime/Cargo.toml \
-  apps/desktop/src-tauri/Cargo.lock apps/mcp-server/package.json \
-  apps/mcp-server/src/version.ts
+  apps/desktop/src-tauri/Cargo.lock
 git commit -S -m "Prepare vX.Y.Z"
 # Push the branch and merge it through the protected pull-request path.
 git switch main
@@ -170,9 +165,8 @@ git push origin vX.Y.Z
 `pnpm release` (`tools/scripts/release.mjs`):
 
 - Requires a clean working tree on a `release/*` branch and refuses `main`.
-- Bumps every release version carrier: the desktop package and Tauri config,
-  the desktop, runtime, and CLI Cargo manifests, the Cargo lockfile, and the MCP package
-  and protocol version constant.
+- Bumps every release version carrier: the runtime and CLI Cargo manifests
+  and the Cargo lockfile.
 - Freezes the `Unreleased` changelog entries into `## [X.Y.Z] - YYYY-MM-DD`
   and leaves a new empty `Unreleased` section for the next release.
 - Stops with an unstaged, reviewable version-and-changelog diff. It never
@@ -210,14 +204,11 @@ will notice and will not know why).
 `tools/scripts/check-release-bump.mjs`. It diffs the range since the last `v*`
 tag and refuses a patch when any of these fire:
 
-| Tripwire              | Detects                                             |
-| --------------------- | --------------------------------------------------- |
-| new persisted data    | an **added** `src-tauri/src/db/migrations/*.sql`    |
-| score movement        | non-test changes under `src-tauri/src/scoring/`     |
-| monetization boundary | `licensing/config.rs` or generated commercial facts |
-| new capability        | a **growing** count of `#[tauri::command]`          |
-| check coverage        | `checkCounts.total` in `product-facts.json`         |
-| new surface           | an **added** file under `apps/desktop/src/pages/`   |
+| Tripwire           | Detects                                                       |
+| ------------------ | ------------------------------------------------------------- |
+| new persisted data | an **added** `apps/desktop/src-tauri/src/db/migrations/*.sql` |
+
+Private release checks also cover changes to the module's scoring and product contracts.
 
 The check is deliberately one-directional. These diffs prove a release is _at
 least_ a minor; nothing can prove the inverse, since a one-line change inside an
@@ -263,50 +254,55 @@ external all-ref bundle before moving local `main` to a signed root commit with
 the exact approved tree. The checklist owns remote cleanup, clean-clone proof,
 the visibility change, and restoration of GitHub rulesets.
 
+## Bump the pinned engine
+
+Set `ENGINE_MINISIGN_PUBLIC_KEY` in `tools/scripts/fetch-engine.mjs` to the
+engine release public key before the first bump. With `minisign` installed,
+run these commands from the repository root.
+
+```bash
+pnpm engine:fetch -- --bump <version>
+pnpm legal:generate
+```
+
+The bump verifies signatures for the module and its licenses, updates
+`engine.lock` and `engine/local-engine.wasm.LICENSES.txt`, and stages the
+module locally. Include the lock, license sidecar, and regenerated legal
+artifacts in the pin change. The engine pin workflow builds and checks the CLI
+on macOS, Linux x86_64, Linux arm64, and Windows and reports the module load
+time on each runner.
+
 ## What the signed tag triggers
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`:
+Pushing a `v*` tag runs `.github/workflows/release.yml`.
 
-1. **Tag verification** rejects a non-semver, lightweight, untrusted, or
-   incorrectly signed tag. It also rejects a tag whose commit is not in the
-   repository default branch.
-2. **Preflight** runs repository guardrails, tests, dependency audits, Rust
-   tests, clippy, and formatting before any release credential is available.
-3. **Capability manifest publication** sends
-   `crates/engine/manifest/capability_manifest.json` to the connect manifest
-   registry with a GitHub Actions OIDC token. `build` depends on it, so no
-   artifact is produced unless it succeeded. See
-   [Capability manifest publication](#capability-manifest-publication) below.
-4. **Candidate preparation** requires the tag version to match the protected
-   source version and binds the source commit, workflow hash, dependency
-   lockfile hashes, release notes, and publication date into an immutable
-   manifest.
-5. **Human approval** pauses the `release-signing` environment. Review the
-   candidate manifest artifact and job summary, then approve the exact manifest
-   hash and protected source commit.
-6. **Platform builds** run after approval on macOS universal, Linux x86_64, and
-   Windows x86_64, plus a CLI-only leg on Linux arm64 that builds no desktop
-   app. Apple and Azure platform signing remain inline. Tauri receives a
-   job-generated throwaway updater key, never the permanent updater key.
-7. **Updater and CLI signing** validates and stages an allowlisted payload,
-   then exposes `TAURI_SIGNING_PRIVATE_KEY` only to the minimal standalone
-   signer step. It signs the updater bundle, the standalone CLI archive (whose
-   `.sig` sidecar feeds CI installers), and one release-wide `SHA256SUMS`
-   listing every installer and archive; the manifest's decoded `.minisig` is
-   what `minisign -V` reads.
-8. **Secretless verification** checks payload hashes, candidate provenance,
-   updater and CLI archive signatures, CLI versions, and available platform
-   signatures on all three desktop platforms and the Linux arm64 CLI leg.
-9. **Publication** runs only after every verifier passes. A checkout-free job
-   hash-compares any existing R2 object before upload (including `SHA256SUMS`,
-   `SHA256SUMS.sig`, and `SHA256SUMS.minisig`), advances the updater manifest
-   with the job's own OIDC token (see [Publish credential](#publish-credential)),
-   and then creates the GitHub Release for the tag with the changelog section
-   as notes and the two checksum files attached. Binaries stay on R2. Once the
-   Release exists, a SHA-pinned `actions/attest-build-provenance` step attests
-   build provenance over every published artifact glob and `SHA256SUMS`,
-   scoped to this job alone. It never executes source, dependencies, or
-   artifacts.
+1. **Tag verification** checks the version format, annotated tag signature,
+   trusted signer, and ancestry from the repository default branch.
+2. **Preflight** fetches the module pinned in `engine.lock` and checks its
+   digest. It runs dependency audits, repository guardrails, legal artifact
+   checks, Rust tests, clippy, and formatting. It runs workspace tests with
+   the pinned module and replays them with the stand-in.
+3. **Candidate preparation** verifies the source version and binds the source
+   commit, workflow hash, lockfile hashes, engine version and digest, changelog
+   notes, and publication date into an immutable manifest.
+4. **Human approval** pauses the `release-signing` environment. Check the
+   candidate manifest hash, source commit, and engine pin before approval.
+5. **Platform builds** fetch the pinned module and build CLI archives for
+   macOS universal, Linux x86_64, Linux arm64, and Windows x86_64. Apple
+   signing and notarization and Azure Authenticode signing apply to the CLI.
+6. **Archive signing** validates and stages the allowlisted payload before
+   passing the production key to the isolated signer. It signs each CLI archive
+   and one release-wide `SHA256SUMS`. The decoded `SHA256SUMS.minisig` is
+   the detached signature read by `minisign -V`.
+7. **Secretless verification** checks payload hashes, provenance, archive
+   signatures, CLI versions, platform signatures, and the embedded engine pin
+   in every archive, including both macOS architectures.
+8. **Publication** begins after every verifier passes. A checkout-free job
+   hash-compares existing objects before uploading to R2, advances the
+   release manifest with an OIDC token, and creates the GitHub Release with
+   changelog notes, the engine version and digest, and the signed checksum
+   manifest. It attests build provenance and checks every public object and
+   the advertised latest version. The npm job publishes the verified binaries.
 
 The candidate check now forces the tag, source files, and protected commit to
 agree. The version-sync guardrail separately prevents any release version
@@ -330,8 +326,8 @@ in [release-signing-key-rotation.md](../engineering/release-signing-key-rotation
 ### Public CLI installer
 
 The repository-root `install.sh` is the canonical source for
-`https://sitecmd.com/install.sh`. It embeds the same public updater key as the
-desktop configuration and verifies the archive signature, checksum, and CLI
+`https://sitecmd.com/install.sh`. It embeds the public release verification key from
+`.github/actions/setup-sitecmd/updater-public-key.pub` and verifies the archive signature, checksum, and CLI
 version before installation. The repository guardrails hold those checks and
 the public key in sync.
 
@@ -344,54 +340,6 @@ curl -fsSL https://sitecmd.com/install.sh | diff -u install.sh -
 
 Any diff blocks the release. The convenience one-liner in the README is only as
 trustworthy as the script served at that endpoint.
-
-### Capability manifest publication
-
-Every observation the desktop sends carries a `manifest_digest`. Connect
-resolves that digest against an immutable, content-addressed registry, and an
-observation whose digest the registry does not know is quarantined as
-incomparable: the finding is still recorded, but nothing can ever be verified
-fixed under it. Publication is therefore a release precondition, not a release
-step, and the rule is that the manifest reaches the registry **before** any
-build ships under its digest.
-
-Two things run `tools/scripts/publish-capability-manifest.mjs`:
-
-- `.github/workflows/publish-capability-manifest.yml`, on every push to main
-  that touches the manifest artifact or the publisher, so the registry stays
-  ahead of main.
-- the `publish-capability-manifest` job in `release.yml`, which `build` depends
-  on, so a release cannot produce an artifact without it.
-
-The digest tracks the check registry, not the app version, so most releases
-republish bytes the registry already holds and are told `already_registered`
-(HTTP 200). That is a success. A release that moved a check contract registers
-a new digest instead (HTTP 201).
-
-**A 409 means the digest is already registered with different bytes.** Do not
-retry it and do not look for a way to overwrite the entry: the registry is
-immutable by design, because a registered manifest is the meaning of every
-observation ever recorded under its digest, and rewriting one would silently
-retro-define findings the service has already accepted. A 409 says one of two
-things happened, and you need to know which before anything ships:
-
-- the artifact moved without its digest moving, which is a generation bug (the
-  committed JSON is not what `sitecmd_engine::manifest` produces; regenerate it
-  with
-  `cargo test -p sitecmd-engine --test capability_manifest -- --ignored regenerate`
-  and commit the result, noting that the unignored test only asserts the file
-  is current), or
-- two builds computed one identity for two meanings, which is a collision in
-  the manifest hash itself.
-
-Rollback is re-pointing a build at an already-registered digest. Nothing is
-ever unregistered.
-
-A 404 is also a hard failure, not a no-op: it means the connect Worker is
-deployed without its manifest bucket or publisher allowlist, or this repository
-is not the allowed publisher. Passing on a 404 would let the release ship under
-a digest the registry never learned, which is the exact state the ingest gate
-quarantines.
 
 ### Publish credential
 
@@ -408,6 +356,10 @@ workflow is `.github/workflows/release.yml`, the environment is
 guardrail scans every workflow in `.github/workflows`, since any of them could be
 dispatched against a tag, and allows only the probe and `publish-release` in
 `release.yml` to use that environment.
+
+The releases worker must accept CLI release manifests with an empty
+`platforms` map before shipping a CLI-only tag. The publisher requires a
+successful manifest advance before creating the GitHub Release.
 
 The probe posts an empty manifest and expects `400`: the worker accepted the
 token and refused the body, so nothing was published. Any other status fails
@@ -478,14 +430,14 @@ Confirm the two public verification surfaces exist for the version:
 `https://releases.sitecmd.com/v<version>/SHA256SUMS.minisig` return 200, and
 `gh release view v<version> --repo brambleworks/SiteCMD-Local` lists both as assets.
 
-If the attestation step fails, R2, the updater manifest, and the Release are
+If the attestation step fails, R2, the release manifest, and the Release are
 already live and correct; only the attestation is missing. Re-running
 `publish-release` recovers it as long as the `signed-release-payload` artifact
 is still within its 24-hour retention window; once that artifact has expired,
 `sign-updaters` must run again to produce a new one.
 
 A failed or asset-less Release recovers the same way, and is more urgent. The
-updater manifest advances before the Release is created, so from that step on
+release manifest advances before the Release is created, so from that step on
 the new version is already offered to every client while the Release they are
 pointed at may not exist or may carry no checksums. Re-run `publish-release`
 within the same 24-hour window: it creates the Release when there is none, and

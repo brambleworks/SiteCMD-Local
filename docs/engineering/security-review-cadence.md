@@ -6,8 +6,7 @@ they cannot decide whether an advisory exception, signing identity, credential,
 or access grant is still justified.
 
 Connected-service infrastructure is reviewed privately beside the service.
-This public runbook covers only the desktop, CLI, MCP server, release pipeline,
-and GitHub repository represented here.
+This public runbook covers the CLI, release pipeline, and GitHub repository.
 
 ## Quarterly
 
@@ -23,17 +22,6 @@ and GitHub repository represented here.
 
 The audit warns when an advisory review is older than its allowed window. A
 maintenance commit should use a subject such as `Refresh Rust advisory reviews`.
-
-### Tauri capability boundary
-
-1. Compare registered commands, generated permissions, and capability files.
-2. Confirm the main window still lacks direct destructive, filesystem,
-   connector, and project-execution permissions.
-3. Confirm analyzer windows have no custom-command or plugin capability.
-4. Review every newly added external origin in the content security policy and
-   remove origins no longer required by shipped behavior.
-5. Exercise privileged confirmation, token expiry, and unknown-command rejection
-   through their maintained tests.
 
 ### Repository access and automation
 
@@ -80,7 +68,7 @@ The release pipeline must prove:
 - human approval bound to the candidate manifest and source commit
 - isolated updater signing with no production private key in product builds
 - secretless verification before publication
-- dependency, secret, source-policy, CLI, desktop, and MCP quality gates
+- dependency, secret, source-policy, and CLI quality gates
 - post-build scanning that rejects leaked key material
 
 After the workflow is green, execute the maintained release smoke test with the

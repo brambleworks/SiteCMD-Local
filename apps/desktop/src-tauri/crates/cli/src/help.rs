@@ -3,13 +3,17 @@ pub(crate) fn print_main_help() {
         "SiteCMD CLI - Local scanning and connected CI/CD pipelines\n\n\
 Usage:\n  sitecmd <command> [options]\n\n\
 Commands:\n  \
+  login                   Sign in to SiteCMD on this computer\n  \
+  logout                  Sign out and revoke this computer's token\n  \
+  connect                 Connect a site's GitHub repository to SiteCMD\n  \
   init [url]              Initialize project with .sitecmd/ config\n  \
   audit <path>            Run Code Scan against a source checkout\n  \
   rules                   List every Code Scan rule\n  \
+  engine info             Inspect or save the embedded engine\n  \
   autofix                 Apply template fixes, or run a Connect fix job\n  \
   scan                    Run a scan and export to .sitecmd/\n  \
   fix                     Output fix prompts from last scan\n  \
-  watch                   Monitor URL and rescan at intervals\n  \
+  watch                   Follow hosted scans or rescan a local site\n  \
   check                   Regression check (for git hooks)\n  \
   connected               Preview or submit a connected-service payload\n  \
   deploy                  Tell the connected service a deployment happened\n  \
@@ -22,38 +26,46 @@ Run `sitecmd <command> --help` for command-specific options."
 }
 
 pub(crate) fn print_scan_help() {
-    eprintln!(
-        "{}",
+    eprintln!("{}", scan_help());
+}
+
+fn scan_help() -> String {
+    let keys = sitecmd_runtime::core::scan_types::Category::ALL.map(|category| category.key());
+    format!(
         concat!(
             "SiteCMD scan - Run a Web Scan\n\n",
             "Usage:\n  sitecmd scan [options]\n\n",
             "Options:\n",
             "  --url <URL>             URL to scan (or use .sitecmd/config.json)\n",
-            "  --type <TYPE>           Scan type: health, security, accessibility, polish (default: health)\n",
-            "  --diff                  Compare with last scan and show changes\n",
+            "  --diff                  Compare with last scan (cannot combine with --categories)\n",
             "  --env <NAME>            Use a named environment URL from config\n",
             "  --fail-under <N>        Exit 1 if score < N (quality gate)\n",
+            "                          Hosted scans use the lowest selected category score,\n",
+            "                          or the overall score when no categories are selected\n",
             "  --fail-on <SEV>         Exit 1 if a failing issue is at or above SEV (critical, high, medium, low)\n",
-            "  --json                  Output JSON to stdout (skips file export)\n",
+            "  --json                  Output JSON to stdout (skips local scan file export)\n",
             "  --output json           Alias for --json (legacy compat)\n",
-            "  --timeout <SECS>        HTTP timeout per request (default: 30)\n",
-            "  --categories <LIST>     Filter health scans: security, seo, performance,\n",
-            "                          accessibility, compliance, config\n",
-            "  --no-browser            Skip browser checks in browser-enabled source builds\n",
-            "  --cwv                   Measure CWV (browser-enabled source builds only)\n",
+            "  --timeout <SECS>        Time limit for local page fetches (default: 30)\n",
+            "  --categories <LIST>     Filter results: {},\n",
+            "                          {}\n",
+            "  --latest                Read the last finished hosted scan without starting one\n",
+            "  --connect-origin <URL>  Use this SiteCMD Connect origin for hosted scans\n",
             "  --help, -h              Show this help\n\n",
+            "Hosted scans create .sitecmd/ if needed.\n\n",
             "Exit codes:\n",
             "  0  Scan passed (or no threshold set)\n",
             "  1  Score below --fail-under, a failing issue at or above --fail-on, or a new critical issue in --diff mode\n",
-            "  2  Scan error (network, invalid URL)\n\n",
+            "  2  Scan error (network, invalid URL, sign-in required, or hosted scan refused)\n\n",
             "Examples:\n",
             "  sitecmd scan\n",
             "  sitecmd scan --url https://example.com\n",
-            "  sitecmd scan --type security --fail-under 90\n",
+            "  sitecmd scan --categories security --fail-under 90\n",
             "  sitecmd scan --json > results.json\n",
             "  sitecmd scan --diff",
-        )
-    );
+        ),
+        keys[..4].join(", "),
+        keys[4..].join(", ")
+    )
 }
 
 pub(crate) fn print_init_help() {
@@ -75,18 +87,19 @@ Options:\n  \
   --all                   Show all matching issues (default: top issue only)\n  \
   --id <CHECK_ID>         Show fix for a specific check ID\n  \
   --type <TYPE>           Filter by issue type\n  \
-  --category <CAT>        Filter by category\n  \
+  --category <KEY>        Filter by category (one of the scan categories)\n  \
   --help, -h              Show this help"
     );
 }
 
 pub(crate) fn print_watch_help() {
     eprintln!(
-        "SiteCMD watch - Monitor URL and rescan at intervals\n\n\
+        "SiteCMD watch - Follow hosted scans or rescan a local site\n\n\
 Usage:\n  sitecmd watch [options]\n\n\
+For public sites, watch reports newly finished scans without starting one.\n\n\
 Options:\n  \
   --url <URL>             URL to monitor\n  \
-  --interval <SECS>       Rescan interval in seconds (default: 300)\n  \
+  --interval <SECS>       Poll or rescan interval in seconds (default: 300)\n  \
   --env <NAME>            Use a named environment from config\n  \
   --help, -h              Show this help"
     );
@@ -96,9 +109,11 @@ pub(crate) fn print_check_help() {
     eprintln!(
         "SiteCMD check - Regression check for git hooks\n\n\
 Usage:\n  sitecmd check [options]\n\n\
+For public sites, check uses the latest finished hosted scan to enforce a minimum score.\n\n\
 Options:\n  \
   --install               Install as a git pre-push hook\n  \
-  --strict                Also fail on any new issue vs the last scan (always scans fresh)\n  \
+  --strict                Request a fresh scan and also fail on new issues\n  \
+                          Use the latest finished hosted scan if Connect limits scan starts\n  \
   --fail-under <N>        Minimum score to pass (default: from config); --threshold is a deprecated alias\n  \
   --help, -h              Show this help"
     );
@@ -128,10 +143,10 @@ Options:\n  \
   --publish-sequence <N>  Ordinal allocated when publication succeeded\n  \
   --predecessor-deployment-id <ID>\n                          Exact deployment this publication replaced\n  \
   --path <PATH>           Project root to audit (default: working directory)\n  \
-  --db <PATH>             Desktop database (or SITECMD_DB_PATH/default path)\n  \
+  --db <PATH>             Local SiteCMD SQLite database (sitecmd.db)\n                          (or SITECMD_DB_PATH/default path)\n  \
   --help, -h              Show this help\n\n\
-With no deployment named, --dry-run emits the DesktopSubmission serialization\n\
-desktop sync uses, contacting nothing and reserving no submission sequence.\n\
+With no deployment named, --dry-run emits the stored-evidence submission payload\n\
+from the local database, contacting nothing and reserving no submission sequence.\n\
 With one named, it emits the CI submission before server-derived ordering. A\n\
 send reads the site's ordering cursor and attaches the next causal publish fact\n\
 unless explicit ordering flags were supplied; a dry run contacts nothing, so\n\
@@ -192,14 +207,58 @@ Options:\n  \
   --fail-on <LEVEL>       Fail on new findings at or above this severity:\n                          critical, high (default), medium, low (--threshold is a deprecated alias)\n  \
   --strict                Also fail on findings the service cannot rule out\n                          as a detector or corpus change\n  \
   --path <PATH>           Project root to audit (default: working directory)\n  \
-  --db <PATH>             Desktop database (or SITECMD_DB_PATH/default path)\n  \
+  --db <PATH>             Local SiteCMD SQLite database (sitecmd.db)\n                          (or SITECMD_DB_PATH/default path)\n  \
   --outputs <FILE>        Write verdict=pass, fail or inactive and new=<N>\n                          for a workflow to read\n  \
   --help, -h              Show this help\n\n\
 Audits the checkout, then asks the service which findings are new against the\n\
 baseline. Exit code 1 means the merge is blocked, 2 means the gate could not\n\
-run. An inactive SiteCMD Connect account grades nothing: the gate prints a\n\
+run. An inactive SiteCMD account grades nothing: the gate prints a\n\
 notice, names the verdict inactive and exits 0. The candidate is evaluated\n\
 and discarded: gating never changes the baseline, so this is safe on every\n\
 branch of every pull request."
     );
+}
+
+pub(crate) fn print_login_help(logout: bool) {
+    let (command, description) = if logout {
+        ("logout", "Sign out and revoke this computer's token")
+    } else {
+        ("login", "Sign in to SiteCMD on this computer")
+    };
+    eprintln!("SiteCMD {command} - {description}\n\nUsage:\n  sitecmd {command} [options]\n\nOptions:\n  --connect-origin <url> The SiteCMD Connect to use\n  --help, -h             Show this help");
+}
+
+pub(crate) fn print_connect_help() {
+    eprintln!(
+        "SiteCMD connect - Connect a site's GitHub repository to SiteCMD\n\n\
+Usage:\n  sitecmd connect <url> [options]\n\n\
+Options:\n  \
+  --repo owner/name      The GitHub repository, when origin does not name it\n  \
+  --rotate               Replace the site's connection keys\n  \
+  --connect-origin <url> The SiteCMD Connect to use\n  \
+  --path <PATH>          Checkout to audit (default: working directory)\n  \
+  --help, -h             Show this help"
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn scan_help_lists_every_canonical_category_key_in_order() {
+        let help = super::scan_help();
+        let listed = help
+            .split_once("Filter results: ")
+            .expect("category option")
+            .1
+            .split_once("\n  --latest")
+            .expect("end of category list")
+            .0
+            .split(',')
+            .map(str::trim)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            listed,
+            sitecmd_runtime::core::scan_types::Category::ALL.map(|category| category.key())
+        );
+    }
 }

@@ -1,38 +1,26 @@
-//! Native scan, persistence, and command runtime shared by desktop and CLI.
+//! Persistence, network transport, and command runtime for the CLI.
 
-pub mod ai;
-pub mod api_cache;
+#[cfg(any(test, feature = "test-support"))]
+mod test_home;
+
 pub mod app_identity;
 pub mod audit_log;
-pub mod catalog;
-pub mod checks;
 pub mod cli;
-pub mod connected_alerts;
-pub mod connected_baseline;
 pub mod connected_ci;
-pub mod connected_credentials;
-pub mod connected_delivery;
+pub mod connected_codes;
 pub mod connected_export;
-pub mod connected_notifications;
-pub mod connected_providers;
-pub mod connected_recovery;
-pub mod connected_rotation;
 pub mod connected_service;
 pub mod connected_workflow;
 pub mod constants;
 pub mod core;
 pub mod db;
+pub mod deployment_input;
 pub mod dns_cache;
 pub mod http_client;
-pub mod integrations;
-pub mod licensing;
 pub mod network_policy;
-pub mod project_paths;
-pub mod scan_runtime;
-pub mod scoring;
-pub mod ssl_probe;
+pub mod time;
 pub mod updates;
 
-#[cfg(feature = "browser")]
-pub mod browser;
-pub use sitecmd_engine::log_sanitizer;
+#[cfg(feature = "test-support")]
+pub use core::test_support;
+pub use sitecmd_protocol::log_sanitizer;

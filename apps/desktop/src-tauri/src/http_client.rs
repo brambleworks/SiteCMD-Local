@@ -92,15 +92,6 @@ pub async fn read_body_limited(
         .map_err(|_| BodyReadError::TimedOut { timeout })?
 }
 
-pub async fn read_text_limited(
-    response: reqwest::Response,
-    max_bytes: u64,
-    timeout: Duration,
-) -> Result<String, BodyReadError> {
-    let body = read_body_limited(response, max_bytes, timeout).await?;
-    Ok(String::from_utf8_lossy(&body).into_owned())
-}
-
 pub async fn read_json_limited<T>(
     response: reqwest::Response,
     max_bytes: u64,
@@ -182,61 +173,41 @@ pub fn client() -> &'static Client {
     &CLIENT
 }
 
-/// Shared HTTP client for localhost URLs.
-/// Permits self-signed certificates only when the TLS destination is loopback.
-pub fn localhost_client() -> &'static Client {
-    static CLIENT: LazyLock<Client> = LazyLock::new(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        loopback_tls::configure(negotiate_bounded_compression(Client::builder()))
-            .timeout(crate::constants::HTTP_CLIENT_TIMEOUT)
-            .user_agent(crate::constants::USER_AGENT.as_str())
-            .redirect(safe_redirect_policy(
-                crate::network_policy::UrlPolicy::Redirect {
-                    allow_local_dev: true,
-                },
-            ))
-            .dns_resolver(crate::dns_cache::shared())
-            .build()
-            .expect("Failed to build localhost HTTP client")
-    });
-    &CLIENT
+fn loopback_builder() -> reqwest::ClientBuilder {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    loopback_tls::configure(negotiate_bounded_compression(Client::builder()))
+        .timeout(crate::constants::HTTP_CLIENT_TIMEOUT)
+        .user_agent(crate::constants::USER_AGENT.as_str())
 }
 
-/// Shared HTTP client for a scan target inside the person's own networks.
-/// Certificate verification stays on: a LAN box is another machine, so only
-/// loopback earns the self-signed exception.
-pub fn private_network_client() -> &'static Client {
-    static CLIENT: LazyLock<Client> = LazyLock::new(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        negotiate_bounded_compression(Client::builder())
-            .timeout(crate::constants::HTTP_CLIENT_TIMEOUT)
-            .user_agent(crate::constants::USER_AGENT.as_str())
-            .redirect(safe_redirect_policy(
-                crate::network_policy::UrlPolicy::ScanTarget,
-            ))
-            .dns_resolver(crate::dns_cache::scan_target_resolver())
-            .build()
-            .expect("Failed to build private network HTTP client")
-    });
-    &CLIENT
+/// A single-hop client pinned to the loopback addresses approved for this URL.
+pub(crate) fn for_local_scan(
+    url: &url::Url,
+    addresses: &[std::net::SocketAddr],
+) -> Result<Client, reqwest::Error> {
+    let mut builder = loopback_builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .dns_resolver(std::sync::Arc::new(UnpinnedLocalDns));
+    if let Some(url::Host::Domain(host)) = url.host() {
+        builder = builder.resolve_to_addrs(host, addresses);
+    }
+    builder.build()
 }
 
-/// HTTP client that does NOT follow redirects.
-/// Used by redirect chain checks, HTTPS enforcement, and open redirect detection.
-/// These read the status line, `location`, and bounded bodies, never a
-/// wire-level size or encoding, so they are ordinary traffic.
-pub fn no_redirect_client() -> &'static Client {
-    static CLIENT: LazyLock<Client> = LazyLock::new(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        negotiate_bounded_compression(Client::builder())
-            .timeout(crate::constants::CHECK_PROBE_TIMEOUT)
-            .redirect(reqwest::redirect::Policy::none())
-            .user_agent(crate::constants::USER_AGENT.as_str())
-            .dns_resolver(crate::dns_cache::shared())
-            .build()
-            .expect("Failed to build no-redirect HTTP client")
-    });
-    &CLIENT
+struct UnpinnedLocalDns;
+
+#[cfg(test)]
+thread_local! {
+    pub(crate) static UNPINNED_LOCAL_DNS_LOOKUPS: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
+
+impl reqwest::dns::Resolve for UnpinnedLocalDns {
+    fn resolve(&self, _name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        #[cfg(test)]
+        UNPINNED_LOCAL_DNS_LOOKUPS.with(|lookups| lookups.set(lookups.get() + 1));
+        Box::pin(async { Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied).into()) })
+    }
 }
 
 /// Non-redirecting client with strict DNS policy for credentialed requests.
@@ -254,77 +225,15 @@ pub fn credentialed_service_client() -> &'static Client {
     &CLIENT
 }
 
-pub fn webhook_client() -> &'static Client {
-    credentialed_service_client()
-}
-
-/// Policy-guarded client that preserves raw content-encoding responses.
-///
-/// Measurement probes fetch through this client, never through the shared
-/// ordinary-traffic clients above. They report what the server actually sent:
-/// `performance.compression` grades the `Content-Encoding` header, which
-/// transparent decoding removes, and the asset sampler reports transfer size,
-/// which decoding would inflate to the decompressed size. Auto-decompression is
-/// therefore turned off for every codec, deflate and zstd included, so enabling
-/// their crate features later cannot silently start decoding here.
-pub fn no_decompress_client(is_strict_local: bool) -> &'static Client {
-    static STRICT: LazyLock<Client> = LazyLock::new(|| build_no_decompress_client(true));
-    static PUBLIC: LazyLock<Client> = LazyLock::new(|| build_no_decompress_client(false));
-    if is_strict_local {
-        &STRICT
-    } else {
-        &PUBLIC
-    }
-}
-
-fn build_no_decompress_client(is_strict_local: bool) -> Client {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-    let builder = if is_strict_local {
-        loopback_tls::configure(Client::builder())
-    } else {
-        Client::builder()
-    };
-    builder
-        .timeout(crate::constants::API_TIMEOUT_SHORT)
-        .user_agent(crate::constants::USER_AGENT.as_str())
-        .redirect(safe_redirect_policy(
-            crate::network_policy::UrlPolicy::Redirect {
-                allow_local_dev: is_strict_local,
-            },
-        ))
-        .dns_resolver(crate::dns_cache::shared())
-        .no_gzip()
-        .no_brotli()
-        .no_deflate()
-        .no_zstd()
-        .build()
-        .expect("Failed to build no-decompress HTTP client")
-}
-
-/// Pick the shared client for a scan origin. Loopback keeps the self-signed
-/// exception, a private network address gets a client that may reach it, and
-/// everything else gets the public client. The client carries its origin's
-/// reach into every redirect it follows, so a public page cannot steer the
-/// scan into a network the person never named.
-pub fn for_scan_origin(origin: crate::network_policy::LocalOrigin) -> &'static Client {
-    use crate::network_policy::LocalOrigin;
-    match origin {
-        LocalOrigin::Loopback => localhost_client(),
-        LocalOrigin::PrivateNetwork => private_network_client(),
-        LocalOrigin::LocalhostDomain | LocalOrigin::LocalNetworkName | LocalOrigin::Public => {
-            client()
-        }
-    }
-}
-
-/// Pick the appropriate shared client based on whether the URL is a strict
-/// loopback address (localhost, 127.0.0.1,::1).
-pub fn for_url(is_strict_local: bool) -> &'static Client {
-    if is_strict_local {
-        localhost_client()
-    } else {
-        client()
-    }
+pub(crate) fn credentialed_loopback_client() -> &'static Client {
+    static CLIENT: LazyLock<Client> = LazyLock::new(|| {
+        loopback_builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .dns_resolver(crate::dns_cache::shared())
+            .build()
+            .expect("Failed to build credentialed loopback HTTP client")
+    });
+    &CLIENT
 }
 
 /// The policy a client applies to every URL a fetched page steers it to. It is
@@ -416,8 +325,7 @@ mod tests {
         let payload = "SiteCMD registry metadata compresses well. ".repeat(200);
         for (label, ordinary) in [
             ("production", client()),
-            ("localhost", localhost_client()),
-            ("no-redirect", no_redirect_client()),
+            ("credentialed loopback", credentialed_loopback_client()),
             ("credentialed service", credentialed_service_client()),
         ] {
             let (url, served) = gzip_server(gzip(payload.as_bytes())).await;
@@ -432,11 +340,12 @@ mod tests {
                 "{label} client must consume Content-Encoding while decoding, not pass it through"
             );
 
-            let body = read_text_limited(response, 1024 * 1024, std::time::Duration::from_secs(5))
+            let body = read_body_limited(response, 1024 * 1024, std::time::Duration::from_secs(5))
                 .await
                 .unwrap_or_else(|error| panic!("{label} client body read failed: {error}"));
             assert_eq!(
-                body, payload,
+                body,
+                payload.as_bytes(),
                 "{label} client must hand callers the decoded body"
             );
 
@@ -490,80 +399,23 @@ mod tests {
         let _ = served.await;
     }
 
-    #[tokio::test]
-    async fn measurement_probe_client_returns_the_raw_encoded_body() {
-        let payload = "measurement probes grade the wire response. ".repeat(64);
-        let compressed = gzip(payload.as_bytes());
-        let (url, served) = gzip_server(compressed.clone()).await;
-
-        let response = no_decompress_client(false)
-            .get(&url)
-            // The compression check sends this header explicitly; the client
-            // must still refuse to decode what comes back.
-            .header("Accept-Encoding", "gzip, deflate, br, zstd")
-            .send()
-            .await
-            .expect("probe the gzip response");
-
-        assert_eq!(
-            response
-                .headers()
-                .get("content-encoding")
-                .and_then(|value| value.to_str().ok()),
-            Some("gzip"),
-            "the probe client must preserve Content-Encoding for the compression check to grade"
-        );
-        let body = read_body_limited(response, 1024 * 1024, std::time::Duration::from_secs(5))
-            .await
-            .expect("read the raw probe body");
-        assert_eq!(
-            body, compressed,
-            "the probe client must hand back the bytes the server sent, not the decoded payload"
-        );
-        let _ = served.await;
-    }
-
     #[test]
-    fn for_url_routes_strict_local_to_localhost_client() {
-        let routed = for_url(true);
-        assert_eq!(
-            ptr(routed),
-            ptr(localhost_client()),
-            "is_strict_local=true must return the localhost (cert-skipping) client"
-        );
-    }
-
-    #[test]
-    fn for_url_routes_non_local_to_production_client() {
-        let routed = for_url(false);
-        assert_eq!(
-            ptr(routed),
-            ptr(client()),
-            "is_strict_local=false must return the TLS-validating production client"
-        );
-    }
-
-    #[test]
-    fn production_and_localhost_clients_are_distinct() {
+    fn production_and_credentialed_loopback_clients_are_distinct() {
         assert_ne!(
             ptr(client()),
-            ptr(localhost_client()),
-            "production and localhost clients must be separate instances - a regression that aliased them would silently accept invalid certs for public URLs"
+            ptr(credentialed_loopback_client()),
+            "production and credentialed loopback clients must be separate instances"
         );
     }
 
     #[test]
-    fn no_redirect_client_is_distinct_from_others() {
-        assert_ne!(ptr(no_redirect_client()), ptr(client()));
-        assert_ne!(ptr(no_redirect_client()), ptr(localhost_client()));
-    }
-
-    #[test]
-    fn webhook_client_is_distinct_from_scan_clients() {
-        assert_ne!(ptr(webhook_client()), ptr(client()));
-        assert_ne!(ptr(webhook_client()), ptr(no_redirect_client()));
-        assert_ne!(ptr(webhook_client()), ptr(localhost_client()));
-        assert_eq!(ptr(webhook_client()), ptr(credentialed_service_client()));
+    fn credentialed_service_client_is_distinct_from_other_clients() {
+        // Bug: A redirect-following scan client could carry credentialed bearers.
+        assert_ne!(ptr(credentialed_service_client()), ptr(client()));
+        assert_ne!(
+            ptr(credentialed_service_client()),
+            ptr(credentialed_loopback_client())
+        );
     }
 
     /// One layer of a synthetic error chain shaped like reqwest's.
@@ -695,7 +547,7 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         });
 
-        let response = localhost_client()
+        let response = client()
             .get(format!("http://{addr}/oversized"))
             .send()
             .await

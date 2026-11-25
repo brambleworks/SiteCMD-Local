@@ -2,7 +2,7 @@
   "name": "@sitecmd/cli",
   "version": "0.0.0-dev",
   "description": "SiteCMD's scanner CLI: Web Scan, Code Scan, and CI quality gates from one self-contained binary.",
-  "license": "Apache-2.0",
+  "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/brambleworks/SiteCMD-Local.git"

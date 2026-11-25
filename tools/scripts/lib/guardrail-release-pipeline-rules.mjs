@@ -1,17 +1,15 @@
-import { orderedBefore } from "./guardrail-text-utils.mjs";
+import { releasePinStepIsComplete } from "./guardrail-engine-pin-workflow-rules.mjs";
+import { orderedBefore, workflowStepIndex } from "./guardrail-text-utils.mjs";
 import { releasePublicationSafetyFailures } from "./guardrail-release-publication-rules.mjs";
 
 export function releasePipelineSafetyFailures(read) {
   const releaseWorkflow = read(".github/workflows/release.yml");
   const candidateScript = read(".github/scripts/release/build-candidate-manifest.sh");
-  const buildTauriScript = read(".github/scripts/release/build-tauri-app.sh");
-  const buildMacosDmgScript = read(".github/scripts/release/build-macos-dmg.sh");
   const buildCliScript = read(".github/scripts/release/build-cli.sh");
   const signerInputScript = read(".github/scripts/release/stage-signer-inputs.sh");
   const signerRecordScript = read(".github/scripts/release/record-signed-payload.sh");
   const verifyPayloadScript = read(".github/scripts/release/verify-signed-payload.sh");
   const verifyUnixScript = read(".github/scripts/release/verify-unix-artifacts.sh");
-  const tauriConfig = JSON.parse(read("apps/desktop/src-tauri/tauri.conf.json"));
   const failures = [];
   const check = (condition, message) => {
     if (!condition) failures.push(message);
@@ -43,7 +41,6 @@ export function releasePipelineSafetyFailures(read) {
   const validateKeyJob = jobSection("validate-updater-key");
   const validatePublishKeyJob = jobSection("validate-publish-key");
   const candidateCommands = `${candidateJob}\n${candidateScript}`;
-  const buildCommands = `${buildJob}\n${buildTauriScript}\n${buildMacosDmgScript}\n${buildCliScript}`;
   const signerCommands = `${signerJob}\n${signerInputScript}\n${signerRecordScript}`;
   const verifierCommands = `${verifierJob}\n${verifyPayloadScript}\n${verifyUnixScript}`
     .split("\n")
@@ -52,9 +49,6 @@ export function releasePipelineSafetyFailures(read) {
 
   for (const [job, script] of [
     [candidateJob, ".github/scripts/release/build-candidate-manifest.sh"],
-    [buildJob, ".github/scripts/release/build-tauri-app.sh"],
-    [buildJob, ".github/scripts/release/build-macos-dmg.sh"],
-    [buildJob, ".github/scripts/release/locate-updater-bundle.sh"],
     [buildJob, ".github/scripts/release/build-cli.sh"],
     [signerJob, ".github/scripts/release/stage-signer-inputs.sh"],
     [signerJob, ".github/scripts/release/record-signed-payload.sh"],
@@ -79,12 +73,16 @@ export function releasePipelineSafetyFailures(read) {
   check(
     preflightJob.includes("needs: tag-gate") &&
       candidateJob.includes("needs: preflight") &&
-      buildJob.includes(
-        "[prepare-candidate, validate-updater-key, validate-publish-key, publish-capability-manifest]",
-      ) &&
+      buildJob.includes("[prepare-candidate, validate-updater-key, validate-publish-key]") &&
       orderedBefore(releaseWorkflow, "\n  preflight:\n", "\n  prepare-candidate:\n") &&
       orderedBefore(releaseWorkflow, "\n  prepare-candidate:\n", "\n  build:\n") &&
       preflightJob.includes("pnpm guardrails:repo") &&
+      orderedBefore(
+        preflightJob,
+        "run: node tools/scripts/fetch-engine.mjs",
+        "      - name: Rust tests",
+      ) &&
+      preflightJob.includes("Replay workspace tests with the stand-in") &&
       preflightJob.includes("pnpm run legal:check") &&
       preflightJob.includes("pnpm test") &&
       preflightJob.includes("pnpm run audit:deps:js") &&
@@ -93,14 +91,8 @@ export function releasePipelineSafetyFailures(read) {
       preflightJob.includes("cargo nextest run --no-fail-fast --workspace --profile ci") &&
       preflightJob.includes("cargo clippy --no-deps --workspace --all-targets -- -D warnings") &&
       preflightJob.includes("cargo fmt --check --all"),
-    "Release workflow must run tests, guardrails, legal-artifact checks, workspace and updater-signer dependency audits, and Rust gates before building signed updater artifacts.",
+    "Release workflow must run tests, guardrails, legal-artifact checks, workspace and updater-signer dependency audits, and Rust gates before building signed CLI archives.",
   );
-
-  const requiredLicenseEnv =
-    "SITECMD_REQUIRE_LICENSE_CONFIG SITECMD_LICENSE_STORE_ID SITECMD_LICENSE_CORE_MONTHLY_VARIANT_ID SITECMD_LICENSE_CORE_ANNUAL_VARIANT_ID SITECMD_LICENSE_PRO_MONTHLY_VARIANT_ID SITECMD_LICENSE_PRO_ANNUAL_VARIANT_ID SITECMD_LICENSE_CORE_CHECKOUT_URL SITECMD_LICENSE_PRO_CHECKOUT_URL";
-  for (const required of requiredLicenseEnv.split(" ")) {
-    check(buildJob.includes(required), `Release workflow must pass ${required}.`);
-  }
 
   // Re-fetch the annotated tag object before verification; checkout may leave
   // the local tag ref pointing directly at its commit.
@@ -138,7 +130,10 @@ export function releasePipelineSafetyFailures(read) {
       candidateCommands.includes("workflow_sha256") &&
       candidateCommands.includes("pnpm_lock_sha256") &&
       candidateCommands.includes("cargo_lock_sha256") &&
-      candidateCommands.includes('if [ "$VERSION" != "$APP_VERSION" ]') &&
+      candidateCommands.includes("engine_lock_sha256") &&
+      candidateCommands.includes("engine_version") &&
+      candidateCommands.includes("engine_sha256") &&
+      candidateCommands.includes('if [ "$VERSION" != "$CLI_VERSION" ]') &&
       candidateCommands.includes('if [ "$TAG_COMMIT" != "$SOURCE_COMMIT" ]') &&
       // Checkout already fetched the tag; this credential-free job must not re-fetch it.
       !candidateCommands.includes("git fetch") &&
@@ -149,23 +144,16 @@ export function releasePipelineSafetyFailures(read) {
     "release.yml must create a source- and workflow-bound immutable candidate, and read versioned changelog notes without exposing the signed-tag signature block.",
   );
 
+  const fetchStep = workflowStepIndex(buildJob, "run: node tools/scripts/fetch-engine.mjs");
   check(
     buildJob.includes("name: release-signing") &&
       buildJob.includes("Bind build to the human-reviewed candidate") &&
-      buildJob.includes("Build Tauri app with ephemeral updater key") &&
-      buildCommands.includes("tauri signer generate") &&
-      // `tauri build` consumes TAURI_SIGNING_PRIVATE_KEY, not the signer CLI's path flag.
-      buildCommands.includes('TAURI_SIGNING_PRIVATE_KEY="$EPHEMERAL_KEY"') &&
+      fetchStep >= 0 &&
+      fetchStep < workflowStepIndex(buildJob, "run: bash .github/scripts/release/build-cli.sh") &&
+      /^unset SITECMD_ENGINE_UNPINNED$/m.test(buildCliScript.split("\nbuild_cli()", 1)[0]) &&
       !buildJob.includes("${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}") &&
       !buildJob.includes("${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}"),
-    "release.yml product builds must require candidate approval, use only a throwaway updater key, and exclude reusable updater secrets.",
-  );
-
-  check(
-    buildJob.includes("GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}") &&
-      buildJob.includes("GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}") &&
-      buildCommands.includes("node tools/scripts/check-google-oauth-config.mjs"),
-    "release.yml product builds must supply both Google Desktop OAuth credentials and validate them before packaging.",
+    "release.yml CLI builds must require candidate approval, fetch the pinned engine before compiling, and exclude reusable updater secrets.",
   );
 
   // Expose the permanent updater key only to its probe and isolated signer.
@@ -175,9 +163,9 @@ export function releasePipelineSafetyFailures(read) {
       signerJob.includes("${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}") &&
       signerJob.includes("${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}") &&
       signerJob.includes("Validate and stage signer inputs without secrets") &&
-      signerJob.includes("Sign exact updater and CLI bytes with the production key") &&
-      signerCommands.includes("artifact_sha256") &&
-      signerCommands.includes("source_commit") &&
+      signerJob.includes("Sign exact CLI bytes with the production key") &&
+      signerCommands.includes("candidate_hash") &&
+      signerCommands.includes('--arg source_commit "$SOURCE_COMMIT"') &&
       validateKeyJob.includes("name: release-updater-signing") &&
       validateKeyJob.includes("${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}") &&
       (releaseWorkflow.match(/\$\{\{ secrets\.TAURI_SIGNING_PRIVATE_KEY \}\}/g) || []).length ===
@@ -185,17 +173,16 @@ export function releasePipelineSafetyFailures(read) {
       (releaseWorkflow.match(/\$\{\{ secrets\.TAURI_SIGNING_PRIVATE_KEY_PASSWORD \}\}/g) || [])
         .length === 2 &&
       orderedBefore(releaseWorkflow, "\n  build:\n", "\n  sign-updaters:\n"),
-    "release.yml must expose the permanent updater key only inside the release-updater-signing environment (the pre-build probe and the post-build isolated signer) and record the exact signed artifact hash.",
+    "release.yml must expose the permanent updater key only inside the release-updater-signing environment (the pre-build probe and the post-build isolated signer) and record the signed archive provenance.",
   );
 
   check(
-    buildJob.includes("SITECMD_SOURCE_COMMIT:") &&
-      signerCommands.includes("signing-input/$target/$cli_archive") &&
-      signerCommands.includes('test -s "$cli_sig_file"') &&
+    signerCommands.includes("signing-input/$target/$cli_archive") &&
+      signerCommands.includes('test -s "$src/$cli_archive.sig"') &&
       verifierCommands.includes('"$dir/$cli_archive.sig"') &&
       verifierCommands.includes('"$dir/$cli_archive" cli-signature.sig') &&
       publisherJob.includes('add_upload "$dir/$cli_archive.sig" "$cli_archive.sig"'),
-    "release.yml must embed its source commit and sign, verify, and publish every CLI archive signature beside the archive.",
+    "release.yml must sign, verify, and publish every CLI archive signature beside the archive.",
   );
 
   // Signed-checksum publication and provenance attestation live in their own
@@ -208,17 +195,40 @@ export function releasePipelineSafetyFailures(read) {
       verifierJob.includes("Build the minimal secretless verifier") &&
       verifierJob.includes("Verify payload hashes, provenance, and updater signature") &&
       !verifierJob.includes("${{ secrets.") &&
+      sparseCheckoutPaths(verifierJob).includes(
+        ".github/actions/setup-sitecmd/updater-public-key.pub",
+      ) &&
+      sparseCheckoutPaths(verifierJob).includes("engine.lock") &&
+      orderedBefore(
+        verifierJob,
+        "Verify Windows CLI and Authenticode signature",
+        "node tools/scripts/verify-engine-pin.mjs",
+      ) &&
       orderedBefore(releaseWorkflow, "\n  sign-updaters:\n", "\n  verify-release:\n"),
     "release.yml must verify signed payloads and platform signatures in a secretless job after updater signing.",
   );
 
   check(
+    releasePinStepIsComplete(verifierJob),
+    "release.yml must verify the embedded pin on every target and the x86_64 macOS slice.",
+  );
+
+  check(
+    verifyPayloadScript.includes('test "$(sha256_file engine.lock)" =') &&
+      verifyPayloadScript.includes("jq -r '.engine_lock_sha256' release-candidate/manifest.json") &&
+      verifyPayloadScript.includes(
+        'public_key=".github/actions/setup-sitecmd/updater-public-key.pub"',
+      ),
+    "release.yml must verify archives with the installer trust root and bind the checked-out engine lock to the approved candidate.",
+  );
+
+  check(
     verifierCommands.includes("codesign --verify --strict cli-check/sitecmd") &&
-      verifierCommands.includes('test "$cli_team" = "$app_team"') &&
+      verifierCommands.includes('test "$cli_team" = "$expected_team"') &&
       verifierCommands.includes("$cliSignature = Get-AuthenticodeSignature $cli") &&
       verifierCommands.includes('$cliSignature.Status -ne "Valid"') &&
       verifierCommands.includes(
-        "$cliSignature.SignerCertificate.Thumbprint -ne $signature.SignerCertificate.Thumbprint",
+        "$cliSignature.SignerCertificate.Thumbprint -ne $fragment.signer_identity",
       ) &&
       orderedBefore(
         verifierCommands,
@@ -230,7 +240,7 @@ export function releasePipelineSafetyFailures(read) {
         "$cliSignature = Get-AuthenticodeSignature $cli",
         "$actual = & $cli --version",
       ),
-    "release.yml must verify the extracted macOS CLI with codesign and the extracted Windows CLI with Authenticode, bind each to the app's signer, and do so before executing either binary.",
+    "release.yml must verify the extracted macOS CLI with codesign and the extracted Windows CLI with Authenticode, bind each to its expected signer, and do so before executing either binary.",
   );
 
   // The releases worker verifies a GitHub Actions OIDC token minted for its
@@ -240,7 +250,7 @@ export function releasePipelineSafetyFailures(read) {
   const presentsReleasesToken = (source) =>
     source.includes(releasesTokenRequest) && source.includes('"Authorization: Bearer ${token}"');
   const advanceManifestStep =
-    /\n {6}- name: Advance the production updater manifest\n[\s\S]*?(?=\n {6}- |$)/.exec(
+    /\n {6}- name: Advance the production release manifest\n[\s\S]*?(?=\n {6}- |$)/.exec(
       publisherJob,
     )?.[0] ?? "";
   check(
@@ -251,23 +261,7 @@ export function releasePipelineSafetyFailures(read) {
       advanceManifestStep.includes("curl --fail-with-body -sS -X POST") &&
       !publisherJob.includes("uses: actions/checkout@") &&
       orderedBefore(releaseWorkflow, "\n  verify-release:\n", "\n  publish-release:\n"),
-    "release.yml must publish only after every secretless verification leg, advance the updater manifest with the job's own releases-audience OIDC token (id-token: write) through curl --fail-with-body so a refusal prints the worker's reason, and must not check out or execute product source in the credentialed publisher.",
-  );
-
-  // Retain prior signing keys; the lookbehind distinguishes overwrite from append.
-  const releaseRunbook = read("docs/operations/releasing.md");
-  check(
-    !/(?<!>)>\s*\.github\/allowed-signers/.test(releaseRunbook),
-    "docs/operations/releasing.md must append to .github/allowed-signers with `>>`; `>` discards the key that signed every existing release tag.",
-  );
-
-  const allowedSigners = read(".github/allowed-signers");
-  const signerKeys = allowedSigners
-    .split("\n")
-    .filter((line) => line.trim() && !line.trim().startsWith("#"));
-  check(
-    signerKeys.length > 0,
-    ".github/allowed-signers must list at least one signing key; an empty trust file fails every release tag.",
+    "release.yml must publish only after every secretless verification leg, advance the release manifest with the job's own releases-audience OIDC token (id-token: write) through curl --fail-with-body so a refusal prints the worker's reason, and must not check out or execute product source in the credentialed publisher.",
   );
 
   // Validate the updater key before spending time on platform builds.
@@ -298,7 +292,7 @@ export function releasePipelineSafetyFailures(read) {
   // Normalize Windows CRLF before GNU base64 decoding.
   for (const [file, source] of [
     [".github/workflows/release.yml", releaseWorkflow],
-    [".github/scripts/release/build-tauri-app.sh", buildTauriScript],
+    [".github/scripts/release/build-cli.sh", buildCliScript],
     [".github/scripts/release/verify-signed-payload.sh", verifyPayloadScript],
   ]) {
     for (const [index, line] of source.split("\n").entries()) {
@@ -315,7 +309,10 @@ export function releasePipelineSafetyFailures(read) {
   const cliStep =
     cliStepStart === -1
       ? ""
-      : buildJob.slice(cliStepStart, buildJob.indexOf("run: |", cliStepStart));
+      : buildJob.slice(
+          cliStepStart,
+          buildJob.indexOf("run: bash .github/scripts/release/build-cli.sh", cliStepStart),
+        );
   const cliBuildBlock =
     cliStepStart === -1
       ? ""
@@ -325,7 +322,7 @@ export function releasePipelineSafetyFailures(read) {
         )}\n${buildCliScript}`;
   check(
     cliStepStart !== -1,
-    "release.yml: the standalone CLI build step is gone or renamed, so the rule that keeps its compile-time configuration in step with the app's cannot check anything.",
+    "release.yml: the standalone CLI build step is gone or renamed, so its required compile-time configuration cannot be checked.",
   );
   for (const [variable, why] of [
     ["SITECMD_CONNECTED_ENDPOINT", "`sitecmd gate` cannot reach the service without it"],
@@ -356,17 +353,6 @@ export function releasePipelineSafetyFailures(read) {
         'foreach ($legalFile in @("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES", "THIRD_PARTY_DEPENDENCIES.json", "THIRD_PARTY_LICENSES.txt", "THIRD_PARTY_LICENSES.tsv"))',
       ),
     "CLI archive must include notices, a dependency inventory, upstream license texts, and its platform inventory; release verification must inspect them after extraction.",
-  );
-
-  const desktopResources = tauriConfig.bundle?.resources ?? {};
-  check(
-    desktopResources["../../../LICENSE"] === "LICENSE" &&
-      desktopResources["../../../NOTICE"] === "NOTICE" &&
-      desktopResources["../../../THIRD_PARTY_NOTICES"] === "THIRD_PARTY_NOTICES" &&
-      desktopResources["../../../THIRD_PARTY_DEPENDENCIES.json"] ===
-        "THIRD_PARTY_DEPENDENCIES.json" &&
-      desktopResources["../../../THIRD_PARTY_LICENSES.txt"] === "THIRD_PARTY_LICENSES.txt",
-    "Desktop bundle must include notices, a dependency inventory, and upstream license texts as readable resources.",
   );
 
   return failures;

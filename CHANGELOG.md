@@ -14,21 +14,71 @@ public repository history.
 ### Added
 
 - `sitecmd rules` lists every Code Scan rule with its producer rule ID,
-  canonical check ID, domain, and `severitySource`. Fixed rules include their
+  canonical check ID, category, and `severitySource`. Fixed rules include their
   normalized `defaultSeverity`; rules whose detector sets the grade have a
   null `defaultSeverity` and `severitySource: "per_finding"`. `--format json`
   prints a deterministic inventory with the CLI version for integrations.
-
 - Polish checks now report gradient fills clipped to text.
-
 - Polish checks now report placeholder copy, social links without a profile, and
   repeated short labels above headings.
-
 - Web Scan recognizes Stripe restricted live keys, GitHub fine-grained tokens,
   GitLab tokens, npm tokens, and PEM private-key blocks in served pages.
+- Web Scan and Code Scan detect exposed Hugging Face tokens.
+- Web Scan checks whether the site serves the source maps of its own scripts, in place of the signal that only counted source map references.
+- Web Scan grades real-visit Core Web Vitals independently when the runtime supplies a Chrome UX Report reading. The CLI does not gather field data.
+- Hosted scans grade page layout and tap target size at a phone's width when the browser supplies a phone reading.
+- Code Scan flags local Firestore and Cloud Storage rules that grant public or root-wide signed-in access, and files whose test-mode grants have all expired.
+- Code Scan flags local Realtime Database rules, including files with comments, that grant public writes, root-wide public or signed-in access, and child denials that can't revoke an unconditional ancestor grant.
+- Code Scan JSON reports can include optional `skippedScopes.ruleBlocksSkipped` and `skippedScopes.ruleSamples` fields; other formats show an incomplete analysis note for recorded skipped rules constructs.
+- The engine's evaluation response can carry a closed reason beside each verdict, such as why a security.txt check failed.
 
 ### Changed
 
+- Public-site scans require sign-in. `sitecmd scan` uses the hosted scanner
+  for public sites in your SiteCMD account. Hosted scans create `.sitecmd/`
+  if needed. `--latest` reads the last finished scan.
+- Local sites run 8 checks. Local scans still run without an account.
+- `sitecmd fix` prints SiteCMD's fix guide for hosted findings, with the steps
+  for the site owner before the details.
+- A local scan cache from an older CLI with extra rows for website summary
+  checks needs a fresh `sitecmd scan` before `sitecmd fix` or `sitecmd scan --diff`.
+- **Breaking:** `sitecmd scan --type` is removed. Use `--categories` with
+  comma-separated keys: `security`, `domain_https`, `email`, `seo`,
+  `ai_visibility`, `performance`, `accessibility`, `privacy`, `polish`,
+  `reliability`. `sitecmd fix --category` accepts one of these keys.
+- **Breaking:** Web Scan output from `sitecmd scan --json`,
+  `.sitecmd/last-scan.json`, and `issues.json` now uses the ten category keys;
+  finding categories can be `null` for unknown checks. SPF uses `email`,
+  HSTS and SSL use `domain_https`, and `config.*` findings use their assigned
+  categories. The terminal table shows the new category labels. `issues.json`
+  category rows add `key`. For local scans, issue `points` show the score gain
+  when fixes are applied in rank order. `sitecmd fix` ranks findings by severity.
+- **Breaking:** `sitecmd scan --diff` refuses `--categories`. Category-filtered
+  scans leave `.sitecmd/` artifacts untouched so the full baseline is preserved.
+  `sitecmd fix`, `sitecmd scan --diff`, and `sitecmd check --strict` refuse
+  incompatible old `last-scan.json` files. Run `sitecmd scan` to refresh them.
+  `.sitecmd/config.json` no longer has `scan_type`; `sitecmd check` always
+  runs a full scan when it refreshes the baseline.
+- **Breaking:** Code Scan terminal, Markdown, review, GitHub, SARIF, audit JSON,
+  and JSON report output now name findings by one of the ten categories in
+  place of the domain. JSON findings and SARIF rule properties carry the
+  category key in `category` and no longer carry `domain`; `sitecmd rules`
+  text and JSON also use `category` in place of `domain`. Version 2.0.0
+  shipped the old shape, so integrations must update their field names and
+  expected category values.
+- **Breaking:** Code Scan fingerprints now use `sitecmd/v3:sha256:` identities.
+  Old baselines and suppression fingerprints are refused with exit code 2.
+  Remove old fingerprint suppressions from `.sitecmd/config.json`, rerun
+  `sitecmd audit <path> --format json --output baseline.json` without the old
+  baseline to regenerate it, then recreate suppressions from the new findings'
+  fingerprints.
+- Live provider-format keys are graded Critical in tracked code and on live
+  pages, excluding placeholders and documented examples.
+- Code findings return no code lines. The connected service receives
+  ids, codes, counts, timestamps, measurements and page routes, never source
+  text or free text.
+- Inactive-account notices, the `sitecmd gate` and `sitecmd autofix` help, and the gate
+  action name the hosted service SiteCMD instead of SiteCMD Connect.
 - Gradient background checks now count only gradients that blend different hues.
 - Polish checks now read their word lists from a file that names a public source
   for every entry. The buzzword and headline checks now match a narrower set of
@@ -54,6 +104,12 @@ public repository history.
 
 ### Removed
 
+- `--cwv` and `--no-browser` are gone.
+- The desktop app and the MCP server are retired. This repository ships the CLI.
+- **Breaking:** Published Code Scan output no longer includes source text.
+  JSON findings omit `sourceExcerpt` and carry `evidence` as `null`; published
+  titles and guidance use SiteCMD rule wording.
+- The `polish.source-maps-production` signal, replaced by `security.served_source_maps`.
 - The `polish.utility-to-custom-ratio` signal, which never reported a finding.
 
 ### Fixed
@@ -64,13 +120,12 @@ public repository history.
 - The runtime end-of-life check now uses each line's official end-of-life
   date. Seven Node.js lines carried their last release date instead, and
   Python 3.10 carried October 31, 2026 instead of October 1, 2026.
+- Code Scan no longer asks `.env.example` to list `CARGO_HOME`, `CARGO_TARGET_DIR`, `RUSTUP_HOME` or `RUSTUP_TOOLCHAIN`, which configure the Rust toolchain, not the app.
 - Web Scan no longer counts disabled task-list checkboxes that are hidden from
   assistive technology as unlabeled form inputs. It also excludes syntax-highlighted
   code blocks from inline-style density.
 - Code Scan recognizes complete two-segment SendGrid keys and ignores
   single-segment fragments.
-- Code Scan no longer asks for `CARGO_HOME` or `RUSTUP_HOME` in `.env.example`;
-  the Rust toolchain supplies them.
 
 ## [2.0.0] - 2026-10-29
 

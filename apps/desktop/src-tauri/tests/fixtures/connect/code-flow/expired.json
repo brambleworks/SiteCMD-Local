@@ -1,0 +1,14 @@
+{
+  "status": 400,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": {
+    "type": "about:blank",
+    "title": "Bad Request",
+    "status": 400,
+    "detail": "The code expired, or was already used.",
+    "code": "expired_token",
+    "request_id": "REQUESTIDFIXTURE"
+  }
+}

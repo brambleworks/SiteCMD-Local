@@ -1,32 +1,25 @@
-//! Core scanning infrastructure: scanner orchestrator, git integration, project detection,
-//! sitemap discovery, localhost detection, event ingestion, cross-source issue correlation.
+//! Scan integration, project and localhost detection, and issue correlation.
 
-pub mod analysis_types;
+pub mod audit;
 pub mod code_provenance;
-pub mod code_scan;
-pub mod confidence_policy;
-pub mod correlation;
+mod database_snapshot;
 pub mod database_targets;
-pub mod desktop_heartbeat;
-pub mod detector;
+mod engine_facts;
+pub mod engine_io;
 pub mod engine_release;
-pub mod event_correlations;
-pub mod fix_brief;
+mod filesystem;
 pub mod fix_templates;
+pub(crate) mod fixes;
 pub mod git;
 pub mod localhost;
-pub mod native_alerts;
 pub mod normalized_scan;
-pub mod page_signals;
-#[cfg(test)]
-mod parity_corpus_tests;
-pub mod project;
-pub mod regression_blame;
+pub mod project_listing;
 pub(crate) mod safe_fs;
 pub mod scan_execution;
-pub mod scanner;
-pub mod session_analysis;
-pub mod severity_policy;
-pub mod sitemap;
-pub mod types_work_items;
-pub mod work_item_projection;
+mod scan_scope;
+pub mod scan_types;
+#[cfg(feature = "test-support")]
+pub mod test_support;
+
+#[cfg(any(test, feature = "test-support"))]
+mod postgres_test_support;

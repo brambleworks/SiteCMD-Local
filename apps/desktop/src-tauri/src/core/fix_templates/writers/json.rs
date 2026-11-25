@@ -3,7 +3,7 @@
 //! is a text insertion at a position a small scanner finds, using the file's
 //! own indent unit.
 
-use super::super::Unsupported;
+use super::Unsupported;
 
 fn unsupported(reason: &str) -> Unsupported {
     Unsupported {

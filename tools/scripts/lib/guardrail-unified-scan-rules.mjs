@@ -1,3 +1,5 @@
+import { rustFunctionBody as functionBody } from "./guardrail-rust-function.mjs";
+
 const LEGACY_SCAN_TABLES = [
   "scans",
   "scan_issues",
@@ -5,18 +7,6 @@ const LEGACY_SCAN_TABLES = [
   "session_issues",
   "code_scans",
   "code_scan_issues",
-];
-
-const RETIRED_SCAN_COMMANDS = [
-  "scan_url",
-  "scan_multi",
-  "run_code_scan",
-  "get_scan_history",
-  "get_code_scan_history",
-  "get_scan_detail",
-  "get_code_scan_detail",
-  "get_session_history",
-  "get_session_issues",
 ];
 
 const MIGRATION_OR_TEST_FILE =
@@ -36,12 +26,11 @@ function stripInlineRustTests(source) {
   return source;
 }
 
-function sourceFiles(listFiles) {
+function sourceFiles(listFiles, extraRoots) {
   const sourcePredicate = (file) => /\.(?:rs|sql|ts|tsx|mjs)$/.test(file);
   return [
     ...listFiles("apps/desktop/src-tauri/src", sourcePredicate),
-    ...listFiles("apps/desktop/src", sourcePredicate),
-    ...listFiles("apps/mcp-server/src", sourcePredicate),
+    ...extraRoots.flatMap((root) => listFiles(root, sourcePredicate)),
   ];
 }
 
@@ -50,12 +39,12 @@ function productionSource(read, file) {
   return file.endsWith(".rs") ? stripInlineRustTests(source) : source;
 }
 
-export function unifiedScanArchitectureFailures(read, exists, listFiles) {
+export function unifiedScanArchitectureFailures(read, exists, listFiles, extraRoots = []) {
   const failures = [];
   const check = (condition, message) => {
     if (!condition) failures.push(message);
   };
-  const files = sourceFiles(listFiles);
+  const files = sourceFiles(listFiles, extraRoots);
   const productionFiles = files.filter((file) => !MIGRATION_OR_TEST_FILE.test(file));
 
   const legacySql = new RegExp(
@@ -93,69 +82,63 @@ export function unifiedScanArchitectureFailures(read, exists, listFiles) {
     `Production consumers must not parse or pattern-match canonical Code IDs for locations: ${parserFiles.join(", ")}`,
   );
 
-  const commandFiles = [
-    "apps/desktop/src-tauri/build.rs",
-    "apps/desktop/src-tauri/src/lib.rs",
-    "apps/desktop/src/lib/commands/scan.ts",
-    "apps/desktop/src/lib/tauri-invoke.ts",
-    ...listFiles("apps/desktop/src-tauri/permissions", (file) => /\.(?:toml|json)$/.test(file)),
-  ].filter(exists);
-  const retiredCommand = new RegExp(`["'](?:${RETIRED_SCAN_COMMANDS.join("|")})["']`);
-  const retiredCommandFiles = commandFiles.filter((file) => retiredCommand.test(read(file)));
-  check(
-    retiredCommandFiles.length === 0,
-    `Retired split scan IPC commands must not return; use run_scan_execution and execution history: ${retiredCommandFiles.join(", ")}`,
-  );
-
-  // Inspect each sibling module directly so a misplaced rule cannot pass on an
-  // empty match.
-  const executionFile = "apps/desktop/src-tauri/src/commands/scan/execution.rs";
-  const verificationFile = "apps/desktop/src-tauri/src/commands/scan/verification.rs";
-  const execution = exists(executionFile) ? read(executionFile) : "";
-  const verification = exists(verificationFile) ? read(verificationFile) : "";
-  const coverageStart = verification.indexOf("required_web_verification_ids(&check_ids)");
-  const emptyCoverage = verification.indexOf("if coverage.is_empty()", coverageStart);
-  const boundedAdmission = verification.indexOf(
-    "admission_class: ScanAdmissionClass::BoundedVerification",
-    emptyCoverage,
-  );
-  check(
-    execution.includes(
-      "admission_request(&plan, fingerprint, ScanAdmissionClass::GeneralScan, now)",
-    ) &&
-      coverageStart >= 0 &&
-      emptyCoverage > coverageStart &&
-      boundedAdmission > emptyCoverage &&
-      !/match\s+(?:plan\.)?trigger[\s\S]{0,300}ScanAdmissionClass::(?:BoundedVerification|SystemExempt)/.test(
-        execution + verification,
-      ),
-    `${verificationFile} must derive quota exemption from validated bounded coverage, never from the trigger label.`,
-  );
-
   const issueStatesFile = "apps/desktop/src-tauri/src/db/issue_states.rs";
   const issueStates = exists(issueStatesFile) ? productionSource(read, issueStatesFile) : "";
   check(
-    issueStates.includes("validate_canonical_check_id(check_id)") &&
-      issueStates.includes("self.set_issue_state(") &&
-      !/resolve_code_issue_state_ids|LIKE\s+['"]code_scan\.%:%|for\s+.*location/.test(issueStates),
-    `${issueStatesFile} must validate and write one canonical lifecycle row without location fan-out.`,
+    !/resolve_code_issue_state_ids|LIKE\s+['"]code_scan\.%:%|for\s+.*location/.test(issueStates),
+    `${issueStatesFile} must reconcile canonical lifecycle rows without location fan-out.`,
   );
 
-  const issuesPageFile = "apps/desktop/src/pages/IssuesPage.tsx";
-  const issueGroupsFile = "apps/desktop/src/pages/issues/useInactiveIssueKeys.ts";
-  const issueSummaryFile = "apps/desktop/src/lib/project-issue-summary.ts";
-  const issuesPage = exists(issuesPageFile) ? read(issuesPageFile) : "";
-  const issueGroups = exists(issueGroupsFile) ? read(issueGroupsFile) : "";
-  const issueSummary = exists(issueSummaryFile) ? read(issueSummaryFile) : "";
-  check(
-    issuesPage.includes("rankIssueGroups(visibleIssueGroups)") &&
-      issueGroups.includes("getWorkItems({ projectId, envUrl: normalizedUrl })") &&
-      !issuesPage.includes("rankUnified(") &&
-      !issuesPage.includes("latestResult?.issues") &&
-      !issuesPage.includes("latestCodeResult?.issues") &&
-      !issueSummary.includes("buildActiveProjectIssueSummary"),
-    "Active Issues must rank canonical backend IssueGroup rows, never merge separate Web and Code arrays.",
-  );
+  return failures;
+}
 
+const PROJECTION = "apps/desktop/src-tauri/src/db/scan_run_projection.rs";
+const CODE_NORMALIZATION = "apps/desktop/src-tauri/src/core/normalized_scan/code.rs";
+const coverageCall =
+  /sitecmd_protocol::coverage::covers\(\s*&batch\.coverage,\s*None,\s*&candidate\.check_id,\s*exact_claim_key,?\s*\)/;
+const projectCoverage =
+  /coverage:\s*ScanCoverageManifest::declared\(\s*ScanCoverageKind::Project,\s*Vec::new\(\),/;
+
+export function scanRunProjectionFailures(read) {
+  const failures = [];
+  const projection = read(PROJECTION);
+  const resolver = functionBody(projection, "resolve_covered_absences");
+  if (!resolver) {
+    failures.push(
+      `${PROJECTION} must resolve absences in one place. Absence is the only evidence a fix leaves, and the rule for reading it belongs where it can be tested.`,
+    );
+  }
+  if (resolver && !coverageCall.test(resolver)) {
+    failures.push(
+      `${PROJECTION} must ask the coverage manifest whether the run proved the pair. A second implementation of that question is how the desktop and the connected service start disagreeing about what was fixed.`,
+    );
+  }
+  if (resolver && !resolver.includes("batch.coverage.successful")) {
+    failures.push(`${PROJECTION} must refuse to resolve anything from an unsuccessful run.`);
+  }
+  if (resolver && !resolver.includes("load_open_candidates(")) {
+    failures.push(
+      `${PROJECTION} must read its candidates through load_open_candidates, which scopes the query to the run's open code findings.`,
+    );
+  }
+  for (const dead of ["limit_pages", "filter_kind", "producer_ids"]) {
+    if (projection.includes(dead)) {
+      failures.push(
+        `${PROJECTION} still switches on ${dead}. Per-kind filtering was the flat model: a page claim that resolves every check on the page cannot tell a check that passed from one that never ran.`,
+      );
+    }
+  }
+  const loader = functionBody(projection, "load_open_candidates");
+  if (!loader || /\b(?:page_url|page_urls|route_bound)\b/.test(loader)) {
+    failures.push(
+      `${PROJECTION} must load code candidates without a route filter. A code run covers the project tree.`,
+    );
+  }
+  const normalizer = functionBody(read(CODE_NORMALIZATION), "normalize_code_scan_with_inventory");
+  if (!normalizer || !projectCoverage.test(normalizer)) {
+    failures.push(
+      `${CODE_NORMALIZATION} must declare project-wide coverage without page URLs so the projection can resolve checks across the project.`,
+    );
+  }
   return failures;
 }

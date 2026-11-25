@@ -14,11 +14,6 @@ pub(crate) fn normalize_url(url: &str) -> (String, String) {
     (normalized, with_slash)
 }
 
-/// Lowercase an observed URL's origin without changing route identity.
-pub(crate) fn normalize_occurrence_url(url: &str) -> String {
-    lowercase_origin(url)
-}
-
 /// Lowercase a URL's scheme and host while preserving path, query, and fragment.
 /// Non-URL inputs are unchanged; behavior must match `normalizeAppUrlForKey`.
 fn lowercase_origin(url: &str) -> String {
@@ -51,25 +46,6 @@ pub(crate) fn lifecycle_env_url(environment_scope_key: &str) -> String {
     } else {
         normalize_url(environment_scope_key).0
     }
-}
-
-/// Mint an opaque local identifier from `prefix` and 128 random bits.
-pub(crate) fn mint_local_id(prefix: &str) -> Result<String, super::DbError> {
-    let mut bytes = [0_u8; 16];
-    getrandom::fill(&mut bytes)
-        .map_err(|error| super::DbError::Other(format!("OS RNG unavailable: {error}")))?;
-    Ok(format!("{prefix}{}", hex::encode(bytes)))
-}
-
-/// SQL predicate matching `sites si` to the oldest project environment owning
-/// either normalized URL form. Parameter numbers refer to the enclosing query.
-pub(crate) fn site_project_scope_predicate(url_param: u8, slash_param: u8) -> String {
-    format!(
-        "si.project_id IS (SELECT project_id FROM environments \
-         WHERE url = ?{url} OR url = ?{slash} ORDER BY id ASC LIMIT 1)",
-        url = url_param,
-        slash = slash_param
-    )
 }
 
 /// Parse an enum-like TEXT column whose corruption must fail the whole read

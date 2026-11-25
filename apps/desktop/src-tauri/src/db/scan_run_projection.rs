@@ -2,28 +2,15 @@
 
 use std::collections::BTreeSet;
 
-use rusqlite::types::ToSql;
 use rusqlite::{params, Transaction};
+use sitecmd_protocol::coverage::exact_claim_key;
 
-use super::helpers::{lifecycle_env_url, normalize_occurrence_url};
+use super::helpers::lifecycle_env_url;
 use super::issue_states::reconcile_reobserved_lifecycle;
 use super::DbError;
-use crate::checks::CheckStatus;
 use crate::core::normalized_scan::{
-    NormalizedFinding, NormalizedRunBatch, ScanCoverageManifest, ScanEvidenceSource, ScanRunKind,
+    actionable_findings, NormalizedFinding, NormalizedRunBatch, ScanEvidenceSource,
 };
-
-fn projection_source(batch: &NormalizedRunBatch) -> &'static str {
-    match (batch.source, batch.run_kind) {
-        (ScanEvidenceSource::WebScan, ScanRunKind::MultiParent) => "site_scan",
-        (ScanEvidenceSource::WebScan, _) => "web_scan",
-        (ScanEvidenceSource::CodeScan, _) => "code_scan",
-    }
-}
-
-fn actionable(finding: &NormalizedFinding) -> bool {
-    matches!(finding.verdict, CheckStatus::Fail | CheckStatus::Warn)
-}
 
 pub(crate) fn reconcile_scan_projection(
     tx: &Transaction<'_>,
@@ -31,20 +18,15 @@ pub(crate) fn reconcile_scan_projection(
     batch: &NormalizedRunBatch,
 ) -> Result<(), DbError> {
     let Some(project_id) = batch.project_id else {
-        // Ad-hoc Web evidence has immutable history but no project-scoped
-        // lifecycle projection until it is attached to a project.
         return Ok(());
     };
     let environment_url = lifecycle_env_url(&batch.environment_scope_key);
-    let source = projection_source(batch);
+    let source = ScanEvidenceSource::CodeScan.as_str();
     let observed_at = batch.completed_at;
-    let observed: Vec<&NormalizedFinding> =
-        batch.findings.iter().filter(|f| actionable(f)).collect();
+    let observed: Vec<&NormalizedFinding> = actionable_findings(&batch.findings).collect();
 
     for finding in &observed {
         let detail_json = finding.detail_json.as_ref().or(finding.raw_data.as_ref());
-        let producer_category = (batch.source == ScanEvidenceSource::WebScan)
-            .then_some(finding.producer_category.as_str());
         tx.execute(
             "INSERT INTO work_items
                 (project_id, env_url, source, signal_id, check_id, category,
@@ -107,7 +89,7 @@ pub(crate) fn reconcile_scan_projection(
                 finding.confidence_reason,
                 finding.producer_check_id,
                 finding.producer_fix_prompt,
-                producer_category,
+                Option::<&str>::None,
             ],
         )?;
     }
@@ -145,8 +127,7 @@ struct ResolveScope<'a> {
     environment_url: &'a str,
 }
 
-/// Resolve open rows absent from a run only when engine coverage proves their
-/// `(route, check)` pairs were observed.
+/// Resolve absent open rows only for checks the code run covered.
 fn resolve_covered_absences(
     tx: &Transaction<'_>,
     scope: ResolveScope<'_>,
@@ -156,18 +137,21 @@ fn resolve_covered_absences(
     if !batch.coverage.successful {
         return Ok(());
     }
-    let coverage = as_stored_keys(&batch.coverage);
     let seen: BTreeSet<&str> = observed
         .iter()
         .map(|finding| finding.occurrence_id.as_str())
         .collect();
 
-    let resolved: Vec<i64> = load_open_candidates(tx, &scope, &coverage)?
+    let resolved: Vec<i64> = load_open_candidates(tx, &scope)?
         .into_iter()
         .filter(|candidate| {
-            let route = candidate.page_url.as_deref().map(normalize_occurrence_url);
             !seen.contains(candidate.signal_id.as_str())
-                && coverage.covers(route.as_deref(), &candidate.check_id)
+                && sitecmd_protocol::coverage::covers(
+                    &batch.coverage,
+                    None,
+                    &candidate.check_id,
+                    exact_claim_key,
+                )
         })
         .map(|candidate| candidate.id)
         .collect();
@@ -188,78 +172,31 @@ struct OpenCandidate {
     id: i64,
     signal_id: String,
     check_id: String,
-    page_url: Option<String>,
 }
 
-/// Load the open rows whose `(route, check)` pairs the run could speak for.
-///
-/// A route-scoped claim cannot cover a route it never observed, so the claimed
-/// routes are bound into the query and one finished page never decodes the
-/// whole site's open findings. The bound is deliberately wider than the
-/// answer: it keeps every routeless row, and it compares routes without ASCII
-/// case because `normalize_occurrence_url` lowercases only the origin. Every
-/// row that survives it is still put to `covers`, which alone decides the
-/// pair.
+/// Load open rows in the code run's lifecycle scope.
 fn load_open_candidates(
     tx: &Transaction<'_>,
     scope: &ResolveScope<'_>,
-    coverage: &ScanCoverageManifest,
 ) -> Result<Vec<OpenCandidate>, DbError> {
-    let mut sql = String::from(
-        "SELECT id, signal_id, check_id, page_url FROM work_items
+    let mut statement = tx.prepare(
+        "SELECT id, signal_id, check_id FROM work_items
          WHERE source = ?1 AND project_id = ?2 AND env_url = ?3
            AND resolved_at IS NULL",
-    );
-    let mut bound: Vec<Box<dyn ToSql>> = vec![
-        Box::new(scope.source.to_string()),
-        Box::new(scope.project_id),
-        Box::new(scope.environment_url.to_string()),
-    ];
-    if let Some(routes) = coverage.route_bound() {
-        let first = bound.len() + 1;
-        let placeholders = (0..routes.len())
-            .map(|index| format!("?{}", first + index))
-            .collect::<Vec<_>>()
-            .join(",");
-        sql.push_str(&format!(
-            " AND (page_url IS NULL OR lower(page_url) IN ({placeholders}))"
-        ));
-        bound.extend(
-            routes
-                .iter()
-                .map(|route| Box::new(route.to_ascii_lowercase()) as Box<dyn ToSql>),
-        );
-    }
-
-    let mut statement = tx.prepare(&sql)?;
-    let values: Vec<&dyn ToSql> = bound.iter().map(|value| value.as_ref()).collect();
+    )?;
     let candidates = statement
-        .query_map(values.as_slice(), |row| {
-            Ok(OpenCandidate {
-                id: row.get(0)?,
-                signal_id: row.get(1)?,
-                check_id: row.get(2)?,
-                page_url: row.get(3)?,
-            })
-        })?
+        .query_map(
+            params![scope.source, scope.project_id, scope.environment_url],
+            |row| {
+                Ok(OpenCandidate {
+                    id: row.get(0)?,
+                    signal_id: row.get(1)?,
+                    check_id: row.get(2)?,
+                })
+            },
+        )?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(candidates)
-}
-
-/// The claim in DB key form. Both sides of the route comparison go through
-/// one normalizer, so a mixed-case host cannot make a covered page look
-/// uncovered and leave a fixed issue open forever.
-fn as_stored_keys(coverage: &ScanCoverageManifest) -> ScanCoverageManifest {
-    let mut stored = coverage.clone();
-    stored.page_urls = coverage
-        .page_urls
-        .iter()
-        .map(|url| normalize_occurrence_url(url))
-        .collect();
-    for exception in &mut stored.exceptions {
-        exception.route = exception.route.as_deref().map(normalize_occurrence_url);
-    }
-    stored
 }
 
 #[cfg(test)]

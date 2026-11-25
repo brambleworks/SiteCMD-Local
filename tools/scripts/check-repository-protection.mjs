@@ -8,8 +8,10 @@ import { fileURLToPath } from "node:url";
 import {
   liveRepositoryProtectionFailures,
   ownedRepositoryReferences,
+  readLiveRepositoryProtection,
   repositoryNameFailures,
   requiredCheckWorkflowFailures,
+  selectRepositoryProtectionContract,
 } from "./lib/repository-protection-rules.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -26,7 +28,7 @@ const listFiles = (dir, predicate) =>
     .readdirSync(path.join(ROOT, dir))
     .map((entry) => `${dir}/${entry}`)
     .filter(predicate);
-const contract = JSON.parse(read(".github/repository-protection.json"));
+const config = JSON.parse(read(".github/repository-protection.json"));
 
 const git = (...args) => {
   try {
@@ -42,13 +44,23 @@ const git = (...args) => {
   }
 };
 
-/** The repository this checkout belongs to: what Actions says it is, or what
- *  the origin remote names locally. */
-const checkoutRepository = () => {
-  if (process.env.GITHUB_REPOSITORY) return process.env.GITHUB_REPOSITORY;
-  const remote = git("remote", "get-url", "origin");
-  return /github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/.exec(remote)?.[1] ?? null;
-};
+const githubSlug = (url) => /github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/.exec(url)?.[1];
+const origin = githubSlug(git("remote", "get-url", "origin"));
+const checkout = process.env.GITHUB_REPOSITORY || origin;
+const contract = selectRepositoryProtectionContract(config, checkout);
+
+function publishedWorkflows(repository) {
+  const remote = git("remote")
+    .split("\n")
+    .find((name) => name && githubSlug(git("remote", "get-url", name)) === repository);
+  const branch = contract.branchRuleset.refNameInclude[0].replace(/^refs\/heads\//, "");
+  const ref = remote && `refs/remotes/${remote}/${branch}`;
+  return {
+    read: (file) => git("show", `${ref}:${file}`),
+    listFiles: (dir, predicate) =>
+      ref ? git("ls-tree", "-r", "--name-only", ref, "--", dir).split("\n").filter(predicate) : [],
+  };
+}
 
 const gh = (endpoint) =>
   JSON.parse(
@@ -59,9 +71,14 @@ const gh = (endpoint) =>
     }),
   );
 
-const failures = requiredCheckWorkflowFailures(contract, read, listFiles);
+// A cross-repository check uses that repository's tracked published workflows.
+const workflows =
+  Object.hasOwn(config.repositories, origin) && contract.repository !== origin
+    ? publishedWorkflows(contract.repository)
+    : { read, listFiles };
+const failures = requiredCheckWorkflowFailures(contract, workflows.read, workflows.listFiles);
 
-const owner = contract.repository.split("/")[0];
+const owner = config.publicRepository.split("/")[0];
 const referencing = git(
   "grep",
   "-lI",
@@ -75,8 +92,8 @@ const referencing = git(
   .split("\n")
   .filter(Boolean);
 failures.push(
-  ...repositoryNameFailures(contract, {
-    checkoutRepository: checkoutRepository(),
+  ...repositoryNameFailures(config, {
+    checkoutRepository: checkout,
     labelsRepository: JSON.parse(read(".github/repository-labels.json")).repository,
     references: ownedRepositoryReferences(
       owner,
@@ -86,18 +103,8 @@ failures.push(
 );
 if (live && failures.length === 0) {
   try {
-    const repository = gh(`repos/${contract.repository}`);
-    const rulesets = gh(`repos/${contract.repository}/rulesets`).map((ruleset) =>
-      gh(`repos/${contract.repository}/rulesets/${ruleset.id}`),
-    );
     failures.push(
-      ...liveRepositoryProtectionFailures(contract, {
-        privateVulnerabilityReporting: gh(
-          `repos/${contract.repository}/private-vulnerability-reporting`,
-        ).enabled,
-        securityAndAnalysis: repository.security_and_analysis,
-        rulesets,
-      }),
+      ...liveRepositoryProtectionFailures(contract, readLiveRepositoryProtection(contract, gh)),
     );
   } catch (error) {
     failures.push(`Could not read live GitHub protection settings: ${error.message}`);

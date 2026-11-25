@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use crate::core::scanner::ScanResult;
+use crate::core::scan_types::ScanResult;
 
-pub(super) fn write_file(dir: &Path, name: &str, contents: &str) -> Result<(), String> {
+pub(in crate::cli) fn write_file(dir: &Path, name: &str, contents: &str) -> Result<(), String> {
     let path = dir.join(name);
     std::fs::write(&path, contents)
         .map_err(|e| format!("failed to write {}: {}", path.display(), e))

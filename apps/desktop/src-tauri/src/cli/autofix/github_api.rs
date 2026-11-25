@@ -1,8 +1,12 @@
-//! The three GitHub REST calls the publish job makes with the per-operation
-//! installation token Connect minted for it: open a pull request, open an
-//! issue, and hand the token back when the operation is done.
+//! Bounded GitHub REST operations using Connect's per-operation tokens.
 
+use std::path::Path;
+
+use super::exit_check::CheckedBrief;
+use super::repo;
+use crate::core::git::HttpsTransport;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use zeroize::Zeroizing;
 
 const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 /// How much of GitHub's own explanation a refusal carries back.
@@ -59,7 +63,7 @@ impl GitHubApi {
         path: &str,
         token: &str,
         body: Option<String>,
-    ) -> Result<(reqwest::StatusCode, Vec<u8>), String> {
+    ) -> Result<(reqwest::StatusCode, Zeroizing<Vec<u8>>), String> {
         let url = self
             .base
             .join(path)
@@ -77,16 +81,10 @@ impl GitHubApi {
         crate::network_policy::validate_url(url.as_str(), policy)
             .await
             .map_err(|_| "GitHub endpoint refused by network policy".to_string())?;
-        let mut authorization = HeaderValue::from_str(&format!("Bearer {token}"))
+        let bearer = Zeroizing::new(format!("Bearer {token}"));
+        let mut authorization = HeaderValue::from_str(&bearer)
             .map_err(|_| "installation token is not a valid header value".to_string())?;
         authorization.set_sensitive(true);
-        #[cfg(test)]
-        let client = if crate::network_policy::LocalOrigin::classify(&url).is_strict_loopback() {
-            crate::http_client::localhost_client()
-        } else {
-            crate::http_client::credentialed_service_client()
-        };
-        #[cfg(not(test))]
         let client = crate::http_client::credentialed_service_client();
         let mut request = client
             .request(method, url)
@@ -102,25 +100,42 @@ impl GitHubApi {
             .await
             .map_err(|error| crate::http_client::fetch_failure("api.github.com", &error))?;
         let status = response.status();
-        let bytes = crate::http_client::read_body_limited(
-            response,
-            MAX_RESPONSE_BYTES,
-            crate::constants::API_TIMEOUT_SHORT,
-        )
-        .await
-        .map_err(|_| "GitHub response could not be read".to_string())?;
+        let bytes = Zeroizing::new(
+            crate::http_client::read_body_limited(
+                response,
+                MAX_RESPONSE_BYTES,
+                crate::constants::API_TIMEOUT_SHORT,
+            )
+            .await
+            .map_err(|_| "GitHub response could not be read".to_string())?,
+        );
         Ok((status, bytes))
     }
 
-    pub async fn create_pull_request(
+    pub(super) fn push_branch(
+        &self,
+        root: &Path,
+        token: &str,
+        repository: &str,
+        branch: &str,
+    ) -> Result<(), String> {
+        let transport = HttpsTransport::for_token(token);
+        let remote = format!("https://github.com/{repository}.git");
+        if repo::is_shallow(root) {
+            repo::unshallow(root, &remote, &transport)?;
+        }
+        repo::push_branch(root, &remote, branch, &transport)
+    }
+
+    pub(super) async fn create_pull_request(
         &self,
         token: &str,
         repository: &str,
         head: &str,
         base: &str,
-        title: &str,
-        body: &str,
+        brief: &CheckedBrief,
     ) -> Result<CreatedPullRequest, String> {
+        let sitecmd_protocol::engine_abi::Brief { title, body } = brief.as_brief();
         let payload =
             serde_json::json!({ "base": base, "body": body, "head": head, "title": title })
                 .to_string();
@@ -151,13 +166,13 @@ impl GitHubApi {
         Ok(CreatedPullRequest { head_sha, number })
     }
 
-    pub async fn create_issue(
+    pub(super) async fn create_issue(
         &self,
         token: &str,
         repository: &str,
-        title: &str,
-        body: &str,
+        brief: &CheckedBrief,
     ) -> Result<u64, String> {
+        let sitecmd_protocol::engine_abi::Brief { title, body } = brief.as_brief();
         let payload = serde_json::json!({ "body": body, "title": title }).to_string();
         let (status, bytes) = self
             .send(
@@ -178,6 +193,74 @@ impl GitHubApi {
         parsed["number"]
             .as_u64()
             .ok_or_else(|| "GitHub issue response has no number".to_string())
+    }
+
+    /// GitHub's public sealing key and the identifier each secret PUT must name.
+    pub async fn repository_public_key(
+        &self,
+        token: &str,
+        repository: &str,
+    ) -> Result<(String, String), String> {
+        crate::cli::connect_repo::repository_name(repository).ok_or("invalid GitHub repository")?;
+        let (status, bytes) = self
+            .send(
+                reqwest::Method::GET,
+                &format!("repos/{repository}/actions/secrets/public-key"),
+                token,
+                None,
+            )
+            .await?;
+        if status != reqwest::StatusCode::OK {
+            return Err("GitHub refused the repository public key".into());
+        }
+        #[derive(serde::Deserialize)]
+        struct Key {
+            key_id: String,
+            key: String,
+        }
+        let key: Key = serde_json::from_slice(&bytes)
+            .map_err(|_| "GitHub returned an invalid repository public key")?;
+        if key.key_id.is_empty() || key.key.is_empty() {
+            return Err("GitHub returned an invalid repository public key".into());
+        }
+        Ok((key.key_id, key.key))
+    }
+
+    /// Store only a sealed value; GitHub never receives the plaintext here.
+    pub async fn put_repository_secret(
+        &self,
+        token: &str,
+        repository: &str,
+        name: &str,
+        encrypted_value: &str,
+        key_id: &str,
+    ) -> Result<(), String> {
+        crate::cli::connect_repo::repository_name(repository).ok_or("invalid GitHub repository")?;
+        if name.is_empty()
+            || !name
+                .bytes()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+        {
+            return Err("invalid GitHub secret name".into());
+        }
+        let body =
+            serde_json::json!({ "encrypted_value": encrypted_value, "key_id": key_id }).to_string();
+        let (status, _) = self
+            .send(
+                reqwest::Method::PUT,
+                &format!("repos/{repository}/actions/secrets/{name}"),
+                token,
+                Some(body),
+            )
+            .await?;
+        if matches!(
+            status,
+            reqwest::StatusCode::CREATED | reqwest::StatusCode::NO_CONTENT
+        ) {
+            Ok(())
+        } else {
+            Err("GitHub refused the repository secret".into())
+        }
     }
 
     /// The holder hands the token back the moment it is done with it. GitHub's
@@ -204,6 +287,8 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::GitHubApi;
+    use crate::cli::autofix::exit_check::{CheckedBrief, HandedLines};
+    use sitecmd_protocol::engine_abi::Brief;
 
     #[tokio::test]
     async fn creates_a_pull_request_with_the_token_and_reads_its_number() {
@@ -234,8 +319,14 @@ mod tests {
                 "example-org/example-site",
                 "sitecmd/x-1",
                 "main",
-                "Add header",
-                "body",
+                &CheckedBrief::issue(
+                    Brief {
+                        title: "Add header".into(),
+                        body: "body".into(),
+                    },
+                    &HandedLines::default(),
+                )
+                .unwrap(),
             )
             .await
             .unwrap();

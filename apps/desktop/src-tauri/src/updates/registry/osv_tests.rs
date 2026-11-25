@@ -42,47 +42,36 @@ async fn spawn_osv_stub(status_line: &'static str, body: &'static str) -> String
 }
 
 #[tokio::test]
-async fn batch_query_failure_marks_the_sweep_partial() {
+async fn failed_batch_returns_no_vulnerabilities() {
     let base = spawn_osv_stub("HTTP/1.1 500 Internal Server Error", "").await;
 
     let scan = check_vulnerabilities_at(&[npm_package("left-pad", "1.3.0")], &base).await;
 
     assert!(scan.vulns.is_empty());
-    assert!(
-        scan.partial,
-        "a failed OSV batch must mark the sweep partial so vulnerability items survive"
-    );
 }
 
 #[tokio::test]
-async fn successful_empty_batch_is_an_authoritative_sweep() {
-    // Happy-path guard: a reachable OSV that reports no vulnerabilities
-    // is a complete observation, so normal diff-resolution keeps working.
+async fn successful_empty_batch_returns_no_vulnerabilities() {
     let base = spawn_osv_stub("HTTP/1.1 200 OK", r#"{"results":[{}]}"#).await;
 
     let scan = check_vulnerabilities_at(&[npm_package("left-pad", "1.3.0")], &base).await;
 
     assert!(scan.vulns.is_empty());
-    assert!(!scan.partial);
 }
 
 #[tokio::test]
-async fn incomplete_batch_response_marks_the_sweep_partial() {
+async fn incomplete_batch_returns_no_vulnerabilities() {
     let base = spawn_osv_stub("HTTP/1.1 200 OK", r#"{"results":[]}"#).await;
 
     let scan = check_vulnerabilities_at(&[npm_package("left-pad", "1.3.0")], &base).await;
 
     assert!(scan.vulns.is_empty());
-    assert!(scan.partial);
 }
 
 #[tokio::test]
-async fn empty_queryable_set_is_an_authoritative_empty_sweep() {
-    // Nothing to ask OSV about (no packages / unsupported ecosystems):
-    // no query ran, nothing failed, the sweep stays complete.
+async fn empty_queryable_set_returns_no_vulnerabilities() {
     let scan = check_vulnerabilities(&[]).await;
     assert!(scan.vulns.is_empty());
-    assert!(!scan.partial);
 }
 
 #[test]

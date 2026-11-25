@@ -1,33 +1,29 @@
 export function codeScanSecurityFailures(read) {
   const failures = [];
-  const issueUtils = read("apps/desktop/src-tauri/src/core/code_scan/issue_utils.rs");
+  const issueTypes = read("apps/desktop/src-tauri/crates/protocol/src/code_scan.rs");
   const databaseTargets = read("apps/desktop/src-tauri/src/core/database_targets.rs");
-  const sqliteInspection = read(
-    "apps/desktop/src-tauri/src/core/code_scan/database_analysis/live_inspection/sqlite.rs",
-  );
-  // The security contract spans production code and its sibling test module.
-  const filesystem =
-    read("apps/desktop/src-tauri/src/core/code_scan/filesystem.rs") +
-    read("apps/desktop/src-tauri/src/core/code_scan/filesystem_tests.rs");
+  const databaseDiscovery = read("apps/desktop/src-tauri/src/core/database_targets/discovery.rs");
+  const scopeTests = read("apps/desktop/src-tauri/src/core/project_listing_tests.rs");
+  const protocol = read("apps/desktop/src-tauri/crates/protocol/src/engine_abi/mod.rs");
+  const sessionHost = read("apps/desktop/src-tauri/src/core/audit/session_host.rs");
+  const sessionTests = read("apps/desktop/src-tauri/src/core/audit/session_host/tests.rs");
+  const listing = read("apps/desktop/src-tauri/src/core/project_listing.rs");
   const networkPolicy =
     read("apps/desktop/src-tauri/src/network_policy.rs") +
     read("apps/desktop/src-tauri/src/network_policy_tests.rs");
   const dnsCache = read("apps/desktop/src-tauri/src/dns_cache.rs");
   const constants = read("apps/desktop/src-tauri/src/constants.rs");
-
-  if (!(
-    issueUtils.includes("redact_sensitive_excerpt_line") &&
-    issueUtils.includes("redact_sensitive_excerpt_line(line.trim_end())") &&
-    issueUtils.includes("security_regression_redacts_secret_like_values_from_source_excerpts")
-  )) {
-    failures.push(
-      "Code Scan source excerpts must redact secret-like values before persistence, export, dossier rendering, or AI prompts.",
-    );
+  if (
+    /\bsource_excerpt\b|\bsourceExcerpt\b|\bexcerpt_for_(?:config_)?line\b|\bexcerpt\s*:/.test(
+      issueTypes,
+    )
+  ) {
+    failures.push("Code Scan outputs must omit source excerpts and code lines.");
   }
   if (!(
     databaseTargets.includes("bound_local_sqlite_path") &&
     databaseTargets.includes("canonicalize_local_sqlite_path") &&
-    sqliteInspection.includes("canonicalize_local_sqlite_path(&path") &&
+    databaseDiscovery.includes("canonicalize_local_sqlite_path(&path") &&
     databaseTargets.includes("security_regression_rejects_absolute_sqlite_paths_outside_project") &&
     databaseTargets.includes("security_regression_rejects_sqlite_symlinks_that_escape_project")
   )) {
@@ -36,12 +32,15 @@ export function codeScanSecurityFailures(read) {
     );
   }
   if (!(
-    filesystem.includes("DEFAULT_COLLECTION_LIMITS") &&
-    filesystem.includes("max_files: 5_000") &&
-    filesystem.includes("max_total_bytes: crate::constants::CODE_SCAN_MAX_TEXT_BYTES") &&
+    protocol.includes("pub const AUDIT_MAX_FILES: usize = 5_000;") &&
+    protocol.includes("pub const AUDIT_MAX_FILE_BYTES: u64 = 1_000_000;") &&
+    sessionHost.includes("ReadBudget::new(CODE_SCAN_MAX_TEXT_BYTES, AUDIT_MAX_FILE_BYTES)") &&
+    listing.includes("list_project_with_limits(root, MAX_PROJECT_FILES, MAX_PROJECT_DEPTH)") &&
+    listing.includes("if depth > self.max_depth") &&
+    listing.includes("if self.files.len() >= self.max_files") &&
     constants.includes("pub const CODE_SCAN_MAX_TEXT_BYTES: u64 = 64_000_000;") &&
-    filesystem.includes("collect_project_inventory") &&
-    filesystem.includes("security_regression_source_file_collection_enforces_file_count_budget")
+    scopeTests.includes("fn project_listing_rejects_a_second_file_over_its_budget()") &&
+    sessionTests.includes("fn host_text_budget_is_shared_across_rounds()")
   )) {
     failures.push(
       "Code Scan filesystem collection must keep file-count, total-byte, and depth budgets with regression tests.",
@@ -70,6 +69,5 @@ export function codeScanSecurityFailures(read) {
       "HTTP DNS resolution must re-check cached and fresh answers against the shared scan URL policy and keep a bounded TTL cache.",
     );
   }
-
   return failures;
 }

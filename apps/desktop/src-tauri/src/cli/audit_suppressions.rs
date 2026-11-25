@@ -1,9 +1,14 @@
-use crate::checks::Severity;
-use crate::core::code_scan::{CodeIssue, CodeScanReport};
-use chrono::NaiveDate;
+use sitecmd_protocol::time::{CalendarDate, UtcTimestamp};
+
+use crate::core::audit::{
+    escape_terminal_text,
+    fingerprints::{fingerprint, ordinals, PREFIX},
+    CodeIssue, CodeScanReport,
+};
+use crate::core::scan_types::Severity;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::path::{Component, Path};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -25,6 +30,8 @@ pub struct CodeScanSuppression {
     #[serde(rename = "match")]
     pub matcher: CodeScanSuppressionMatch,
     pub reason: String,
+    #[serde(default = "default_count")]
+    pub count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires: Option<String>,
 }
@@ -57,6 +64,7 @@ pub struct SuppressionStatus {
     pub expires: Option<String>,
     pub state: SuppressionState,
     pub matched_findings: usize,
+    pub count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -71,14 +79,10 @@ pub struct IgnoredFinding {
 #[derive(Debug)]
 pub struct SuppressedAudit {
     pub report: CodeScanReport,
+    pub fingerprints: Vec<String>,
+    pub(super) retained_indices: Vec<usize>,
     pub ignored_findings: Vec<IgnoredFinding>,
     pub suppressions: Vec<SuppressionStatus>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ActiveSuppression {
-    pub reason: String,
-    pub expires: Option<String>,
 }
 
 impl SuppressedAudit {
@@ -95,22 +99,49 @@ struct PreparedSuppression {
     path_matcher: Option<Gitignore>,
     expired: bool,
     matched_findings: usize,
+    groups: HashMap<(String, String), usize>,
+}
+
+pub fn apply_project_suppressions_at(
+    project_root: &Path,
+    report: CodeScanReport,
+    now_ms: i64,
+) -> Result<SuppressedAudit, String> {
+    let now = UtcTimestamp::from_timestamp_millis(now_ms)
+        .ok_or_else(|| "Code Scan timestamp is out of range".to_string())?;
+    apply_project_suppressions(project_root, report, now.date())
 }
 
 pub fn apply_project_suppressions(
     project_root: &Path,
     mut report: CodeScanReport,
-    today: NaiveDate,
+    today: CalendarDate,
 ) -> Result<SuppressedAudit, String> {
     let mut prepared = prepare_project_suppressions(project_root, today)?;
 
+    let positions = ordinals(&report.issues);
+    let mut fingerprints = Vec::new();
     let mut active_issues = Vec::with_capacity(report.issues.len());
+    let mut retained_indices = Vec::with_capacity(report.issues.len());
     let mut ignored_findings = Vec::new();
-    for issue in report.issues.drain(..) {
-        let fingerprint = issue_fingerprint(&issue);
+    for (issue_index, (issue, ordinal)) in report.issues.drain(..).zip(positions).enumerate() {
+        let fingerprint = fingerprint(&issue.check_id, &issue.relative_path, ordinal);
         let mut first_active_match = None;
         for (index, suppression) in prepared.iter_mut().enumerate() {
             if suppression_matches(suppression, project_root, &issue, &fingerprint) {
+                let count = suppression
+                    .groups
+                    .entry((
+                        issue.check_id.clone(),
+                        issue.relative_path.replace('\\', "/"),
+                    ))
+                    .or_default();
+                *count += 1;
+                if suppression.config.matcher.fingerprint.is_none()
+                    && ordinal > suppression.config.count
+                {
+                    continue;
+                }
                 suppression.matched_findings += 1;
                 if !suppression.expired && first_active_match.is_none() {
                     first_active_match = Some(index);
@@ -128,7 +159,9 @@ pub fn apply_project_suppressions(
                 suppression_index: index,
             });
         } else {
+            fingerprints.push(fingerprint);
             active_issues.push(issue);
+            retained_indices.push(issue_index);
         }
     }
 
@@ -139,10 +172,16 @@ pub fn apply_project_suppressions(
         .map(|entry| SuppressionStatus {
             matcher: entry.config.matcher,
             reason: entry.config.reason,
+            count: entry.config.count,
             expires: entry.config.expires,
             state: if entry.expired {
                 SuppressionState::Expired
-            } else if entry.matched_findings == 0 {
+            } else if entry.matched_findings == 0
+                || entry
+                    .groups
+                    .values()
+                    .any(|&count| count < entry.config.count)
+            {
                 SuppressionState::Stale
             } else {
                 SuppressionState::Active
@@ -153,40 +192,16 @@ pub fn apply_project_suppressions(
 
     Ok(SuppressedAudit {
         report,
+        fingerprints,
+        retained_indices,
         ignored_findings,
         suppressions,
     })
 }
 
-pub fn active_project_suppression(
-    project_root: &Path,
-    check_id: &str,
-    relative_path: &str,
-    fingerprint: Option<&str>,
-    today: NaiveDate,
-) -> Result<Option<ActiveSuppression>, String> {
-    let prepared = prepare_project_suppressions(project_root, today)?;
-    Ok(prepared
-        .into_iter()
-        .find(|suppression| {
-            !suppression.expired
-                && suppression_matches_target(
-                    suppression,
-                    project_root,
-                    check_id,
-                    relative_path,
-                    fingerprint,
-                )
-        })
-        .map(|suppression| ActiveSuppression {
-            reason: suppression.config.reason,
-            expires: suppression.config.expires,
-        }))
-}
-
 fn prepare_project_suppressions(
     project_root: &Path,
-    today: NaiveDate,
+    today: CalendarDate,
 ) -> Result<Vec<PreparedSuppression>, String> {
     if !project_root.join(".sitecmd/config.json").is_file() {
         return Ok(Vec::new());
@@ -200,32 +215,28 @@ fn prepare_project_suppressions(
         .collect()
 }
 
+#[cfg(any(test, feature = "test-support"))]
 pub fn issue_fingerprint(issue: &CodeIssue) -> String {
-    let relative_path = issue.relative_path.replace('\\', "/");
-    let occurrence = issue
-        .source_excerpt
-        .as_deref()
-        .or(issue.evidence.as_deref())
-        .unwrap_or(&issue.id)
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let material = format!(
-        "sitecmd-code-finding-v1\0{}\0{}\0{}",
-        issue.check_id, relative_path, occurrence
-    );
-    format!(
-        "sha256:{}",
-        hex::encode(Sha256::digest(material.as_bytes()))
-    )
+    fingerprint(&issue.check_id, &issue.relative_path, 1)
+}
+
+fn default_count() -> usize {
+    1
 }
 
 fn prepare_suppression(
     project_root: &Path,
     index: usize,
     mut suppression: CodeScanSuppression,
-    today: NaiveDate,
+    today: CalendarDate,
 ) -> Result<PreparedSuppression, String> {
+    if suppression.count == 0
+        || (suppression.matcher.fingerprint.is_some() && suppression.count != 1)
+    {
+        return Err(
+            "Code Scan suppression count must be positive; fingerprint entries have count 1".into(),
+        );
+    }
     suppression.reason = suppression.reason.trim().to_string();
     if suppression.reason.is_empty() {
         return Err(format!(
@@ -239,11 +250,11 @@ fn prepare_suppression(
         .expires
         .as_deref()
         .map(|value| {
-            NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+            CalendarDate::parse(value).map_err(|_| {
                 format!(
                     "Code Scan suppression {} has invalid expires date '{}'; use YYYY-MM-DD",
                     index + 1,
-                    value
+                    escape_terminal_text(value)
                 )
             })
         })
@@ -260,6 +271,7 @@ fn prepare_suppression(
         path_matcher,
         expired: expiry.is_some_and(|date| date < today),
         matched_findings: 0,
+        groups: HashMap::new(),
     })
 }
 
@@ -284,7 +296,7 @@ fn validate_matcher(index: usize, matcher: &mut CodeScanSuppressionMatch) -> Res
     }
     if let Some(rule) = matcher.rule.as_deref() {
         if !rule.starts_with("code_scan.")
-            || crate::core::code_scan::validate_canonical_check_id(rule).is_err()
+            || crate::core::audit::validate_canonical_check_id(rule).is_err()
         {
             return Err(format!(
                 "Code Scan suppression {} rule must be an exact canonical code_scan.* check ID",
@@ -293,14 +305,14 @@ fn validate_matcher(index: usize, matcher: &mut CodeScanSuppressionMatch) -> Res
         }
     }
     if let Some(fingerprint) = matcher.fingerprint.as_deref() {
-        let digest = fingerprint.strip_prefix("sha256:").unwrap_or_default();
+        let digest = fingerprint.strip_prefix(PREFIX).unwrap_or_default();
         if digest.len() != 64
             || !digest
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         {
             return Err(format!(
-                "Code Scan suppression {} fingerprint must be sha256 followed by 64 lowercase hexadecimal characters",
+                "Code Scan suppression {} fingerprint must use sitecmd/v3:sha256: followed by 64 lowercase hexadecimal characters; regenerate old suppressions",
                 index + 1
             ));
         }
@@ -324,15 +336,15 @@ fn compile_path_matcher(
         format!(
             "Code Scan suppression {} has invalid path pattern '{}': {}",
             index + 1,
-            pattern,
-            error
+            escape_terminal_text(pattern),
+            escape_terminal_text(&error.to_string())
         )
     })?;
     builder.build().map_err(|error| {
         format!(
             "Code Scan suppression {} path pattern could not be compiled: {}",
             index + 1,
-            error
+            escape_terminal_text(&error.to_string())
         )
     })
 }
@@ -391,10 +403,10 @@ fn recount_report(report: &mut CodeScanReport) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checks::IssueConfidence;
-    use crate::core::code_scan::CodeScanSkippedScopes;
+    use crate::core::scan_types::IssueConfidence;
+    use sitecmd_protocol::skipped_scopes::CodeScanSkippedScopes;
 
-    fn issue(path: &str, line: u32, excerpt: &str) -> CodeIssue {
+    fn issue(path: &str, line: u32) -> CodeIssue {
         CodeIssue {
             id: format!("hardcoded-secret:{path}"),
             check_id: "code_scan.hardcoded-secret".into(),
@@ -405,7 +417,6 @@ mod tests {
             relative_path: path.into(),
             absolute_path: format!("/tmp/project/{path}"),
             line: Some(line),
-            source_excerpt: Some(excerpt.into()),
             evidence: None,
             why_now: None,
             likely_fix: None,
@@ -447,22 +458,23 @@ mod tests {
     }
 
     #[test]
-    fn fingerprints_survive_line_movement_but_change_with_the_occurrence() {
-        let first = issue("src/config.ts", 10, "const secret = 'fixture';");
-        let moved = issue("src/config.ts", 80, "  const   secret = 'fixture'; ");
-        let changed = issue("src/config.ts", 10, "const secret = 'different';");
+    fn fingerprints_survive_line_movement_and_wording_changes() {
+        let first = issue("src/config.ts", 10);
+        let moved = issue("src/config.ts", 80);
+        let mut changed = issue("src/config.ts", 10);
+        changed.description = "Updated finding wording".into();
 
         assert_eq!(issue_fingerprint(&first), issue_fingerprint(&moved));
-        assert_ne!(issue_fingerprint(&first), issue_fingerprint(&changed));
+        assert_eq!(issue_fingerprint(&first), issue_fingerprint(&changed));
     }
 
     #[test]
-    fn fingerprint_vector_is_pinned_for_mcp_parity() {
-        // apps/mcp-server/test/suppressions.test.mjs asserts the same digest.
-        let finding = issue("src/config.ts", 10, "const secret = 'fixture';");
+    fn fingerprint_vector_is_stable() {
+        // Existing suppressions stop matching if the fingerprint encoding changes.
+        let finding = issue("src/config.ts", 10);
         assert_eq!(
             issue_fingerprint(&finding),
-            "sha256:4522c6c0147aa43bbd24ea42bb759ad735e2dcddea6d2b83ed75de0fa5bfb1a6"
+            "sitecmd/v3:sha256:9574307b9375eb8745e2d2886d28ed7b688b356386ebacb8f7529679cdd36076"
         );
     }
 
@@ -479,10 +491,10 @@ mod tests {
         let audit = apply_project_suppressions(
             project.path(),
             report(vec![
-                issue("examples/insecure.ts", 1, "const secret = 'fixture';"),
-                issue("src/config.ts", 1, "const secret = 'real';"),
+                issue("examples/insecure.ts", 1),
+                issue("src/config.ts", 1),
             ]),
-            NaiveDate::from_ymd_opt(2026, 8, 19).expect("date"),
+            CalendarDate::new(2026, 8, 19).expect("date"),
         )
         .expect("valid suppressions");
 
@@ -494,7 +506,7 @@ mod tests {
     #[test]
     fn fingerprint_suppression_acknowledges_only_the_exact_occurrence() {
         let project = tempfile::tempdir().expect("project");
-        let acknowledged = issue("src/config.ts", 10, "const secret = 'fixture';");
+        let acknowledged = issue("src/config.ts", 10);
         let fingerprint = issue_fingerprint(&acknowledged);
         write_config(
             project.path(),
@@ -507,11 +519,8 @@ mod tests {
         );
         let audit = apply_project_suppressions(
             project.path(),
-            report(vec![
-                acknowledged,
-                issue("src/config.ts", 20, "const secret = 'different';"),
-            ]),
-            NaiveDate::from_ymd_opt(2026, 8, 19).expect("date"),
+            report(vec![acknowledged, issue("src/config.ts", 20)]),
+            CalendarDate::new(2026, 8, 19).expect("date"),
         )
         .expect("valid suppressions");
 
@@ -538,8 +547,8 @@ mod tests {
         );
         let audit = apply_project_suppressions(
             project.path(),
-            report(vec![issue("src/config.ts", 1, "const secret = 'fixture';")]),
-            NaiveDate::from_ymd_opt(2026, 8, 19).expect("date"),
+            report(vec![issue("src/config.ts", 1)]),
+            CalendarDate::new(2026, 8, 19).expect("date"),
         )
         .expect("valid suppressions");
 
@@ -563,8 +572,8 @@ mod tests {
 
         let error = apply_project_suppressions(
             project.path(),
-            report(vec![issue("src/config.ts", 1, "const secret = 'fixture';")]),
-            NaiveDate::from_ymd_opt(2026, 8, 19).expect("date"),
+            report(vec![issue("src/config.ts", 1)]),
+            CalendarDate::new(2026, 8, 19).expect("date"),
         )
         .expect_err("empty reason must fail closed");
 

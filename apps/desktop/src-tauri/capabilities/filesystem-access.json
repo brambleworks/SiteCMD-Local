@@ -1,7 +1,0 @@
-{
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "sitecmd-filesystem-access",
-  "description": "Elevated SiteCMD filesystem commands. The bridge window only receives the broker dispatch permission; local project scans, log reads, editor open, and reveal-in-finder are reachable as regular Rust function calls inside run_filesystem_access_command, never as direct Tauri IPC calls. This forces every elevated invocation through token_state.consume() and prevents direct path-validation bypass.",
-  "windows": ["filesystem-access"],
-  "permissions": ["core:event:default", "allow-run-filesystem-access-command"]
-}

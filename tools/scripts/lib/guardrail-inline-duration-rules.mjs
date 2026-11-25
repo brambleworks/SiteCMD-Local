@@ -1,15 +1,10 @@
-const SCANNED_DIRS = [
-  "apps/desktop/src-tauri/src/commands",
-  "apps/desktop/src-tauri/src/core",
-  "apps/desktop/src-tauri/src/integrations",
-  "apps/desktop/src-tauri/src/webview",
-];
+const SCANNED_DIRS = ["apps/desktop/src-tauri/src/core"];
 
-export function inlineDurationFailures(read, exists, listFiles) {
+export function inlineDurationFailures(read, exists, listFiles, extraRoots = []) {
   const failures = [];
   const inlineDurationViolations = [];
   const literalRegex = /Duration::from_secs\s*\(\s*\d/g;
-  for (const dir of SCANNED_DIRS) {
+  for (const dir of [...SCANNED_DIRS, ...extraRoots]) {
     if (!exists(dir)) continue;
     const files = listFiles(dir, (file) => file.endsWith(".rs"));
     for (const file of files) {

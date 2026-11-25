@@ -7,7 +7,7 @@ import { isTestSourceFile } from "./test-file-classification.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-const SCAN_ROOTS = ["apps/desktop/src", "apps/desktop/src-tauri/src", "apps/mcp-server/src"];
+const SCAN_ROOTS = ["apps/desktop/src-tauri/src"];
 
 const SKIP_DIRS = new Set(["node_modules", "dist", "target", ".next", ".svelte-kit", "build"]);
 

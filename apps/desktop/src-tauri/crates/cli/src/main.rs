@@ -7,12 +7,15 @@ use sitecmd_runtime::cli::fix::{self, FixArgs};
 use sitecmd_runtime::cli::init::{self, InitArgs};
 use sitecmd_runtime::cli::scan::{self, ScanArgs};
 use sitecmd_runtime::cli::watch::{self, WatchArgs};
-use sitecmd_runtime::connected_ci::{DeploymentFacts, PublishOrdering};
+use sitecmd_runtime::core::scan_types::Category;
+use sitecmd_runtime::deployment_input::{DeploymentInput, PublishOrderingInput};
 use std::process::ExitCode;
 
 mod audit_dispatch;
 mod autofix_dispatch;
+mod connect_dispatch;
 mod help;
+mod login_dispatch;
 mod rules_dispatch;
 #[cfg(test)]
 mod tests;
@@ -20,7 +23,9 @@ mod validators;
 use audit_dispatch::dispatch_audit;
 use autofix_dispatch::dispatch_autofix;
 use help::*;
-use validators::{parse_categories, parse_positive_seconds, parse_score, warn_deprecated_flag};
+use validators::{
+    parse_categories, parse_category, parse_positive_seconds, parse_score, warn_deprecated_flag,
+};
 
 fn parse_init_args(mut args: impl Iterator<Item = String>) -> Result<InitArgs, String> {
     let mut url: Option<String> = None;
@@ -56,18 +61,16 @@ fn parse_init_args(mut args: impl Iterator<Item = String>) -> Result<InitArgs, S
 }
 
 fn parse_scan_args(mut args: impl Iterator<Item = String>) -> Result<ScanArgs, String> {
-    use sitecmd_runtime::core::scanner::ScanType;
     let mut url: Option<String> = None;
-    let mut scan_type = ScanType::Health;
     let mut fail_under: Option<u32> = None;
-    let mut fail_on: Option<sitecmd_runtime::checks::Severity> = None;
+    let mut fail_on: Option<sitecmd_runtime::core::scan_types::Severity> = None;
     let mut json = false;
     let mut timeout: Option<u64> = None;
-    let mut categories: Option<Vec<String>> = None;
+    let mut categories: Option<Vec<Category>> = None;
     let mut diff = false;
     let mut env_name: Option<String> = None;
-    let mut no_browser = false;
-    let mut cwv = false;
+    let mut latest = false;
+    let mut connect_origin = None;
 
     while let Some(token) = args.next() {
         match token.as_str() {
@@ -77,15 +80,6 @@ fn parse_scan_args(mut args: impl Iterator<Item = String>) -> Result<ScanArgs, S
             }
             "--url" => {
                 url = Some(next_value(&mut args, "--url")?);
-            }
-            "--type" => {
-                let value = next_value(&mut args, "--type")?;
-                scan_type = value.parse().map_err(|_| {
-                    format!(
-                        "Unknown scan type: {}. Use: health, security, accessibility, polish",
-                        value
-                    )
-                })?;
             }
             "--fail-under" => {
                 let value = next_value(&mut args, "--fail-under")?;
@@ -123,11 +117,11 @@ fn parse_scan_args(mut args: impl Iterator<Item = String>) -> Result<ScanArgs, S
             "--env" => {
                 env_name = Some(next_value(&mut args, "--env")?);
             }
-            "--no-browser" => {
-                no_browser = true;
+            "--latest" => {
+                latest = true;
             }
-            "--cwv" => {
-                cwv = true;
+            "--connect-origin" => {
+                connect_origin = Some(next_value(&mut args, "--connect-origin")?);
             }
             t if t.starts_with('-') => {
                 return Err(format!("Unknown option: {}", t));
@@ -141,21 +135,8 @@ fn parse_scan_args(mut args: impl Iterator<Item = String>) -> Result<ScanArgs, S
         }
     }
 
-    if categories.is_some() && scan_type != ScanType::Health {
-        return Err("--categories can only be used with --type health".into());
-    }
-    if cwv && no_browser {
-        return Err("--cwv cannot be combined with --no-browser".into());
-    }
-    if cwv && !cfg!(feature = "browser") {
-        return Err(
-            "--cwv requires a browser-enabled source build; release binaries are headless".into(),
-        );
-    }
-
     Ok(ScanArgs {
         url,
-        scan_type,
         fail_under,
         fail_on,
         json,
@@ -163,8 +144,8 @@ fn parse_scan_args(mut args: impl Iterator<Item = String>) -> Result<ScanArgs, S
         categories,
         diff,
         env_name,
-        no_browser,
-        cwv,
+        latest,
+        connect_origin,
     })
 }
 
@@ -172,7 +153,7 @@ fn parse_fix_args(mut args: impl Iterator<Item = String>) -> Result<FixArgs, Str
     let mut all = false;
     let mut id: Option<String> = None;
     let mut type_filter: Option<String> = None;
-    let mut category: Option<String> = None;
+    let mut category: Option<Category> = None;
 
     while let Some(token) = args.next() {
         match token.as_str() {
@@ -190,7 +171,7 @@ fn parse_fix_args(mut args: impl Iterator<Item = String>) -> Result<FixArgs, Str
                 type_filter = Some(next_value(&mut args, "--type")?);
             }
             "--category" => {
-                category = Some(next_value(&mut args, "--category")?);
+                category = Some(parse_category(&next_value(&mut args, "--category")?)?);
             }
             t if t.starts_with('-') => {
                 return Err(format!("Unknown option: {}", t));
@@ -299,13 +280,12 @@ enum ConnectedInvocation {
 fn take_deployment_flag(
     token: &str,
     args: &mut impl Iterator<Item = String>,
-    facts: &mut DeploymentFacts,
+    facts: &mut DeploymentInput,
 ) -> Result<bool, String> {
-    fn ordering(facts: &mut DeploymentFacts) -> &mut PublishOrdering {
-        facts.ordering.get_or_insert_with(|| PublishOrdering {
-            kind: "publish_sequence".into(),
-            ..PublishOrdering::default()
-        })
+    fn ordering(facts: &mut DeploymentInput) -> &mut PublishOrderingInput {
+        facts
+            .ordering
+            .get_or_insert_with(PublishOrderingInput::default)
     }
 
     match token {
@@ -352,7 +332,7 @@ fn parse_connected_args(
     let mut token_env = "SITECMD_CI_TOKEN".to_string();
     let mut db_path = None;
     let mut project_path = None;
-    let mut deployment = DeploymentFacts::default();
+    let mut deployment = DeploymentInput::default();
 
     while let Some(token) = args.next() {
         if take_deployment_flag(&token, &mut args, &mut deployment)? {
@@ -427,7 +407,7 @@ fn parse_connected_args(
         token_env,
         db_path,
         project_path,
-        deployment,
+        deployment: deployment.finish()?,
         dry_run,
     })))
 }
@@ -437,7 +417,7 @@ fn parse_deploy_args(mut args: impl Iterator<Item = String>) -> Result<DeployArg
     let mut connection_export = None;
     let mut passphrase_env = "SITECMD_CONNECTION_PASSPHRASE".to_string();
     let mut token_env = "SITECMD_CI_TOKEN".to_string();
-    let mut deployment = DeploymentFacts::default();
+    let mut deployment = DeploymentInput::default();
 
     while let Some(token) = args.next() {
         if take_deployment_flag(&token, &mut args, &mut deployment)? {
@@ -473,7 +453,7 @@ fn parse_deploy_args(mut args: impl Iterator<Item = String>) -> Result<DeployArg
         connection_export,
         passphrase_env,
         token_env,
-        deployment,
+        deployment: deployment.finish()?,
     })
 }
 
@@ -568,6 +548,17 @@ fn report(outcome: Result<String, String>) -> ExitCode {
     }
 }
 
+fn report_preview(outcome: Result<String, String>) -> ExitCode {
+    match outcome {
+        Ok(body) => match std::io::Write::write_all(&mut std::io::stdout().lock(), body.as_bytes())
+        {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => report(Err(error.to_string())),
+        },
+        Err(error) => report(Err(error)),
+    }
+}
+
 fn main() -> ExitCode {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
         .target(env_logger::Target::Stderr)
@@ -588,7 +579,12 @@ fn main() -> ExitCode {
     }
     // stdout, not stderr: install scripts and CI steps capture this.
     if first == "--version" || first == "-V" {
-        println!("sitecmd {}", env!("CARGO_PKG_VERSION"));
+        let suffix = if sitecmd_runtime::cli::engine::unpinned() {
+            "+unpinned"
+        } else {
+            ""
+        };
+        println!("sitecmd {}{suffix}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
 
@@ -613,9 +609,25 @@ fn main() -> ExitCode {
             }
         },
 
+        "login" => login_dispatch::dispatch_login(argv, false),
+
+        "logout" => login_dispatch::dispatch_login(argv, true),
+
+        "connect" => connect_dispatch::dispatch_connect(argv),
+
         "audit" => dispatch_audit(argv),
 
         "rules" => rules_dispatch::dispatch_rules(argv),
+
+        "engine" => {
+            let args: Vec<_> = argv.collect();
+            if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+                println!("{}", sitecmd_runtime::cli::engine::HELP);
+                ExitCode::SUCCESS
+            } else {
+                report(sitecmd_runtime::cli::engine::run(args.into_iter()))
+            }
+        }
 
         "autofix" => dispatch_autofix(argv),
 
@@ -673,9 +685,15 @@ fn main() -> ExitCode {
         },
 
         "connected" => match parse_connected_args(argv) {
-            Ok(ConnectedInvocation::Preview(args)) => report(connected::run(args)),
+            Ok(ConnectedInvocation::Preview(args)) => report_preview(connected::run(args)),
             Ok(ConnectedInvocation::Submit(args)) => {
-                report(build_runtime().block_on(connected_submit::run_submit(*args)))
+                let dry_run = args.dry_run;
+                let outcome = build_runtime().block_on(connected_submit::run_submit(*args));
+                if dry_run {
+                    report_preview(outcome)
+                } else {
+                    report(outcome)
+                }
             }
             Err(e) => {
                 eprintln!("Error: {}\nRun `sitecmd connected --help` for usage.", e);
@@ -724,13 +742,33 @@ fn main() -> ExitCode {
 }
 
 fn dispatch_scan(args: impl Iterator<Item = String>) -> ExitCode {
+    dispatch_scan_with(args, |args| build_runtime().block_on(scan::run(args)))
+}
+
+fn dispatch_scan_with(
+    args: impl Iterator<Item = String>,
+    run: impl FnOnce(ScanArgs) -> Result<u8, scan::ScanFailure>,
+) -> ExitCode {
     match parse_scan_args(args) {
         Ok(scan_args) => {
-            let rt = build_runtime();
-            match rt.block_on(scan::run(scan_args)) {
-                Ok((code, _scan)) => ExitCode::from(code),
-                Err(e) => {
-                    eprintln!("\r\x1b[KScan failed: {}", e);
+            let json = scan_args.json;
+            match run(scan_args) {
+                Ok(code) => ExitCode::from(code),
+                Err(scan::ScanFailure::Hosted(error)) => {
+                    if json {
+                        println!("{}", error.json());
+                    } else {
+                        eprintln!("{error}");
+                    }
+                    ExitCode::from(sitecmd_runtime::cli::hosted::HostedError::EXIT_CODE)
+                }
+                Err(scan::ScanFailure::Local(e)) => {
+                    use std::io::IsTerminal;
+
+                    if std::io::stderr().is_terminal() {
+                        eprint!("\r\x1b[K");
+                    }
+                    eprintln!("Scan failed: {}", e);
                     ExitCode::from(2)
                 }
             }

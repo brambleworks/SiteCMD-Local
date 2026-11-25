@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -37,7 +37,7 @@ if (name === "cargo" && args[0] === "build") {
     if (config.logFailure) process.exit(1);
     fs.writeFileSync(args.at(-1), JSON.stringify({ jobId: config.id, status: config.status }));
   } else process.exit(91);
-} else if (!["spctl", "xcrun"].includes(name)) process.exit(92);
+} else if (!["security", "xcrun"].includes(name)) process.exit(92);
 `;
 
 export function releaseCliFixture(overrides = {}) {
@@ -48,12 +48,18 @@ export function releaseCliFixture(overrides = {}) {
   fs.mkdirSync(bin);
   fs.mkdirSync(runnerTemp);
   fs.mkdirSync(src, { recursive: true });
-  fs.writeFileSync(path.join(runnerTemp, "asc_api_key.p8"), "Fixture API key\n");
+  fs.mkdirSync(path.dirname(path.join(root, "engine/local-engine.wasm")));
+  fs.writeFileSync(path.join(root, "engine/local-engine.wasm"), "Fixture module\n");
+  fs.writeFileSync(
+    path.join(root, "engine/local-engine.wasm.LICENSES.txt"),
+    "Fixture engine licenses\n",
+  );
+  fs.writeFileSync(path.join(root, "engine.lock"), "{}\n");
   fs.writeFileSync(
     path.join(root, "fixture.json"),
     JSON.stringify({ id: "fixture-submission", status: "Accepted", ...overrides }),
   );
-  for (const name of ["cargo", "lipo", "codesign", "ditto", "xcrun", "spctl"]) {
+  for (const name of ["cargo", "lipo", "codesign", "ditto", "xcrun", "security"]) {
     fs.writeFileSync(path.join(bin, name), COMMAND_DOUBLE, { mode: 0o755 });
   }
   for (const name of [
@@ -74,7 +80,11 @@ export function releaseCliFixture(overrides = {}) {
     RUNNER_TEMP: runnerTemp,
     TARGET: "darwin-universal",
     RUST_TARGET: "universal-apple-darwin",
-    APPLE_CERTIFICATE: "fixture-certificate",
+    APPLE_CERTIFICATE: Buffer.from("fixture-certificate").toString("base64"),
+    APPLE_CERTIFICATE_PASSWORD: "fixture-certificate-placeholder",
+    KEYCHAIN_PASSWORD: "fixture-keychain-placeholder",
+    APPLE_API_KEY_P8_B64: Buffer.from("fixture-api-key").toString("base64"),
+    APPLE_TEAM_ID: "FIXTURETEAM",
     APPLE_SIGNING_IDENTITY: "fixture-identity",
     APPLE_API_KEY_ID: "fixture-key-id",
     APPLE_API_ISSUER: "fixture-issuer",
@@ -98,28 +108,16 @@ export function releaseCliFixture(overrides = {}) {
         .split("\n")
         .map((line) => JSON.parse(line));
     },
-    prepareVerification() {
+    prepareVerification(signerIdentity = "FIXTURETEAM") {
       const payload = path.join(root, "payload/darwin-universal");
-      const appRoot = path.join(root, "app-fixture");
       fs.mkdirSync(payload, { recursive: true });
-      fs.mkdirSync(path.join(appRoot, "SiteCMD.app"), { recursive: true });
-      fs.writeFileSync(path.join(appRoot, "SiteCMD.app/fixture.txt"), "Fixture app\n");
       const archive = "sitecmd-cli_1.5.0_darwin-universal.tar.gz";
       fs.copyFileSync(path.join(root, archive), path.join(payload, archive));
-      fs.writeFileSync(path.join(payload, "SiteCMD.dmg"), "Fixture DMG\n");
-      execFileSync("tar", [
-        "-czf",
-        path.join(payload, "SiteCMD.app.tar.gz"),
-        "-C",
-        appRoot,
-        "SiteCMD.app",
-      ]);
       fs.writeFileSync(
         path.join(payload, "fragment.json"),
         JSON.stringify({
           cli_archive: archive,
-          filename: "SiteCMD.app.tar.gz",
-          dmg_name: "SiteCMD.dmg",
+          signer_identity: signerIdentity,
         }),
       );
     },

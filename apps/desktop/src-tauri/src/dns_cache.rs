@@ -4,12 +4,32 @@
 
 use std::io;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use crate::network_policy::UrlPolicy;
 use moka::sync::Cache;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+
+#[cfg(test)]
+type TestLookup = Box<dyn Fn(&str, u16) -> io::Result<Vec<SocketAddr>>>;
+
+#[cfg(test)]
+thread_local! {
+    pub(crate) static TEST_LOOKUP: std::cell::RefCell<Option<TestLookup>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+pub(crate) async fn lookup_host(host: &str, port: u16) -> io::Result<Vec<SocketAddr>> {
+    #[cfg(test)]
+    if let Some(answer) = TEST_LOOKUP.with_borrow(|lookup| lookup.as_ref().map(|f| f(host, port))) {
+        return answer;
+    }
+    tokio::net::lookup_host((host, port))
+        .await
+        .map(|addresses| addresses.collect())
+}
 
 pub struct CachedDnsResolver {
     cache: Cache<String, Vec<SocketAddr>>,
@@ -69,9 +89,7 @@ impl Resolve for CachedDnsResolver {
         Box::pin(async move {
             // Port 0 is a placeholder; reqwest patches the real port on the
             // returned SocketAddr based on the request URL.
-            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0u16))
-                .await?
-                .collect();
+            let addrs = lookup_host(&host, 0).await?;
             validate_resolved_addrs(&host, &addrs, policy)?;
             let resolver = CachedDnsResolver { cache, policy };
             resolver.store(host, addrs.clone());
@@ -88,7 +106,7 @@ fn validate_resolved_addrs(
     if addrs.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("Could not resolve URL host '{}'.", host),
+            format!("No address records for '{host}'."),
         ));
     }
 
@@ -101,26 +119,13 @@ fn validate_resolved_addrs(
 
 /// Shared resolver instance used by all HTTP clients.
 pub fn shared() -> Arc<CachedDnsResolver> {
-    use std::sync::LazyLock;
     static RESOLVER: LazyLock<Arc<CachedDnsResolver>> =
         LazyLock::new(|| Arc::new(CachedDnsResolver::new()));
     RESOLVER.clone()
 }
 
-/// Resolver for a scan whose target the person named inside their own
-/// networks. Every connection this resolver serves belongs to that scan, so
-/// the reach it grants stops at the client that holds it: a public scan uses
-/// `shared` and cannot resolve a hostname into private space.
-pub fn scan_target_resolver() -> Arc<CachedDnsResolver> {
-    use std::sync::LazyLock;
-    static RESOLVER: LazyLock<Arc<CachedDnsResolver>> =
-        LazyLock::new(|| Arc::new(CachedDnsResolver::for_policy(UrlPolicy::ScanTarget)));
-    RESOLVER.clone()
-}
-
 /// Shared resolver enforcing external-callback policy at connection time.
 pub fn external_callback_resolver() -> Arc<CachedDnsResolver> {
-    use std::sync::LazyLock;
     static RESOLVER: LazyLock<Arc<CachedDnsResolver>> =
         LazyLock::new(|| Arc::new(CachedDnsResolver::for_policy(UrlPolicy::ExternalCallback)));
     RESOLVER.clone()

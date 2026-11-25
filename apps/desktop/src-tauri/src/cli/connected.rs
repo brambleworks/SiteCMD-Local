@@ -1,9 +1,11 @@
 //! Inspect the exact connected payload from the standalone CLI.
 
+use crate::time::now_millis;
+
 use std::io::Read;
 use std::path::PathBuf;
 
-use sitecmd_engine::sync::ProjectFingerprintKey;
+use sitecmd_protocol::sync::ProjectFingerprintKey;
 use zeroize::Zeroizing;
 
 use crate::connected_export::{
@@ -11,8 +13,9 @@ use crate::connected_export::{
 };
 use crate::connected_service::ConnectedServiceClient;
 use crate::connected_workflow::proposed_submission_sequence;
+use crate::core::audit::connected_audit_at;
 use crate::core::code_provenance::CodeCheckoutProvenance;
-use crate::db::{ConnectedSubmissionRequest, Database};
+use crate::db::{ConnectedSubmissionRequest, Database, ObservedOccurrence};
 
 use super::{settle, ConnectStop};
 
@@ -73,7 +76,6 @@ pub fn build_dry_run_payload(
                     connection.fingerprint_key,
                 )),
                 fingerprint_key_version: connection.fingerprint_key_version,
-                pending_rotation: None,
                 deployed_commit: None,
             },
         )
@@ -114,15 +116,16 @@ pub struct GateArgs {
     pub outputs: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct CheckoutAuditSummary {
+    run_id: i64,
+    occurrences: Vec<ObservedOccurrence>,
     pub ignored_findings: usize,
     pub stale_suppressions: usize,
     pub configured_suppressions: usize,
 }
 
 impl CheckoutAuditSummary {
-    pub fn notice(self) -> Option<String> {
+    pub fn notice(&self) -> Option<String> {
         (self.configured_suppressions > 0).then(|| {
             format!(
                 "Local suppressions: {} finding(s) ignored; {} stale or expired suppression(s).",
@@ -195,7 +198,9 @@ async fn gate(
     let db_path = args
         .db_path
         .or_else(crate::cli::default_desktop_db_path)
-        .ok_or_else(|| "could not locate the SiteCMD desktop database".to_string())?;
+        .ok_or_else(|| {
+            "could not locate the local SiteCMD SQLite database (sitecmd.db)".to_string()
+        })?;
     crate::app_identity::validate_private_file_target(&db_path)
         .map_err(|error| format!("refused unsafe SiteCMD database path: {error}"))?;
     let db = Database::open(db_path)?;
@@ -206,18 +211,18 @@ async fn gate(
     // No deployed commit: a gate grades a branch, and a branch is not a
     // deployment. The basis is therefore unknown, which resolves nothing - and
     // the gate resolves nothing anyway.
-    let snapshot = build_candidate_snapshot(&db, &connection, None)?;
+    let snapshot = build_candidate_snapshot(&db, &connection, &audit_summary, None)?;
     let client = connect(token.trim())?;
     let verdict = client
         .gate(
             &connection.site_id,
             &crate::connected_service::GateRequest {
                 policy: crate::connected_service::GatePolicy {
-                    severity_threshold: args.threshold.clone(),
+                    severity_threshold: args.threshold.as_str().try_into()?,
                     strict_detector_changes: args.strict,
                 },
-                schema_version: sitecmd_engine::sync::SCHEMA_VERSION,
-                site_id: connection.site_id.clone(),
+                schema_version: sitecmd_protocol::sync::SCHEMA_VERSION,
+                site_id: connection.site_id.as_str().try_into()?,
                 snapshot,
             },
         )
@@ -268,78 +273,50 @@ pub(super) fn scan_this_checkout(
 
     let before = CodeCheckoutProvenance::capture(&display);
     let started = std::time::Instant::now();
-    let report = crate::core::code_scan::audit_project(&root)?;
-    let audit = super::audit_suppressions::apply_project_suppressions(
-        &root,
-        report,
-        chrono::Utc::now().date_naive(),
-    )?;
-    let summary = CheckoutAuditSummary {
+    let now_ms = now_millis();
+    let (wire, report) = connected_audit_at(&root, now_ms).map_err(|error| error.to_string())?;
+    let engine = sitecmd_engine_host::load().map_err(|error| error.to_string())?;
+    let audit = super::audit_suppressions::apply_project_suppressions_at(&root, report, now_ms)?;
+    let occurrences =
+        super::connected_submit::submission_observations(&wire, &audit, engine.info())?;
+    let provenance = before.confirm_unchanged(CodeCheckoutProvenance::capture(&display));
+    let run_id = db
+        .save_code_scan_with_provenance(
+            project_id,
+            Some(connection.environment_scope_key.clone()),
+            display,
+            &audit.report,
+            started.elapsed().as_millis() as u64,
+            provenance,
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(CheckoutAuditSummary {
+        run_id,
+        occurrences,
         ignored_findings: audit.ignored_findings.len(),
         stale_suppressions: audit.stale_suppression_count(),
         configured_suppressions: audit.suppressions.len(),
-    };
-    let provenance = before.confirm_unchanged(CodeCheckoutProvenance::capture(&display));
-    db.save_code_scan_with_provenance(
-        project_id,
-        Some(connection.environment_scope_key.clone()),
-        display,
-        &audit.report,
-        started.elapsed().as_millis() as u64,
-        provenance,
-    )
-    .map_err(|error| error.to_string())?;
-    Ok(summary)
+    })
 }
 
-/// Build gate and CI code evidence with the canonical payload builder.
-/// A deployed commit upgrades a clean checkout to `exact_checkout` evidence.
+/// A deployed commit upgrades a clean checkout to exact-checkout evidence.
 pub(super) fn build_candidate_snapshot(
     db: &Database,
     connection: &ImportedSiteConnection,
+    audit: &CheckoutAuditSummary,
     deployed_commit: Option<&str>,
-) -> Result<sitecmd_engine::sync::CodeSnapshot, String> {
-    // Any epoch the service coordinated is usable; the snapshot below is
-    // stamped with the export's own version. Zero never named a key.
+) -> Result<sitecmd_protocol::sync::CodeSnapshot, String> {
     if connection.fingerprint_key_version < 1 {
         return Err("the connection export carries an invalid fingerprint key version".into());
     }
-    let project_id = db
-        .find_project_for_url_result(&connection.environment_scope_key)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| {
-            format!(
-                "no local SiteCMD project contains environment {}",
-                connection.environment_scope_key
-            )
-        })?;
-    let snapshot = db
-        // These callers build snapshots, not submissions; the builder supplies
-        // sequence and bootstrap values.
-        .build_connected_code_snapshot(
-            project_id,
-            &connection.environment_scope_key,
-            ConnectedSubmissionRequest {
-                site_id: connection.site_id.clone(),
-                submission_sequence: 0,
-                include_groups: false,
-                fingerprint_key: Some(ProjectFingerprintKey::from_bytes(
-                    connection.fingerprint_key,
-                )),
-                fingerprint_key_version: connection.fingerprint_key_version,
-                pending_rotation: None,
-                deployed_commit: deployed_commit.map(str::to_string),
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    // The audit already ran; report an empty result rather than suggesting a
-    // web-only scan type.
-    snapshot.ok_or_else(|| {
-        format!(
-            "the audit of this checkout produced no code snapshot for {}; there is nothing here to gate",
-            connection.environment_scope_key
-        )
-    })
+    db.build_audited_code_snapshot(
+        audit.run_id,
+        audit.occurrences.clone(),
+        ProjectFingerprintKey::from_bytes(connection.fingerprint_key),
+        connection.fingerprint_key_version,
+        deployed_commit,
+    )
+    .map_err(|error| error.to_string())
 }
 
 /// CI-native output: counts, the threshold that produced the verdict, and the
@@ -386,17 +363,48 @@ pub fn run(args: ConnectedArgs) -> Result<String, String> {
     let db_path = args
         .db_path
         .or_else(crate::cli::default_desktop_db_path)
-        .ok_or_else(|| "could not locate the SiteCMD desktop database".to_string())?;
+        .ok_or_else(|| {
+            "could not locate the local SiteCMD SQLite database (sitecmd.db)".to_string()
+        })?;
     crate::app_identity::validate_private_file_target(&db_path)
         .map_err(|error| format!("refused unsafe SiteCMD database path: {error}"))?;
     if !db_path.is_file() {
         return Err(format!(
-            "SiteCMD desktop database does not exist at {}",
+            "The local SiteCMD SQLite database does not exist at {}",
             db_path.display()
         ));
     }
     let db = Database::open(db_path)?;
     build_dry_run_payload(&db, &connection)
+}
+
+#[cfg(feature = "test-support")]
+pub struct CheckoutSuppressionCounts {
+    pub ignored_findings: usize,
+    pub stale_suppressions: usize,
+    pub configured_suppressions: usize,
+}
+
+#[cfg(feature = "test-support")]
+pub fn audit_checkout_snapshot(
+    db: &Database,
+    connection: &ImportedSiteConnection,
+    path: &std::path::Path,
+) -> Result<
+    (
+        sitecmd_protocol::sync::CodeSnapshot,
+        CheckoutSuppressionCounts,
+    ),
+    String,
+> {
+    let audit = scan_this_checkout(db, connection, Some(path))?;
+    let snapshot = build_candidate_snapshot(db, connection, &audit, None)?;
+    let counts = CheckoutSuppressionCounts {
+        ignored_findings: audit.ignored_findings,
+        stale_suppressions: audit.stale_suppressions,
+        configured_suppressions: audit.configured_suppressions,
+    };
+    Ok((snapshot, counts))
 }
 
 #[cfg(test)]
@@ -435,9 +443,24 @@ mod tests {
             site_id: SITE_ID.into(),
             environment_scope_key: ENVIRONMENT_URL.into(),
             fingerprint_key_version: 1,
-            fingerprint_key: [7; sitecmd_engine::sync::FINGERPRINT_KEY_LEN],
+            fingerprint_key: [7; sitecmd_protocol::sync::FINGERPRINT_KEY_LEN],
         };
         (directory, db, project_id, connection)
+    }
+
+    fn seed_binding(
+        db: &Database,
+        project_id: i64,
+        site_id: &'static str,
+        bootstrapped_at: Option<i64>,
+    ) {
+        db.execute(move |conn| {
+            conn.execute(
+                "INSERT INTO connected_sites (project_id, env_url, site_id, connected_at, bootstrapped_at)
+                 VALUES (?1, ?2, ?3, 10, ?4)",
+                rusqlite::params![project_id, ENVIRONMENT_URL, site_id, bootstrapped_at],
+            )
+        }).unwrap().unwrap();
     }
 
     #[test]
@@ -457,11 +480,17 @@ mod tests {
     #[test]
     fn dry_run_uses_the_next_sequence_and_omits_groups_after_bootstrap() {
         let (_directory, db, project_id, connection) = fixture();
-        db.connect_site(project_id, ENVIRONMENT_URL, SITE_ID, 10)
-            .expect("connect");
-        db.mark_site_bootstrapped(project_id, ENVIRONMENT_URL, 11)
-            .expect("bootstrap");
-        db.allocate_submission_sequence(12).expect("allocate setup");
+        seed_binding(&db, project_id, SITE_ID, Some(11));
+        db.execute(|conn| {
+            conn.execute(
+                "INSERT INTO connected_producer
+                    (id, installation_id, submission_sequence, minted_at)
+                 VALUES (1, 'test-installation', 1, 12)",
+                [],
+            )
+        })
+        .unwrap()
+        .unwrap();
 
         let rendered = build_dry_run_payload(&db, &connection).expect("dry run");
         let payload: Value = serde_json::from_str(&rendered).expect("payload JSON");
@@ -480,12 +509,34 @@ mod tests {
     #[test]
     fn dry_run_refuses_an_export_for_a_different_bound_site() {
         let (_directory, db, project_id, connection) = fixture();
-        db.connect_site(project_id, ENVIRONMENT_URL, "site_other", 10)
-            .expect("connect");
+        seed_binding(&db, project_id, "site_other", None);
 
         let error = build_dry_run_payload(&db, &connection).expect_err("site mismatch");
 
         assert!(error.contains("different connected site"), "{error}");
+    }
+
+    #[test]
+    fn dry_run_names_the_missing_local_sqlite_database() {
+        // A missing local database was reported as belonging to the desktop app.
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (connection_export, passphrase_env, _) =
+            exported_site(directory.path(), SITE_ID, "SITECMD_TEST_MISSING_PREVIEW_DB");
+        let db_path = directory.path().join("sitecmd.db");
+        let error = run(ConnectedArgs {
+            dry_run: true,
+            connection_export,
+            passphrase_env,
+            db_path: Some(db_path.clone()),
+        })
+        .expect_err("database is missing");
+        assert_eq!(
+            error,
+            format!(
+                "The local SiteCMD SQLite database does not exist at {}",
+                db_path.display()
+            )
+        );
     }
 
     fn gate_args(

@@ -1,9 +1,8 @@
 //! Read-only inventory of the rules used by Code Scan.
 
-use crate::checks::Severity;
-use crate::core::code_scan::{canonical_code_check_id, registry::CODE_CHECKS, CodeScanDomain};
+use crate::core::scan_types::Severity;
 use serde::Serialize;
-use sitecmd_engine::severity_policy::normalized_code_severity;
+use sitecmd_protocol::vocab::Category;
 use std::fmt::Write;
 
 #[derive(Serialize)]
@@ -24,10 +23,10 @@ impl SeveritySource {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Rule {
-    producer_rule_id: &'static str,
-    check_id: String,
-    domain: CodeScanDomain,
+struct Rule<'a> {
+    producer_rule_id: &'a str,
+    check_id: &'a str,
+    category: Category,
     default_severity: Option<Severity>,
     severity_source: SeveritySource,
 }
@@ -35,21 +34,22 @@ struct Rule {
 #[derive(Serialize)]
 struct Inventory<'a> {
     version: &'a str,
-    rules: Vec<Rule>,
+    rules: Vec<Rule<'a>>,
 }
 
 /// Render the audit registry with canonical identities and effective policy grades.
 pub fn render(json: bool, version: &str) -> Result<String, String> {
-    let mut rules: Vec<_> = CODE_CHECKS
+    let engine = sitecmd_engine_host::load().map_err(|error| error.to_string())?;
+    let mut rules: Vec<_> = engine
+        .info()
+        .code_rules
         .iter()
         .map(|rule| Rule {
-            producer_rule_id: rule.slug,
-            check_id: canonical_code_check_id(rule.slug),
-            domain: rule.domain,
-            default_severity: rule
-                .policy_severity
-                .map(|severity| normalized_code_severity(rule.slug, severity)),
-            severity_source: if rule.policy_severity.is_some() {
+            producer_rule_id: &rule.id,
+            check_id: &rule.check_id,
+            category: rule.category,
+            default_severity: rule.default_severity,
+            severity_source: if rule.default_severity.is_some() {
                 SeveritySource::Fixed
             } else {
                 SeveritySource::PerFinding
@@ -64,14 +64,14 @@ pub fn render(json: bool, version: &str) -> Result<String, String> {
     }
 
     let mut output =
-        String::from("producerRuleId\tcheckId\tdomain\tdefaultSeverity\tseveritySource\n");
+        String::from("producerRuleId\tcheckId\tcategory\tdefaultSeverity\tseveritySource\n");
     for rule in inventory.rules {
         let _ = writeln!(
             output,
             "{}\t{}\t{}\t{}\t{}",
             rule.producer_rule_id,
             rule.check_id,
-            rule.domain,
+            rule.category.key(),
             rule.default_severity
                 .map(|severity| severity.as_str())
                 .unwrap_or("null"),
@@ -79,46 +79,4 @@ pub fn render(json: bool, version: &str) -> Result<String, String> {
         );
     }
     Ok(output.trim_end().to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::code_scan::CodeIssue;
-    use crate::core::severity_policy::normalized_code_issue_severity;
-
-    #[test]
-    fn fixed_rule_inventory_grades_match_normalized_findings_for_every_emitted_grade() {
-        let inventory: serde_json::Value =
-            serde_json::from_str(&render(true, "test").unwrap()).unwrap();
-        for rule in CODE_CHECKS
-            .iter()
-            .filter(|rule| rule.policy_severity.is_some())
-        {
-            let entry = inventory["rules"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|entry| entry["producerRuleId"] == rule.slug)
-                .unwrap();
-            assert_eq!(entry["severitySource"], "fixed", "{}", rule.slug);
-            for severity in ["critical", "high", "medium", "low"] {
-                let issue: CodeIssue = serde_json::from_value(serde_json::json!({
-                    "id": format!("{}:src/fixture.ts", rule.slug),
-                    "checkId": canonical_code_check_id(rule.slug),
-                    "category": rule.category,
-                    "severity": severity,
-                    "title": "", "description": "",
-                    "relativePath": "src/fixture.ts", "absolutePath": ""
-                }))
-                .unwrap();
-                assert_eq!(
-                    entry["defaultSeverity"],
-                    normalized_code_issue_severity(&issue).as_str(),
-                    "{} at {severity}",
-                    rule.slug
-                );
-            }
-        }
-    }
 }

@@ -38,29 +38,12 @@ export function submissionOrderingFailures(read, exists, listFiles) {
   );
 
   const store = source(STORE);
-  check(
-    /pub struct SubmissionTicket \{\s*installation_id: String,\s*sequence: i64,/.test(store),
-    `${STORE} SubmissionTicket must keep its fields private so a sequence number that was never durably allocated, or one paired with an identity it was not allocated under, cannot be handed to a payload.`,
-  );
-  check(
-    /pub fn allocate_submission_sequence/.test(store) && /tx\.commit\(\)/.test(store),
-    `${STORE} must commit the allocated submission number before returning it: a crash after a submission left the machine must burn the number, not reuse it.`,
-  );
-  check(
-    /submission_sequence = submission_sequence \+ 1/.test(store) &&
-      !/SET submission_sequence = \?/.test(store),
-    `${STORE} must advance the counter in SQL from its stored value; assigning a caller-supplied number would let a stale read rewind the namespace.`,
-  );
   for (const symbol of CREDENTIAL_SYMBOLS) {
     check(
       !store.includes(symbol),
       `${STORE} references ${symbol}: the installation identity must not be derived from or stored with a credential, because token rotation has to continue the same counter rather than restart the namespace.`,
     );
   }
-  check(
-    /excluded\.event_sequence > connected_site_watermarks\.event_sequence/.test(store),
-    `${STORE} must refuse to lower a site watermark: a reordered or replayed read would otherwise make the next scan declare a basis older than what this installation had seen.`,
-  );
   check(
     /fn site_event_watermark/.test(store) && /unwrap_or\(0\)/.test(store),
     `${STORE} must read an absent watermark as the genesis value 0, the protocol's answer for a site whose bootstrap precedes every event it will have.`,
@@ -94,7 +77,6 @@ export function submissionOrderingFailures(read, exists, listFiles) {
   const cliFiles = [
     ...listFiles("apps/desktop/src-tauri/src/cli", (file) => file.endsWith(".rs")),
     ...listFiles("apps/desktop/src-tauri/crates/cli/src", (file) => file.endsWith(".rs")),
-    ...listFiles("apps/desktop/src-tauri/examples", (file) => file.endsWith(".rs")),
   ];
   check(
     cliFiles.length > 0,

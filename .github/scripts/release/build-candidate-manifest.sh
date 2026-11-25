@@ -1,8 +1,15 @@
 set -euo pipefail
 VERSION="${TAG_NAME#v}"
-APP_VERSION=$(jq -r '.version' apps/desktop/package.json)
-if [ "$VERSION" != "$APP_VERSION" ]; then
-  echo "::error::Tag version $VERSION does not match the protected source version $APP_VERSION."
+CLI_VERSION=$(node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  import { VERSION_FILES } from "./tools/scripts/lib/version-files.mjs";
+  const cli = VERSION_FILES[0];
+  const version = cli.read(readFileSync(cli.file, "utf8"));
+  if (!version) throw new Error("Cannot read the CLI version.");
+  console.log(version);
+')
+if [ "$VERSION" != "$CLI_VERSION" ]; then
+  echo "::error::Tag version $VERSION does not match the protected source version $CLI_VERSION."
   exit 1
 fi
 
@@ -29,6 +36,9 @@ mkdir -p release-candidate
 WORKFLOW_SHA=$(sha256sum .github/workflows/release.yml | awk '{print $1}')
 PNPM_LOCK_SHA=$(sha256sum pnpm-lock.yaml | awk '{print $1}')
 CARGO_LOCK_SHA=$(sha256sum apps/desktop/src-tauri/Cargo.lock | awk '{print $1}')
+ENGINE_LOCK_SHA=$(sha256sum engine.lock | awk '{print $1}')
+ENGINE_VERSION=$(jq -er '.version' engine.lock)
+ENGINE_SHA256=$(jq -er '.sha256' engine.lock)
 jq -n \
   --arg repository "$GITHUB_REPOSITORY" \
   --arg run_id "$GITHUB_RUN_ID" \
@@ -40,6 +50,9 @@ jq -n \
   --arg workflow_sha256 "$WORKFLOW_SHA" \
   --arg pnpm_lock_sha256 "$PNPM_LOCK_SHA" \
   --arg cargo_lock_sha256 "$CARGO_LOCK_SHA" \
+  --arg engine_lock_sha256 "$ENGINE_LOCK_SHA" \
+  --arg engine_version "$ENGINE_VERSION" \
+  --arg engine_sha256 "$ENGINE_SHA256" \
   --arg pub_date "$PUB_DATE" \
   --arg notes "$NOTES" \
   '{
@@ -54,6 +67,9 @@ jq -n \
     workflow_sha256: $workflow_sha256,
     pnpm_lock_sha256: $pnpm_lock_sha256,
     cargo_lock_sha256: $cargo_lock_sha256,
+    engine_lock_sha256: $engine_lock_sha256,
+    engine_version: $engine_version,
+    engine_sha256: $engine_sha256,
     preflight: "passed",
     pub_date: $pub_date,
     notes: $notes
@@ -75,6 +91,8 @@ printf '%s  manifest.json\n' "$CANDIDATE_HASH" > release-candidate/SHA256SUMS
   echo "| Version | \`$VERSION\` |"
   echo "| Protected source commit | \`$SOURCE_COMMIT\` |"
   echo "| Candidate manifest SHA-256 | \`$CANDIDATE_HASH\` |"
+  echo "| Engine version | \`$ENGINE_VERSION\` |"
+  echo "| Engine SHA-256 | \`$ENGINE_SHA256\` |"
   echo "| Workflow SHA-256 | \`$WORKFLOW_SHA\` |"
   echo
   echo "Approve the pending \`release-signing\` deployment only after checking these values and the manifest artifact."

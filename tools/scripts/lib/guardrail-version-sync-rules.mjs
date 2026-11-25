@@ -1,14 +1,10 @@
+import { posix } from "node:path";
+
+import { tomlFields, tomlText } from "./toml-fields.mjs";
+import { isPrivateRustPath, RUST_WORKSPACE } from "./guardrail-protocol-contents-rules.mjs";
 import { VERSION_FILES } from "./version-files.mjs";
 
-const RUST_MSRV = "1.89.0";
-const RUST_MANIFESTS = [
-  "apps/desktop/src-tauri/Cargo.toml",
-  "apps/desktop/src-tauri/crates/cli/Cargo.toml",
-  "apps/desktop/src-tauri/crates/runtime/Cargo.toml",
-  "apps/desktop/src-tauri/crates/engine-fuzz/Cargo.toml",
-  "apps/desktop/src-tauri/crates/engine/Cargo.toml",
-  "apps/desktop/src-tauri/crates/engine-wasm/Cargo.toml",
-];
+const RUST_MSRV = "1.95.0";
 
 export function versionSyncFailures(read) {
   const failures = [];
@@ -22,17 +18,7 @@ export function versionSyncFailures(read) {
     );
   }
 
-  const rustVersions = RUST_MANIFESTS.map((file) => [
-    file,
-    read(file).match(/^rust-version\s*=\s*"([^"]+)"/m)?.[1],
-  ]);
-  if (rustVersions.some(([, version]) => version !== RUST_MSRV)) {
-    failures.push(
-      `Rust MSRV is out of sync with the tested ${RUST_MSRV} floor: ${rustVersions
-        .map(([file, version]) => `${file}=${version ?? "MISSING"}`)
-        .join("; ")}.`,
-    );
-  }
+  failures.push(...rustVersionFailures(read, (member) => !isPrivateRustPath(member)));
 
   const nodeVersion = read(".nvmrc").trim().replace(/^v/, "");
   const rootPackage = JSON.parse(read("package.json"));
@@ -56,6 +42,57 @@ export function versionSyncFailures(read) {
   if (!/^engineStrict:\s*true\s*$/m.test(read("pnpm-workspace.yaml"))) {
     failures.push(
       "pnpm-workspace.yaml must keep engineStrict enabled so incompatible dependency engines fail installation.",
+    );
+  }
+
+  return failures;
+}
+
+const rootManifest = `${RUST_WORKSPACE}/Cargo.toml`;
+
+function workspaceMemberEntries(read) {
+  const members = tomlFields(read(rootManifest)).find(
+    ({ path }) => path.length === 2 && path[0] === "workspace" && path[1] === "members",
+  )?.value;
+  return Array.isArray(members) ? members.filter((token) => token !== ",").map(tomlText) : null;
+}
+
+export function publicRustMemberRoots(read) {
+  return (workspaceMemberEntries(read) ?? [])
+    .filter((member) => !/[*?[]/.test(member))
+    .map((member) => posix.join(RUST_WORKSPACE, member))
+    .filter((member) => !isPrivateRustPath(member));
+}
+
+export function rustVersionFailures(read, includeMember = () => true) {
+  const failures = [];
+  const members = workspaceMemberEntries(read);
+  const rustManifests = new Set();
+  if (!Array.isArray(members)) {
+    failures.push(`${rootManifest} must list its [workspace] members for the Rust version check.`);
+  } else {
+    for (const member of members) {
+      if (/[*?[]/.test(member)) {
+        failures.push(
+          `${rootManifest} member ${member} is a glob; list each member for the Rust version check.`,
+        );
+        continue;
+      }
+      const memberRoot = posix.join(RUST_WORKSPACE, member);
+      if (includeMember(memberRoot)) rustManifests.add(posix.join(memberRoot, "Cargo.toml"));
+    }
+  }
+  const rustVersions = Array.from(rustManifests, (file) => [
+    file,
+    tomlFields(read(file)).find(
+      ({ path }) => path.length === 2 && path[0] === "package" && path[1] === "rust-version",
+    )?.value,
+  ]);
+  if (rustVersions.some(([, version]) => version !== RUST_MSRV)) {
+    failures.push(
+      `Rust MSRV is out of sync with the tested ${RUST_MSRV} floor: ${rustVersions
+        .map(([file, version]) => `${file}=${version ?? "MISSING"}`)
+        .join("; ")}.`,
     );
   }
 

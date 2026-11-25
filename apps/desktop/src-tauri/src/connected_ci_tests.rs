@@ -1,13 +1,14 @@
 //! Connected CI wire-contract tests.
 
 use super::*;
+use serde_json::Value;
 
-use sitecmd_engine::coverage::ScanCoverageKind;
-use sitecmd_engine::sync::{
+use sitecmd_protocol::coverage::ScanCoverageKind;
+use sitecmd_protocol::sync::{
     CodeBasis, CodeBasisKind, CodeOccurrence, CodeProvenance, CodeVersions, DesktopProvenanceKind,
-    WireCoverage, WireExecutionProfile,
+    WireCoverage,
 };
-use sitecmd_engine::vocab::{IssueConfidence, Severity};
+use sitecmd_protocol::vocab::{IssueConfidence, Severity};
 use std::collections::HashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -20,17 +21,14 @@ fn snapshot() -> CodeSnapshot {
         observed_at: 1_754_784_000_000,
         based_on_event_sequence: 0,
         versions: CodeVersions {
-            engine_release: "1.5.4".into(),
             fingerprint_schema: 1,
             fingerprint_key_version: 1,
             canonicalizer: 1,
         },
-        manifest_digest: "9e4b0000".into(),
-        evaluation_time: 1_754_783_900_000,
-        execution_profile: WireExecutionProfile::default(),
-        key_commitment: "0f".repeat(32),
+        manifest_digest: "9e4b0000".repeat(2).parse().expect("fixture identifier"),
+        key_commitment: "0f".repeat(32).parse().expect("fixture identifier"),
         code_basis: CodeBasis {
-            commit_sha: Some("c0ffee1".into()),
+            commit_sha: Some("c0ffee1".parse().expect("fixture identifier")),
             kind: CodeBasisKind::ExactCheckout,
             unvouched: Vec::new(),
         },
@@ -38,17 +36,17 @@ fn snapshot() -> CodeSnapshot {
             kind: ScanCoverageKind::Project,
             complete: true,
             routes: Vec::new(),
-            checks: vec!["code_scan.security".into()],
+            checks: vec!["code_scan.security".parse().expect("fixture identifier")],
             exceptions: Vec::new(),
         },
         occurrences: vec![CodeOccurrence {
-            check: "code_scan.security".into(),
-            location_hash: LOCATION_HASH.into(),
+            check: "code_scan.security".parse().expect("fixture identifier"),
+            location_hash: LOCATION_HASH.parse().expect("fixture identifier"),
             instance_count: 1,
             severity: Severity::High,
             confidence: Some(IssueConfidence::NeedsReview),
             provenance: CodeProvenance {
-                commit_sha: Some("c0ffee1".into()),
+                commit_sha: Some("c0ffee1".parse().expect("fixture identifier")),
                 kind: DesktopProvenanceKind::Unknown,
             },
         }],
@@ -57,9 +55,14 @@ fn snapshot() -> CodeSnapshot {
 
 fn facts() -> DeploymentFacts {
     DeploymentFacts {
-        provider_deployment_id: "run-42".into(),
-        commit_sha: "c0ffee1".into(),
-        ..DeploymentFacts::default()
+        provider_deployment_id: "run-42".parse().expect("fixture identifier"),
+        commit_sha: "c0ffee1".parse().expect("fixture identifier"),
+        git_ref: None,
+        target: None,
+        previous_sha: None,
+        provider_created_at: None,
+        published: false,
+        ordering: None,
     }
 }
 
@@ -279,12 +282,20 @@ async fn submission_sends_the_github_oidc_witness_in_its_own_sensitive_header() 
     )
     .expect("test client");
 
+    let mut body: Value =
+        serde_json::from_str(&ci_submission_body(SITE_ID, &snapshot(), &facts()).unwrap()).unwrap();
+    serde_json::from_value::<CiSubmission>(body.clone()).expect("typed request round trip");
+    body["summary"] = "CUSTOMER_MACHINE_TEXT".into();
+    body["snapshot"]["occurrences"][0]["tool_output"] = "CUSTOMER_MACHINE_TEXT".into();
     client
-        .submit_ci_evidence(SITE_ID, "{}", Some("signed.github.oidc"))
+        .submit_ci_evidence(SITE_ID, &body.to_string(), Some("signed.github.oidc"))
         .await
         .expect("submission accepted");
     let request = captured.await.expect("capture task").to_ascii_lowercase();
     assert!(request.contains("x-github-oidc-token: signed.github.oidc\r\n"));
+    assert!(!request.contains("customer_machine_text"));
+    assert!(!request.contains("summary"));
+    assert!(!request.contains("tool_output"));
 }
 
 #[test]
@@ -300,14 +311,18 @@ fn deployment_facts_omit_what_the_caller_did_not_state() {
     assert_eq!(members, ["commit_sha", "provider_deployment_id"]);
 
     let full = serde_json::to_value(DeploymentFacts {
-        git_ref: Some("refs/heads/main".into()),
-        previous_sha: Some("beef123".into()),
-        target: Some("production".into()),
-        provider_created_at: Some("2026-08-09T00:00:00.000Z".into()),
+        git_ref: Some("refs/heads/main".parse().expect("fixture identifier")),
+        target: Some("production".parse().expect("fixture identifier")),
+        previous_sha: Some("beef123".parse().expect("fixture identifier")),
+        provider_created_at: Some(
+            "2026-08-09T00:00:00.000Z"
+                .parse()
+                .expect("fixture identifier"),
+        ),
         ..facts()
     })
     .expect("encode");
-    // The wire name is `ref`, which cannot be a Rust field name.
+    // Deployment refs are constrained identifiers, and targets use a closed vocabulary.
     assert_eq!(full["ref"], "refs/heads/main");
     assert_eq!(full["target"], "production");
     assert_eq!(full["provider_created_at"], "2026-08-09T00:00:00.000Z");
@@ -315,50 +330,26 @@ fn deployment_facts_omit_what_the_caller_did_not_state() {
 
 #[test]
 fn deployment_facts_are_refused_here_with_the_flag_that_names_them() {
-    // The service answers a bad SHA with a bare malformed_request that names
-    // no field, and a runner reading a red build cannot act on that.
+    // I4: invalid input was silently erased, producing the wrong flag error.
     assert!(facts().validate().is_ok());
 
-    let error = DeploymentFacts {
-        commit_sha: "nothex!".into(),
-        ..facts()
-    }
-    .validate()
-    .expect_err("non-hex sha");
-    assert!(error.contains("--commit"), "{error}");
-
-    let error = DeploymentFacts {
-        commit_sha: "C0FFEE1".into(),
-        ..facts()
-    }
-    .validate()
-    .expect_err("uppercase sha");
-    assert!(error.contains("lowercase"), "{error}");
-
-    let error = DeploymentFacts {
-        provider_deployment_id: String::new(),
-        ..facts()
-    }
-    .validate()
-    .expect_err("empty identity");
-    assert!(error.contains("--deployment-id"), "{error}");
-
-    let error = DeploymentFacts {
-        target: Some(String::new()),
-        ..facts()
-    }
-    .validate()
-    .expect_err("empty target");
-    assert!(error.contains("--target"), "{error}");
-
-    let error = DeploymentFacts {
-        git_ref: Some("r".repeat(257)),
-        ..facts()
-    }
-    .validate()
-    .expect_err("oversized ref");
-    assert!(error.contains("--ref"), "{error}");
-
+    use crate::deployment_input::parse_flag;
+    assert_eq!(
+        parse_flag::<CommitSha>("--commit", "nothex!").unwrap_err(),
+        "--commit must be a commit SHA of 7 to 64 lowercase hex digits"
+    );
+    assert_eq!(
+        parse_flag::<CommitSha>("--commit", "C0FFEE1").unwrap_err(),
+        "--commit must be lowercase; the service matches deployment SHAs exactly"
+    );
+    assert_eq!(
+        parse_flag::<GitRef>("--ref", &"r".repeat(257)).unwrap_err(),
+        "--ref must be at most 256 characters"
+    );
+    assert_eq!(
+        parse_flag::<DeploymentTarget>("--target", "").unwrap_err(),
+        "--target was given with an empty value; omit it instead"
+    );
     let error = DeploymentFacts {
         published: true,
         ..facts()
@@ -370,8 +361,10 @@ fn deployment_facts_are_refused_here_with_the_flag_that_names_them() {
     let ordered = DeploymentFacts {
         published: true,
         ordering: Some(PublishOrdering {
-            kind: "publish_sequence".into(),
-            authority_id: "github:octo/app:deploy".into(),
+            kind: "publish_sequence".parse().expect("fixture identifier"),
+            authority_id: "github:octo/app:deploy"
+                .parse()
+                .expect("fixture identifier"),
             epoch: 2,
             publish_sequence: Some(17),
             predecessor_deployment_id: None,
@@ -449,4 +442,17 @@ fn an_answer_that_states_no_sequence_is_not_read_as_the_genesis_one() {
     assert_eq!(receipt.event_sequence, None);
     assert!(receipt.deployment.is_none());
     assert!(!receipt.created_deployment());
+}
+
+#[test]
+fn m2_ci_submission_omits_ignored_snapshot_fields() {
+    // M2: ignored local runtime facts could refuse otherwise valid evidence.
+    let body: Value = serde_json::from_str(
+        &ci_submission_body(SITE_ID, &snapshot(), &facts()).expect("typed body"),
+    )
+    .expect("JSON");
+    for field in ["execution_profile", "stack_facts", "evaluation_time"] {
+        assert!(body["snapshot"].get(field).is_none());
+    }
+    assert!(body["snapshot"]["versions"].get("engine_release").is_none());
 }

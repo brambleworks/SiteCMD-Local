@@ -4,9 +4,8 @@
 
 This specification owns connected-service delivery behavior. The
 [protocol and state spec](connected-protocol-spec.md) owns alertability,
-alert-stream storage, and pagination. The
-[hosted scanner spec](hosted-scanner-spec.md) owns cause classification.
-This document owns wake-up policy, aggregation, notification content,
+alert-stream storage, and pagination. The hosted scanner spec owns cause
+classification. This document owns wake-up policy, aggregation, notification content,
 destination verification, redemption, outbound webhooks, reports, CI gate
 delivery, privacy, and abuse handling. Pricing and allowances are outside
 this document.
@@ -176,15 +175,20 @@ Immediate, by default:
   that protection never quits quietly makes these wake-ups, not
   footnotes.
 
+For a measurement with a manifest `grade`, Connect grades the median of the
+latest five hosted samples of the series observed in the last 28 days. It
+produces no verdict with fewer than three samples. Only that series verdict
+may create, re-evidence, or resolve its group. A sample alone cannot change
+issue state. Desktop bootstrap groups that name measurement-class checks
+still receive `422`.
+
 Digest-only, by default: new `medium` and `low` findings; new
 occurrences inside already-active groups; anything caused by a
 detector or corpus update (we never wake a human for our own release);
 newly available coverage; snooze expiries; `claim_not_confirmed`
 outcomes; measurement threshold crossings under this contract:
-thresholds are user-set, opt-in, and default to none
-(measurements were pulled out of the lifecycle model precisely to
-stop noise, and an undefined threshold notion would smuggle it
-back), stored as protocol notification-settings rows
+thresholds are user-set, opt-in, and default to none. They are stored as
+protocol notification-settings rows
 `{series_id, bound: upper | lower, value, hysteresis}` (hysteresis
 defaulting to 10% of the threshold value), revision-guarded like
 every settings mutation; a **crossing** is the transition from

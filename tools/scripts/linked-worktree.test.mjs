@@ -64,3 +64,14 @@ it("prevents a linked worktree's install taking over the shared hooks", () => {
       .map((line) => path.basename(line)),
   ).toEqual(["main"]);
 });
+
+it("leaves hook installation to prepare rather than lefthook's own postinstall", () => {
+  // Bug: lefthook's postinstall runs `lefthook install -f` wherever pnpm
+  // installs, so a worktree's install pointed the shared hooks at its own
+  // binary, around the linked-worktree check prepare makes.
+  const lines = readFileSync("pnpm-workspace.yaml", "utf8").split("\n");
+  const start = lines.indexOf("allowBuilds:");
+  const end = lines.findIndex((line, index) => index > start && /^\S/.test(line));
+  expect(start).toBeGreaterThan(-1);
+  expect(lines.slice(start + 1, end)).toContain("  lefthook: false");
+});

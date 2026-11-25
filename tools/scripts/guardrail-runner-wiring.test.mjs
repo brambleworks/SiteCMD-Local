@@ -1,12 +1,15 @@
 import fs from "node:fs";
+import { isBuiltin } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { RUNNER, runnerWiringFailures } from "./lib/runner-wiring.mjs";
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
 const LIB = path.join(SCRIPTS, "lib");
+const RUST_POLICY = "audit/check-rust-dependency-policy.mjs";
 
 function repoSources() {
   const sources = new Map();
@@ -14,29 +17,71 @@ function repoSources() {
     if (name.endsWith(".mjs")) sources.set(name, fs.readFileSync(path.join(LIB, name), "utf8"));
   }
   sources.set(RUNNER, fs.readFileSync(path.join(SCRIPTS, RUNNER), "utf8"));
+  sources.set(RUST_POLICY, fs.readFileSync(path.join(SCRIPTS, RUST_POLICY), "utf8"));
   return sources;
 }
 
+it("open guardrails import no packages", () => {
+  const pending = [RUNNER];
+  const visited = new Set();
+  const failures = [];
+
+  for (const file of pending) {
+    if (visited.has(file)) continue;
+    visited.add(file);
+    const source = fs.readFileSync(path.join(SCRIPTS, file), "utf8");
+    const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    function visit(node) {
+      const specifier =
+        ts.isImportDeclaration(node) || ts.isExportDeclaration(node)
+          ? node.moduleSpecifier
+          : ts.isCallExpression(node) &&
+              (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+                (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+            ? node.arguments[0]
+            : undefined;
+      if (specifier && ts.isStringLiteralLike(specifier)) {
+        const reference = specifier.text;
+        if (reference.startsWith("./") || reference.startsWith("../")) {
+          pending.push(path.posix.join(path.posix.dirname(file), reference));
+        } else if (!reference.startsWith("node:") || !isBuiltin(reference)) {
+          failures.push(`${file}: ${reference}`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(tree);
+  }
+
+  expect(failures).toEqual([]);
+});
+
 describe("runnerWiringFailures", () => {
-  it("finds every guardrail rule reachable from the runner", () => {
-    expect(runnerWiringFailures(repoSources())).toEqual([]);
+  it("finds every guardrail rule reachable from a runner", () => {
+    // Bug: A guardrail can become unreachable when moved to the Rust-only policy.
+    const { scripts } = JSON.parse(
+      fs.readFileSync(path.join(SCRIPTS, "../../package.json"), "utf8"),
+    );
+    expect(scripts["audit:deps:rust-policy"]).toBe(`node tools/scripts/${RUST_POLICY}`);
+    expect(runnerWiringFailures(repoSources(), [RUNNER, RUST_POLICY])).toEqual([]);
   });
 
   it("covers the whole rule surface, not a sample", () => {
     const sources = repoSources();
     const ruleModules = [...sources.keys()].filter((name) => /^guardrail-.*\.mjs$/.test(name));
-    expect(ruleModules.length).toBeGreaterThan(100);
+    expect(ruleModules).toContain("guardrail-cli-surface-rules.mjs");
 
     const unchecked = ruleModules.filter(
       (name) => !/^export (?:async )?function \w+Failures/m.test(sources.get(name)),
     );
     expect(unchecked).toEqual([
-      "guardrail-license-sources.mjs",
+      "guardrail-rust-function.mjs",
+      "guardrail-rust-wire-index.mjs",
       "guardrail-script-budgets.mjs",
       "guardrail-source-regex.mjs",
       "guardrail-source-text.mjs",
-      "guardrail-tauri-acl-parsing.mjs",
       "guardrail-text-utils.mjs",
+      "guardrail-workflow-yaml.mjs",
     ]);
   });
 
@@ -47,7 +92,7 @@ describe("runnerWiringFailures", () => {
       "export function orphanFailures(read) {\n  return [read];\n}\n",
     );
 
-    expect(runnerWiringFailures(sources).join("\n")).toContain(
+    expect(runnerWiringFailures(sources, [RUNNER, RUST_POLICY]).join("\n")).toContain(
       "guardrail-orphan-rules.mjs exports orphanFailures",
     );
   });

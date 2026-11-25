@@ -1,9 +1,5 @@
 * text=auto eol=lf
 
-# Recorded fixtures must retain their hash-pinned bytes.
-apps/desktop/src-tauri/crates/engine/tests/fixtures/bundles/** -text
-apps/desktop/src-tauri/crates/engine/tests/fixtures/polish/*.html -text
-
 *.png binary
 *.jpg binary
 *.jpeg binary
@@ -22,6 +18,3 @@ apps/desktop/src-tauri/crates/engine/tests/fixtures/polish/*.html -text
 pnpm-lock.yaml linguist-generated=true
 THIRD_PARTY_DEPENDENCIES.json linguist-generated=true
 THIRD_PARTY_LICENSES.txt linguist-generated=true
-product-facts.json linguist-generated=true
-apps/desktop/src/generated/* linguist-generated=true
-apps/desktop/src-tauri/crates/engine/browser/axe.min.js linguist-vendored=true

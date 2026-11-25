@@ -78,13 +78,21 @@ function workspacePackageNames(read, listFiles) {
 
 function appDirectories(listFiles) {
   const apps = new Set();
-  for (const manifest of listFiles("apps", (file) => /^apps\/[^/]+\/package\.json$/.test(file))) {
+  for (const manifest of listFiles("apps", (file) =>
+    /^apps\/[^/]+\/(?:package\.json|src-tauri\/Cargo\.toml)$/.test(file),
+  )) {
     apps.add(manifest.split("/")[1]);
   }
   return apps;
 }
 
-export function publicationRecordFailures(read, exists, listFiles) {
+export function publicationRecordFailures(
+  read,
+  exists,
+  listFiles,
+  extraRoots = [],
+  extraSpecs = [],
+) {
   const failures = [];
 
   if (exists(README) && claimsCompleteNetworkEnumeration(read(README))) {
@@ -93,7 +101,10 @@ export function publicationRecordFailures(read, exists, listFiles) {
     );
   }
 
-  for (const file of listFiles(CONNECTED_SPEC_DIRECTORY, (path) => path.endsWith("-spec.md"))) {
+  for (const file of [
+    ...listFiles(CONNECTED_SPEC_DIRECTORY, (path) => path.endsWith("-spec.md")),
+    ...extraSpecs,
+  ]) {
     const source = read(file);
     const firstSection = source.split("\n").findIndex((line) => line.startsWith("## "));
     if (firstSection === -1 || firstSection > 60) {
@@ -112,21 +123,12 @@ export function publicationRecordFailures(read, exists, listFiles) {
 
   // Retired paid-boundary phrases may remain only in historical specs and tests.
   const retiredContractSurfaces = [
-    ...[
-      README,
-      CONTRIBUTING,
-      SECURITY,
-      "apps/desktop/PRODUCT.md",
-      "docs/engineering/tauri.md",
-    ].filter(exists),
-    ...listFiles(
-      "apps/desktop/src",
-      (file) =>
-        /\.(?:ts|tsx|css)$/.test(file) && !/\.test\./.test(file) && !file.includes("/generated/"),
-    ),
-    ...listFiles(
-      "apps/desktop/src-tauri/src",
-      (file) => file.endsWith(".rs") && !file.endsWith("_tests.rs") && !file.includes("/tests/"),
+    ...[README, CONTRIBUTING, SECURITY].filter(exists),
+    ...["apps/desktop/src-tauri/src", ...extraRoots].flatMap((dir) =>
+      listFiles(
+        dir,
+        (file) => file.endsWith(".rs") && !file.endsWith("_tests.rs") && !file.includes("/tests/"),
+      ),
     ),
   ];
   for (const file of retiredContractSurfaces) {

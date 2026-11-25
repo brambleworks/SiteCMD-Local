@@ -7,6 +7,7 @@
 
 const NPM_DIR = "packaging/npm";
 const PLACEHOLDER = "0.0.0-dev";
+const LICENSE = "SEE LICENSE IN LICENSE";
 const MAIN = `${NPM_DIR}/cli`;
 const PLATFORMS = {
   "cli-darwin-universal": { os: ["darwin"], cpu: ["x64", "arm64"], bin: "sitecmd" },
@@ -15,19 +16,24 @@ const PLATFORMS = {
   "cli-win32-x64": { os: ["win32"], cpu: ["x64"], bin: "sitecmd.exe" },
 };
 
-function parse(read, path, failures) {
+function parsePackage(read, path, failures) {
+  let pkg;
   try {
-    return JSON.parse(read(path));
+    pkg = JSON.parse(read(path));
   } catch (error) {
     failures.push(`${path} is missing or unparseable (${error.message})`);
     return null;
   }
+  if (pkg?.license !== LICENSE) {
+    failures.push(`${path} license must be ${LICENSE}`);
+  }
+  return pkg;
 }
 
-export function npmCliPackageFailures(read) {
+export function npmCliPackageFailures(read, { releaseWorkflow = true } = {}) {
   const failures = [];
 
-  const main = parse(read, `${MAIN}/package.json`, failures);
+  const main = parsePackage(read, `${MAIN}/package.json`, failures);
   if (main) {
     if (main.name !== "@sitecmd/cli" || main.version !== PLACEHOLDER) {
       failures.push(
@@ -46,9 +52,6 @@ export function npmCliPackageFailures(read) {
       failures.push(
         `${MAIN}/package.json optionalDependencies must be exactly ${wanted.join(", ")} at ${PLACEHOLDER}`,
       );
-    }
-    if (main.license !== "Apache-2.0") {
-      failures.push(`${MAIN}/package.json must carry the repository's Apache-2.0 license`);
     }
   }
 
@@ -76,7 +79,7 @@ export function npmCliPackageFailures(read) {
   }
 
   for (const [platform, expected] of Object.entries(PLATFORMS)) {
-    const pkg = parse(read, `${NPM_DIR}/${platform}/package.json`, failures);
+    const pkg = parsePackage(read, `${NPM_DIR}/${platform}/package.json`, failures);
     if (!pkg) continue;
     if (pkg.name !== `@sitecmd/${platform}` || pkg.version !== PLACEHOLDER) {
       failures.push(
@@ -118,6 +121,7 @@ export function npmCliPackageFailures(read) {
     }
   }
 
+  if (!releaseWorkflow) return failures;
   const workflow = read(".github/workflows/release.yml");
   const job = workflow.slice(workflow.indexOf("\n  publish-npm:"));
   if (!job.includes("publish-npm:")) {

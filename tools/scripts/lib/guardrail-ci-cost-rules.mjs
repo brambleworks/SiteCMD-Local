@@ -1,4 +1,37 @@
+import { CI_WORKFLOW } from "./ci-workflow-contract.mjs";
+import { readWorkflow } from "./guardrail-workflow-yaml.mjs";
 import { orderedBefore, stripJsComments } from "./guardrail-text-utils.mjs";
+
+export const VERIFY_PUSH_STEPS = [
+  "standin-build",
+  "lint",
+  "prettier",
+  "legal-artifacts",
+  "installer",
+  "workflows",
+  "guardrails:repo",
+  "knip:budget",
+  "knip:files",
+  "cargo-fmt",
+  "rust-toolchain",
+  "rust-patterns",
+  "gitleaks",
+  "agents-md",
+  "regex-audit",
+  "audit:deps:rust",
+  "audit:deps:js",
+  "audit:deps:signer",
+  "cargo-deny",
+  "cli-build",
+  "guardrails-tests",
+  "cli-smoke",
+  "rust-nextest",
+  "rust-clippy",
+  "cli-headless-clippy",
+  "rust-msrv-workspace",
+  "rust-msrv-cli",
+  "rust-doctest",
+];
 
 // Exported for focused negative controls over synthetic workflows.
 export function deployWorkflowHardeningFailures(read, workflowFiles) {
@@ -33,7 +66,7 @@ export function deployWorkflowHardeningFailures(read, workflowFiles) {
   return failures;
 }
 
-export function ciCostSafetyFailures(read, listFiles) {
+export function ciCostSafetyFailures(read, listFiles, { exported = false } = {}) {
   const failures = [];
   const check = (condition, message) => {
     if (!condition) failures.push(message);
@@ -57,60 +90,30 @@ export function ciCostSafetyFailures(read, listFiles) {
   }
   check(
     dailyCronWorkflows.length === 0,
-    `Scheduled workflows must run no more than weekly: pin a specific day-of-week or day-of-month instead of "* * *". These fire daily-or-more: ${dailyCronWorkflows.join(", ")}.`,
+    `Scheduled workflows must run no more than weekly to stay within the Enterprise Actions budget. Pin a specific day-of-week or day-of-month instead of "* * *". These fire daily-or-more: ${dailyCronWorkflows.join(", ")}.`,
   );
 
-  const dependencyAuditWorkflow = read(".github/workflows/dependency-audit.yml");
+  const { jobs } = readWorkflow(read(CI_WORKFLOW));
   check(
-    /^ {2}pull_request:/m.test(dependencyAuditWorkflow) &&
-      dependencyAuditWorkflow.includes("pnpm run audit:deps:signer"),
-    "dependency-audit.yml must audit the standalone updater signer on dependency pull requests as well as push and schedule runs.",
+    jobs["dependency-audit"]?.steps.some(({ run }) => run === "pnpm run audit:deps:signer"),
+    "ci.yml must audit the standalone updater signer when dependencies change.",
   );
 
-  const releaseWorkflow = read(".github/workflows/release.yml");
-  const buildTauriScript = read(".github/scripts/release/build-tauri-app.sh");
+  const hasRelease = !exported || workflowFiles.includes(".github/workflows/release.yml");
+  const releaseWorkflow = hasRelease ? read(".github/workflows/release.yml") : "";
   const releaseJobCount = (releaseWorkflow.match(/^\s+runs-on:/gm) || []).length;
   const releaseTimeoutCount = (releaseWorkflow.match(/^\s+timeout-minutes:/gm) || []).length;
   check(
-    releaseJobCount > 0 && releaseTimeoutCount >= releaseJobCount,
+    !hasRelease || (releaseJobCount > 0 && releaseTimeoutCount >= releaseJobCount),
     `release.yml must declare timeout-minutes on every job (found ${releaseTimeoutCount} timeout-minutes for ${releaseJobCount} runs-on entries). The 360-minute default bills up to 3600 minutes for one hung macOS job.`,
   );
   check(
-    releaseWorkflow.includes("concurrency:") &&
-      releaseWorkflow.includes("cancel-in-progress: true"),
+    !hasRelease ||
+      (releaseWorkflow.includes("concurrency:") &&
+        releaseWorkflow.includes("cancel-in-progress: true")),
     "release.yml must keep a concurrency group with cancel-in-progress so a superseded run of the same tag stops billing.",
   );
-  // Build only installer formats that the corresponding release leg uploads.
-  check(
-    buildTauriScript.includes('--bundles "$BUNDLES"') &&
-      releaseWorkflow.includes("bundles: app") &&
-      releaseWorkflow.includes("bundles: appimage") &&
-      releaseWorkflow.includes("bundles: nsis"),
-    'release.yml must pass --bundles "$BUNDLES" to tauri build with per-leg matrix bundles (app / appimage / nsis) so unshipped installers are never built or signed.',
-  );
-
   failures.push(...deployWorkflowHardeningFailures(read, workflowFiles));
-
-  for (const file of [
-    ".github/workflows/playwright.yml",
-    ".github/workflows/knip.yml",
-    ".github/workflows/size-limit.yml",
-    ".github/workflows/frontend-quality.yml",
-  ]) {
-    check(
-      !/^ {2}push:/m.test(read(file)),
-      `${file} must not have a push trigger: verify-push.mjs already gates every push to main locally, so the hosted run is pure duplicate spend. Keep pull_request and workflow_dispatch only.`,
-    );
-  }
-
-  // Hosted clippy covers platform-specific Rust branches unavailable locally.
-  const clippyWorkflow = read(".github/workflows/cargo-clippy.yml");
-  check(
-    /^ {2}push:/m.test(clippyWorkflow) &&
-      clippyWorkflow.includes("branches: [main]") &&
-      clippyWorkflow.includes('- "apps/desktop/src-tauri/**"'),
-    "cargo-clippy.yml must keep its push-to-main trigger scoped to apps/desktop/src-tauri/**: macOS clippy never type-checks Linux cfg arms, so without a hosted push run a Linux-only lint first surfaces in the release preflight, after the tag is already pushed.",
-  );
 
   // Inspect executable content, not required strings mentioned in comments.
   const verifyPush = stripJsComments(read("tools/scripts/verify-push.mjs"));
@@ -124,11 +127,11 @@ export function ciCostSafetyFailures(read, listFiles) {
   ]) {
     check(
       verifyPush.includes(requiredCheck),
-      `verify-push.mjs must keep running \`${requiredCheck}\`: the local mirror is what catches a regression before the push lands (for the Rust-only checks it is the only gate at all).`,
+      `verify-push.mjs must keep running \`${requiredCheck}\`: local verification must cover the same Rust checks as CI.`,
     );
   }
 
-  // Mirror every release dependency audit in the local push gate.
+  // Mirror every release dependency audit in local verification.
   const preflightAudits = new Set(
     [...releaseWorkflow.matchAll(/pnpm run (audit:deps:[a-z]+)/g)].map((match) => match[1]),
   );
@@ -147,18 +150,19 @@ export function ciCostSafetyFailures(read, listFiles) {
   )) {
     check(
       new RegExp(`${auditEnv}=1`).test(verifyPush),
-      `verify-push.mjs must run its audit with ${auditEnv}=1, the way release.yml does. Mirroring the script name alone lets the local gate answer a weaker question than the release preflight, so a green push is followed by a failed tag.`,
+      `verify-push.mjs must run its audit with ${auditEnv}=1, the way release.yml does. Mirroring the script name alone lets local verification use weaker inputs than the release preflight, so a green push is followed by a failed tag.`,
     );
   }
 
   // Free runner disk before Rust builds consume the available space.
   const diskStepIndex = releaseWorkflow.search(/^\s*- name: Free runner disk\s*$/m);
   check(
-    diskStepIndex !== -1,
+    !hasRelease || diskStepIndex !== -1,
     "release.yml preflight must keep its 'Free runner disk' step: the hosted image's free space is smaller than the Rust debug target dir, and without it the release dies with ENOSPC after the tag is pushed.",
   );
   check(
-    diskStepIndex !== -1 && diskStepIndex < releaseWorkflow.indexOf("cargo nextest run"),
+    !hasRelease ||
+      (diskStepIndex !== -1 && diskStepIndex < releaseWorkflow.indexOf("cargo nextest run")),
     "release.yml must free runner disk before the Rust test steps: the space is consumed by the debug target dir those steps build, so cleanup after them is cleanup after the failure.",
   );
 
@@ -172,49 +176,12 @@ export function ciCostSafetyFailures(read, listFiles) {
     }
   }
 
-  // Pin every push-gate step so removing one is an explicit guardrail change.
-  for (const stepName of [
-    "typecheck",
-    "lint",
-    "prettier",
-    "installer",
-    "workflows",
-    "guardrails:repo",
-    "knip:budget",
-    "knip:files",
-    "cargo-fmt",
-    "rust-patterns",
-    "frontend-constants",
-    "gitleaks",
-    "agents-md",
-    "regex-audit",
-    "audit:deps:rust",
-    "tauri-commands",
-    "cli-build",
-    "desktop-vitest",
-    "worker-vitest",
-    "rust-nextest",
-    "rust-doctest",
-    "rust-clippy",
-    "guardrails-tests",
-    "perf-baseline",
-    "rust-perf-gates",
-    "desktop-build",
-    "size-limit",
-    "playwright",
-    "naming-audit",
-  ]) {
+  // Pin every local verification step so removing one is an explicit guardrail change.
+  for (const stepName of VERIFY_PUSH_STEPS) {
     check(
       verifyPush.includes(`name: "${stepName}"`),
-      `verify-push.mjs must keep its "${stepName}" step: the local mirror is the primary push gate, and a dropped tier only fails after the push, in CI or production.`,
+      `verify-push.mjs must keep its "${stepName}" step: local verification must keep covering this check.`,
     );
   }
-  for (const workerFilter of ["--filter sitecmd-mcp"]) {
-    check(
-      verifyPush.includes(workerFilter),
-      `verify-push.mjs worker-vitest must keep \`${workerFilter}\`: that suite otherwise only runs after the push.`,
-    );
-  }
-
   return failures;
 }

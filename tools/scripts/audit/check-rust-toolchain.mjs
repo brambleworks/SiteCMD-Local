@@ -49,7 +49,7 @@ if (channel && /^\d+\.\d+\.\d+$/.test(channel)) {
     if (active !== channel) {
       failures.push(
         `Active rustc is ${active ?? "unknown"} but rust-toolchain.toml pins ${channel}. ` +
-          `Run \`rustup toolchain install ${channel}\` so your local gate matches the release.`,
+          `Run \`rustup toolchain install ${channel}\` so local verification matches the release.`,
       );
     }
   } catch {

@@ -1,6 +1,7 @@
 //! Shared SSRF validation for scans, sitemaps, webhooks, and redirects.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
+use sitecmd_protocol::network_class::{is_private_network_ip, is_private_or_internal_ip};
+use std::net::IpAddr;
 
 #[derive(Debug, Clone, Copy)]
 pub enum UrlPolicy {
@@ -71,12 +72,14 @@ impl LocalOrigin {
     /// `is_strict_localhost` accepted only `127.0.0.1`), and a trailing-dot
     /// FQDN form (`localhost.`) normalizes the same way
     /// `is_local_dev_domain` already normalizes it elsewhere in this file,
-    /// so it also classifies as `Loopback` even though `core::localhost`'s
+    /// so it also classifies as `Loopback` even though the protocol's
     /// predicates compare `host_str()` without trimming the trailing dot.
     pub fn classify(url: &url::Url) -> Self {
         match url.host() {
             Some(url::Host::Ipv4(ip)) if ip.is_loopback() => Self::Loopback,
-            Some(url::Host::Ipv6(ip)) if ip.is_loopback() => Self::Loopback,
+            Some(url::Host::Ipv6(ip)) if IpAddr::V6(ip).to_canonical().is_loopback() => {
+                Self::Loopback
+            }
             Some(url::Host::Ipv4(ip)) if ip.is_unspecified() => Self::LocalNetworkName,
             Some(url::Host::Ipv4(ip)) if is_private_network_ip(IpAddr::V4(ip)) => {
                 Self::PrivateNetwork
@@ -100,38 +103,21 @@ impl LocalOrigin {
         }
     }
 
-    /// Replaces `core::localhost::is_strict_localhost`.
-    pub fn is_strict_loopback(self) -> bool {
-        matches!(self, Self::Loopback)
-    }
-
     pub fn allows_local_dev(self) -> bool {
         matches!(self, Self::Loopback | Self::LocalhostDomain)
     }
 
-    /// Replaces `core::localhost::is_localhost`.
-    pub fn is_local_environment(self) -> bool {
-        !matches!(self, Self::Public)
-    }
-
-    /// Classification that also resolves a hostname, so a name pointing into a
-    /// private network (a container's service name, a machine on the LAN) is
-    /// recognized as one. A scan calls this once for the target the person
-    /// named, because a client must be given that origin's reach and no more.
-    pub async fn classify_resolved(url: &url::Url) -> Self {
-        let sync = Self::classify(url);
-        let Some(url::Host::Domain(domain)) = url.host() else {
-            return sync;
-        };
-        if sync != Self::Public {
-            return sync;
+    /// Classify using addresses the caller already resolved.
+    pub(crate) fn classify_resolved_addresses(
+        url: &url::Url,
+        addrs: impl IntoIterator<Item = IpAddr>,
+    ) -> Self {
+        let origin = Self::classify(url);
+        if origin == Self::Public {
+            Self::from_resolved_addresses(origin, addrs)
+        } else {
+            origin
         }
-        let normalized = domain.trim_end_matches('.').to_ascii_lowercase();
-        let port = url.port_or_known_default().unwrap_or(80);
-        let Ok(addrs) = tokio::net::lookup_host((normalized.as_str(), port)).await else {
-            return sync;
-        };
-        Self::from_resolved_addresses(sync, addrs.map(|addr| addr.ip()))
     }
 
     /// Private reach is earned only when every address a name answers with
@@ -142,7 +128,8 @@ impl LocalOrigin {
     fn from_resolved_addresses(sync: Self, addrs: impl IntoIterator<Item = IpAddr>) -> Self {
         let mut private_only = false;
         for ip in addrs {
-            if is_loopback_ip(ip) || !is_private_network_ip(ip) {
+            let ip = ip.to_canonical();
+            if ip.is_loopback() || !is_private_network_ip(ip) {
                 return sync;
             }
             private_only = true;
@@ -153,26 +140,6 @@ impl LocalOrigin {
             sync
         }
     }
-
-    /// The policy for a URL this origin's page steers the scan to. A page can
-    /// name any URL it likes; it never earns more reach than the origin the
-    /// person asked for.
-    pub fn subordinate_policy(self) -> UrlPolicy {
-        match self {
-            Self::PrivateNetwork => UrlPolicy::ScanTarget,
-            Self::Loopback | Self::LocalhostDomain => UrlPolicy::Redirect {
-                allow_local_dev: true,
-            },
-            Self::LocalNetworkName | Self::Public => UrlPolicy::Redirect {
-                allow_local_dev: false,
-            },
-        }
-    }
-}
-
-pub fn validate_url_blocking(url: &str, policy: UrlPolicy) -> Result<(), String> {
-    let parsed = url::Url::parse(url).map_err(|e| format!("Invalid URL '{}': {}", url, e))?;
-    validate_url_target_blocking(&parsed, policy)
 }
 
 pub async fn validate_url(url: &str, policy: UrlPolicy) -> Result<(), String> {
@@ -199,28 +166,6 @@ pub(crate) async fn validate_url_target(url: &url::Url, policy: UrlPolicy) -> Re
         url::Host::Ipv4(ip) => validate_ip_target(IpAddr::V4(ip), policy),
         url::Host::Ipv6(ip) => validate_ip_target(IpAddr::V6(ip), policy),
         url::Host::Domain(domain) => validate_domain_target_async(domain, url, policy).await,
-    }
-}
-
-pub fn validate_url_target_blocking(url: &url::Url, policy: UrlPolicy) -> Result<(), String> {
-    match url.scheme() {
-        "http" | "https" => {}
-        scheme => {
-            return Err(format!(
-                "Unsupported URL scheme '{}'. Only http:// and https:// URLs are allowed.",
-                scheme
-            ))
-        }
-    }
-
-    let host = url
-        .host()
-        .ok_or_else(|| format!("{} must include a host.", policy.label()))?;
-
-    match host {
-        url::Host::Ipv4(ip) => validate_ip_target(IpAddr::V4(ip), policy),
-        url::Host::Ipv6(ip) => validate_ip_target(IpAddr::V6(ip), policy),
-        url::Host::Domain(domain) => validate_domain_target(domain, url, policy),
     }
 }
 
@@ -261,39 +206,6 @@ pub fn validate_redirect_target_nonblocking(
     }
 }
 
-/// Validate a page-controlled subresource before connect-time DNS checks.
-pub fn validate_page_subresource_target(url: &url::Url, policy: UrlPolicy) -> Result<(), String> {
-    validate_redirect_target_nonblocking(url, policy)
-}
-
-fn validate_domain_target(domain: &str, url: &url::Url, policy: UrlPolicy) -> Result<(), String> {
-    let normalized = domain.trim_end_matches('.').to_ascii_lowercase();
-    if normalized == "metadata.google.internal" {
-        return Err("Cannot access cloud metadata endpoints.".to_string());
-    }
-    if is_local_dev_domain(&normalized) {
-        if policy.allow_local_dev() {
-            return Ok(());
-        }
-        return Err("External callback URLs cannot target localhost.".to_string());
-    }
-
-    let port = url.port_or_known_default().unwrap_or(80);
-    let resolved = (normalized.as_str(), port)
-        .to_socket_addrs()
-        .map_err(|e| format!("Could not resolve URL host '{}': {}", domain, e))?;
-
-    let mut saw_addr = false;
-    for addr in resolved {
-        saw_addr = true;
-        validate_resolved_domain_ip_target(domain, addr.ip(), policy)?;
-    }
-    if !saw_addr {
-        return Err(format!("Could not resolve URL host '{}'.", domain));
-    }
-    Ok(())
-}
-
 async fn validate_domain_target_async(
     domain: &str,
     url: &url::Url,
@@ -311,7 +223,7 @@ async fn validate_domain_target_async(
     }
 
     let port = url.port_or_known_default().unwrap_or(80);
-    let resolved = tokio::net::lookup_host((normalized.as_str(), port))
+    let resolved = crate::dns_cache::lookup_host(&normalized, port)
         .await
         .map_err(|e| format!("Could not resolve URL host '{}': {}", domain, e))?;
 
@@ -331,7 +243,7 @@ fn is_local_dev_domain(domain: &str) -> bool {
 }
 
 fn validate_ip_target(ip: IpAddr, policy: UrlPolicy) -> Result<(), String> {
-    if policy.allow_local_dev() && is_loopback_ip(ip) {
+    if policy.allow_local_dev() && ip.to_canonical().is_loopback() {
         return Ok(());
     }
     if policy.allows_private_network() && is_private_network_ip(ip) {
@@ -351,12 +263,13 @@ pub(crate) fn validate_resolved_domain_ip_target(
     ip: IpAddr,
     policy: UrlPolicy,
 ) -> Result<(), String> {
+    let is_loopback = ip.to_canonical().is_loopback();
     let normalized = domain.trim_end_matches('.').to_ascii_lowercase();
     if is_local_dev_domain(&normalized) {
         if !policy.allow_local_dev() {
             return Err("External callback URLs cannot target localhost.".to_string());
         }
-        if is_loopback_ip(ip) {
+        if is_loopback {
             return Ok(());
         }
         return Err(format!(
@@ -365,133 +278,13 @@ pub(crate) fn validate_resolved_domain_ip_target(
         ));
     }
 
-    if is_loopback_ip(ip) {
+    if is_loopback {
         return Err(format!(
             "Cannot access loopback IP address '{}' through a non-localhost hostname.",
             ip
         ));
     }
     validate_ip_target(ip, policy)
-}
-
-fn is_loopback_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => ip.is_loopback(),
-        IpAddr::V6(ip) => ip.is_loopback(),
-    }
-}
-
-/// Address space a person's own machine and networks occupy: loopback, the
-/// RFC 1918 private ranges, the RFC 6598 shared range that carrier-grade NAT
-/// and tailnets use, and IPv6 unique-local, plus the IPv4-mapped spellings of
-/// those. A named scan target may reach these.
-///
-/// Deliberately narrower than [`is_private_or_internal_ip`]: link-local
-/// (`169.254.0.0/16`, `fe80::/10`) is excluded because cloud metadata answers
-/// there, and multicast, broadcast, and the reserved blocks are excluded
-/// because they are not hosts. Anything this does not name is still measured
-/// against the wider deny list, so a narrow allow list cannot open a range.
-pub(crate) fn is_private_network_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => {
-            let [a, b, ..] = ip.octets();
-            ip.is_private() || ip.is_loopback() || (a == 100 && (64..=127).contains(&b))
-        }
-        IpAddr::V6(ip) => {
-            ip.is_loopback()
-                || is_unique_local_ipv6(ip)
-                || ip
-                    .to_ipv4_mapped()
-                    .is_some_and(|mapped| is_private_network_ip(IpAddr::V4(mapped)))
-        }
-    }
-}
-
-/// Ranges that only exist inside a private, reserved, or internal network.
-/// Nothing here is ever a public site, so it is the deny list every policy is
-/// measured against.
-fn is_private_or_internal_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => {
-            let [a, b, c, _] = ip.octets();
-            ip.is_private()
-                || ip.is_loopback()
-                || ip.is_link_local()
-                || ip.is_broadcast()
-                || ip.is_unspecified()
-                // 0.0.0.0/8 "this network": only 0.0.0.0 is `is_unspecified`,
-                // but some stacks route the rest of the block to loopback.
-                || a == 0
-                // 100.64.0.0/10 carrier-grade NAT (RFC 6598) - a common gateway
-                // range that is internal, not publicly routable.
-                || (a == 100 && (64..=127).contains(&b))
-                // 224.0.0.0/4 multicast and 240.0.0.0/4 reserved: never a host.
-                || ip.is_multicast()
-                || (a & 0xf0) == 240
-                // 198.18.0.0/15 benchmarking (RFC 2544) and 192.0.0.0/24 IETF
-                // protocol assignments (RFC 6890).
-                || (a == 198 && (b == 18 || b == 19))
-                || (a == 192 && b == 0 && c == 0)
-        }
-        IpAddr::V6(ip) => {
-            ip.is_loopback()
-                || ip.is_unspecified()
-                || ip.is_multicast()
-                || is_unique_local_ipv6(ip)
-                || is_unicast_link_local_ipv6(ip)
-                || is_site_local_ipv6(ip)
-                || is_local_use_nat64(ip)
-                || embedded_ipv4_addresses(ip)
-                    .into_iter()
-                    .flatten()
-                    .any(|embedded| is_private_or_internal_ip(IpAddr::V4(embedded)))
-        }
-    }
-}
-
-/// IPv4 addresses carried inside transition-mechanism IPv6 prefixes. Each is
-/// checked against the IPv4 policy so an IPv6 literal cannot smuggle a
-/// private IPv4 target past the v4 range checks: RFC 4291 mapped and
-/// compatible forms, RFC 6052 NAT64, RFC 3056 6to4, and RFC 4380 Teredo
-/// (server address, plus the client address stored inverted).
-fn embedded_ipv4_addresses(ip: Ipv6Addr) -> [Option<Ipv4Addr>; 5] {
-    let s = ip.segments();
-    let pair = |high: u16, low: u16| Ipv4Addr::from(((high as u32) << 16) | low as u32);
-    let nat64 =
-        (s[0] == 0x0064 && s[1] == 0xff9b && s[2..6] == [0, 0, 0, 0]).then(|| pair(s[6], s[7]));
-    let six_to_four = (s[0] == 0x2002).then(|| pair(s[1], s[2]));
-    let teredo = s[0] == 0x2001 && s[1] == 0;
-    let teredo_server = teredo.then(|| pair(s[2], s[3]));
-    let teredo_client = teredo.then(|| Ipv4Addr::from(!(((s[6] as u32) << 16) | s[7] as u32)));
-    [
-        ip.to_ipv4(),
-        nat64,
-        six_to_four,
-        teredo_server,
-        teredo_client,
-    ]
-}
-
-/// 64:ff9b:1::/48 is the local-use NAT64 prefix (RFC 8215): the embedded
-/// address is site-specific, so the whole block is internal.
-fn is_local_use_nat64(ip: Ipv6Addr) -> bool {
-    let s = ip.segments();
-    s[0] == 0x0064 && s[1] == 0xff9b && s[2] == 0x0001
-}
-
-fn is_unique_local_ipv6(ip: Ipv6Addr) -> bool {
-    (ip.segments()[0] & 0xfe00) == 0xfc00
-}
-
-fn is_unicast_link_local_ipv6(ip: Ipv6Addr) -> bool {
-    (ip.segments()[0] & 0xffc0) == 0xfe80
-}
-
-/// fec0::/10 site-local unicast (RFC 3879 deprecated it, stacks still route
-/// it). It sits just outside the fe80::/10 link-local mask, so it needs its
-/// own check rather than a wider mask that would also swallow fe00::/9.
-fn is_site_local_ipv6(ip: Ipv6Addr) -> bool {
-    (ip.segments()[0] & 0xffc0) == 0xfec0
 }
 
 #[cfg(test)]

@@ -4,9 +4,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::checks::{IssueConfidence, Severity};
 use crate::core::normalized_scan::{ScanEvidenceSource, ScanFindingLocationKind};
-use crate::core::types_work_items::{IssueStatus, VerifiedBy};
+use crate::core::scan_types::{IssueConfidence, Severity};
+use sitecmd_protocol::vocab::{IssueStatus, VerifiedBy};
 
 use super::helpers::{lifecycle_env_url, parse_optional_enum_required, parse_required_enum};
 use super::{Database, DbError};
@@ -33,11 +33,9 @@ impl BootstrapState {
 /// Local occurrence identity before wire canonicalization.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OccurrenceLocation {
-    /// Observed on one page, stored exactly as the scan observed it.
-    Page { url: String },
     /// Repository-relative code identity without unstable line numbers.
     File { rule: String, path: String },
-    /// Cross-page or project-wide finding without a narrower location.
+    /// Project-wide finding without a narrower location.
     Whole,
 }
 
@@ -49,13 +47,6 @@ pub struct OccurrenceIdentity {
     pub location: OccurrenceLocation,
     /// Number of findings collapsed into this identity.
     pub instance_count: u32,
-}
-
-/// Bootstrap occurrence with authored routes kept outside its final identity.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LastKnownOccurrenceRecord {
-    pub identity: OccurrenceIdentity,
-    pub authored_page_urls: Vec<String>,
 }
 
 /// An occurrence as one scan saw it: its identity plus the two observation
@@ -80,10 +71,10 @@ pub struct BootstrapGroup {
     /// Where the group was when it was last seen. Populated only for groups
     /// awaiting verification, and empty when local history no longer reaches
     /// back that far.
-    pub last_known_occurrences: Vec<LastKnownOccurrenceRecord>,
+    pub last_known_occurrences: Vec<OccurrenceIdentity>,
 }
 
-/// The latest complete scan of one source, and what it observed.
+/// The latest complete code scan and what it observed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceEvidence {
     pub source: ScanEvidenceSource,
@@ -104,16 +95,6 @@ pub struct BootstrapSet {
     pub evidence: Vec<SourceEvidence>,
 }
 
-/// Map local projection labels back to their scan evidence source.
-fn evidence_source_of(projection_source: &str) -> Option<ScanEvidenceSource> {
-    match projection_source {
-        "web_scan" | "site_scan" => Some(ScanEvidenceSource::WebScan),
-        "code_scan" => Some(ScanEvidenceSource::CodeScan),
-        _ => None,
-    }
-}
-
-/// Confidence as a strength, so collapsing instances can keep the strongest.
 fn confidence_rank(confidence: IssueConfidence) -> u8 {
     match confidence {
         IssueConfidence::Confirmed => 2,
@@ -124,16 +105,10 @@ fn confidence_rank(confidence: IssueConfidence) -> u8 {
 
 fn location_of(
     kind: ScanFindingLocationKind,
-    page_url: Option<String>,
     relative_path: Option<String>,
     producer_check_id: String,
 ) -> OccurrenceLocation {
     match kind {
-        ScanFindingLocationKind::Page => page_url
-            .filter(|url| !url.is_empty())
-            .map_or(OccurrenceLocation::Whole, |url| OccurrenceLocation::Page {
-                url,
-            }),
         ScanFindingLocationKind::File => relative_path.filter(|path| !path.is_empty()).map_or(
             OccurrenceLocation::Whole,
             |path| OccurrenceLocation::File {
@@ -141,48 +116,47 @@ fn location_of(
                 path,
             },
         ),
-        ScanFindingLocationKind::Project
+        ScanFindingLocationKind::Page
+        | ScanFindingLocationKind::Project
         | ScanFindingLocationKind::Site
         | ScanFindingLocationKind::None => OccurrenceLocation::Whole,
     }
 }
 
 /// One finding as read from `scan_findings`, before collapse.
+#[derive(Clone)]
 struct FindingRow {
     check_id: String,
     location: OccurrenceLocation,
     severity: Severity,
     confidence: IssueConfidence,
-    authored_page_url: Option<String>,
+    line: Option<u32>,
+    finding_id: String,
 }
 
-type OccurrenceKey = (ScanEvidenceSource, String, OccurrenceLocation);
+type OccurrenceKey = (String, OccurrenceLocation);
 
 struct Collapsed {
     instance_count: u32,
     severity: Severity,
     confidence: IssueConfidence,
-    authored_page_urls: BTreeSet<String>,
+    code_instances: BTreeSet<(Option<u32>, String)>,
 }
 
 /// Collapse duplicate rows while retaining strongest severity and confidence.
-fn collapse(
-    source: ScanEvidenceSource,
-    rows: Vec<FindingRow>,
-) -> BTreeMap<OccurrenceKey, Collapsed> {
+fn collapse(rows: Vec<FindingRow>) -> BTreeMap<OccurrenceKey, Collapsed> {
     let mut folded: BTreeMap<OccurrenceKey, Collapsed> = BTreeMap::new();
     for row in rows {
         let entry = folded
-            .entry((source, row.check_id, row.location))
+            .entry((row.check_id, row.location))
             .or_insert(Collapsed {
                 instance_count: 0,
                 severity: row.severity,
                 confidence: row.confidence,
-                authored_page_urls: BTreeSet::new(),
+                code_instances: BTreeSet::new(),
             });
-        entry.instance_count = entry.instance_count.saturating_add(1);
-        if let Some(authored_page_url) = row.authored_page_url {
-            entry.authored_page_urls.insert(authored_page_url);
+        if entry.code_instances.insert((row.line, row.finding_id)) {
+            entry.instance_count = entry.instance_count.saturating_add(1);
         }
         if row.severity.impact_rank() > entry.severity.impact_rank() {
             entry.severity = row.severity;
@@ -194,39 +168,63 @@ fn collapse(
     folded
 }
 
-fn into_last_known(folded: BTreeMap<OccurrenceKey, Collapsed>) -> Vec<LastKnownOccurrenceRecord> {
+fn into_last_known(folded: BTreeMap<OccurrenceKey, Collapsed>) -> Vec<OccurrenceIdentity> {
     folded
         .into_iter()
-        .map(
-            |((source, check_id, location), collapsed)| LastKnownOccurrenceRecord {
-                identity: OccurrenceIdentity {
-                    source,
-                    check_id,
-                    location,
-                    instance_count: collapsed.instance_count,
-                },
-                authored_page_urls: collapsed.authored_page_urls.into_iter().collect(),
-            },
-        )
+        .map(|((check_id, location), collapsed)| OccurrenceIdentity {
+            source: ScanEvidenceSource::CodeScan,
+            check_id,
+            location,
+            instance_count: collapsed.instance_count,
+        })
         .collect()
 }
 
 fn into_observations(folded: BTreeMap<OccurrenceKey, Collapsed>) -> Vec<ObservedOccurrence> {
     folded
         .into_iter()
+        .map(|((check_id, location), collapsed)| ObservedOccurrence {
+            severity: collapsed.severity,
+            confidence: collapsed.confidence,
+            identity: OccurrenceIdentity {
+                source: ScanEvidenceSource::CodeScan,
+                check_id,
+                location,
+                instance_count: collapsed.instance_count,
+            },
+        })
+        .collect()
+}
+
+pub(crate) fn collapse_code_observations<'a>(
+    rows: impl Iterator<
+        Item = (
+            String,
+            &'a str,
+            &'a str,
+            Option<u32>,
+            &'a str,
+            Severity,
+            IssueConfidence,
+        ),
+    >,
+) -> Vec<ObservedOccurrence> {
+    let rows = rows
         .map(
-            |((source, check_id, location), collapsed)| ObservedOccurrence {
-                severity: collapsed.severity,
-                confidence: collapsed.confidence,
-                identity: OccurrenceIdentity {
-                    source,
-                    check_id,
-                    location,
-                    instance_count: collapsed.instance_count,
+            |(check_id, rule, path, line, finding_id, severity, confidence)| FindingRow {
+                check_id,
+                location: OccurrenceLocation::File {
+                    rule: rule.to_owned(),
+                    path: path.to_owned(),
                 },
+                severity,
+                confidence,
+                line,
+                finding_id: finding_id.to_owned(),
             },
         )
-        .collect()
+        .collect();
+    into_observations(collapse(rows))
 }
 
 /// Decode lifecycle state, rejecting snoozes without a deadline.
@@ -277,29 +275,26 @@ fn read_projection(
     drafts: &mut BTreeMap<String, Draft>,
 ) -> Result<(), DbError> {
     let mut statement = conn.prepare(
-        "SELECT check_id, source,
+        "SELECT check_id,
                 MIN(CASE WHEN resolved_at IS NULL THEN first_seen_at END),
                 SUM(CASE WHEN resolved_at IS NULL THEN 1 ELSE 0 END)
          FROM work_items
-         WHERE project_id = ?1 AND env_url = ?2
-         GROUP BY check_id, source",
+         WHERE project_id = ?1 AND env_url = ?2 AND source = 'code_scan'
+         GROUP BY check_id",
     )?;
     let rows = statement
         .query_map(params![project_id, env_key], |row| {
             Ok((
                 row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<i64>>(2)?,
-                row.get::<_, i64>(3)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, i64>(2)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
-    for (check_id, projection_source, first_seen_at, open_count) in rows {
+    for (check_id, first_seen_at, open_count) in rows {
         let draft = drafts.entry(check_id).or_default();
-        if let Some(source) = evidence_source_of(&projection_source) {
-            draft.sources.insert(source);
-        }
+        draft.sources.insert(ScanEvidenceSource::CodeScan);
         if open_count > 0 {
             draft.present = true;
             draft.first_seen_at = match (draft.first_seen_at, first_seen_at) {
@@ -317,11 +312,29 @@ fn read_overrides(
     env_key: &str,
     drafts: &mut BTreeMap<String, Draft>,
 ) -> Result<(), DbError> {
+    // Preserve source-less overrides and omit overrides tied only to legacy web findings.
     let mut statement = conn.prepare(
         "SELECT check_id, status, snooze_until, block_reason, verified_by,
                 last_status_changed_at
-         FROM project_issue_states
-         WHERE project_id = ?1 AND env_url = ?2",
+         FROM project_issue_states state
+         WHERE state.project_id = ?1 AND state.env_url = ?2
+           AND (
+               WITH evidence_sources AS NOT MATERIALIZED (
+                   SELECT item.source
+                   FROM work_items item
+                   WHERE item.project_id = state.project_id AND item.env_url = state.env_url
+                     AND item.check_id = state.check_id AND item.source IN ('code_scan', 'web_scan', 'site_scan')
+                   UNION ALL
+                   SELECT run.source
+                   FROM scan_findings finding
+                   JOIN scan_runs run ON run.id = finding.run_id
+                   WHERE run.project_id = state.project_id AND run.environment_scope_key = state.env_url
+                     AND finding.canonical_check_id = state.check_id
+                     AND run.status = 'complete' AND finding.verdict IN ('fail', 'warn')
+               )
+               SELECT EXISTS (SELECT 1 FROM evidence_sources WHERE source = 'code_scan')
+                   OR NOT EXISTS (SELECT 1 FROM evidence_sources)
+           )",
     )?;
     let rows = statement
         .query_map(params![project_id, env_key], |row| {
@@ -349,13 +362,11 @@ fn read_overrides(
     Ok(())
 }
 
-/// Occurrence identities from the newest complete execution per source. Using
-/// an execution preserves every route from multi-page scans.
+/// Occurrence identities from the newest complete code execution for each check.
 fn last_known_occurrences(
     conn: &Connection,
     project_id: i64,
     env_key: &str,
-    source: ScanEvidenceSource,
 ) -> Result<BTreeMap<String, Vec<FindingRow>>, DbError> {
     let mut statement = conn.prepare(
         "WITH present AS (
@@ -367,7 +378,7 @@ fn last_known_occurrences(
              JOIN scan_executions execution ON execution.id = run.execution_id
              WHERE run.project_id = ?1
                AND run.environment_scope_key = ?2
-               AND run.source = ?3
+               AND run.source = 'code_scan'
                AND run.status = 'complete'
                AND finding.verdict IN ('fail', 'warn')
          ),
@@ -380,24 +391,22 @@ fn last_known_occurrences(
              FROM present
          )
          SELECT newest.check_id, finding.producer_check_id, finding.location_kind,
-                finding.page_url, finding.relative_path, finding.severity,
-                finding.confidence, run.page_url
+                finding.relative_path, finding.severity,
+                finding.confidence, finding.line,
+                finding.occurrence_id,
+                CASE WHEN run.legacy_source = 'code_scan' THEN finding.detail_json END
          FROM newest
          JOIN scan_runs run ON run.execution_id = newest.execution_id
          JOIN scan_findings finding ON finding.run_id = run.id
          WHERE newest.recency = 1
-           AND run.source = ?3
+           AND run.source = 'code_scan'
            AND run.status = 'complete'
            AND finding.canonical_check_id = newest.check_id
            AND finding.verdict IN ('fail', 'warn')
          ORDER BY newest.check_id, finding.run_id, finding.ordinal",
     )?;
     let rows = statement
-        .query_map(params![project_id, env_key, source.as_str()], |row| {
-            let mut finding = read_finding(row)?;
-            finding.authored_page_url = row.get(7)?;
-            Ok(finding)
-        })?
+        .query_map(params![project_id, env_key], read_finding)?
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut by_check: BTreeMap<String, Vec<FindingRow>> = BTreeMap::new();
@@ -411,29 +420,34 @@ fn read_finding(row: &rusqlite::Row<'_>) -> rusqlite::Result<FindingRow> {
     let producer_check_id: String = row.get(1)?;
     let kind: ScanFindingLocationKind =
         parse_required_enum(2, "scan_findings.location_kind", &row.get::<_, String>(2)?)?;
+    // Migrated occurrence IDs contain ordinals. Recover the original finding ID when available.
+    let legacy_id = row
+        .get::<_, Option<String>>(8)?
+        .and_then(|detail| serde_json::from_str::<LegacyFindingId>(&detail).ok())
+        .map(|detail| detail.id);
     Ok(FindingRow {
         check_id: row.get(0)?,
-        location: location_of(kind, row.get(3)?, row.get(4)?, producer_check_id),
-        severity: parse_required_enum(5, "scan_findings.severity", &row.get::<_, String>(5)?)?,
-        confidence: parse_required_enum(6, "scan_findings.confidence", &row.get::<_, String>(6)?)?,
-        authored_page_url: None,
+        location: location_of(kind, row.get(3)?, producer_check_id),
+        severity: parse_required_enum(4, "scan_findings.severity", &row.get::<_, String>(4)?)?,
+        confidence: parse_required_enum(5, "scan_findings.confidence", &row.get::<_, String>(5)?)?,
+        line: row.get(6)?,
+        finding_id: match legacy_id {
+            Some(id) => id,
+            None => row.get(7)?,
+        },
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EvidenceSelection {
-    Latest,
-    PreferNonBounded,
+#[derive(serde::Deserialize)]
+struct LegacyFindingId {
+    id: String,
 }
 
 fn latest_evidence(
     conn: &Connection,
     project_id: i64,
     env_key: &str,
-    source: ScanEvidenceSource,
-    selection: EvidenceSelection,
 ) -> Result<Option<SourceEvidence>, DbError> {
-    let prefer_non_bounded = i64::from(selection == EvidenceSelection::PreferNonBounded);
     let Some((execution_id, based_on_event_sequence, observed_at)) = conn
         .query_row(
             "SELECT execution.id,
@@ -443,22 +457,14 @@ fn latest_evidence(
              JOIN scan_runs run ON run.execution_id = execution.id
              WHERE execution.project_id = :project_id
                AND execution.environment_scope_key = :env_key
-               AND run.source = :source
+               AND run.source = 'code_scan'
                AND run.status = 'complete'
              GROUP BY execution.id
-             ORDER BY CASE
-                          WHEN :prefer_non_bounded = 1
-                               AND execution.admission_class = 'bounded_verification'
-                              THEN 1
-                          ELSE 0
-                      END,
-                      execution.started_at DESC, execution.id DESC
+             ORDER BY execution.started_at DESC, execution.id DESC
              LIMIT 1",
             rusqlite::named_params! {
                 ":project_id": project_id,
                 ":env_key": env_key,
-                ":source": source.as_str(),
-                ":prefer_non_bounded": prefer_non_bounded,
             },
             |row| {
                 Ok((
@@ -475,38 +481,38 @@ fn latest_evidence(
 
     let mut run_statement = conn.prepare(
         "SELECT id FROM scan_runs
-         WHERE execution_id = ?1 AND source = ?2 AND status = 'complete'
+         WHERE execution_id = ?1 AND source = 'code_scan' AND status = 'complete'
          ORDER BY id",
     )?;
     let run_ids = run_statement
-        .query_map(params![execution_id, source.as_str()], |row| {
-            row.get::<_, i64>(0)
-        })?
+        .query_map([execution_id], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut finding_statement = conn.prepare(
         "SELECT finding.canonical_check_id, finding.producer_check_id,
-                finding.location_kind, finding.page_url, finding.relative_path,
-                finding.severity, finding.confidence
+                finding.location_kind, finding.relative_path,
+                finding.severity, finding.confidence, finding.line,
+                finding.occurrence_id,
+                CASE WHEN run.legacy_source = 'code_scan' THEN finding.detail_json END
          FROM scan_findings finding
          JOIN scan_runs run ON run.id = finding.run_id
          WHERE run.execution_id = ?1
-           AND run.source = ?2
+           AND run.source = 'code_scan'
            AND run.status = 'complete'
            AND finding.verdict IN ('fail', 'warn')
          ORDER BY finding.run_id, finding.ordinal",
     )?;
     let findings = finding_statement
-        .query_map(params![execution_id, source.as_str()], read_finding)?
+        .query_map([execution_id], read_finding)?
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Some(SourceEvidence {
-        source,
+        source: ScanEvidenceSource::CodeScan,
         execution_id,
         run_ids,
         observed_at,
         based_on_event_sequence,
-        occurrences: into_observations(collapse(source, findings)),
+        occurrences: into_observations(collapse(findings)),
     }))
 }
 
@@ -540,29 +546,14 @@ impl Database {
                 })
                 .map(|(check_id, _)| check_id.clone())
                 .collect();
-            let mut tombstones: Vec<(ScanEvidenceSource, BTreeMap<String, Vec<FindingRow>>)> =
-                Vec::new();
-            if !awaiting.is_empty() {
-                for source in [ScanEvidenceSource::WebScan, ScanEvidenceSource::CodeScan] {
-                    tombstones.push((
-                        source,
-                        last_known_occurrences(&tx, project_id, &env_key, source)?,
-                    ));
-                }
-            }
-
-            let mut evidence = Vec::new();
-            for source in [ScanEvidenceSource::WebScan, ScanEvidenceSource::CodeScan] {
-                if let Some(found) = latest_evidence(
-                    &tx,
-                    project_id,
-                    &env_key,
-                    source,
-                    EvidenceSelection::PreferNonBounded,
-                )? {
-                    evidence.push(found);
-                }
-            }
+            let mut tombstones = if awaiting.is_empty() {
+                BTreeMap::new()
+            } else {
+                last_known_occurrences(&tx, project_id, &env_key)?
+            };
+            let evidence = latest_evidence(&tx, project_id, &env_key)?
+                .into_iter()
+                .collect();
             tx.commit()?;
 
             let mut groups = Vec::new();
@@ -575,25 +566,9 @@ impl Database {
                 }
                 let mut last_known = Vec::new();
                 if awaiting.contains(&check_id) {
-                    for (source, by_check) in &tombstones {
-                        let Some(rows) = by_check.get(&check_id) else {
-                            continue;
-                        };
-                        // A group whose projection rows aged out still names
-                        // its source here: the scan that last saw it knows
-                        // which scanner it was.
-                        draft.sources.insert(*source);
-                        let cloned = rows
-                            .iter()
-                            .map(|row| FindingRow {
-                                check_id: row.check_id.clone(),
-                                location: row.location.clone(),
-                                severity: row.severity,
-                                confidence: row.confidence,
-                                authored_page_url: row.authored_page_url.clone(),
-                            })
-                            .collect();
-                        last_known.extend(into_last_known(collapse(*source, cloned)));
+                    if let Some(rows) = tombstones.remove(&check_id) {
+                        draft.sources.insert(ScanEvidenceSource::CodeScan);
+                        last_known = into_last_known(collapse(rows));
                     }
                 }
                 let state = draft.state.unwrap_or(BootstrapState::Active);
@@ -617,9 +592,9 @@ impl Database {
         })?
     }
 
-    /// Read the newest post-bootstrap evidence from each source in one
+    /// Read the newest post-bootstrap code evidence in one
     /// snapshot. No groups are returned because a non-bootstrap submission
-    /// cannot create them; bounded verification evidence is eligible here.
+    /// cannot create them.
     pub(crate) fn latest_submission_evidence(
         &self,
         project_id: i64,
@@ -631,39 +606,11 @@ impl Database {
         }
         self.execute(move |conn| {
             let tx = conn.unchecked_transaction()?;
-            let mut evidence = Vec::new();
-            for source in [ScanEvidenceSource::WebScan, ScanEvidenceSource::CodeScan] {
-                if let Some(found) =
-                    latest_evidence(&tx, project_id, &env_key, source, EvidenceSelection::Latest)?
-                {
-                    evidence.push(found);
-                }
-            }
+            let evidence = latest_evidence(&tx, project_id, &env_key)?
+                .into_iter()
+                .collect();
             tx.commit()?;
             Ok(evidence)
-        })?
-    }
-
-    /// The latest complete scan of one source and the occurrences it observed.
-    #[tracing::instrument(skip(self, environment_scope_key), fields(project_id))]
-    pub fn latest_source_evidence(
-        &self,
-        project_id: i64,
-        environment_scope_key: &str,
-        source: ScanEvidenceSource,
-    ) -> Result<Option<SourceEvidence>, DbError> {
-        let env_key = lifecycle_env_url(environment_scope_key);
-        if env_key.is_empty() {
-            return Err("an environment is required to read scan evidence".into());
-        }
-        self.execute(move |conn| {
-            latest_evidence(
-                conn,
-                project_id,
-                &env_key,
-                source,
-                EvidenceSelection::Latest,
-            )
         })?
     }
 }

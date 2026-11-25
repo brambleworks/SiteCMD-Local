@@ -1,6 +1,77 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { publicationHygieneFailures } from "./lib/publication-hygiene-rules.mjs";
+
+it("pins_the_owner_approved_publication_moves", () => {
+  const source = readFileSync(new URL("./published-engine-moves.json", import.meta.url), "utf8");
+  expect(JSON.parse(source)).toEqual({
+    approved:
+      "Owner-approved 2026-11-25: moved out of the engine on purpose for the first public export.",
+    moves: [
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/authorization_tests.rs",
+        blob: "a990679596916f6b6e2ec1ade5957935fcc011a6",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/bearer_encoding_tests.rs",
+        blob: "8ca529de39480d9f101ad84c38c3b436ab6fb74f",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/login_mask_tests.rs",
+        blob: "7ebee45b2a5c3441922916317734c440cf3cb665",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/test_support.rs",
+        blob: "e27dd180a89b9e00c976bfa56e0d00ebbe98d809",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/unicode_boundary_tests.rs",
+        blob: "f89bb74d9d1c6e5f78a2ed0b5966e442d2e54377",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/url_encoding_tests.rs",
+        blob: "002992cf4653c379145a91e2d1ab6dc5e07ec779",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/sync/mod.rs",
+        blob: "bdafcfbbb01f5fdfdc2c8119b7cecc3e46b0bd7d",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/sync/payload.rs",
+        blob: "d32e33f58e1d7ae4769392fba60d50ec37130177",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/sync/payload_tests.rs",
+        blob: "d686b0a528a2a685f2baf7478fe9c903da2c7f2c",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/time/date.rs",
+        blob: "bdb24bb6751e9b745e5251274e7e169d514a5c10",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/time/format.rs",
+        blob: "9768c98a11285fa012e4fd7b83e87ca22029388f",
+      },
+      {
+        path: "apps/desktop/src-tauri/crates/protocol/src/time/parse.rs",
+        blob: "ac86539be78db243391840c4e09b1a9072606500",
+      },
+      {
+        path: "apps/desktop/src-tauri/src/core/audit/fingerprints.rs",
+        blob: "b9b58145413a3a33ccf0e3bfbc6649016a0b1086",
+      },
+      {
+        path: "apps/desktop/src-tauri/src/core/audit/metadata_offer_tests.rs",
+        blob: "9ac134698d5da1d1e651a539309e8f2c0c78f267",
+      },
+      {
+        path: "apps/desktop/src-tauri/src/core/audit/session_host/tests.rs",
+        blob: "c66d9bba1e118d35453f2a0125e53098e546df2d",
+      },
+    ],
+  });
+});
 
 const REQUIRED = [
   ".env.example",
@@ -31,16 +102,18 @@ const REQUIRED = [
   "tools/scripts/check-publication-history.test.mjs",
   "tools/scripts/prepare-public-history.mjs",
   "tools/scripts/prepare-public-history.test.mjs",
+  "tools/scripts/published-engine-moves.json",
   "tools/scripts/lib/publication-hygiene-rules.mjs",
   "tools/scripts/lib/publication-history-rules.mjs",
+  "tools/scripts/lib/publication-root-files.mjs",
 ];
 
 function fixture(extra = {}, omitted = []) {
   const contents = Object.fromEntries(REQUIRED.map((path) => [path, `${path}\n`]));
   contents[".github/CODEOWNERS"] = "* @brambleworks\n";
   contents["package.json"] = '{"license": "Apache-2.0"}\n';
-  contents["apps/mcp-server/package.json"] = '{"license": "Apache-2.0"}\n';
-  contents["apps/desktop/src-tauri/Cargo.toml"] = 'license = "Apache-2.0"\n';
+  contents["apps/desktop/src-tauri/crates/runtime/Cargo.toml"] = 'license = "Apache-2.0"\n';
+  contents["apps/desktop/src-tauri/crates/cli/Cargo.toml"] = 'license = "Apache-2.0"\n';
   contents["renovate.json"] = JSON.stringify(
     {
       automergeType: "pr",
@@ -125,7 +198,7 @@ describe("publicationHygieneFailures", () => {
 
   it("does not mistake a lowercase /users/ URL path for a home directory", () => {
     const { files, read } = fixture({
-      "apps/desktop/src-tauri/src/core/code_scan/route_helpers_tests.rs":
+      "apps/desktop/src-tauri/src/core/project_listing_tests.rs":
         'let body = "api.patch(\\"/users/profile\\", data)";\n',
       "apps/desktop/src/lib/api.ts": 'export const ME = "/users/settings";\n',
     });
@@ -148,6 +221,15 @@ describe("publicationHygieneFailures", () => {
     const { files, read } = fixture({
       "apps/sitecmd.com/src/styles/pages/home/hero.css": ".hero { color: red; }\n",
       "apps/sitecmd.com/src/lib/routes.ts": 'export const HOME = "src/pages/home/index.astro";\n',
+    });
+    expect(publicationHygieneFailures(files, read)).toEqual([]);
+  });
+
+  it("accepts the engine pin at the repository root", () => {
+    // Bug: the first engine pin failed publication hygiene because engine.lock was missing from the root allowlist (2026-11-24).
+    const { files, read } = fixture({
+      "engine.lock": '{ "version": "0.1.0" }\n',
+      "engine/local-engine.wasm.LICENSES.txt": "Third-party licenses for local-engine.wasm\n",
     });
     expect(publicationHygieneFailures(files, read)).toEqual([]);
   });
@@ -176,9 +258,11 @@ describe("publicationHygieneFailures", () => {
   });
 
   it("rejects conflicting package license metadata", () => {
-    const { files, read } = fixture({ "apps/mcp-server/package.json": '{"license": "MIT"}\n' });
+    const { files, read } = fixture({
+      "apps/desktop/src-tauri/crates/runtime/Cargo.toml": 'license = "MIT"\n',
+    });
     expect(publicationHygieneFailures(files, read).join("\n")).toContain(
-      'open-source package metadata must contain "license": "Apache-2.0": apps/mcp-server/package.json',
+      'open-source package metadata must contain license = "Apache-2.0": apps/desktop/src-tauri/crates/runtime/Cargo.toml',
     );
   });
 

@@ -48,11 +48,6 @@ const PATH_EXTENSIONS = new Set([
   "sh",
   "sql",
 ]);
-const SKIP_PATHS = new Set([
-  // Untracked paths intentionally referenced by repository guidance.
-  "src/main.rs",
-]);
-
 function extractPaths(content) {
   const re = /`([A-Za-z][A-Za-z0-9_./@-]*?\.(?:[a-z]{2,5}))`/g;
   const set = new Set();
@@ -64,8 +59,6 @@ function extractPaths(content) {
     if (candidate.includes("*") || candidate.includes("{")) continue;
     if (candidate.startsWith("//") || candidate.startsWith("http")) continue;
     if (candidate.startsWith("dist/") || candidate.includes("/dist/")) continue;
-    if (candidate.startsWith("dist-bundle/") || candidate.includes("/dist-bundle/")) continue;
-    if (SKIP_PATHS.has(candidate)) continue;
     set.add(candidate);
   }
   return [...set];
@@ -77,38 +70,10 @@ function extractPnpmScripts(content) {
   const set = new Set();
   for (const m of content.matchAll(re)) {
     const name = m[1];
-    if (name === "install" || name === "exec" || name === "run" || name === "tauri") continue;
+    if (name === "install" || name === "exec" || name === "run") continue;
     set.add(name);
   }
   return [...set];
-}
-
-const INVOKE_PLACEHOLDERS = new Set(["command_name"]);
-
-function extractInvokeCommands(content) {
-  const re = /invoke\(\s*"([a-z][a-z0-9_]*)"/g;
-  const set = new Set();
-  for (const m of content.matchAll(re)) {
-    if (INVOKE_PLACEHOLDERS.has(m[1])) continue;
-    set.add(m[1]);
-  }
-  return [...set];
-}
-
-function loadAppCommands() {
-  const buildRs = path.join(ROOT, "apps/desktop/src-tauri/build.rs");
-  const commands = new Set();
-  if (!exists(buildRs)) return commands;
-  const src = read(buildRs);
-  const start = src.indexOf("const APP_COMMANDS");
-  if (start === -1) return commands;
-  const open = src.indexOf("&[", start);
-  const close = src.indexOf("];", open);
-  if (open === -1 || close === -1) return commands;
-  for (const m of src.slice(open, close).matchAll(/"([a-z][a-z0-9_]*)"/g)) {
-    commands.add(m[1]);
-  }
-  return commands;
 }
 
 function loadAllScripts() {
@@ -128,7 +93,6 @@ function loadAllScripts() {
     for (const entry of fs.readdirSync(appsDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       addFrom(path.join(appsDir, entry.name, "package.json"));
-      addFrom(path.join(appsDir, entry.name, "src-tauri", "package.json"));
     }
   }
   return scripts;
@@ -143,13 +107,10 @@ function resolveRelative(agentsAbs, candidate) {
   if (exists(localAbs)) return localAbs;
   const tauriSrcAbs = path.join(ROOT, "apps/desktop/src-tauri/src", candidate);
   if (exists(tauriSrcAbs)) return tauriSrcAbs;
-  const desktopSrcAbs = path.join(ROOT, "apps/desktop/src", candidate);
-  if (exists(desktopSrcAbs)) return desktopSrcAbs;
   return null;
 }
 
 const allScripts = loadAllScripts();
-const appCommands = loadAppCommands();
 const agentsFiles = findAgentsMd(ROOT);
 const failures = [];
 
@@ -165,13 +126,6 @@ for (const agentsAbs of agentsFiles) {
   for (const script of extractPnpmScripts(content)) {
     if (!allScripts.has(script)) {
       failures.push(`${rel}: references missing pnpm script \`${script}\``);
-    }
-  }
-  for (const command of extractInvokeCommands(content)) {
-    if (!appCommands.has(command)) {
-      failures.push(
-        `${rel}: documents invoke("${command}") but it is not in build.rs APP_COMMANDS`,
-      );
     }
   }
 }

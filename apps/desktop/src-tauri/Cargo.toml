@@ -1,175 +1,7 @@
-[package]
-name = "sitecmd"
-version = "2.0.0"
-description = "Web Scan + Code Scan command center"
-authors = ["Kyle Piontek (Brambleworks LLC)"]
-license = "Apache-2.0"
-publish = false
-edition = "2021"
-rust-version = "1.89.0"
-default-run = "sitecmd"
-
-[lib]
-name = "app_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
-[[bin]]
-name = "sitecmd"
-path = "src/main.rs"
-required-features = ["desktop"]
-
-[features]
-default = ["desktop"]
-desktop = [
-    "dep:tauri",
-    "dep:tauri-build",
-    "dep:tauri-plugin-log",
-    "dep:tauri-plugin-dialog",
-    "dep:tauri-plugin-keyring",
-    "dep:tauri-plugin-updater",
-    "dep:tauri-plugin-notification",
-    "dep:tauri-plugin-window-state",
-    "dep:tauri-plugin-process",
-    "dep:tauri-plugin-os",
-    "dep:tauri-plugin-prevent-default",
-    "dep:tauri-plugin-clipboard-manager",
-    "dep:tauri-plugin-store",
-    "dep:tauri-plugin-global-shortcut",
-    "dep:tauri-plugin-deep-link",
-    "dep:tauri-plugin-autostart",
-    "dep:tauri-plugin-single-instance",
-    "dep:mac-notification-sys",
-    "dep:objc2",
-    "dep:objc2-foundation",
-    "dep:objc2-web-kit",
-    "dep:block2",
-    "dep:webview2-com",
-    "dep:windows",
-]
-browser = ["sitecmd-runtime/browser"]
-
 [workspace]
-members = [".", "crates/cli", "crates/engine", "crates/engine-wasm", "crates/engine-fuzz", "crates/runtime"]
+members = ["crates/protocol","crates/engine-host","crates/engine-host/standin","crates/runtime","crates/cli"]
 
-[build-dependencies]
-tauri-build = { version = "2.6.0", features = [], optional = true }
-
-[dependencies]
-sitecmd-runtime = { path = "crates/runtime" }
-# Portable scan engine shared with the hosted runner; `ts` adds IPC bindings.
-sitecmd-engine = { path = "crates/engine", features = ["browser-payload", "ts"] }
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-# Generates the canonical TypeScript IPC bindings during the default test suite.
-ts-rs = "12"
-log = "0.4"
-# Route tracing through the log facade and Tauri's configured sinks.
-tracing = { version = "0.1", features = ["log"] }
-tauri = { version = "2.11.0", features = ["tray-icon"], optional = true }
-tauri-plugin-log = { version = "2", optional = true }
-# `gzip`/`brotli` let ordinary traffic negotiate response compression; the
-# limited body readers count decoded bytes so the caps still bound what a
-# compressed response may expand into. `deflate` and `zstd` stay off: origins
-# implement deflate inconsistently, and zstd would add a C library to the build.
-reqwest = { version = "0.13", default-features = false, features = [
-    "json",
-    "rustls-no-provider",
-    "cookies",
-    "form",
-    "query",
-    "charset",
-    "http2",
-    "system-proxy",
-    "gzip",
-    "brotli",
-] }
-tokio = { version = "1", features = ["full"] }
-thread-priority = "3"
-url = { version = "2", features = ["serde"] }
-futures-util = "0.3"
-getrandom = "0.4"
-urlencoding = "2"
-open = "5"
-moka = { version = "0.12", features = ["sync"] }
-regex = "1"
-# Gitignore matching only; Code Scan retains its bounded filesystem walker.
-ignore = "0.4"
-shlex = "2"
-chrono = { version = "0.4", features = ["serde"] }
-# Parse OSV CVSS v3 and v4 vectors into the canonical severity vocabulary.
-cvss = "2.2"
-# Preserve user formatting while registering agent-tool configuration.
-toml_edit = "0.25"
-thiserror = "2"
-async-trait = "0.1"
-# Pure Rust TLS stack for async requests and synchronous certificate checks.
-rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
-tokio-rustls = { version = "0.26", default-features = false, features = [
-    "logging",
-    "tls12",
-    "ring",
-] }
-rustls-platform-verifier = "0.7"
-x509-parser = "0.18"
-rusqlite = { version = "0.41", features = ["backup", "bundled"] }
-postgres = "0.19"
-tempfile = "3"
-tauri-plugin-dialog = { version = "2.7.1", optional = true }
-tauri-plugin-keyring = { version = "0.1.0", optional = true }
-tauri-plugin-updater = { version = "2", optional = true, default-features = false, features = ["rustls-tls"] }
-base64 = { version = "0.23.1", default-features = false, features = ["std"] }
-hostname = "0.4.2"
-whoami = "2.1.1"
-tauri-plugin-notification = { version = "2.3.3", optional = true }
-# Keep webhook signing on stable RustCrypto releases and verify bumps against reference vectors.
-hmac = "0.13"
-minisign-verify = "0.2.5"
-sha2 = "0.11"
-hex = "0.4.3"
-# Direct dependency because connection-export encryption is a security boundary.
-ring = "0.17"
-zeroize = "1"
-libc = "0.2"
-tauri-plugin-deep-link = { version = "2", optional = true }
-tauri-plugin-window-state = { version = "2", optional = true }
-tauri-plugin-process = { version = "2", optional = true }
-tauri-plugin-os = { version = "2", optional = true }
-tauri-plugin-prevent-default = { version = "5", optional = true }
-tauri-plugin-clipboard-manager = { version = "2", optional = true }
-tauri-plugin-store = { version = "2", optional = true }
-tauri-plugin-global-shortcut = { version = "2", optional = true }
-# Resolves non-address DNS records used by the security checks.
-hickory-resolver = { version = "0.26.1", default-features = false, features = ["system-config", "tokio"] }
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-autostart = { version = "2", optional = true }
-tauri-plugin-single-instance = { version = "2", features = ["deep-link"], optional = true }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-mac-notification-sys = { version = "0.6.12", optional = true }
-# Analyzer webview content rules (WKContentRuleList) for private-network subresources.
-objc2 = { version = "0.6", optional = true }
-objc2-foundation = { version = "0.3", optional = true, default-features = false, features = ["std", "NSString", "NSError"] }
-objc2-web-kit = { version = "0.3", optional = true, default-features = false, features = ["std", "block2", "WKContentRuleList", "WKContentRuleListStore", "WKUserContentController"] }
-block2 = { version = "0.6", optional = true }
-
-[target.'cfg(windows)'.dependencies]
-# Analyzer webview request filter (WebResourceRequested) for private-network subresources.
-webview2-com = { version = "0.38", optional = true }
-windows = { version = "0.61", optional = true, features = ["Win32_System_Com"] }
-
-[dev-dependencies]
-sitecmd-runtime = { path = "crates/runtime", features = ["test-support"] }
-tauri = { version = "2.11.0", features = ["test"] }
-# Builds gzip fixtures for the HTTP-client compression tests. Already in the
-# tree as reqwest's gzip decoder, so it adds nothing to the dependency graph.
-flate2 = "1"
-# Enables deterministic paused-time scheduler tests.
-tokio = { version = "1", features = ["test-util"] }
-criterion = { version = "0.8", features = ["html_reports"] }
-
-[[bench]]
-name = "correlation_resolver"
-harness = false
+resolver = "2"
 
 # Incremental compilation is off because this workspace compiles mostly in
 # batch runs (test suites, the verify-push gate, agent lanes) where it saves
@@ -178,12 +10,94 @@ harness = false
 [profile.dev]
 incremental = false
 
+# Optimize the compiler used by the engine build script and Wasm tests.
+[profile.dev.package.cranelift-assembler-x64]
+opt-level = 3
+
+[profile.dev.package.cranelift-codegen]
+opt-level = 3
+
+[profile.dev.package.cranelift-frontend]
+opt-level = 3
+
+[profile.dev.package.cranelift-entity]
+opt-level = 3
+
+[profile.dev.package.cranelift-bforest]
+opt-level = 3
+
+[profile.dev.package.cranelift-control]
+opt-level = 3
+
+[profile.dev.package.cranelift-bitset]
+opt-level = 3
+
+[profile.dev.package.regalloc2]
+opt-level = 3
+
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 3
+
+[profile.dev.package.wasmtime-environ]
+opt-level = 3
+
+[profile.dev.package.wasmparser]
+opt-level = 3
+
+# Named overrides also apply when these packages are build dependencies.
+[profile.release.package.cranelift-assembler-x64]
+opt-level = 3
+
+[profile.release.package.cranelift-codegen]
+opt-level = 3
+
+[profile.release.package.cranelift-frontend]
+opt-level = 3
+
+[profile.release.package.cranelift-entity]
+opt-level = 3
+
+[profile.release.package.cranelift-bforest]
+opt-level = 3
+
+[profile.release.package.cranelift-control]
+opt-level = 3
+
+[profile.release.package.cranelift-bitset]
+opt-level = 3
+
+[profile.release.package.regalloc2]
+opt-level = 3
+
+[profile.release.package.wasmtime-internal-cranelift]
+opt-level = 3
+
+[profile.release.package.wasmtime-environ]
+opt-level = 3
+
+[profile.release.package.wasmparser]
+opt-level = 3
+
+# Scaling tests repeatedly mask 64 and 256 KiB inputs; optimize regex matching
+# to keep those runs practical while retaining test assertions.
+[profile.test.package.regex]
+opt-level = 3
+
+[profile.test.package.regex-automata]
+opt-level = 3
+
+[profile.test.package.aho-corasick]
+opt-level = 3
+
+[profile.test.package.memchr]
+opt-level = 3
+
 [profile.profiling]
 inherits = "release"
 debug = true
 strip = false
 
-# Build the hosted engine for speed and turn panics into clean traps.
+# Optimize the hosted runtime and turn panics into clean traps.
 [profile.wasm-release]
 inherits = "release"
 opt-level = 3
@@ -191,3 +105,9 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[profile.wasm-release.package.sitecmd-protocol]
+opt-level = "s"
+
+[profile.wasm-release.package.psl]
+opt-level = "s"

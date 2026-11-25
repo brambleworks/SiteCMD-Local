@@ -4,36 +4,6 @@ import { spawnSync } from "node:child_process";
 // Accepted advisories require a reason and a recent manual review date.
 const REVIEW_WARN_DAYS = 120;
 const ALLOWED_WARNING_ADVISORIES = new Map([
-  [
-    "RUSTSEC-2024-0370",
-    {
-      reason:
-        "proc-macro-error is pulled transitively through GTK3 macro tooling in Tauri's Linux stack; Tauri 2.12 still requires gtk 0.18.",
-      reviewedAt: "2026-10-18",
-    },
-  ],
-  [
-    "RUSTSEC-2024-0429",
-    {
-      reason:
-        "Linux-only glib is pulled transitively through Tauri/Wry's GTK3 stack; SiteCMD does not call the affected VariantStrIter API, and removal depends on the upstream GTK4 migration, and Tauri 2.12 still requires gtk 0.18.",
-      reviewedAt: "2026-10-18",
-    },
-  ],
-  ...[
-    "RUSTSEC-2025-0075",
-    "RUSTSEC-2025-0080",
-    "RUSTSEC-2025-0081",
-    "RUSTSEC-2025-0098",
-    "RUSTSEC-2025-0100",
-  ].map((id) => [
-    id,
-    {
-      reason:
-        "rust-unic crates are pulled transitively through tauri-utils 2.9's urlpattern 0.3; tauri-utils 2.10 moves to urlpattern 0.6, which drops them, so the next Tauri upgrade removes these.",
-      reviewedAt: "2026-10-18",
-    },
-  ]),
   ...["RUSTSEC-2026-0370", "RUSTSEC-2026-0371", "RUSTSEC-2026-0372"].map((id) => [
     id,
     {
@@ -46,6 +16,39 @@ const ALLOWED_WARNING_ADVISORIES = new Map([
 
 // Vulnerability exceptions require no reachable fix and no untrusted-input path.
 const ALLOWED_VULNERABILITY_ADVISORIES = new Map();
+
+const tree = spawnSync(
+  "cargo",
+  [
+    "tree",
+    "--manifest-path",
+    "apps/desktop/src-tauri/Cargo.toml",
+    "--locked",
+    "--workspace",
+    "--all-features",
+    "--target",
+    "all",
+    "--edges",
+    "normal,build,dev",
+    "--prefix",
+    "none",
+    "--format",
+    "{p}",
+    "--color",
+    "never",
+  ],
+  { cwd: new URL("../..", import.meta.url), encoding: "utf8" },
+);
+if (tree.status !== 0 || !tree.stdout?.trim()) {
+  console.error("Cannot verify the Rust workspace dependency graph for RUSTSEC-2026-0543.");
+  if (tree.error) console.error(tree.error.message);
+  if (tree.stderr) process.stderr.write(tree.stderr);
+  process.exit(1);
+}
+if (/^chrono v/m.test(tree.stdout)) {
+  console.error("RUSTSEC-2026-0543: chrono is active in the Rust workspace dependency graph.");
+  process.exit(1);
+}
 
 const result = spawnSync(
   "cargo",

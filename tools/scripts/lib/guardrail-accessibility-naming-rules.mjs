@@ -1,19 +1,11 @@
-const SCANNED_GLOBS = [
-  "apps/desktop/src-tauri/src/checks/accessibility",
-  "apps/desktop/src-tauri/src/core",
-  "apps/desktop/src-tauri/src/commands",
-  "apps/desktop/src-tauri/src/cli",
-  "apps/desktop/src-tauri/src/ai.rs",
-  "apps/desktop/src/lib",
-  "apps/desktop/src/components",
-];
+const SCANNED_GLOBS = ["apps/desktop/src-tauri/src/core", "apps/desktop/src-tauri/src/cli"];
 
 const A11Y_RE = /\ba11y\b/i;
 const ALLOWED_LITERAL_SUBSTRINGS = ["jsx-a11y", "plugin-jsx-a11y"];
 
-export function accessibilityNamingFailures(read, exists, listFiles) {
+export function accessibilityNamingFailures(read, exists, listFiles, extraRoots = []) {
   const failures = [];
-  for (const root of SCANNED_GLOBS) {
+  for (const root of [...SCANNED_GLOBS, ...extraRoots]) {
     if (!exists(root)) continue;
     const files = root.endsWith(".rs")
       ? [root]

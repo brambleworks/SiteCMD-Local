@@ -3,6 +3,8 @@
 //! Write failures never block the user operation; this is observability, not a
 //! security boundary.
 
+use crate::time::now_utc;
+
 use serde::Serialize;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -45,7 +47,7 @@ fn record_to(path: &Path, op: &str, detail: serde_json::Value, result: &str) {
         }
     }
     let entry = Entry {
-        ts: chrono::Utc::now().to_rfc3339(),
+        ts: now_utc().to_rfc3339(),
         op,
         detail,
         result,

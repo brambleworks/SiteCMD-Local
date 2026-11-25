@@ -1,22 +1,13 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const MIGRATIONS_DIR = "apps/desktop/src-tauri/src/db/migrations/";
-const SCORING_DIR = "apps/desktop/src-tauri/src/scoring/";
-const LICENSING_CONFIG = "apps/desktop/src-tauri/src/licensing/config.rs";
-const PAGES_DIR = "apps/desktop/src/pages/";
-const COMMAND_DIR = "apps/desktop/src-tauri/src";
-const PRODUCT_FACTS = "product-facts.json";
-
-const TAURI_COMMAND_RE = "^\\s*#\\[tauri::command";
-
 const PLACEHOLDER_REASON_RE = /^(?:<[^>]*>|todo|tbd|reason(?: here)?|n\/?a|because|\.+)$/i;
-
-const isTest = (file) => /(?:\.test\.|_tests?\.rs$|\/tests?\/)/.test(file);
 
 const TRIPWIRES = [
   {
@@ -28,52 +19,9 @@ const TRIPWIRES = [
         .filter((c) => c.status.startsWith("A") && c.file.startsWith(MIGRATIONS_DIR))
         .map((c) => c.file),
   },
-  {
-    id: "score-movement",
-    label: "score movement",
-    why: "the same site scans to a different number after updating",
-    match: ({ changes }) =>
-      changes.filter((c) => c.file.startsWith(SCORING_DIR) && !isTest(c.file)).map((c) => c.file),
-  },
-  {
-    id: "monetization-boundary",
-    label: "monetization boundary",
-    why: "the free/paid line moved",
-    match: ({ changes }) =>
-      changes
-        .filter((c) => (c.file === LICENSING_CONFIG || c.file === PRODUCT_FACTS) && !isTest(c.file))
-        .map((c) => c.file),
-  },
-  {
-    id: "new-capability",
-    label: "new capability",
-    why: "net-new Tauri commands are new app surface",
-    match: ({ commandDelta }) =>
-      commandDelta > 0 ? [`${commandDelta} net-new Tauri command(s)`] : [],
-  },
-  {
-    id: "check-coverage",
-    label: "check coverage",
-    why: "the advertised check count changed, so scans surface different findings",
-    match: ({ totalChecksBefore, totalChecksAfter }) =>
-      totalChecksBefore != null &&
-      totalChecksAfter != null &&
-      totalChecksBefore !== totalChecksAfter
-        ? [`TOTAL_CHECKS ${totalChecksBefore} -> ${totalChecksAfter}`]
-        : [],
-  },
-  {
-    id: "new-surface",
-    label: "new surface",
-    why: "an added page is somewhere the user could not go before",
-    match: ({ changes }) =>
-      changes
-        .filter((c) => c.status.startsWith("A") && c.file.startsWith(PAGES_DIR) && !isTest(c.file))
-        .map((c) => c.file),
-  },
 ];
 
-function git(args, { cwd = ROOT, allowFailure = false } = {}) {
+export function git(args, { cwd = ROOT, allowFailure = false } = {}) {
   try {
     // Suppress expected `git` misses from optional probes.
     return execFileSync("git", args, {
@@ -97,25 +45,6 @@ export function lastReleaseTag(rev = "HEAD", { cwd = ROOT } = {}) {
   );
 }
 
-function countTauriCommands(rev, cwd) {
-  const out = git(["grep", "-h", "-E", TAURI_COMMAND_RE, rev, "--", COMMAND_DIR], {
-    cwd,
-    allowFailure: true, // git grep exits non-zero when nothing matches
-  });
-  return out ? out.split("\n").length : 0;
-}
-
-function readTotalChecks(rev, cwd) {
-  const source = git(["show", `${rev}:${PRODUCT_FACTS}`], { cwd, allowFailure: true });
-  if (!source) return null;
-  try {
-    const total = JSON.parse(source).checkCounts?.total;
-    return typeof total === "number" ? total : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Everything the tripwires need, gathered from real git state. */
 export function collectReleaseSignals({ from, to = "HEAD", cwd = ROOT } = {}) {
   const raw = git(["diff", "--name-status", `${from}..${to}`], { cwd });
@@ -128,12 +57,7 @@ export function collectReleaseSignals({ from, to = "HEAD", cwd = ROOT } = {}) {
       return { status, file: rest[rest.length - 1] };
     });
 
-  return {
-    changes,
-    commandDelta: countTauriCommands(to, cwd) - countTauriCommands(from, cwd),
-    totalChecksBefore: readTotalChecks(from, cwd),
-    totalChecksAfter: readTotalChecks(to, cwd),
-  };
+  return { changes };
 }
 
 /** True when `next` only advances the patch component of `current`. */
@@ -145,10 +69,23 @@ export function isPatchLevel(current, next) {
 }
 
 /** Pure evaluation, so the rules are testable without a repo. */
-export function evaluateReleaseBump(signals) {
-  return TRIPWIRES.map((rule) => ({ rule, evidence: rule.match(signals) })).filter(
-    (hit) => hit.evidence.length > 0,
-  );
+export function evaluateReleaseBump(signals, rules = TRIPWIRES) {
+  return rules
+    .map((rule) => ({ rule, evidence: rule.match(signals) }))
+    .filter((hit) => hit.evidence.length > 0);
+}
+
+function releaseHits(from, to, cwd) {
+  const hits = evaluateReleaseBump(collectReleaseSignals({ from, to, cwd }));
+  const manifest = path.join(cwd, "package.json");
+  if (!existsSync(manifest)) return hits;
+  const command = "private:release-signals";
+  if (!JSON.parse(readFileSync(manifest, "utf8")).scripts?.[command]) return hits;
+  const privateHits = execFileSync("pnpm", ["--silent", "run", command, from, to], {
+    cwd,
+    encoding: "utf8",
+  });
+  return [...hits, ...JSON.parse(privateHits)];
 }
 
 function formatRefusal(hits, { from, to }) {
@@ -174,8 +111,7 @@ export function assertBumpAllowed({ currentVersion, nextVersion, forcePatch, cwd
   const from = lastReleaseTag("HEAD", { cwd });
   if (!from) return { checked: false, note: "no previous v* tag to compare against" };
 
-  const signals = collectReleaseSignals({ from, to: "HEAD", cwd });
-  const hits = evaluateReleaseBump(signals);
+  const hits = releaseHits(from, "HEAD", cwd);
   if (hits.length === 0) return { checked: true, from, hits };
 
   if (forcePatch) {
@@ -213,8 +149,7 @@ function main() {
     process.exit(0);
   }
 
-  const signals = collectReleaseSignals({ from, to, cwd });
-  const hits = evaluateReleaseBump(signals);
+  const hits = releaseHits(from, to, cwd);
   const bump = positional[0] ?? "patch";
 
   if (hits.length === 0) {

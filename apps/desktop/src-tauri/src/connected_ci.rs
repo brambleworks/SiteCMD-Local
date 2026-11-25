@@ -3,10 +3,13 @@
 //! CI submissions omit local sequences and producer-supplied provenance. The
 //! service assigns provenance and applies presence only; retries use idempotency.
 
+use sitecmd_protocol::sync::wire::{
+    AuthorityId, CommitSha, DeploymentTarget, GitRef, Identifier, OrderingKind, Timestamp,
+};
+
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use sha2::{Digest, Sha256};
-use sitecmd_engine::sync::{CodeSnapshot, SCHEMA_VERSION};
+use sha2::{Digest as _, Sha256};
+use sitecmd_protocol::sync::{CodeSnapshot, SCHEMA_VERSION};
 
 use crate::connected_service::deployment_ordering::CiSubmissionAttestation;
 use crate::connected_service::{local_error, ConnectedServiceClient, ConnectedServiceError};
@@ -81,32 +84,31 @@ struct GitHubActionsOidcResponse {
 }
 
 /// Provider deployment ordering shared by publish and CI evidence paths.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublishOrdering {
     /// Closed wire vocabulary validated before submission.
-    pub kind: String,
-    pub authority_id: String,
+    pub kind: OrderingKind,
+    pub authority_id: AuthorityId,
     pub epoch: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publish_sequence: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub predecessor_deployment_id: Option<String>,
+    pub predecessor_deployment_id: Option<Identifier>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeploymentFacts {
-    pub provider_deployment_id: String,
-    pub commit_sha: String,
-    /// Serialized as `ref`, which is a Rust keyword and cannot be a field name.
+    pub provider_deployment_id: Identifier,
+    pub commit_sha: CommitSha,
     #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
-    pub git_ref: Option<String>,
+    pub git_ref: Option<GitRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_sha: Option<String>,
+    pub target: Option<DeploymentTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
+    pub previous_sha: Option<CommitSha>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider_created_at: Option<String>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub provider_created_at: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub published: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ordering: Option<PublishOrdering>,
@@ -115,39 +117,6 @@ pub struct DeploymentFacts {
 impl DeploymentFacts {
     /// Validate fields locally so CI errors identify the invalid argument.
     pub fn validate(&self) -> Result<(), String> {
-        if self.provider_deployment_id.is_empty() || self.provider_deployment_id.len() > 128 {
-            return Err(
-                "--deployment-id must name this deployment in 1 to 128 characters; a CI run id or \
-                 a provider deployment id is what belongs here"
-                    .into(),
-            );
-        }
-        let sha = self.commit_sha.as_str();
-        if sha.len() < 7 || sha.len() > 64 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err("--commit must be a commit SHA of 7 to 64 lowercase hex digits".into());
-        }
-        if sha.chars().any(|c| c.is_ascii_uppercase()) {
-            return Err(
-                "--commit must be lowercase; the service matches deployment SHAs exactly".into(),
-            );
-        }
-        for (flag, value, max) in [
-            ("--ref", self.git_ref.as_deref(), 256),
-            ("--previous-sha", self.previous_sha.as_deref(), 64),
-            ("--target", self.target.as_deref(), 128),
-            ("--deployed-at", self.provider_created_at.as_deref(), 64),
-        ] {
-            if let Some(value) = value {
-                if value.is_empty() {
-                    return Err(format!(
-                        "{flag} was given with an empty value; omit it instead"
-                    ));
-                }
-                if value.len() > max {
-                    return Err(format!("{flag} must be at most {max} characters"));
-                }
-            }
-        }
         match (&self.ordering, self.published) {
             (None, false) => {}
             (None, true) => {
@@ -161,9 +130,6 @@ impl DeploymentFacts {
                 if ordering.kind != "publish_sequence" {
                     return Err("deployment ordering kind must be publish_sequence".into());
                 }
-                if ordering.authority_id.is_empty() || ordering.authority_id.len() > 256 {
-                    return Err("--ordering-authority must contain 1 to 256 characters".into());
-                }
                 if ordering.epoch == 0 {
                     return Err("--ordering-epoch must be at least 1".into());
                 }
@@ -176,11 +142,6 @@ impl DeploymentFacts {
                     );
                 }
                 if let Some(predecessor) = &ordering.predecessor_deployment_id {
-                    if predecessor.is_empty() || predecessor.len() > 128 {
-                        return Err(
-                            "--predecessor-deployment-id must contain 1 to 128 characters".into(),
-                        );
-                    }
                     if predecessor == &self.provider_deployment_id {
                         return Err(
                             "--predecessor-deployment-id cannot name the deployment itself".into(),
@@ -253,6 +214,67 @@ impl CiSubmissionReceipt {
     }
 }
 
+use sitecmd_protocol::manifest::ManifestDigest;
+use sitecmd_protocol::sync::wire::{CheckId, Digest};
+use sitecmd_protocol::sync::{CodeBasis, CodeVersions, WireCoverage};
+use sitecmd_protocol::vocab::{IssueConfidence, Severity};
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct CiSubmission {
+    schema_version: u16,
+    site_id: Identifier,
+    snapshot: CiCodeSnapshot,
+    deployment: DeploymentFacts,
+}
+#[derive(Serialize, Deserialize)]
+struct CiCodeSnapshot {
+    pub observed_at: i64,
+    pub versions: CodeVersions,
+    pub manifest_digest: ManifestDigest,
+    /// The commitment of the key these fingerprints were computed under, so a
+    /// producer hashing under the wrong key for a claimed version fails
+    /// visibly instead of corrupting identity matching in silence.
+    pub key_commitment: Digest,
+    pub code_basis: CodeBasis,
+    pub coverage: WireCoverage,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub occurrences: Vec<CiCodeOccurrence>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CiCodeOccurrence {
+    pub check: CheckId,
+    pub location_hash: Digest,
+    pub instance_count: u32,
+    pub severity: Severity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<IssueConfidence>,
+}
+
+impl From<CodeSnapshot> for CiCodeSnapshot {
+    fn from(s: CodeSnapshot) -> Self {
+        Self {
+            observed_at: s.observed_at,
+            versions: s.versions,
+            manifest_digest: s.manifest_digest,
+            key_commitment: s.key_commitment,
+            code_basis: s.code_basis,
+            coverage: s.coverage,
+            occurrences: s
+                .occurrences
+                .into_iter()
+                .map(|o| CiCodeOccurrence {
+                    check: o.check,
+                    location_hash: o.location_hash,
+                    instance_count: o.instance_count,
+                    severity: o.severity,
+                    confidence: o.confidence,
+                })
+                .collect(),
+        }
+    }
+}
+
 /// Render a CI submission without desktop-only occurrence provenance.
 /// CI ordering comes from the embedded deployment, not a producer watermark.
 pub fn ci_submission_body(
@@ -260,27 +282,14 @@ pub fn ci_submission_body(
     snapshot: &CodeSnapshot,
     deployment: &DeploymentFacts,
 ) -> Result<String, String> {
-    let mut snapshot = serde_json::to_value(snapshot)
-        .map_err(|error| format!("failed to encode the code snapshot: {error}"))?;
-    if let Some(occurrences) = snapshot
-        .get_mut("occurrences")
-        .and_then(Value::as_array_mut)
-    {
-        for occurrence in occurrences {
-            if let Some(fields) = occurrence.as_object_mut() {
-                fields.remove("provenance");
-            }
-        }
-    }
-    if let Some(fields) = snapshot.as_object_mut() {
-        fields.remove("based_on_event_sequence");
-    }
-    let body = serde_json::json!({
-        "schema_version": SCHEMA_VERSION,
-        "site_id": site_id,
-        "snapshot": snapshot,
-        "deployment": deployment,
-    });
+    let body = CiSubmission {
+        schema_version: SCHEMA_VERSION,
+        site_id: site_id
+            .try_into()
+            .map_err(|error| format!("site id: {error}"))?,
+        snapshot: CiCodeSnapshot::from(snapshot.clone()),
+        deployment: deployment.clone(),
+    };
     serde_json::to_string_pretty(&body)
         .map_err(|error| format!("failed to encode the CI submission: {error}"))
 }
@@ -363,30 +372,28 @@ impl ConnectedServiceClient {
         site_id: &str,
         facts: &DeploymentFacts,
     ) -> Result<DeploymentReceipt, ConnectedServiceError> {
-        let body = serde_json::to_string_pretty(facts).map_err(|_| {
-            local_error(
-                "serialization_failed",
-                "connected deployment request could not be encoded",
-            )
-        })?;
         let url = self.url(&ci_deployments_path(site_id))?;
-        self.request(reqwest::Method::POST, url, None, Some(body))
+        self.request(reqwest::Method::POST, url, None, Some(facts))
             .await
     }
 
-    /// Submit serialized code evidence without changing the idempotency bytes.
+    /// Submit the typed CI envelope, deriving idempotency from its wire bytes.
     pub async fn submit_ci_evidence(
         &self,
         site_id: &str,
         body: &str,
         github_oidc_token: Option<&str>,
     ) -> Result<CiSubmissionReceipt, ConnectedServiceError> {
+        let submission: CiSubmission = serde_json::from_str(body)
+            .map_err(|_| local_error("invalid_payload", "invalid CI submission"))?;
+        let body = serde_json::to_string_pretty(&submission)
+            .map_err(|_| local_error("invalid_payload", "invalid CI submission"))?;
         let url = self.url(&ci_sync_path(site_id))?;
         self.request_with_github_oidc(
             reqwest::Method::POST,
             url,
-            Some(&ci_idempotency_key(body)),
-            Some(body.to_string()),
+            Some(&ci_idempotency_key(&body).parse().expect("SHA-256 digest")),
+            Some(&submission),
             github_oidc_token,
         )
         .await

@@ -1,0 +1,14 @@
+{
+  "status": 409,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": {
+    "type": "about:blank",
+    "title": "Conflict",
+    "status": 409,
+    "detail": "This connection already did what it was approved for.",
+    "code": "connection_spent",
+    "request_id": "REQUESTIDFIXTURE"
+  }
+}

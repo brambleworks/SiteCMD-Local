@@ -4,13 +4,11 @@ use std::fmt;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
-use crate::core::scanner::ScanType;
+use crate::core::scan_types::ScanType;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[ts(export_to = "ipc-bindings.ts")]
 pub enum ScanExecutionMode {
     Full,
     Web,
@@ -46,9 +44,8 @@ impl FromStr for ScanExecutionMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[ts(export_to = "ipc-bindings.ts")]
 pub enum ScanTrigger {
     Manual,
     Tray,
@@ -87,9 +84,8 @@ impl FromStr for ScanTrigger {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[ts(export_to = "ipc-bindings.ts")]
 pub enum ScanAdmissionClass {
     GeneralScan,
     BoundedVerification,
@@ -119,9 +115,8 @@ impl FromStr for ScanAdmissionClass {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[ts(export_to = "ipc-bindings.ts")]
 pub enum ScanExecutionStatus {
     Planned,
     Running,
@@ -167,9 +162,8 @@ impl FromStr for ScanExecutionStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[ts(export_to = "ipc-bindings.ts")]
 pub enum ScanComponentStatus {
     Planned,
     Running,
@@ -212,15 +206,8 @@ impl FromStr for ScanComponentStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScanComponent {
-    Web,
-    Code,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[ts(export_to = "ipc-bindings.ts")]
 pub struct ScanExecutionRecord {
     pub id: i64,
     pub project_id: Option<i64>,
@@ -242,85 +229,6 @@ pub struct ScanExecutionRecord {
     pub web_detail: Option<String>,
     pub code_status: Option<ScanComponentStatus>,
     pub code_detail: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "ipc-bindings.ts")]
-pub struct ScanExecutionSummary {
-    pub id: i64,
-    pub project_id: Option<i64>,
-    pub environment_id: Option<i64>,
-    pub environment_url: Option<String>,
-    pub requested_mode: ScanExecutionMode,
-    pub web_focus: Option<ScanType>,
-    pub trigger: ScanTrigger,
-    pub status: ScanExecutionStatus,
-    pub started_at: i64,
-    pub completed_at: Option<i64>,
-    pub score: Option<f64>,
-    pub critical_count: Option<u32>,
-    pub high_count: Option<u32>,
-    pub medium_count: Option<u32>,
-    pub low_count: Option<u32>,
-    pub web_status: Option<ScanComponentStatus>,
-    pub web_detail: Option<String>,
-    pub code_status: Option<ScanComponentStatus>,
-    pub code_detail: Option<String>,
-    pub web_scan_id: Option<i64>,
-    pub web_session_id: Option<i64>,
-    pub web_page_count: u32,
-    pub code_scan_id: Option<i64>,
-    pub runs: Vec<ScanRunSummary>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "ipc-bindings.ts")]
-pub struct ScanRunSummary {
-    pub id: i64,
-    pub parent_run_id: Option<i64>,
-    pub source: crate::core::normalized_scan::ScanEvidenceSource,
-    pub run_kind: crate::core::normalized_scan::ScanRunKind,
-    pub status: crate::core::normalized_scan::ScanRunStatus,
-    pub timestamp: String,
-    pub raw_score: Option<u32>,
-    pub duration_ms: u64,
-    pub issues_total: u32,
-    pub issues_critical: u32,
-    pub issues_high: u32,
-    pub issues_medium: u32,
-    pub issues_low: u32,
-    pub diagnostics: crate::core::normalized_scan::NormalizedRunDiagnostics,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "ipc-bindings.ts")]
-pub struct ScanRunDetail {
-    pub id: i64,
-    pub parent_run_id: Option<i64>,
-    pub source: crate::core::normalized_scan::ScanEvidenceSource,
-    pub run_kind: crate::core::normalized_scan::ScanRunKind,
-    pub status: crate::core::normalized_scan::ScanRunStatus,
-    pub timestamp: String,
-    pub started_at: i64,
-    pub completed_at: Option<i64>,
-    pub raw_score: Option<u32>,
-    pub duration_ms: u64,
-    pub coverage: crate::core::normalized_scan::ScanCoverageManifest,
-    pub diagnostics: crate::core::normalized_scan::NormalizedRunDiagnostics,
-    pub status_detail: Option<String>,
-    pub detail_state: String,
-    pub findings: Vec<crate::core::normalized_scan::NormalizedFinding>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "ipc-bindings.ts")]
-pub struct ScanExecutionDetail {
-    pub summary: ScanExecutionSummary,
-    pub runs: Vec<ScanRunDetail>,
 }
 
 #[derive(Debug, Clone)]
@@ -345,7 +253,6 @@ pub struct NewScanExecution {
 #[derive(Debug, Clone)]
 pub struct ScanAdmissionOutcome {
     pub execution: ScanExecutionRecord,
-    pub reused: bool,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -358,19 +265,4 @@ pub enum ScanAdmissionError {
     InvalidRequest(String),
     #[error("scan admission storage failed: {0}")]
     Storage(String),
-}
-
-/// Typed failures for scan admission and execution.
-#[derive(Debug, thiserror::Error)]
-pub enum ScanExecutionError {
-    #[error(transparent)]
-    Admission(#[from] ScanAdmissionError),
-    #[error("{0}")]
-    Failed(String),
-}
-
-impl From<String> for ScanExecutionError {
-    fn from(message: String) -> Self {
-        ScanExecutionError::Failed(message)
-    }
 }

@@ -1,0 +1,15 @@
+{
+  "status": 400,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": {
+    "interval": 10,
+    "type": "about:blank",
+    "title": "Bad Request",
+    "status": 400,
+    "detail": "Polling faster than the interval. Wait longer between polls.",
+    "code": "slow_down",
+    "request_id": "REQUESTIDFIXTURE"
+  }
+}

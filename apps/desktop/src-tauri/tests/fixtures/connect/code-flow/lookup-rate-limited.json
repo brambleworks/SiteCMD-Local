@@ -1,0 +1,14 @@
+{
+  "status": 429,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": {
+    "type": "about:blank",
+    "title": "Too Many Requests",
+    "status": 429,
+    "detail": "Too many requests. Retry after the interval this response names.",
+    "code": "rate_limited",
+    "request_id": "REQUESTIDFIXTURE"
+  }
+}

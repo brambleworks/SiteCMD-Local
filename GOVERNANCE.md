@@ -6,7 +6,7 @@ SiteCMD is maintained by Brambleworks LLC. Brambleworks sets the product directi
 
 Maintainers use issues and discussions to gather evidence and explain material decisions. The responsible maintainer decides after considering user impact, privacy, security, compatibility, maintenance cost, and the accepted product direction.
 
-Security-sensitive details may remain private until coordinated disclosure is safe. Commercial intelligence content and service operations are managed outside the open-source repository.
+Security-sensitive details may remain private until coordinated disclosure is safe. Engine source, commercial intelligence content, and service operations are managed outside the open-source repository.
 
 ## Changes
 
@@ -24,4 +24,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for practical guidance and [CODE_OF_CONDU
 
 Only maintainers authorized by Brambleworks may approve or publish an official release. A release must come from a protected commit and pass the documented build, signing, verification, and human-approval process.
 
-The Apache License 2.0 permits third parties to publish modified builds. Those builds are not official SiteCMD releases and may not imply endorsement or use SiteCMD trademarks beyond the license's limited descriptive allowance.
+The Apache License 2.0 permits third parties to publish modified builds of the CLI source. Those builds are not official SiteCMD releases and may not imply endorsement or use SiteCMD trademarks beyond the license's limited descriptive allowance. The SiteCMD Engine Module License in [LICENSE](LICENSE) covers the embedded module.

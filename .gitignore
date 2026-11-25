@@ -25,6 +25,12 @@ apps/desktop/src-tauri/gen/
 !.env.example
 !.env.*.example
 *.local
+lefthook-local.yml
+.lefthook-local.yml
+lefthook-local.yaml
+.lefthook-local.yaml
+lefthook-local.json
+lefthook-local.toml
 
 # Credentials and local data
 *.pem
@@ -118,3 +124,6 @@ apps/desktop/.ds-theme.css
 apps/desktop/.ds-entry.tsx
 apps/desktop/.ds-tsconfig.json
 apps/desktop/.ds-fonts/
+
+/engine/local-engine.wasm
+/engine/.download-*

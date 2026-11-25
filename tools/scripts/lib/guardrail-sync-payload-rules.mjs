@@ -1,6 +1,8 @@
+import { publicRustSources } from "./guardrail-protocol-contents-rules.mjs";
+import { connectedRequestFailures } from "./guardrail-connected-request-rules.mjs";
 import { stripComments } from "./guardrail-source-text.mjs";
 
-const SYNC_DIR = "apps/desktop/src-tauri/crates/engine/src/sync";
+const SYNC_DIR = "apps/desktop/src-tauri/crates/protocol/src/sync";
 const FINGERPRINT = `${SYNC_DIR}/fingerprint.rs`;
 const MODULE = `${SYNC_DIR}/mod.rs`;
 
@@ -139,4 +141,12 @@ export function syncPayloadFailures(read, exists, listFiles) {
   }
 
   return failures;
+}
+
+export function connectedServicePayloadFailures(read, exists, listFiles) {
+  const files = publicRustSources(listFiles);
+  return [
+    ...syncPayloadFailures(read, exists, listFiles),
+    ...connectedRequestFailures(files, read),
+  ];
 }

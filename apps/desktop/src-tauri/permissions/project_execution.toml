@@ -1,6 +1,0 @@
-[[permission]]
-identifier = "sitecmd-project-execution"
-description = "Allows explicitly confirmed project command execution from inside registered project folders."
-commands.allow = [
-    "run_project_command"
-]

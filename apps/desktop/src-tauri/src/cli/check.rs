@@ -1,11 +1,18 @@
 //! Regression check for Git hooks.
-//! Default mode refreshes stale cached data and enforces the score threshold;
-//! strict mode also rejects newly failing check IDs.
+//! Default mode checks the latest hosted report or refreshes stale local data.
+//! Strict mode also rejects newly failing check IDs.
+
+use crate::time::now_utc;
+use jiff::SignedDuration;
+use sitecmd_protocol::time::UtcTimestamp;
 
 use std::collections::HashSet;
 
-use crate::checks::{CheckStatus, Severity};
-use crate::core::scanner::{self, ScanProgress, ScanResult, ScanType};
+use crate::core::scan_types::{actionable, CheckResult, ScanResult, ScanType, Severity};
+
+use super::export::export_native_scan;
+use super::hosted;
+use super::lane::{self, Lane, LOCAL_CHECKS_NOTICE};
 
 pub struct CheckArgs {
     pub install: bool,
@@ -15,7 +22,7 @@ pub struct CheckArgs {
 
 /// Run the check subcommand.
 ///
-/// Returns exit code: 0 = pass, 1 = regression/threshold violation.
+/// Returns 0 for a pass, 1 for a regression or threshold failure, and an error for scan failures.
 pub async fn run(args: CheckArgs) -> Result<u8, String> {
     if args.install {
         install_hook(args.strict)
@@ -83,23 +90,9 @@ async fn run_check(args: CheckArgs) -> Result<u8, String> {
         .ok_or_else(|| "No .sitecmd/ directory found. Run `sitecmd init` first.".to_string())?;
 
     let config = crate::cli::read_config(&sitecmd_dir)?;
-    let url = config.url.clone();
-
     // Determine threshold: flag > config fail_under > 0
     let threshold: u32 = args.threshold.or(config.fail_under).unwrap_or(0);
-
-    if args.strict {
-        // Strict compares against the previous export, so it always scans
-        // fresh; reusing the <24h cache would diff a scan against itself.
-        let baseline = read_baseline_failing_ids(&sitecmd_dir);
-        let scan = run_fresh_scan(&url, config.scan_type).await?;
-        if let Err(e) = crate::cli::export::export_scan(&sitecmd_dir, &scan) {
-            eprintln!("Warning: failed to export scan results: {}", e);
-        }
-        return Ok(strict_verdict(&scan, baseline.as_ref(), threshold));
-    }
-
-    if threshold == 0 {
+    if !args.strict && threshold == 0 {
         eprintln!(
             "sitecmd check: no threshold configured; passing. Set fail_under in \
              .sitecmd/config.json or pass --threshold to enforce a minimum score, \
@@ -108,32 +101,80 @@ async fn run_check(args: CheckArgs) -> Result<u8, String> {
         return Ok(0);
     }
 
+    let target = lane::Target::resolve(&config.url, None)
+        .await
+        .map_err(|error| error.to_string())?;
+    if target.lane() == Lane::Hosted {
+        return hosted::check::run(&target.url, &sitecmd_dir, args.strict, threshold)
+            .await
+            .map_err(|error| error.command_message());
+    }
+
+    if args.strict {
+        // Strict compares against the previous export, so it always scans
+        // fresh; reusing the <24h cache would diff a scan against itself.
+        let baseline = read_baseline_failing_ids(&sitecmd_dir)?;
+        let scan = run_fresh_scan(target).await?;
+        export_native_scan(&sitecmd_dir, &scan);
+        return Ok(strict_verdict(&scan, baseline.as_ref(), threshold));
+    }
+
     // Try to use cached scan; re-scan if missing or stale
-    let scan = load_or_rescan(&sitecmd_dir, &url, config.scan_type).await?;
+    let scan = load_or_rescan(&sitecmd_dir, target).await?;
     Ok(threshold_verdict(&scan, threshold))
 }
 
-fn is_failing(issue: &crate::checks::CheckResult) -> bool {
-    issue.status == CheckStatus::Fail || issue.status == CheckStatus::Warn
+fn threshold_failure(scan: &ScanResult, threshold: u32) -> Option<String> {
+    threshold_failure_for_score(scan.overall_score, threshold, || {
+        actionable(&scan.issues)
+            .filter(|issue| issue.severity == Severity::Critical)
+            .count()
+    })
 }
 
-/// Exit code for the plain threshold gate: 1 when a positive threshold is set
-/// and the score sits below it, 0 otherwise.
-fn threshold_verdict(scan: &ScanResult, threshold: u32) -> u8 {
-    if threshold > 0 && scan.overall_score < threshold {
-        let critical_count = scan
-            .issues
-            .iter()
-            .filter(|i| is_failing(i) && i.severity == Severity::Critical)
-            .count();
+pub(super) fn threshold_failure_for_score(
+    score: u32,
+    threshold: u32,
+    critical_count: impl FnOnce() -> usize,
+) -> Option<String> {
+    (score < threshold).then(|| {
+        format!(
+            "Check failed: score {score}/100 is below threshold {threshold} ({} critical issues)",
+            critical_count()
+        )
+    })
+}
 
-        eprintln!(
-            "Check failed: score {}/100 is below threshold {} ({} critical issues)",
-            scan.overall_score, threshold, critical_count
-        );
-        return 1;
+fn threshold_verdict(scan: &ScanResult, threshold: u32) -> u8 {
+    match threshold_failure(scan, threshold) {
+        Some(message) => {
+            eprintln!("{message}");
+            1
+        }
+        None => 0,
     }
-    0
+}
+
+fn new_issues<'a>(scan: &'a ScanResult, baseline: &HashSet<String>) -> Vec<&'a CheckResult> {
+    actionable(&scan.issues)
+        .filter(|issue| !baseline.contains(&issue.check_id))
+        .collect()
+}
+
+pub(super) const FIRST_BASELINE: &str =
+    "No previous scan to compare against; this scan becomes the baseline.";
+
+pub(super) fn regression_heading(count: usize) -> String {
+    let suffix = if count == 1 { "" } else { "s" };
+    format!("Check failed: {count} new issue{suffix} since the last scan:")
+}
+
+pub(super) fn regression_issue_line(
+    severity: Severity,
+    check_id: &impl std::fmt::Display,
+    title: &str,
+) -> String {
+    format!("  [{severity:?}] {check_id} - {title}")
 }
 
 /// Apply the score threshold, then fail on checks absent from the baseline.
@@ -143,58 +184,67 @@ fn strict_verdict(scan: &ScanResult, baseline: Option<&HashSet<String>>, thresho
     }
 
     let Some(baseline) = baseline else {
-        eprintln!("No previous scan to compare against; this scan becomes the baseline.");
+        eprintln!("{FIRST_BASELINE}");
         return 0;
     };
 
-    let new_issues: Vec<_> = scan
-        .issues
-        .iter()
-        .filter(|i| is_failing(i) && !baseline.contains(&i.check_id))
-        .collect();
+    let new_issues = new_issues(scan, baseline);
 
     if new_issues.is_empty() {
         return 0;
     }
 
-    eprintln!(
-        "Check failed: {} new issue{} since the last scan:",
-        new_issues.len(),
-        if new_issues.len() == 1 { "" } else { "s" }
-    );
+    eprintln!("{}", regression_heading(new_issues.len()));
     for issue in &new_issues {
         eprintln!(
-            "  [{:?}] {} - {}",
-            issue.severity, issue.check_id, issue.title
+            "{}",
+            regression_issue_line(issue.severity, &issue.check_id, &issue.title)
         );
     }
     1
 }
 
-/// Failing check ids from the previous `.sitecmd/last-scan.json` export, if
-/// one exists and parses. None means "no baseline yet".
-fn read_baseline_failing_ids(sitecmd_dir: &std::path::Path) -> Option<HashSet<String>> {
-    let contents = std::fs::read_to_string(sitecmd_dir.join("last-scan.json")).ok()?;
-    let baseline: ScanResult = serde_json::from_str(&contents).ok()?;
-    Some(
-        baseline
-            .issues
-            .iter()
-            .filter(|i| is_failing(i))
-            .map(|i| i.check_id.clone())
+/// Failing ids from the previous export; an incompatible baseline must be refreshed.
+fn read_baseline_failing_ids(
+    sitecmd_dir: &std::path::Path,
+) -> Result<Option<HashSet<String>>, String> {
+    let path = sitecmd_dir.join("last-scan.json");
+    let contents = match std::fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("Cannot read {}: {e}", path.display())),
+    };
+    if let Ok(artifact) = serde_json::from_str::<super::hosted::report::Artifact>(&contents) {
+        return Ok(Some(
+            artifact
+                .hosted
+                .issues
+                .into_iter()
+                .map(|issue| issue.check_id.to_string())
+                .collect(),
+        ));
+    }
+    let baseline: ScanResult = serde_json::from_str(&contents).map_err(|e| {
+        format!("Cannot read last-scan.json baseline: {e}. Run `sitecmd scan` to refresh it.")
+    })?;
+    Ok(Some(
+        actionable(&baseline.issues)
+            .map(|issue| issue.check_id.clone())
             .collect(),
-    )
+    ))
 }
 
 /// Load `last-scan.json` if it exists and is fresh (< 24 hours).
-/// Otherwise run a fresh scan, export it, and return the new result.
+/// Otherwise run a fresh scan, export it unless a hosted artifact exists, and return the new result.
 async fn load_or_rescan(
     sitecmd_dir: &std::path::Path,
-    url: &str,
-    scan_type: ScanType,
+    target: lane::Target,
 ) -> Result<ScanResult, String> {
     let last_scan_path = sitecmd_dir.join("last-scan.json");
 
+    if super::hosted::report::read_artifact(sitecmd_dir).is_ok() {
+        return run_fresh_scan(target).await;
+    }
     if let Ok(contents) = std::fs::read_to_string(&last_scan_path) {
         match serde_json::from_str::<ScanResult>(&contents) {
             Ok(cached) => {
@@ -214,62 +264,42 @@ async fn load_or_rescan(
         eprintln!("No scan data found. Running fresh scan...");
     }
 
-    let scan = run_fresh_scan(url, scan_type).await?;
+    let scan = run_fresh_scan(target).await?;
 
-    if let Err(e) = crate::cli::export::export_scan(sitecmd_dir, &scan) {
-        eprintln!("Warning: failed to export scan results: {}", e);
-    }
-
+    export_native_scan(sitecmd_dir, &scan);
     Ok(scan)
 }
 
 /// Return true if the RFC 3339 timestamp is less than 24 hours old.
 fn is_fresh(timestamp: &str) -> bool {
-    match chrono::DateTime::parse_from_rfc3339(timestamp) {
+    match UtcTimestamp::parse_from_rfc3339(timestamp) {
         Ok(scanned_at) => {
-            let age =
-                chrono::Utc::now().signed_duration_since(scanned_at.with_timezone(&chrono::Utc));
-            age < chrono::Duration::hours(24)
+            let age = now_utc().duration_since(scanned_at);
+            age < SignedDuration::from_hours(24)
         }
         Err(_) => false,
     }
 }
 
-async fn run_fresh_scan(url: &str, scan_type: ScanType) -> Result<ScanResult, String> {
-    let progress_fn: std::sync::Arc<scanner::ProgressFn> =
-        std::sync::Arc::new(|p: &ScanProgress| {
-            eprint!(
-                "\r\x1b[K[{}/{}] {} - {}",
-                p.checks_done, p.checks_total, p.check_id, p.status
-            );
-        });
-
-    let result = crate::scan_runtime::run_scan_low_priority(
-        url.to_string(),
-        Some(progress_fn),
-        None,
-        None,
-        scan_type,
-        false,
-        None,
-    )
-    .await
-    .map_err(|e| format!("{}", e))?;
-
-    eprint!("\r\x1b[K");
-
+async fn run_fresh_scan(target: lane::Target) -> Result<ScanResult, String> {
+    let result = target
+        .scan_local(ScanType::Health, lane::ScanPurpose::OneShot, None)
+        .await
+        .map_err(|error| error.to_string())?;
+    eprintln!("{LOCAL_CHECKS_NOTICE}");
     Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checks::{CheckResult, CheckStatus, ScanCategory, Severity};
+    use crate::core::scan_types::{CheckResult, CheckStatus, Severity};
 
     fn issue(check_id: &str, severity: Severity, status: CheckStatus) -> CheckResult {
         CheckResult {
+            covered: false,
             check_id: check_id.to_string(),
-            category: ScanCategory::Security,
+            category: None,
             title: format!("Title for {}", check_id),
             description: String::new(),
             status,
@@ -277,21 +307,21 @@ mod tests {
             fix_prompt: None,
             manual_fix: None,
             raw_data: None,
-            confidence: crate::checks::IssueConfidence::High,
+            confidence: crate::core::scan_types::IssueConfidence::High,
             confidence_reason: None,
+            skip_reason: None,
             why_it_matters: None,
         }
     }
 
     fn scan(score: u32, issues: Vec<CheckResult>) -> ScanResult {
         ScanResult {
-            page_signals: None,
-            site_facts: None,
             url: "https://example.com".to_string(),
             mode: "live".to_string(),
             scan_type: ScanType::Health,
             overall_score: score,
             categories: vec![],
+            fix_points: vec![0; issues.len()],
             issues,
             detected_stack: None,
             duration_ms: 100,
@@ -301,6 +331,60 @@ mod tests {
 
     fn ids(ids: &[&str]) -> HashSet<String> {
         ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn check_counts_only_actionable_critical_results() {
+        // A passing critical check can inflate the cached score failure count.
+        let scan = scan(55, local_results());
+        assert_eq!(
+            threshold_failure(&scan, 80).as_deref(),
+            Some("Check failed: score 55/100 is below threshold 80 (1 critical issues)")
+        );
+        assert_eq!(threshold_verdict(&scan, 80), 1);
+    }
+
+    #[test]
+    fn strict_check_reports_one_new_issue_and_stores_one_baseline_id() {
+        let scan = scan(90, local_results());
+        let detail = "security.env_leak";
+        let empty = ids(&[]);
+        let found = new_issues(&scan, &empty);
+        assert_eq!(
+            found
+                .iter()
+                .map(|row| row.check_id.as_str())
+                .collect::<Vec<_>>(),
+            [detail]
+        );
+        assert_eq!(strict_verdict(&scan, Some(&empty), 0), 1);
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("last-scan.json"),
+            serde_json::to_vec(&scan).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            read_baseline_failing_ids(dir.path()).unwrap(),
+            Some(ids(&[detail]))
+        );
+        assert_eq!(strict_verdict(&scan, Some(&ids(&[detail])), 0), 0);
+    }
+
+    fn local_results() -> Vec<CheckResult> {
+        vec![
+            CheckResult {
+                covered: true,
+                ..issue("summary", Severity::Critical, CheckStatus::Fail)
+            },
+            issue("security.env_leak", Severity::Critical, CheckStatus::Fail),
+            issue(
+                "security.source_maps",
+                Severity::Critical,
+                CheckStatus::Pass,
+            ),
+        ]
     }
 
     #[test]
@@ -377,15 +461,18 @@ mod tests {
         )
         .expect("write");
 
-        let got = read_baseline_failing_ids(dir.path()).expect("baseline should parse");
+        let got = read_baseline_failing_ids(dir.path())
+            .expect("baseline should parse")
+            .expect("baseline exists");
         assert_eq!(got, ids(&["failing.one", "warning.two"]));
     }
 
     #[test]
-    fn missing_or_unparseable_baseline_reads_as_none() {
+    fn only_a_missing_baseline_reads_as_none() {
         let dir = tempfile::tempdir().expect("tempdir");
-        assert_eq!(read_baseline_failing_ids(dir.path()), None);
+        assert_eq!(read_baseline_failing_ids(dir.path()).unwrap(), None);
         std::fs::write(dir.path().join("last-scan.json"), "not json").expect("write");
-        assert_eq!(read_baseline_failing_ids(dir.path()), None);
+        let error = read_baseline_failing_ids(dir.path()).unwrap_err();
+        assert!(error.contains("Run `sitecmd scan`"));
     }
 }

@@ -1,0 +1,14 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "kind": "connect",
+    "connection_token": "sitecmd_cnx_FIXTURE",
+    "site_id": "site-repo",
+    "site_url": "https://site-repo.example.com",
+    "key_version": 1,
+    "repository": "example-org/example-site"
+  }
+}

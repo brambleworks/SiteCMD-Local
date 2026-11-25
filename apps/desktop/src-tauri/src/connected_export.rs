@@ -93,7 +93,12 @@ impl std::fmt::Debug for ImportedSiteConnection {
 
 impl Drop for ImportedSiteConnection {
     fn drop(&mut self) {
-        use zeroize::Zeroize;
+        self.zeroize();
+    }
+}
+
+impl Zeroize for ImportedSiteConnection {
+    fn zeroize(&mut self) {
         self.fingerprint_key.zeroize();
     }
 }
@@ -189,10 +194,7 @@ pub fn encrypt_site_connection(
         fingerprint_key_version,
         fingerprint_key: hex::encode(*fingerprint_key),
     };
-    let mut plaintext = Zeroizing::new(
-        serde_json::to_vec(&content)
-            .map_err(|error| format!("failed to encode connection export: {error}"))?,
-    );
+    let mut plaintext = serialize_content(&content)?;
     let key_bytes = derived_key(passphrase, &salt);
     let key = cipher_key(&key_bytes)?;
     key.seal_in_place_append_tag(
@@ -260,6 +262,33 @@ pub fn decrypt_site_connection(
         fingerprint_key_version: content.fingerprint_key_version,
         fingerprint_key,
     })
+}
+
+/// Allocate once before serializing key-bearing content or appending the tag.
+fn serialize_content(content: &ExportContent) -> Result<Zeroizing<Vec<u8>>, String> {
+    struct Length(usize);
+    impl std::io::Write for Length {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self
+                .0
+                .checked_add(bytes.len())
+                .ok_or_else(|| std::io::Error::other("export too large"))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let failed = || "failed to encode connection export".to_string();
+    let mut length = Length(0);
+    serde_json::to_writer(&mut length, content).map_err(|_| failed())?;
+    let capacity = length
+        .0
+        .checked_add(aead::CHACHA20_POLY1305.tag_len())
+        .ok_or_else(failed)?;
+    let mut plaintext = Zeroizing::new(Vec::with_capacity(capacity));
+    serde_json::to_writer(&mut *plaintext, content).map_err(|_| failed())?;
+    Ok(plaintext)
 }
 
 #[cfg(test)]
@@ -341,5 +370,31 @@ mod tests {
             decrypt_site_connection(&hostile, PASSPHRASE).expect_err("unsupported work factor"),
             "connection export uses an unsupported format"
         );
+    }
+}
+
+#[cfg(test)]
+mod allocation_tests {
+    use super::*;
+
+    #[test]
+    fn connect_export_plaintext_does_not_grow_while_writing_the_key_or_tag() {
+        // Bug: JSON growth at 255 or 256 key-bearing bytes can free an unzeroized copy of the full key.
+        for length in [67, 68] {
+            let content = ExportContent {
+                site_id: "s".repeat(36),
+                environment_scope_key: format!("https://example.com/{}", "x".repeat(length - 20)),
+                fingerprint_key_version: 2,
+                fingerprint_key: "ab".repeat(KEY_LEN),
+            };
+            let mut bytes = serialize_content(&content).unwrap();
+            assert_eq!(
+                bytes.capacity(),
+                bytes.len() + aead::CHACHA20_POLY1305.tag_len()
+            );
+            let start = bytes.as_ptr();
+            bytes.extend_from_slice(&[0; 16]);
+            assert!(start == bytes.as_ptr());
+        }
     }
 }

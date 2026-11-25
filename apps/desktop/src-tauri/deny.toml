@@ -1,17 +1,18 @@
 # cargo-deny policy: https://embarkstudios.github.io/cargo-deny/
 
 [graph]
-# Cover the current desktop and CLI release targets.
+# Cover desktop, CLI and hosted WebAssembly release targets.
 targets = [
     { triple = "x86_64-apple-darwin" },
     { triple = "aarch64-apple-darwin" },
     { triple = "x86_64-unknown-linux-gnu" },
     { triple = "aarch64-unknown-linux-gnu" },
     { triple = "x86_64-pc-windows-msvc" },
+    { triple = "wasm32-unknown-unknown" },
 ]
 # Vet the full feature surface: the cargo-deny-action runs with
 # --all-features, so the local check must resolve the same graph or the two
-# disagree about optional dependencies (e.g. headless_chrome via `browser`).
+# disagree about optional dependencies.
 all-features = true
 no-default-features = false
 
@@ -33,34 +34,17 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "CC0-1.0",
-    "CDLA-Permissive-2.0",     # webpki-roots (Mozilla CA bundle)
+    "CDLA-Permissive-2.0",     # webpki-root-certs on supported targets
     "Unicode-3.0",
-    "MPL-2.0",
     "Zlib",
     "0BSD",
     "BSL-1.0",
 ]
 confidence-threshold = 0.9
+exceptions = []
 unused-license-exception = "deny"
 # Exclude workspace-private crates, not third-party dependencies.
 private = { ignore = true }
-exceptions = [
-    # auto_generate_cdp declares no license in its crate metadata and ships
-    # only a GPL-3.0 LICENSE.txt, which newer cargo-deny synthesizes into
-    # GPL-3.0-or-later. It is a build-script code generator pulled in by
-    # headless_chrome; it runs at build time and is never linked into or
-    # distributed with SiteCMD binaries. Reviewed 2026-08-22.
-    { allow = ["GPL-3.0-or-later"], name = "auto_generate_cdp" },
-]
-
-# Pin the license expression so every cargo-deny version resolves this crate
-# identically (older versions find no license at all; newer versions synthesize
-# one from LICENSE.txt). The exception above is what actually permits it.
-[[licenses.clarify]]
-name = "auto_generate_cdp"
-expression = "GPL-3.0-or-later"
-license-files = []
 
 [bans]
 multiple-versions = "warn"
@@ -68,6 +52,9 @@ wildcards = "deny"
 # Internal path crates have no registry version; registry wildcards remain denied.
 allow-wildcard-paths = true
 deny = [
+    { name = "chrono", reason = "Unmaintained in RUSTSEC-2026-0543. Use jiff." },
+    { name = "wasmtime-wasi", reason = "The engine module has no WASI capabilities." },
+    { name = "wasi-common", reason = "The engine module has no WASI capabilities." },
 ]
 skip = []
 skip-tree = []

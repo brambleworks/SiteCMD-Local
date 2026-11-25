@@ -39,6 +39,29 @@ mod tests {
     }
 
     #[test]
+    fn detects_the_host_for_each_header_fixer_fixture() {
+        // Bug: Host detection can discard configurations before the fixer checks them.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/fix_templates/vercel/x-content-type-options");
+        for fixture in [
+            "basic",
+            "already-set",
+            "unmet",
+            "conflicting-value",
+            "narrower-source",
+        ] {
+            assert_eq!(
+                detect(&root.join(fixture)),
+                vec![HostTarget {
+                    kind: HostKind::Vercel,
+                    config_path: "vercel.json".into(),
+                }],
+                "{fixture}"
+            );
+        }
+    }
+
+    #[test]
     fn ignores_a_vercel_config_that_is_not_an_object() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(temp.path().join("vercel.json"), "[]").unwrap();

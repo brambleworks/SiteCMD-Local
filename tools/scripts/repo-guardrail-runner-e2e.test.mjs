@@ -46,7 +46,7 @@ describe.concurrent(
         const emDash = String.fromCharCode(0x2014);
         writeFixtureFile(
           fixtureRoot,
-          "apps/desktop/src-tauri/crates/engine/src/checks/security/guardrail_probe.rs",
+          "apps/desktop/src-tauri/src/core/guardrail_probe.rs",
           `// discovered by the directory walk, not by name em${emDash}dash\n`,
         );
         const result = await runGuardrails(fixtureRoot);

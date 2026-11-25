@@ -1,0 +1,13 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "device_code": "DEVICECODEFIXTURE",
+    "user_code": "BCDF-GHJK",
+    "verification_uri": "https://app.sitecmd.com/device",
+    "expires_in": 900,
+    "interval": 5
+  }
+}

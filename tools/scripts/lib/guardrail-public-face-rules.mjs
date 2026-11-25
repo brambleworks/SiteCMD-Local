@@ -4,43 +4,6 @@ const CONTRIBUTING = "CONTRIBUTING.md";
 const CONNECTED_SPECS = "docs/engineering/connected-service";
 const LOCALHOST_FIXTURES = "apps/desktop/src-tauri/src/core/localhost.rs";
 const README = "README.md";
-const PRODUCT_FACTS = "product-facts.json";
-
-// The README restates generated check counts. Drift turns a fact a reader can
-// verify against the registries into a marketing claim they cannot.
-const README_COUNT_ROWS = [
-  ["Web Scan", "web"],
-  ["Code Scan", "codeScan"],
-  ["Accessibility", "axe"],
-  ["Polish", "polish"],
-];
-
-function checkCountFailures(read, exists) {
-  if (!exists(README) || !exists(PRODUCT_FACTS)) return [];
-  const readme = read(README);
-  const counts = JSON.parse(read(PRODUCT_FACTS)).checkCounts;
-  const failures = [];
-  for (const [label, key] of README_COUNT_ROWS) {
-    const row = new RegExp(`^\\|\\s*${label}\\s*\\|\\s*(\\d+)\\s*\\|`, "m").exec(readme);
-    if (!row) {
-      failures.push(
-        `${README} must keep a "${label}" row in its check-count table; ${PRODUCT_FACTS} publishes ${counts[key]}.`,
-      );
-    } else if (Number(row[1]) !== counts[key]) {
-      failures.push(
-        `${README} says ${label} runs ${row[1]} checks and ${PRODUCT_FACTS} says ${counts[key]}. Run pnpm facts:generate, then update the table.`,
-      );
-    }
-  }
-  const ecosystems = /across (\d+) package ecosystems/.exec(readme);
-  if (!ecosystems || Number(ecosystems[1]) !== counts.dependencyEcosystems) {
-    failures.push(
-      `${README} must say dependency findings resolve across ${counts.dependencyEcosystems} package ecosystems, the count ${PRODUCT_FACTS} publishes.`,
-    );
-  }
-  return failures;
-}
-
 // Product-intent phrasing belongs in docs/qa, where reviewers read it.
 const INTENT_PHRASES =
   /SiteCMD should|treat that as product feedback|should make (?:that|the) [a-z-]+ (?:step )?obvious/i;
@@ -79,7 +42,7 @@ const RETIRED_CONNECT_PROVIDERS = new RegExp(
 const WALKTHROUGH_PENDING_TASK_8 = `${PRODUCT_DOCS}/get-value-in-5-minutes.md`;
 
 export function publicFaceFailures(read, exists, listFiles) {
-  const failures = checkCountFailures(read, exists);
+  const failures = [];
 
   for (const file of listFiles(
     PRODUCT_DOCS,
@@ -119,24 +82,7 @@ export function publicFaceFailures(read, exists, listFiles) {
   }
 
   for (const file of listFiles(CONNECTED_SPECS, (path) => path.endsWith("-spec.md"))) {
-    const hit = PRIVATE_RECORD_DEFERRAL.exec(read(file));
-    if (hit) {
-      failures.push(
-        `${file} defers to a private record ("${hit[0]}"); state the rule in place, or say the value is set outside this specification.`,
-      );
-    }
-    const retired = RETIRED_CONNECT_CRYPTO.exec(read(file));
-    if (retired) {
-      failures.push(
-        `${file} specifies a retired Connect crypto contract ("${retired[0]}"); stored payloads are jose flattened JWE (dir, A256GCM, random IV) and outgoing webhooks use Standard Webhooks.`,
-      );
-    }
-    const provider = RETIRED_CONNECT_PROVIDERS.exec(read(file));
-    if (provider) {
-      failures.push(
-        `${file} specifies a retired Connect provider contract ("${provider[0]}"); deploy intake uses the generic signed door and publish-attestation ordering.`,
-      );
-    }
+    failures.push(...connectedSpecFailures(file, read(file)));
   }
 
   if (
@@ -148,5 +94,28 @@ export function publicFaceFailures(read, exists, listFiles) {
     );
   }
 
+  return failures;
+}
+
+export function connectedSpecFailures(file, source) {
+  const failures = [];
+  const hit = PRIVATE_RECORD_DEFERRAL.exec(source);
+  if (hit) {
+    failures.push(
+      `${file} defers to a private record ("${hit[0]}"); state the rule in place, or say the value is set outside this specification.`,
+    );
+  }
+  const retired = RETIRED_CONNECT_CRYPTO.exec(source);
+  if (retired) {
+    failures.push(
+      `${file} specifies a retired Connect crypto contract ("${retired[0]}"); stored payloads are jose flattened JWE (dir, A256GCM, random IV) and outgoing webhooks use Standard Webhooks.`,
+    );
+  }
+  const provider = RETIRED_CONNECT_PROVIDERS.exec(source);
+  if (provider) {
+    failures.push(
+      `${file} specifies a retired Connect provider contract ("${provider[0]}"); deploy intake uses the generic signed door and publish-attestation ordering.`,
+    );
+  }
   return failures;
 }

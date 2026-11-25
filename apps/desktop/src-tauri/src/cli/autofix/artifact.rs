@@ -1,13 +1,13 @@
 //! What crosses from the untrusted fix job to the trusted publish job:
-//! `manifest.json` and `patch.diff` inside the workflow artifact
-//! `sitecmd-job-<job id>`. Data only, never executed, and carrying no prose
-//! for an agent.
+//! `manifest.json` and a source-free template marker in `patch.diff` inside
+//! `sitecmd-job-<job id>`; the publish job regenerates edits in its checkout.
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-pub const ARTIFACT_SCHEMA_VERSION: u16 = 1;
+pub const ARTIFACT_SCHEMA_VERSION: u16 = 2;
+pub const TEMPLATE_PLAN: &str = "sitecmd-template-plan-v2\n";
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 pub(crate) const MAX_PATCH_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -17,7 +17,6 @@ pub struct BriefArtifactLocation {
     pub path: String,
     pub start_line: u32,
     pub end_line: u32,
-    pub excerpt: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,7 +51,6 @@ pub struct Manifest {
     pub attempt: u32,
     pub base_sha: String,
     pub outcome_code: Option<String>,
-    pub summary: String,
     pub write_set: Vec<String>,
     pub findings: Vec<ManifestFinding>,
     pub brief: Option<BriefArtifact>,
@@ -64,8 +62,11 @@ pub fn write_artifact(dir: &Path, manifest: &Manifest, patch: &str) -> Result<()
         .map_err(|error| format!("manifest could not be encoded: {error}"))?;
     std::fs::write(dir.join("manifest.json"), encoded)
         .map_err(|error| format!("manifest.json could not be written: {error}"))?;
-    std::fs::write(dir.join("patch.diff"), patch)
-        .map_err(|error| format!("patch.diff could not be written: {error}"))?;
+    std::fs::write(
+        dir.join("patch.diff"),
+        if patch.is_empty() { "" } else { TEMPLATE_PLAN },
+    )
+    .map_err(|error| format!("patch.diff could not be written: {error}"))?;
     Ok(())
 }
 
@@ -122,7 +123,6 @@ mod tests {
             job_id: "job_0123456789abcdef".into(),
             outcome_code: None,
             schema_version: ARTIFACT_SCHEMA_VERSION,
-            summary: "planned".into(),
             write_set: vec!["vercel.json".into()],
         }
     }
@@ -138,7 +138,11 @@ mod tests {
         .unwrap();
         let (read, patch) = read_artifact(temp.path()).unwrap();
         assert_eq!(read, manifest());
-        assert_eq!(patch, "diff --git a/vercel.json b/vercel.json\n");
+        assert!(serde_json::to_value(&read)
+            .unwrap()
+            .get("summary")
+            .is_none());
+        assert_eq!(patch, TEMPLATE_PLAN);
         assert!(temp.path().join("manifest.json").is_file());
         assert!(temp.path().join("patch.diff").is_file());
     }
@@ -155,7 +159,6 @@ mod tests {
                 identity: "f".repeat(64),
                 locations: vec![BriefArtifactLocation {
                     end_line: 3,
-                    excerpt: "x".into(),
                     path: "app/route.ts".into(),
                     start_line: 3,
                 }],
@@ -172,7 +175,7 @@ mod tests {
     #[test]
     fn refuses_unknown_fields_and_oversized_files() {
         let temp = tempfile::tempdir().unwrap();
-        std::fs::write(temp.path().join("manifest.json"), r#"{"schema_version":1,"job_id":"job_0123456789abcdef","attempt":1,"base_sha":"0","outcome_code":null,"summary":"","write_set":[],"findings":[],"brief":null,"extra":1}"#).unwrap();
+        std::fs::write(temp.path().join("manifest.json"), r#"{"schema_version":1,"job_id":"job_0123456789abcdef","attempt":1,"base_sha":"0","outcome_code":null,"write_set":[],"findings":[],"brief":null,"extra":1}"#).unwrap();
         std::fs::write(temp.path().join("patch.diff"), "").unwrap();
         assert!(read_artifact(temp.path()).unwrap_err().contains("manifest"));
         std::fs::write(

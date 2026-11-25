@@ -20,100 +20,10 @@ export function orderedBefore(source, first, second) {
   return firstIndex < secondIndex;
 }
 
-export function lineNumberFor(source, index) {
+function lineNumberFor(source, index) {
   return source.slice(0, index).split("\n").length;
 }
 
-function isIdentifierChar(value) {
-  return /[A-Za-z0-9_$]/.test(value);
-}
-
-function skipWhitespace(source, index) {
-  while (index < source.length && /\s/.test(source[index])) index += 1;
-  return index;
-}
-
-function skipGenericArgument(source, index) {
-  if (source[index] !== "<") return index;
-
-  let quote = null;
-  let depth = 0;
-  for (let cursor = index; cursor < source.length; cursor += 1) {
-    const ch = source[cursor];
-    if (quote) {
-      if (ch === quote && source[cursor - 1] !== "\\") quote = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      continue;
-    }
-    if (ch === "<") {
-      depth += 1;
-    } else if (ch === ">") {
-      depth -= 1;
-      if (depth === 0) return cursor + 1;
-    } else if (ch === "\n" && depth <= 0) {
-      return index;
-    }
-  }
-
-  return index;
-}
-
-function readFirstCallArgument(source, index) {
-  let quote = null;
-  for (let cursor = index; cursor < source.length; cursor += 1) {
-    const ch = source[cursor];
-    if (quote) {
-      if (ch === quote && source[cursor - 1] !== "\\") quote = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      continue;
-    }
-    if (ch === "," || ch === ")" || ch === "\n") {
-      return source.slice(index, cursor).trim();
-    }
-  }
-  return source.slice(index).trim();
-}
-
-export function findInvokeCalls(source) {
-  const calls = [];
-  let cursor = 0;
-
-  while (cursor < source.length) {
-    const invokeIndex = source.indexOf("invoke", cursor);
-    if (invokeIndex === -1) break;
-
-    const before = source[invokeIndex - 1] ?? "";
-    const after = source[invokeIndex + "invoke".length] ?? "";
-    if (isIdentifierChar(before) || isIdentifierChar(after)) {
-      cursor = invokeIndex + "invoke".length;
-      continue;
-    }
-
-    let callIndex = skipWhitespace(source, invokeIndex + "invoke".length);
-    callIndex = skipWhitespace(source, skipGenericArgument(source, callIndex));
-    if (source[callIndex] !== "(") {
-      cursor = invokeIndex + "invoke".length;
-      continue;
-    }
-
-    const firstArgStart = skipWhitespace(source, callIndex + 1);
-    calls.push({
-      arg: readFirstCallArgument(source, firstArgStart),
-      index: invokeIndex,
-    });
-    cursor = callIndex + 1;
-  }
-
-  return calls;
-}
-
-// Returns tracing attributes with their 1-based line numbers.
 export function tracingInstrumentAttributes(source) {
   const attributes = [];
   let index = 0;
@@ -178,31 +88,6 @@ export function stripJsComments(source) {
 }
 
 /** Reads a balanced object-literal value expression for `key`. */
-export function objectValueExpression(source, key) {
-  const at = source.indexOf(`"${key}"`);
-  if (at < 0) return "";
-  let index = source.indexOf(":", at + key.length + 2);
-  if (index < 0) return "";
-  index += 1;
-  let depth = 0;
-  let value = "";
-  for (; index < source.length; index += 1) {
-    const char = source[index];
-    if ("([{".includes(char)) depth += 1;
-    else if (")]}".includes(char)) {
-      if (depth === 0) break;
-      depth -= 1;
-    } else if (char === "," && depth === 0) break;
-    value += char;
-  }
-  return value.trim();
-}
-
-/**
- * Each GitHub Actions job's `environment:` line with every deeper line under
- * it, read by indentation, so the url-first, flow and expression forms are all
- * visible without a YAML parser.
- */
 export function workflowJobEnvironments(workflow) {
   const lines = workflow.split("\n");
   const indent = (line) => line.length - line.trimStart().length;
@@ -231,4 +116,36 @@ export function workflowJobEnvironments(workflow) {
     found.push({ job, block });
   }
   return found;
+}
+
+export function workflowBlock(source, key, indent = 0) {
+  const prefix = " ".repeat(indent);
+  const keys = [key, `"${key}"`, `'${key}'`].map((name) => `${prefix}${name}:`);
+  const lines = source.split("\n");
+  const start = lines.findIndex((line) => keys.some((name) => line.startsWith(name)));
+  if (start === -1) return "";
+  const end = lines.findIndex(
+    (line, index) =>
+      index > start &&
+      line.trim() &&
+      !line.trimStart().startsWith("#") &&
+      !line.startsWith(`${prefix} `) &&
+      !line.startsWith(`${prefix}- `),
+  );
+  return lines.slice(start, end === -1 ? undefined : end).join("\n");
+}
+
+export function unconditionalWorkflowStep(step) {
+  return !/^ {8}(?:if|continue-on-error):/m.test(`        ${step}`);
+}
+
+export function workflowStepIndex(source, runLine) {
+  return source
+    .split(/^ {6}- /m)
+    .slice(1)
+    .findIndex(
+      (step) =>
+        unconditionalWorkflowStep(step) &&
+        `        ${step}`.split("\n").includes(`        ${runLine}`),
+    );
 }

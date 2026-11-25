@@ -25,28 +25,13 @@
 /install.sh                                @brambleworks
 /tools/scripts/                            @brambleworks
 
-# Desktop security boundaries.
-/apps/desktop/package.json                 @brambleworks
+# Native runtime boundaries.
 /apps/desktop/src-tauri/Cargo.toml         @brambleworks
 /apps/desktop/src-tauri/Cargo.lock         @brambleworks
-/apps/desktop/src-tauri/build.rs           @brambleworks
 /apps/desktop/src-tauri/build_config.rs    @brambleworks
 /apps/desktop/src-tauri/crates/runtime/    @brambleworks
 /apps/desktop/src-tauri/src/runtime.rs     @brambleworks
-/apps/desktop/src-tauri/src/desktop_*.rs   @brambleworks
-/apps/desktop/src-tauri/tauri.conf.json    @brambleworks
-/apps/desktop/src-tauri/branding/          @brambleworks
-/apps/desktop/src-tauri/capabilities/      @brambleworks
-/apps/desktop/src-tauri/permissions/       @brambleworks
 /apps/desktop/src-tauri/src/network_policy.rs @brambleworks
-/apps/desktop/src-tauri/src/commands/privileged_command_broker/ @brambleworks
-/apps/desktop/src-tauri/src/licensing/     @brambleworks
+/apps/desktop/src-tauri/crates/protocol/src/network_class.rs @brambleworks
+/apps/desktop/src-tauri/crates/protocol/src/database_env.rs @brambleworks
 /apps/desktop/src-tauri/src/updates/       @brambleworks
-/apps/desktop/src-tauri/src/catalog/       @brambleworks
-/apps/desktop/src-tauri/src/commands/telemetry.rs @brambleworks
-/apps/desktop/src-tauri/src/commands/telemetry_schema.rs @brambleworks
-/apps/desktop/src/lib/telemetry*           @brambleworks
-/apps/desktop/src/lib/scan-telemetry*      @brambleworks
-/apps/desktop/src/lib/commands/telemetry.ts @brambleworks
-/apps/desktop/src/components/privacy/      @brambleworks
-/apps/mcp-server/package.json              @brambleworks

@@ -1,0 +1,538 @@
+{
+  "_comment": "Engine wire identifiers only. The 21 dashboard-only field disagreements are outside this corpus because the CLI no longer sends those fields.",
+  "rules": {
+    "authority_id": "Engine AuthorityId: 1 to 256 ASCII characters, alphanumeric or underscore first, then alphanumeric or _.:@/+-",
+    "canonical_values": "Canonical wire values are preserved without Connect transforms: /caf%C3%A9 is the engine canonical resource for authored /café (canonicalizer v3).",
+    "git_ref": "Git check-ref-format with allow-onelevel, no shorthand expansion, no leading dash, and at most 256 UTF-16 code units",
+    "manifest_digest": "Engine capability manifest document_digest: first 16 lowercase SHA-256 hex digits, exactly 16 characters",
+    "route_path": "Canonical path with non-ASCII, ASCII controls, and space, double quote, #, <, >, ^, backtick, ?, {, } encoded as uppercase UTF-8 percent escapes; tabs and newlines removed, backslashes folded to slashes; no URL query or fragment, at most 2048 UTF-16 code units"
+  },
+  "sources": [
+    "https://git-scm.com/docs/git-check-ref-format",
+    "https://vercel.com/docs/environment-variables/system-environment-variables",
+    "https://docs.netlify.com/build/configure-builds/environment-variables/",
+    "https://developers.cloudflare.com/pages/configuration/build-configuration/",
+    "https://docs.github.com/en/actions/reference/workflows-and-actions/variables",
+    "https://docs.github.com/en/rest/deployments/deployments#create-a-deployment",
+    "https://url.spec.whatwg.org/#path-percent-encode-set"
+  ],
+  "types": {
+    "authority_id": {
+      "invalid": [
+        "",
+        "-team",
+        "team prod",
+        "team?prod",
+        "team\\prod",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "+prod",
+        "vercel:team+prod?note=secret"
+      ],
+      "valid": [
+        "vercel:team+prod",
+        "github:acme/site@main",
+        "_authority",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    "check_id": {
+      "invalid": [
+        "",
+        "Security.csp",
+        "security:cookie",
+        "security cookie",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "valid": [
+        "security.csp",
+        "security.cookies.session~v2",
+        "security.cookies.!#$%&'*+^`|~",
+        "code_scan.security",
+        "accessibility.axe.color-contrast"
+      ]
+    },
+    "commit_sha": {
+      "head_invalid": [
+        "c0ffee1",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      ],
+      "head_valid": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "invalid": [
+        "",
+        "c0ffee",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "C0FFEE1",
+        "gggggggggggggggggggggggggggggggggggggggg"
+      ],
+      "valid": [
+        "c0ffee1",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      ]
+    },
+    "deployment_id": {
+      "invalid": [
+        "",
+        "contains space",
+        "\nsecret",
+        "/first",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "valid": [
+        "dpl_7Gw5ZMBpQA8h9GF832KGp7nwbuh3",
+        "66f17a5e4f42d900087d1234",
+        "a7b8c9d0-1234-5678-90ab-123456789abc",
+        "github:owner/repo@42",
+        "run-42",
+        "release+canary@run/42",
+        "123456789"
+      ]
+    },
+    "deployment_target": {
+      "invalid": [
+        "",
+        "a b",
+        "/first",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "valid": [
+        "production",
+        "preview",
+        "development",
+        "deploy-preview",
+        "branch-deploy",
+        "staging",
+        "team/staging@2",
+        "prod+canary"
+      ]
+    },
+    "digest": {
+      "invalid": [
+        "",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+      ],
+      "valid": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      ]
+    },
+    "finding_identity": {
+      "invalid": [
+        "",
+        "/x?secret=1",
+        "web:relative",
+        "code:bad",
+        "not a finding",
+        "web:*:bad check",
+        "web:/café?"
+      ],
+      "valid": [
+        "/",
+        "/blog/[slug]",
+        "/product?",
+        "web:/product?",
+        "code:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "web:*:seo.duplicate_title_across_pages",
+        "web:*:security.cookies.session~v2",
+        "web:*:security.cookies.!#$%&'*+^`|~",
+        "web:/caf%C3%A9?"
+      ]
+    },
+    "git_ref": {
+      "invalid": [
+        "",
+        "@",
+        "-main",
+        "refs//main",
+        "refs/heads/.secret",
+        "feature.lock",
+        "main.",
+        "feature..x",
+        "feature@{1}",
+        "feature x",
+        "feature~1",
+        "feature^1",
+        "feature:one",
+        "feature?",
+        "feature*",
+        "feature[1]",
+        "feature\\x",
+        "/main",
+        "main/",
+        "feature/éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé/éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      ],
+      "valid": [
+        "main",
+        "refs/heads/main",
+        "refs/pull/12/merge",
+        "refs/heads/renovate/@types-node-20.x",
+        "renovate/@types+node-20.x",
+        "refs/tags/v1.2.3",
+        "feature/é",
+        "feature/éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé/ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      ]
+    },
+    "manifest_digest": {
+      "invalid": [
+        "",
+        "0123456789abcde",
+        "0123456789abcdef0",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "ABCDEF0123456789",
+        "0123456789abcdeg"
+      ],
+      "valid": [
+        "1112a3f75941c255",
+        "0123456789abcdef",
+        "ffffffffffffffff"
+      ]
+    },
+    "repository_slug": {
+      "invalid": [
+        "owner",
+        "/repo",
+        "owner/",
+        "owner/repo/extra",
+        "owner/repo with space"
+      ],
+      "valid": [
+        "Owner/Repo",
+        "owner/repo.name-1",
+        "owner/repo_name"
+      ]
+    },
+    "route_path": {
+      "_comment": "Canonicalizer v3 maps authored /café to the canonical wire value /caf%C3%A9. Preserve /caf%C3%A9 exactly; raw Unicode and the ten encoded printable ASCII characters are invalid after canonicalizer version 3. The canonicalization pairs contain literal path input, not URL queries or fragments.",
+      "canonicalization": [
+        {
+          "authored": "/a b",
+          "canonical": "/a%20b"
+        },
+        {
+          "authored": "/a ",
+          "canonical": "/a"
+        },
+        {
+          "authored": "/a\"b",
+          "canonical": "/a%22b"
+        },
+        {
+          "authored": "/a\"",
+          "canonical": "/a%22"
+        },
+        {
+          "authored": "/a#b",
+          "canonical": "/a%23b"
+        },
+        {
+          "authored": "/a#",
+          "canonical": "/a%23"
+        },
+        {
+          "authored": "/a<b",
+          "canonical": "/a%3Cb"
+        },
+        {
+          "authored": "/a<",
+          "canonical": "/a%3C"
+        },
+        {
+          "authored": "/a>b",
+          "canonical": "/a%3Eb"
+        },
+        {
+          "authored": "/a>",
+          "canonical": "/a%3E"
+        },
+        {
+          "authored": "/a^b",
+          "canonical": "/a%5Eb"
+        },
+        {
+          "authored": "/a^",
+          "canonical": "/a%5E"
+        },
+        {
+          "authored": "/a`b",
+          "canonical": "/a%60b"
+        },
+        {
+          "authored": "/a`",
+          "canonical": "/a%60"
+        },
+        {
+          "authored": "/a?b",
+          "canonical": "/a%3Fb"
+        },
+        {
+          "authored": "/a?",
+          "canonical": "/a%3F"
+        },
+        {
+          "authored": "/a{b",
+          "canonical": "/a%7Bb"
+        },
+        {
+          "authored": "/a{",
+          "canonical": "/a%7B"
+        },
+        {
+          "authored": "/a}b",
+          "canonical": "/a%7Db"
+        },
+        {
+          "authored": "/a}",
+          "canonical": "/a%7D"
+        },
+        {
+          "authored": "/a\tb",
+          "canonical": "/ab"
+        },
+        {
+          "authored": "/a\t",
+          "canonical": "/a"
+        },
+        {
+          "authored": "/a\nb",
+          "canonical": "/ab"
+        },
+        {
+          "authored": "/a\n",
+          "canonical": "/a"
+        },
+        {
+          "authored": "/a\\b",
+          "canonical": "/a/b"
+        },
+        {
+          "authored": "/a\\",
+          "canonical": "/a/"
+        },
+        {
+          "authored": "/a\u0001b",
+          "canonical": "/a%01b"
+        },
+        {
+          "authored": "/a\u0001",
+          "canonical": "/a"
+        },
+        {
+          "authored": "/café",
+          "canonical": "/caf%C3%A9"
+        }
+      ],
+      "invalid": [
+        "relative",
+        "/a?secret=1",
+        "/a#fragment",
+        "/a b",
+        "/a\n",
+        "/a/../b",
+        "/%7e",
+        "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "/a\\b",
+        "/a\"b",
+        "/a<b",
+        "/café",
+        "/東京/😀",
+        "a^b",
+        "/a^b?secret=1",
+        "/a%5eb",
+        "/a ",
+        "/a\"",
+        "/a#b",
+        "/a#",
+        "/a<",
+        "/a>b",
+        "/a>",
+        "/a`b",
+        "/a`",
+        "/a?b",
+        "/a?",
+        "/a{b",
+        "/a{",
+        "/a}b",
+        "/a}",
+        "/a\tb",
+        "/a\t",
+        "/a\nb",
+        "/a\\",
+        "/a\u0001b",
+        "/a\u0001",
+        "/a^b",
+        "/a^"
+      ],
+      "valid": [
+        "/",
+        "/blog/[slug]",
+        "/a|b",
+        "/caf%C3%A9",
+        "/a%2Fb",
+        "/product/",
+        "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "/a!b",
+        "/a%22b",
+        "/a%23b",
+        "/a$b",
+        "/a%b",
+        "/a&b",
+        "/a'b",
+        "/a(b",
+        "/a)b",
+        "/a*b",
+        "/a+b",
+        "/a,b",
+        "/a-b",
+        "/a.b",
+        "/a/b",
+        "/a0b",
+        "/a1b",
+        "/a2b",
+        "/a3b",
+        "/a4b",
+        "/a5b",
+        "/a6b",
+        "/a7b",
+        "/a8b",
+        "/a9b",
+        "/a:b",
+        "/a;b",
+        "/a%3Cb",
+        "/a=b",
+        "/a%3Eb",
+        "/a%3Fb",
+        "/a@b",
+        "/aAb",
+        "/aBb",
+        "/aCb",
+        "/aDb",
+        "/aEb",
+        "/aFb",
+        "/aGb",
+        "/aHb",
+        "/aIb",
+        "/aJb",
+        "/aKb",
+        "/aLb",
+        "/aMb",
+        "/aNb",
+        "/aOb",
+        "/aPb",
+        "/aQb",
+        "/aRb",
+        "/aSb",
+        "/aTb",
+        "/aUb",
+        "/aVb",
+        "/aWb",
+        "/aXb",
+        "/aYb",
+        "/aZb",
+        "/a[b",
+        "/a]b",
+        "/a%5Eb",
+        "/a_b",
+        "/a%60b",
+        "/aab",
+        "/abb",
+        "/acb",
+        "/adb",
+        "/aeb",
+        "/afb",
+        "/agb",
+        "/ahb",
+        "/aib",
+        "/ajb",
+        "/akb",
+        "/alb",
+        "/amb",
+        "/anb",
+        "/aob",
+        "/apb",
+        "/aqb",
+        "/arb",
+        "/asb",
+        "/atb",
+        "/aub",
+        "/avb",
+        "/awb",
+        "/axb",
+        "/ayb",
+        "/azb",
+        "/a%7Bb",
+        "/a%7Db",
+        "/a~b",
+        "/a%20b",
+        "/%E6%9D%B1%E4%BA%AC/%F0%9F%98%80",
+        "/a%20",
+        "/a%22",
+        "/a%23",
+        "/a%3C",
+        "/a%3E",
+        "/a%60",
+        "/a%3F",
+        "/a%7B",
+        "/a%7D",
+        "//a",
+        "/ab",
+        "/a",
+        "/a/",
+        "/a%01b",
+        "/a%01",
+        "/a%5E"
+      ]
+    },
+    "sitecmd_branch": {
+      "invalid": [
+        "sitecmd/Fixer",
+        "other/fixer",
+        "sitecmd/",
+        "sitecmd/../x",
+        "sitecmd/_hidden",
+        "sitecmd/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sitecmd/fix/../x"
+      ],
+      "valid": [
+        "sitecmd/fixer-deadbeef",
+        "sitecmd/fix.part_1/path",
+        "sitecmd/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    "timestamp": {
+      "invalid": [
+        "2026-08-09 00:00:00Z",
+        "2026-08-09t00:00:00z",
+        "2026-08-09T00:00:00.1234567890Z",
+        "2026-02-30T00:00:00Z",
+        "yesterday",
+        "2026-08-09T00:00:60Z"
+      ],
+      "valid": [
+        "2026-08-09T00:00:00Z",
+        "2026-08-09T00:00:00.123456789Z",
+        "2026-08-09T12:30:00+05:30"
+      ]
+    },
+    "workflow_ref": {
+      "invalid": [
+        "Owner/Repo/.github/workflows/deploy.yml@refs/heads/main",
+        "owner/repo/deploy.yml",
+        "owner/repo/.github/workflows/../deploy.yml",
+        "owner/repo/.github/workflows/deploy.txt"
+      ],
+      "valid": [
+        "Owner/Repo/.github/workflows/deploy.yml",
+        "owner/repo.name/.github/workflows/deploy.yaml",
+        "owner/repo/.github/workflows/.deploy.yml"
+      ]
+    }
+  },
+  "version": 2
+}
