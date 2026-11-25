@@ -1,12 +1,5 @@
 const MARKER = "allow-lazy-plural";
 
-const SCANNED_DIRS = [
-  "apps/desktop/src-tauri/src/checks",
-  "apps/desktop/src-tauri/crates/engine/src/checks",
-  "apps/desktop/src-tauri/src/core/code_scan",
-  "apps/desktop/src-tauri/src/core/scanner",
-];
-
 // Extract unescaped double-quoted spans from one source line.
 function stringLiteralSpans(line) {
   const spans = [];
@@ -32,9 +25,9 @@ function stringLiteralSpans(line) {
   return spans;
 }
 
-export function lazyPluralFailures(read, exists, listFiles) {
+export function lazyPluralFailures(read, exists, listFiles, roots = []) {
   const failures = [];
-  for (const dir of SCANNED_DIRS) {
+  for (const dir of roots) {
     if (!exists(dir)) continue;
     for (const file of listFiles(dir, (f) => f.endsWith(".rs"))) {
       const lines = read(file).split("\n");

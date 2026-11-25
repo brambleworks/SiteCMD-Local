@@ -5,20 +5,22 @@
 
 use std::path::{Component, Path};
 
-use sitecmd_engine::identity::code_producer_rule_id;
+use sitecmd_protocol::identity::code_producer_rule_id;
+use sitecmd_protocol::stack::DetectedStack;
 
 use super::artifact::{BriefArtifact, Manifest};
 use super::brief::code_slug;
+use super::exit_check::{CheckedBrief, HandedLines};
 use super::github_api::GitHubApi;
-use super::redact;
+use super::publish_job::PublishOutcome;
 use crate::cli::ConnectStop;
 use crate::connected_service::{
     ClaimedJob, ConnectedServiceClient, FindingOutcomeReport, ResultReport,
 };
-use crate::core::code_scan::{audit_project, CodeIssue};
-use crate::core::detector::DetectedStack;
-use crate::core::fix_brief::{build_fix_brief_with_mode, BriefLocation, BriefMode, FixBriefInput};
+use crate::core::audit::{audit_observing_files, CodeIssue};
 use crate::core::fix_templates::{build_check::package_json, hosts, HostKind};
+use crate::core::fixes;
+use sitecmd_protocol::engine_abi::{Brief, BriefTarget, BriefTargetLocation, Done, Task};
 
 /// Server-side frameworks the brief names. A checkout that depends on more
 /// than one is read in this order, and the first match names the framework.
@@ -45,9 +47,8 @@ pub struct BriefRejected {
 }
 
 /// One location the publish job's own audit confirmed, carrying the issue the
-/// audit reported there. The brief's own location is deliberately absent: the
-/// range only chose which reported issue this is, and every path, line and
-/// excerpt printed from here on is the audit's.
+/// audit reported there. The exact line identifies the occurrence. Published
+/// fields contain only occurrence metadata and binary-owned wording.
 #[derive(Debug, Clone)]
 pub struct VerifiedFinding {
     pub check_id: String,
@@ -66,17 +67,19 @@ fn at(finding: usize, location: usize) -> String {
 
 /// Audit the publish job's own checkout once and confirm every location the
 /// brief names: a relative path to a file inside the tree, the brief's rule
-/// reported at that path, a reported line inside the brief's range, and the
-/// excerpt the checkout itself shows there. Anything else is a refusal,
+/// reported at that exact path and line. Anything else is a refusal,
 /// because the artifact crossed an untrusted boundary.
 ///
-/// The brief's line range only selects which reported issue a location means,
+/// The brief's exact line selects which reported issue a location means,
 /// so a file the audit reports the rule at more than once still resolves.
-pub fn check_brief(
+pub fn verify_brief(
     root: &Path,
     brief: &BriefArtifact,
+    handed: &mut HandedLines,
 ) -> Result<Vec<VerifiedFinding>, BriefRejected> {
-    let report = audit_project(root).map_err(rejected)?;
+    let report =
+        audit_observing_files(root, |bytes| handed.record_lines(bytes)).map_err(rejected)?;
+    let engine = sitecmd_engine_host::load().map_err(|error| rejected(error.to_string()))?;
     let mut verified = Vec::new();
     for (finding_index, finding) in brief.findings.iter().enumerate() {
         let slug = code_slug(&finding.check_id).ok_or_else(|| {
@@ -113,29 +116,23 @@ pub fn check_brief(
                     "{at}: the checkout does not report this finding there"
                 )));
             }
-            // The range picks which reported issue this location means, so a
-            // rule the audit reports twice in one file still resolves.
+            // Exact lines distinguish repeated occurrences of one rule in a file.
             let issue = reported
                 .into_iter()
                 .find(|issue| {
-                    issue.line.is_some_and(|line| {
-                        line >= location.start_line && line <= location.end_line
-                    })
+                    issue.line == Some(location.start_line)
+                        && location.start_line == location.end_line
                 })
                 .ok_or_else(|| {
                     rejected(format!(
-                        "{at}: the reported line is outside the brief's line range"
+                        "{at}: the reported line does not match the brief's line"
                     ))
                 })?;
-            if issue.source_excerpt.as_deref().unwrap_or("") != location.excerpt {
-                return Err(rejected(format!(
-                    "{at}: the brief's excerpt is not what the checkout shows"
-                )));
-            }
             verified.push(VerifiedFinding {
                 check_id: finding.check_id.clone(),
                 identity: finding.identity.clone(),
-                issue: issue.clone(),
+                issue: crate::core::audit::published_issue(issue, engine.info())
+                    .map_err(|error| rejected(error.into()))?,
             });
         }
     }
@@ -182,117 +179,124 @@ pub fn checkout_stack(root: &Path) -> Option<serde_json::Value> {
     serde_json::to_value(stack).ok()
 }
 
-/// The issue SiteCMD opens for an agent: the hosted fix brief, addressed to
-/// the agent the claim names. Every sentence is the binary's own or the
-/// claim's, and every path, line and excerpt it prints is the audit's own:
-/// the brief's range only chose which reported issue each location meant.
-///
-/// `verified` must not be empty, which is what [`check_brief`] returns.
+/// Render the hosted issue for the agent named in the claim using locations
+/// confirmed by [`verify_brief`], and retain the renderer input for the exit check.
 pub fn render_issue(
     claimed: &ClaimedJob,
     verified: &[VerifiedFinding],
     stack: Option<serde_json::Value>,
-) -> (String, String) {
-    let first = &verified[0];
-    let locations: Vec<BriefLocation> = verified
-        .iter()
-        .map(|v| BriefLocation {
-            end_line: v.issue.line,
-            excerpt: v.issue.source_excerpt.clone(),
-            label: "Reported location".into(),
-            line: v.issue.line,
-            path: v.issue.relative_path.clone(),
-            reason: "the check matched here".into(),
-            start_line: v.issue.line,
-        })
-        .collect();
-    let input = FixBriefInput {
-        attempt_id: claimed.attempt.to_string(),
+) -> Result<(Brief, BriefTarget), String> {
+    const INVALID_BRIEF: &str = "The engine returned an invalid autofix brief.";
+    const MISSING_LOCATION: &str = "The autofix brief is missing a verified location.";
+    let first = verified.first().ok_or(MISSING_LOCATION)?;
+    let target = BriefTarget {
+        agent: claimed.agent.clone(),
+        attempt: claimed.attempt,
         check_id: first.check_id.clone(),
         description: first.issue.description.clone(),
         detected_stack: stack,
-        evidence: None,
-        manual_fix: first.issue.likely_fix.clone(),
-        occurrence_target: locations.first().cloned(),
-        previous_failure: claimed.previous_failure.clone(),
+        likely_fix: first.issue.likely_fix.clone(),
+        locations: verified
+            .iter()
+            .map(|finding| {
+                Ok(BriefTargetLocation {
+                    path: finding.issue.relative_path.clone(),
+                    line: finding.issue.line.ok_or(MISSING_LOCATION)?,
+                })
+            })
+            .collect::<Result<_, &str>>()?,
         severity: first.issue.severity,
+        site_url: claimed.site_url.clone(),
         title: first.issue.title.clone(),
-        url: claimed.site_url.clone(),
-        why_it_matters: first.issue.why_now.clone(),
+        why_now: first.issue.why_now.clone(),
     };
-    let brief = build_fix_brief_with_mode(&input, &locations, BriefMode::Hosted);
-    let body = if claimed.agent == "claude" {
-        format!(
-            "@claude please fix the finding below and open a pull request that references this issue.\n\n{brief}"
-        )
-    } else {
-        brief
-    };
-    (format!("SiteCMD: {}", first.issue.title), body)
+    match fixes::request(
+        Task::Brief {
+            target: target.clone(),
+        },
+        None,
+    )? {
+        Done::Brief(brief) => Ok((brief, target)),
+        _ => Err(INVALID_BRIEF.into()),
+    }
 }
 
 /// Confirm the brief against this checkout, render the issue, open it with a
 /// per-operation issue token, hand the token back, and report. A brief the
 /// checkout does not confirm is a reported refusal, not a failure that would
 /// leave the job waiting.
-pub(crate) async fn publish_brief(
+pub(super) async fn publish_brief(
     root: &Path,
     claimed: &ClaimedJob,
     manifest: &Manifest,
     job_client: &ConnectedServiceClient,
-) -> Result<(u8, ResultReport), ConnectStop> {
+) -> Result<(u8, PublishOutcome), ConnectStop> {
     let brief = manifest.brief.as_ref().ok_or("manifest carries no brief")?;
     // A failure code carries no finding outcomes: Connect reads each
     // finding's fate only from a decline or a published result.
-    let declined = |code: &str, summary: String, revoked: bool| ResultReport {
-        attempt: claimed.attempt,
-        findings: Vec::new(),
-        issue_number: None,
-        outcome_code: code.into(),
-        pull_request: None,
-        summary: redact::summary(root, &summary),
-        token_revoked: revoked,
+    let declined = |code: &str, message: String, revoked: bool| PublishOutcome {
+        message,
+        result: ResultReport {
+            attempt: claimed.attempt,
+            findings: Vec::new(),
+            issue_number: None,
+            outcome_code: code.parse().expect("fixed outcome code"),
+            pull_request: None,
+            token_revoked: revoked,
+        },
     };
-    let verified = match check_brief(root, brief) {
+    let mut handed = HandedLines::default();
+    let verified = match verify_brief(root, brief, &mut handed) {
         Ok(verified) => verified,
         Err(rejected) => return Ok((1, declined("brief_rejected", rejected.reason, true))),
     };
-    let (title, body) = render_issue(claimed, &verified, checkout_stack(root));
+    let checked =
+        render_issue(claimed, &verified, checkout_stack(root)).and_then(|(brief, target)| {
+            CheckedBrief::hosted(brief, &handed, &target).map_err(|refusal| refusal.to_string())
+        });
+    let brief = match checked {
+        Ok(brief) => brief,
+        Err(reason) => return Ok((1, declined("brief_rejected", reason, true))),
+    };
     let minted = job_client
         .issue_token(&claimed.job_id)
         .await
         .map_err(|error| ConnectStop::refused_as(&error, "issue token").unrecorded(""))?;
     let api = GitHubApi::new();
     let created = api
-        .create_issue(&minted.token, &claimed.repository, &title, &body)
+        .create_issue(&minted.token, &claimed.repository, &brief)
         .await;
     let revoked = api.revoke_installation_token(&minted.token).await;
     match created {
         Ok(number) => Ok((
             0,
-            ResultReport {
-                attempt: claimed.attempt,
-                findings: manifest
-                    .findings
-                    .iter()
-                    .map(|f| FindingOutcomeReport {
-                        check_id: f.check_id.clone(),
-                        identity: f.identity.clone(),
-                        outcome: if verified
-                            .iter()
-                            .any(|v| v.check_id == f.check_id && v.identity == f.identity)
-                        {
-                            "issue_opened".into()
-                        } else {
-                            "unsupported".into()
-                        },
-                    })
-                    .collect(),
-                issue_number: Some(number),
-                outcome_code: "issue_opened".into(),
-                pull_request: None,
-                summary: redact::summary(root, &format!("opened issue #{number}")),
-                token_revoked: revoked,
+            PublishOutcome {
+                message: format!("opened issue #{number}"),
+                result: ResultReport {
+                    attempt: claimed.attempt,
+                    findings: manifest
+                        .findings
+                        .iter()
+                        .filter_map(|f| {
+                            FindingOutcomeReport::new(
+                                &f.check_id,
+                                &f.identity,
+                                if verified
+                                    .iter()
+                                    .any(|v| v.check_id == f.check_id && v.identity == f.identity)
+                                {
+                                    "issue_opened"
+                                } else {
+                                    "unsupported"
+                                },
+                            )
+                        })
+                        .collect(),
+                    issue_number: Some(number),
+                    outcome_code: "issue_opened".parse().expect("fixed outcome code"),
+                    pull_request: None,
+                    token_revoked: revoked,
+                },
             },
         )),
         Err(error) => Ok((1, declined("issue_failed", error, revoked))),
@@ -306,22 +310,25 @@ mod tests {
     use crate::cli::autofix::brief::locate_findings;
     use crate::cli::autofix::repo::init_test_repo;
     use crate::connected_service::{ClaimedFinding, ClaimedJob};
-    use sitecmd_engine::sync::ProjectFingerprintKey;
+    use sitecmd_protocol::sync::ProjectFingerprintKey;
 
-    const ROUTE: &str = "export async function GET(request: Request) {\n  const { searchParams } = new URL(request.url);\n  const returnTo = searchParams.get(\"returnTo\") ?? \"/\";\n  return Response.redirect(new URL(returnTo, request.url), 302);\n}\n";
+    const SOURCE: &str = "Fixture checkout line that must not enter a published issue.";
 
     fn fixture() -> (tempfile::TempDir, BriefArtifact, String) {
         let (repo, head) = init_test_repo(&[
             ("package.json", "{\"name\":\"loop\"}"),
-            ("app/api/signin/route.ts", ROUTE),
+            (
+                "app/api/signin/fixture-findings.txt",
+                &format!("\n{SOURCE}\n"),
+            ),
         ])
         .unwrap();
         let key = ProjectFingerprintKey::from_bytes([7_u8; 32]);
-        let identity = key.location_hash("open-redirect", "app/api/signin/route.ts");
+        let identity = key.location_hash("standin.rule", "app/api/signin/fixture-findings.txt");
         let matches = locate_findings(
             repo.path(),
             &key,
-            &[("code_scan.open-redirect".into(), identity.clone())],
+            &[("code_scan.standin.rule".into(), identity.clone())],
         )
         .unwrap();
         let brief = crate::cli::autofix::brief::brief_artifact("job_0123456789abcdef", 1, &matches);
@@ -338,7 +345,7 @@ mod tests {
             expires_at: "x".into(),
             findings: vec![ClaimedFinding {
                 category: "security".into(),
-                check_id: "code_scan.open-redirect".into(),
+                check_id: "code_scan.standin.rule".into(),
                 class: "agent-easy".into(),
                 fallback_class: None,
                 identity: identity.into(),
@@ -346,7 +353,6 @@ mod tests {
             job_id: "job_0123456789abcdef".into(),
             job_token: "t".into(),
             opt_in_fixers: vec![],
-            previous_failure: Some("the earlier attempt left the redirect".into()),
             purpose: "publish".into(),
             repository: "example-org/example-site".into(),
             site_url: "https://loop.example.com".into(),
@@ -355,55 +361,112 @@ mod tests {
 
     #[test]
     fn accepts_a_brief_the_checkout_confirms_and_renders_the_issue() {
-        let (repo, mut brief, head) = fixture();
-        // A wider range than the audit reported still selects the same issue,
-        // and the issue's own line is what the brief prints.
-        brief.findings[0].locations[0].start_line = 1;
-        let verified = check_brief(repo.path(), &brief).unwrap();
+        // A rendered issue can disclose the source line or point to the wrong location.
+        let (repo, brief, head) = fixture();
+        let mut handed = HandedLines::default();
+        let verified = verify_brief(repo.path(), &brief, &mut handed).unwrap();
         assert_eq!(verified.len(), 1);
         let line = verified[0].issue.line.unwrap();
-        let (title, body) = render_issue(
+        let (Brief { title, body }, target) = render_issue(
             &claimed(&head, &brief.findings[0].identity),
             &verified,
             checkout_stack(repo.path()),
+        )
+        .unwrap();
+        let Done::Brief(expected) = fixes::request(
+            Task::Brief {
+                target: target.clone(),
+            },
+            None,
+        )
+        .unwrap() else {
+            panic!("missing module brief");
+        };
+        assert_eq!(title, expected.title);
+        assert_eq!(body, expected.body);
+        assert_eq!(target.agent, "claude");
+        assert_eq!(target.check_id, "code_scan.standin.rule");
+        assert_eq!(
+            target.locations,
+            [BriefTargetLocation {
+                path: "app/api/signin/fixture-findings.txt".into(),
+                line,
+            }]
         );
-        assert!(title.starts_with("SiteCMD: "));
-        assert!(body.starts_with("@claude "));
-        assert!(body.contains("## Where to look"));
         assert!(
-            body.contains(&format!("`app/api/signin/route.ts:{line}`")),
+            body.contains(&format!("`app/api/signin/fixture-findings.txt:{line}`")),
             "{body}"
         );
-        assert!(!body.contains("`app/api/signin/route.ts:1`"), "{body}");
-        assert!(body.contains("Response.redirect"));
-        assert!(body.contains("Open a pull request"));
-        assert!(body.contains("## Previous attempt"));
+        assert!(
+            !body.contains("`app/api/signin/fixture-findings.txt:1`"),
+            "{body}"
+        );
+        assert!(!body.contains(SOURCE));
+        assert!(!body.contains("## Previous attempt"));
         assert!(!body.contains("request_verification"));
+        assert!(CheckedBrief::hosted(
+            Brief {
+                title: title.clone(),
+                body
+            },
+            &handed,
+            &target
+        )
+        .is_ok());
+        let quoted = Brief {
+            title,
+            body: SOURCE.into(),
+        };
+        assert!(matches!(
+            CheckedBrief::hosted(quoted, &handed, &target),
+            Err(super::super::exit_check::ExitRefusal::HandedLine)
+        ));
     }
 
     #[test]
-    fn rejects_an_excerpt_that_is_not_what_the_checkout_says() {
+    fn rejects_a_rule_that_the_checkout_does_not_report() {
+        // A brief can refer to a rule absent from the fresh audit.
         let (repo, mut brief, _) = fixture();
-        brief.findings[0].locations[0].excerpt = "something else".into();
-        let rejected = check_brief(repo.path(), &brief).unwrap_err();
-        assert!(rejected.reason.contains("excerpt"), "{}", rejected.reason);
+        brief.findings[0].check_id = "code_scan.unknown-fixture-rule".into();
+        let rejected = verify_brief(repo.path(), &brief, &mut HandedLines::default()).unwrap_err();
+        assert!(rejected.reason.contains("finding"), "{}", rejected.reason);
+    }
+
+    #[test]
+    fn rejects_legacy_source_fields_and_a_finding_removed_from_the_checkout() {
+        // A stale brief can carry old findings or untrusted source fields.
+        let (repo, brief, _) = fixture();
+        let mut legacy = serde_json::to_value(&brief).unwrap();
+        legacy["findings"][0]["locations"][0]["excerpt"] = "customer source".into();
+        assert!(serde_json::from_value::<BriefArtifact>(legacy).is_err());
+        std::fs::write(
+            repo.path().join("app/api/signin/fixture-findings.txt"),
+            "\n",
+        )
+        .unwrap();
+        assert!(verify_brief(repo.path(), &brief, &mut HandedLines::default()).is_err());
     }
 
     #[test]
     fn rejects_a_path_outside_the_tree_and_a_line_the_audit_did_not_report() {
+        // A brief can point outside the checkout or at an unverified line.
         let (repo, mut brief, _) = fixture();
         brief.findings[0].locations[0].path = "../etc/passwd".into();
-        assert!(check_brief(repo.path(), &brief)
-            .unwrap_err()
-            .reason
-            .contains("outside"));
+        assert!(
+            verify_brief(repo.path(), &brief, &mut HandedLines::default())
+                .unwrap_err()
+                .reason
+                .contains("outside")
+        );
         let (repo2, mut brief2, _) = fixture();
         brief2.findings[0].locations[0].start_line = 1;
         brief2.findings[0].locations[0].end_line = 1;
-        assert!(check_brief(repo2.path(), &brief2)
-            .unwrap_err()
-            .reason
-            .contains("line"));
+        assert!(
+            verify_brief(repo2.path(), &brief2, &mut HandedLines::default())
+                .unwrap_err()
+                .reason
+                .contains("line")
+        );
     }
 
     #[test]
@@ -425,25 +488,26 @@ mod tests {
     }
 
     #[test]
-    fn verifies_every_location_when_a_rule_is_reported_twice_in_one_file() {
-        let module = "import { pad } from \"left-pad\";\nimport { trim } from \"right-pad\";\n\nexport const value = pad(trim(\"x\"));\n";
+    fn verifies_each_location_in_a_synthetic_repeat_finding() {
+        // A shared finding identity can leave only the first location verified.
+        let source = "First fixture finding\nSecond fixture finding\n";
         let (repo, _) = init_test_repo(&[
             ("package.json", "{\"name\":\"loop\"}"),
-            ("app/lib/util.ts", module),
+            ("app/lib/fixture-findings.txt", source),
         ])
         .unwrap();
         let key = ProjectFingerprintKey::from_bytes([7_u8; 32]);
-        let identity = key.location_hash("undeclared-package", "app/lib/util.ts");
+        let identity = key.location_hash("standin.rule", "app/lib/fixture-findings.txt");
         let matches = locate_findings(
             repo.path(),
             &key,
-            &[("code_scan.undeclared-package".into(), identity)],
+            &[("code_scan.standin.rule".into(), identity)],
         )
         .unwrap();
         let brief = crate::cli::autofix::brief::brief_artifact("job_0123456789abcdef", 1, &matches);
         assert_eq!(brief.findings.len(), 1, "{brief:?}");
         assert_eq!(brief.findings[0].locations.len(), 2, "{brief:?}");
-        let verified = check_brief(repo.path(), &brief).unwrap();
+        let verified = verify_brief(repo.path(), &brief, &mut HandedLines::default()).unwrap();
         assert_eq!(verified.len(), 2, "{verified:?}");
         // Each verified finding is the one the brief's location at that
         // position selected, so its reported line is inside that range.

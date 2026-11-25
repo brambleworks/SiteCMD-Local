@@ -6,17 +6,21 @@
 
 use std::path::{Path, PathBuf};
 
-use super::artifact::{read_artifact, Manifest};
+use super::artifact::{read_artifact, Manifest, TEMPLATE_PLAN};
+use super::exit_check::{check_publish_brief, HandedLines};
 use super::github_api::GitHubApi;
-use super::redact;
 use super::repo;
 use crate::cli::{settle, ConnectStop};
 use crate::connected_service::deployment_ordering::CiSubmissionAttestation;
 use crate::connected_service::{
     ClaimedJob, ConnectedServiceClient, FindingOutcomeReport, PullRequestReport, ResultReport,
 };
-use crate::core::fix_templates::{fixer_for, hosts, slug};
-use crate::core::git::HttpsTransport;
+use crate::core::fix_templates::{hosts, slug};
+use crate::core::project_listing::list_project;
+use sitecmd_protocol::engine_abi::{Brief, FixerInfo};
+
+use super::apply::write_patches;
+use super::template_plan;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishJobArgs {
@@ -92,6 +96,14 @@ pub fn manifest_matches_claim(manifest: &Manifest, claimed: &ClaimedJob) -> Resu
     if manifest.attempt != claimed.attempt {
         return Err("manifest names another attempt".into());
     }
+    if manifest.findings.iter().any(|finding| {
+        !matches!(
+            finding.outcome.as_deref(),
+            None | Some("applied" | "issue_opened" | "unsupported" | "no_template")
+        )
+    }) {
+        return Err("manifest names an unsupported finding outcome".into());
+    }
     // The pull request body and the finding outcomes are read out of the
     // manifest, so the manifest may not name a finding the claim never did.
     let mut claimed_findings: Vec<(&str, &str)> = claimed
@@ -109,23 +121,38 @@ pub fn manifest_matches_claim(manifest: &Manifest, claimed: &ClaimedJob) -> Resu
     if manifest_findings != claimed_findings {
         return Err("manifest names other findings than the claim".into());
     }
+    if let Some(brief) = &manifest.brief {
+        if brief.job_id != claimed.job_id
+            || brief.attempt != claimed.attempt
+            || brief.findings.iter().any(|finding| {
+                !claimed_findings.contains(&(finding.check_id.as_str(), finding.identity.as_str()))
+            })
+        {
+            return Err("brief names another job, attempt, or finding".into());
+        }
+    }
     Ok(())
 }
 
 /// Every file the claimed checks are allowed to touch, derived from the job's
 /// check ids and the binary's own fixers. The artifact never contributes: a
 /// write set it named would be the patch vouching for itself.
-pub fn allowed_write_set(claimed: &ClaimedJob, root: &Path) -> Vec<String> {
+fn allowed_write_set(claimed: &ClaimedJob, root: &Path, catalog: &[FixerInfo]) -> Vec<String> {
     let targets = hosts::detect(root);
     let mut allowed: Vec<String> = Vec::new();
     for finding in &claimed.findings {
-        if let Some(fixer) = fixer_for(&finding.check_id) {
-            for target in &targets {
-                for path in fixer.write_set(target) {
-                    let text = path.to_string_lossy().to_string();
-                    if !allowed.contains(&text) {
-                        allowed.push(text);
-                    }
+        if let Some(fixer) = catalog
+            .iter()
+            .find(|fixer| fixer.check_id == finding.check_id)
+        {
+            for path in &fixer.write_set {
+                let text = path.as_str();
+                if targets
+                    .iter()
+                    .any(|target| target.config_path == Path::new(text))
+                    && !allowed.iter().any(|allowed| allowed == text)
+                {
+                    allowed.push(text.to_owned());
                 }
             }
         }
@@ -133,22 +160,11 @@ pub fn allowed_write_set(claimed: &ClaimedJob, root: &Path) -> Vec<String> {
     allowed
 }
 
-/// A path outside the allowed set is a violation, and so is anything under
-/// `.github/workflows/` whatever the set says: a fix must never rewrite the
-/// workflow that runs it.
-pub fn write_set_violations(changed: &[String], allowed: &[String]) -> Vec<String> {
-    changed
-        .iter()
-        .filter(|path| path.starts_with(".github/workflows/") || !allowed.contains(path))
-        .cloned()
-        .collect()
-}
-
-pub fn branch_name(claimed: &ClaimedJob) -> String {
+pub(super) fn branch_name(claimed: &ClaimedJob, catalog: &[FixerInfo]) -> String {
     let first = claimed
         .findings
         .iter()
-        .find(|f| fixer_for(&f.check_id).is_some())
+        .find(|f| catalog.iter().any(|fixer| fixer.check_id == f.check_id))
         .or(claimed.findings.first());
     let short = claimed
         .job_id
@@ -163,11 +179,20 @@ pub fn branch_name(claimed: &ClaimedJob) -> String {
     )
 }
 
-pub fn pull_request_text(claimed: &ClaimedJob, manifest: &Manifest) -> (String, String) {
+pub fn pull_request_text(
+    claimed: &ClaimedJob,
+    manifest: &Manifest,
+    catalog: &[FixerInfo],
+) -> (String, String) {
     let title = claimed
         .findings
         .iter()
-        .find_map(|f| fixer_for(&f.check_id).map(|fixer| fixer.title().to_string()))
+        .find_map(|finding| {
+            catalog
+                .iter()
+                .find(|fixer| fixer.check_id == finding.check_id)
+                .map(|fixer| fixer.title.clone())
+        })
         .unwrap_or_else(|| "Apply SiteCMD template fixes".to_string());
     let mut body = String::from(
         "SiteCMD found the following on the production site and fixed it in the repository:\n\n",
@@ -202,10 +227,12 @@ pub fn finding_reports(manifest: &Manifest, published: &str) -> Vec<FindingOutco
     manifest
         .findings
         .iter()
-        .map(|f| FindingOutcomeReport {
-            check_id: f.check_id.clone(),
-            identity: f.identity.clone(),
-            outcome: promoted_outcome(f.outcome.as_deref(), published),
+        .filter_map(|f| {
+            FindingOutcomeReport::new(
+                &f.check_id,
+                &f.identity,
+                &(promoted_outcome(f.outcome.as_deref(), published)),
+            )
         })
         .collect()
 }
@@ -216,9 +243,10 @@ pub fn finding_reports(manifest: &Manifest, published: &str) -> Vec<FindingOutco
 /// reported unsupported rather than promoted into a claim this run cannot make.
 fn promoted_outcome(outcome: Option<&str>, published: &str) -> String {
     match outcome {
-        Some(kind) if kind == published => published.to_string(),
-        Some("applied" | "issue_opened") | None => "unsupported".to_string(),
-        Some(other) => other.to_string(),
+        Some("applied") if published == "applied" => "applied".into(),
+        Some("issue_opened") if published == "issue_opened" => "issue_opened".into(),
+        Some("no_template") => "no_template".into(),
+        _ => "unsupported".into(),
     }
 }
 
@@ -230,6 +258,11 @@ fn brief_names_a_location(manifest: &Manifest) -> bool {
         .is_some_and(|brief| brief.findings.iter().any(|f| !f.locations.is_empty()))
 }
 
+pub(super) struct PublishOutcome {
+    pub result: ResultReport,
+    pub message: String,
+}
+
 /// One result for the connected service. `token_revoked` is true on a path
 /// that minted no token at all as well as on one that handed its token back:
 /// either way none is outstanding, and Connect acts only when a publish
@@ -237,104 +270,91 @@ fn brief_names_a_location(manifest: &Manifest) -> bool {
 fn report(
     attempt: u32,
     code: &str,
-    summary: String,
+    message: String,
     findings: Vec<FindingOutcomeReport>,
     pull_request: Option<PullRequestReport>,
     issue_number: Option<u64>,
     token_revoked: bool,
-) -> ResultReport {
-    ResultReport {
-        attempt,
-        findings,
-        issue_number,
-        outcome_code: code.to_string(),
-        pull_request,
-        summary,
-        token_revoked,
+) -> PublishOutcome {
+    PublishOutcome {
+        message,
+        result: ResultReport {
+            attempt,
+            findings,
+            issue_number,
+            outcome_code: code.parse().expect("fixed outcome code"),
+            pull_request,
+            token_revoked,
+        },
     }
 }
 
-/// Apply the fix job's patch and publish it: the paths it touches checked
+/// Regenerate the template locally and publish it, checking its paths
 /// against the binary's write set, the commit made as the App's bot, the
 /// branch pushed with a per-operation installation token, the pull request
 /// opened, and the token handed back before anything is reported.
 async fn publish_patch(
-    args: &PublishJobArgs,
     root: &Path,
     claimed: &ClaimedJob,
     manifest: &Manifest,
     job_client: &ConnectedServiceClient,
-) -> Result<(u8, ResultReport), ConnectStop> {
-    let patch_path = args.artifact_dir.join("patch.diff");
+) -> Result<(u8, PublishOutcome), ConnectStop> {
     let declined = |code: &str, summary: String| {
         (
             1_u8,
-            report(
-                claimed.attempt,
-                code,
-                redact::summary(root, &summary),
-                Vec::new(),
-                None,
-                None,
-                true,
-            ),
+            report(claimed.attempt, code, summary, Vec::new(), None, None, true),
         )
     };
-    // A patch the fix job left malformed is a rejection this job reports, not
-    // an operational failure that would leave the job waiting.
-    let changed = match repo::patch_paths(root, &patch_path) {
-        Ok(changed) => changed,
-        Err(error) => return Ok(declined("patch_rejected", error)),
+    let catalog = template_plan::catalog()?;
+    let project = list_project(root).map_err(|error| error.to_string())?;
+    let mut handed = HandedLines::default();
+    let patches =
+        match template_plan::regenerate(&project, claimed, manifest, &catalog, &mut handed) {
+            Ok(patches) => patches,
+            Err(error) => return Ok(declined("patch_rejected", error)),
+        };
+    let (title, body) = pull_request_text(claimed, manifest, &catalog);
+    let brief = match check_publish_brief(project.wire(), Brief { title, body }, &handed, &patches)
+    {
+        Ok(brief) => brief,
+        Err(refusal) => return Ok(declined("patch_rejected", refusal.to_string())),
     };
-    let violations = write_set_violations(&changed, &allowed_write_set(claimed, root));
-    if !violations.is_empty() {
-        return Ok(declined(
-            "patch_rejected",
-            format!(
-                "patch reaches outside the fixer's write set: {}",
-                violations.join(", ")
-            ),
-        ));
-    }
-    // What the checkout already showed is the audit's baseline: a runner that
-    // arrived with an untracked file of its own must not make every publish
-    // decline.
+    let changed: Vec<String> = patches
+        .iter()
+        .map(|patch| patch.path.as_str().to_owned())
+        .collect();
+    let allowed = allowed_write_set(claimed, root, &catalog);
     let baseline = repo::changed_paths(root)?;
-    if let Err(error) = repo::apply_patch(root, &patch_path) {
+    if let Err(error) = write_patches(project.wire(), root, patches, |path| {
+        allowed.iter().any(|allowed| allowed == path.as_str())
+    }) {
         return Ok(declined("patch_rejected", error));
     }
-    // Belt and braces over the write set: whatever the diff declared, the
-    // tree itself must show no new path outside it.
     let undeclared = repo::undeclared_paths(&baseline, &repo::changed_paths(root)?, &changed);
     if !undeclared.is_empty() {
         return Ok(declined(
             "patch_rejected",
-            format!(
-                "patch changed paths it did not declare: {}",
-                undeclared.join(", ")
-            ),
+            "template changed undeclared paths".into(),
         ));
     }
     let committer = claimed
         .committer
         .as_ref()
         .ok_or("publish claim carried no committer")?;
-    let (title, body) = pull_request_text(claimed, manifest);
-    let head_sha = repo::commit(root, &changed, &committer.name, &committer.email, &title)?;
-    let branch = branch_name(claimed);
+    let head_sha = repo::commit(
+        root,
+        &changed,
+        &committer.name,
+        &committer.email,
+        &brief.as_brief().title,
+    )?;
+    let branch = branch_name(claimed, &catalog);
     let minted = job_client
         .publish_token(&claimed.job_id)
         .await
         .map_err(|error| ConnectStop::refused_as(&error, "publish token").unrecorded(""))?;
-    let transport = HttpsTransport::for_token(&minted.token);
     let api = GitHubApi::new();
-    let remote = format!("https://github.com/{}.git", claimed.repository);
-    let pushed = if repo::is_shallow(root) {
-        repo::unshallow(root, &remote, &transport)
-    } else {
-        Ok(())
-    }
-    .and_then(|_| repo::push_branch(root, &remote, &branch, &transport));
+    let pushed = api.push_branch(root, &minted.token, &claimed.repository, &branch);
     let outcome = match pushed {
         Err(error) => Err(("push_failed", error)),
         Ok(()) => match api
@@ -343,8 +363,7 @@ async fn publish_patch(
                 &claimed.repository,
                 &branch,
                 &claimed.default_branch,
-                &title,
-                &body,
+                &brief,
             )
             .await
         {
@@ -372,7 +391,7 @@ async fn publish_patch(
     };
     let created = match outcome {
         Ok(created) => created,
-        Err((code, error)) => return Ok(failed(code, redact::summary(root, &error))),
+        Err((code, error)) => return Ok(failed(code, error)),
     };
     // The pull request has to be the commit this job pushed, or something
     // else moved the branch between the push and the answer.
@@ -387,11 +406,11 @@ async fn publish_patch(
         report(
             claimed.attempt,
             "applied",
-            redact::summary(root, &format!("opened pull request #{}", created.number)),
+            format!("opened pull request #{}", created.number),
             finding_reports(manifest, "applied"),
             Some(PullRequestReport {
-                branch,
-                head_sha,
+                branch: branch.try_into()?,
+                head_sha: head_sha.try_into()?,
                 number: created.number,
             }),
             None,
@@ -404,13 +423,12 @@ async fn publish_patch(
 /// replaces both. A patch and a brief are the two classes a fix job produces
 /// and one job is only ever one of them.
 async fn publish_artifact(
-    args: &PublishJobArgs,
     root: &Path,
     claimed: &ClaimedJob,
     manifest: &Manifest,
     patch: &str,
     job_client: &ConnectedServiceClient,
-) -> Result<(u8, ResultReport), ConnectStop> {
+) -> Result<(u8, PublishOutcome), ConnectStop> {
     let rejected = |summary: String| {
         (
             1_u8,
@@ -436,7 +454,10 @@ async fn publish_artifact(
         return Ok(rejected("artifact carries both a patch and a brief".into()));
     }
     if carries_a_patch {
-        return publish_patch(args, root, claimed, manifest, job_client).await;
+        if patch != TEMPLATE_PLAN {
+            return Ok(rejected("source-bearing patches are not accepted".into()));
+        }
+        return publish_patch(root, claimed, manifest, job_client).await;
     }
     if manifest.brief.is_some() {
         return super::brief_publish::publish_brief(root, claimed, manifest, job_client).await;
@@ -519,14 +540,14 @@ async fn publish(
     // would leave the job waiting out its window.
     let (code, result) = match read_artifact(&args.artifact_dir) {
         Ok((manifest, patch)) => {
-            publish_artifact(args, &root, &claimed, &manifest, &patch, &job_client).await?
+            publish_artifact(&root, &claimed, &manifest, &patch, &job_client).await?
         }
         Err(error) => (
             1,
             report(
                 claimed.attempt,
                 "patch_rejected",
-                redact::summary(&root, &error),
+                error,
                 Vec::new(),
                 None,
                 None,
@@ -535,16 +556,16 @@ async fn publish(
         ),
     };
     let receipt = job_client
-        .report_job_result(&claimed.job_id, &result)
+        .report_job_result(&claimed.job_id, &result.result)
         .await
         .map_err(|error| {
-            ConnectStop::refused_as(&error, "result").unrecorded(result.summary.clone())
+            ConnectStop::refused_as(&error, "result").unrecorded(result.message.clone())
         })?;
     Ok((
         code,
         format!(
             "{}\nreported {} for {}; job is {}",
-            result.summary, result.outcome_code, claimed.job_id, receipt.state
+            result.message, result.result.outcome_code, claimed.job_id, receipt.state
         ),
     ))
 }

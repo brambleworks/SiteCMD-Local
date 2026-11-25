@@ -5,11 +5,11 @@
 
 use std::path::Path;
 
-use sitecmd_engine::identity::code_producer_rule_id;
-use sitecmd_engine::sync::ProjectFingerprintKey;
+use sitecmd_protocol::identity::code_producer_rule_id;
+use sitecmd_protocol::sync::ProjectFingerprintKey;
 
 use super::artifact::{BriefArtifact, BriefArtifactLocation, BriefFinding};
-use crate::core::code_scan::{audit_project, canonical_code_check_id, CodeIssue};
+use crate::core::audit::{audit_project, CodeIssue};
 
 /// The Code Scan rule behind a canonical check ID, or `None` for a web check.
 pub fn code_slug(check_id: &str) -> Option<&str> {
@@ -38,13 +38,12 @@ pub fn locate_findings(
     let report = audit_project(root)?;
     let mut matches = Vec::new();
     for issue in report.issues {
-        let check_id = canonical_code_check_id(&issue.id);
         let identity = key.location_hash(code_producer_rule_id(&issue.id), &issue.relative_path);
         if wanted.iter().any(|(wanted_check, wanted_identity)| {
-            *wanted_check == check_id && *wanted_identity == identity
+            *wanted_check == issue.check_id && *wanted_identity == identity
         }) {
             matches.push(MatchedLocation {
-                check_id,
+                check_id: issue.check_id.clone(),
                 identity,
                 issue,
             });
@@ -69,12 +68,7 @@ pub fn identities(
         .map(|issue| {
             let identity =
                 key.location_hash(code_producer_rule_id(&issue.id), &issue.relative_path);
-            (
-                canonical_code_check_id(&issue.id),
-                identity,
-                issue.relative_path,
-                issue.line,
-            )
+            (issue.check_id, identity, issue.relative_path, issue.line)
         })
         .collect())
 }
@@ -90,7 +84,6 @@ pub fn brief_artifact(job_id: &str, attempt: u32, matches: &[MatchedLocation]) -
         };
         let location = BriefArtifactLocation {
             end_line: line,
-            excerpt: matched.issue.source_excerpt.clone().unwrap_or_default(),
             path: matched.issue.relative_path.clone(),
             start_line: line,
         };
@@ -115,19 +108,14 @@ pub fn brief_artifact(job_id: &str, attempt: u32, matches: &[MatchedLocation]) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sitecmd_engine::sync::ProjectFingerprintKey;
+    use sitecmd_protocol::sync::ProjectFingerprintKey;
 
-    fn open_redirect_repo() -> tempfile::TempDir {
+    fn fixture_repo() -> tempfile::TempDir {
         let temp = tempfile::tempdir().unwrap();
-        std::fs::write(
-            temp.path().join("package.json"),
-            r#"{ "name": "redirect-app" }"#,
-        )
-        .unwrap();
         std::fs::create_dir_all(temp.path().join("app/api/signin")).unwrap();
         std::fs::write(
-            temp.path().join("app/api/signin/route.ts"),
-            "export async function GET(request: Request) {\n  const { searchParams } = new URL(request.url);\n  const returnTo = searchParams.get(\"returnTo\") ?? \"/\";\n  return Response.redirect(new URL(returnTo, request.url), 302);\n}\n",
+            temp.path().join("app/api/signin/fixture-findings.txt"),
+            "\nFixture checkout line that must not enter an artifact.\n",
         )
         .unwrap();
         temp
@@ -141,46 +129,50 @@ mod tests {
 
     #[test]
     fn matches_a_job_finding_by_its_keyed_location_hash() {
-        let temp = open_redirect_repo();
+        // A finding can match the wrong key or copy a source line into its artifact.
+        let temp = fixture_repo();
         let key = ProjectFingerprintKey::from_bytes([7_u8; 32]);
-        let identity = key.location_hash("open-redirect", "app/api/signin/route.ts");
+        let identity = key.location_hash("standin.rule", "app/api/signin/fixture-findings.txt");
         let matches = locate_findings(
             temp.path(),
             &key,
-            &[("code_scan.open-redirect".to_string(), identity.clone())],
+            &[("code_scan.standin.rule".to_string(), identity.clone())],
         )
         .unwrap();
         assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].issue.relative_path, "app/api/signin/route.ts");
+        assert_eq!(
+            matches[0].issue.relative_path,
+            "app/api/signin/fixture-findings.txt"
+        );
         let artifact = brief_artifact("job_0123456789abcdef", 1, &matches);
         assert_eq!(artifact.findings[0].identity, identity);
         let location = &artifact.findings[0].locations[0];
-        assert_eq!(location.path, "app/api/signin/route.ts");
+        assert_eq!(location.path, "app/api/signin/fixture-findings.txt");
         assert_eq!(location.start_line, location.end_line);
-        assert!(
-            location.excerpt.contains("Response.redirect"),
-            "{}",
-            location.excerpt
-        );
+        assert!(!serde_json::to_string(&artifact)
+            .unwrap()
+            .contains("Fixture checkout line"));
         let other_key = ProjectFingerprintKey::from_bytes([9_u8; 32]);
         assert!(locate_findings(
             temp.path(),
             &other_key,
-            &[("code_scan.open-redirect".to_string(), identity)]
+            &[("code_scan.standin.rule".to_string(), identity)]
         )
         .unwrap()
         .is_empty());
     }
 
     #[test]
-    fn lists_every_identity_for_locate() {
-        let temp = open_redirect_repo();
+    fn lists_a_module_finding_with_its_keyed_identity() {
+        // Locate can omit the keyed identity needed to request a finding.
+        let temp = fixture_repo();
         let key = ProjectFingerprintKey::from_bytes([7_u8; 32]);
         let rows = identities(temp.path(), &key).unwrap();
         assert!(rows.iter().any(
-            |(check, identity, path, _)| check == "code_scan.open-redirect"
-                && *identity == key.location_hash("open-redirect", "app/api/signin/route.ts")
-                && path == "app/api/signin/route.ts"
+            |(check, identity, path, _)| check == "code_scan.standin.rule"
+                && *identity
+                    == key.location_hash("standin.rule", "app/api/signin/fixture-findings.txt")
+                && path == "app/api/signin/fixture-findings.txt"
         ));
     }
 }

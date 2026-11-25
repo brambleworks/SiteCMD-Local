@@ -116,7 +116,7 @@ must be recorded rather than silenced by its neighbors, and a
 reappearance after verified absence is a regression whether it is the
 whole group or one route.
 
-### Canonicalization, version 1
+### Canonicalization, version 3
 
 Web route canonicalization, applied identically by the sync client and the
 hosted scanner. Identity must never merge resources that can serve
@@ -157,9 +157,14 @@ verify findings belonging to the other.
 - Dot segments are resolved per RFC 3986. Repeated slashes are preserved.
   A percent-encoded slash (`%2F`) is never decoded. Percent-encoding is
   otherwise normalized: uppercase hex digits, unreserved ASCII characters
-  decoded. Bytes outside unreserved ASCII are preserved as sent; no
-  Unicode normalization is applied. Path case is preserved.
-- Query strings and fragments are stripped from the stored route (a
+  decoded. Authored non-ASCII and these ten characters
+  (space, `"`, `#`, `<`, `>`, `^`, backtick, `?`, `{`, and `}`) become
+  uppercase UTF-8 percent escapes under version 3; no Unicode normalization
+  is applied. Path case is preserved.
+  The engine encodes `^` as `%5E` to match the hosted canonicalizer.
+  ASCII controls are encoded, except tabs, carriage returns, and line feeds,
+  which URL parsing removes; raw backslashes become slashes.
+- Observed URL query strings and fragments are stripped from the stored route (a
   privacy-spec obligation), and any occurrence observed on a URL that
   carried a query string is marked `query_dependent: true`.
   Query-dependent occurrences are never comparable for verification: the
@@ -173,7 +178,7 @@ slashes and no leading `./`, exactly as `CodeIssue.relative_path` already
 stores it; the producer rule id exactly as `code_producer_rule_id` extracts
 it.
 
-The canonicalizer carries its own version (`canonicalizer: 1` in the
+The canonicalizer carries its own version (`canonicalizer: 3` in the
 payload), and its exact behavior is pinned by shared golden fixtures in
 the scanner-parity conformance corpus, so the desktop, the CLI, and the
 hosted scanner cannot drift apart silently. Any change to these rules is a
@@ -185,10 +190,10 @@ The privacy rule is precise: **keyed hashing protects private location
 material; public location material syncs in the clear.** Verification requires
 this distinction for the reasons below.
 
-- **Check ids sync in the clear.** The check corpus is public source, the
-  hosted scanner must know which check a baseline entry refers to in order
-  to prove "the relevant check executed", and severity and category
-  handling need it.
+- **Check ids sync in the clear.** An id names a check SiteCMD ships, never
+  anything from the user's code or site. The hosted scanner must know which
+  check a baseline entry refers to in order to prove "the relevant check
+  executed", and severity and category handling need it.
 - **Web routes sync as canonical path strings.** The hosted scanner
   observes the same routes on the public site and must compute matching
   identity for every live finding; a hash the server cannot compute would
@@ -218,7 +223,7 @@ Every snapshot and every hosted observation pins:
 - `fingerprint_schema`: integer, starts at 1.
 - `fingerprint_key_version`: integer per project, starts at 1 (code
   snapshots only).
-- `canonicalizer`: integer, starts at 1.
+- `canonicalizer`: integer, currently 3.
 - `crawl_profile`: integer; its contents are owned by the hosted scanner
   spec but the field is part of this envelope.
 - `execution_profile`: the observation-level runtime facts comparability
@@ -280,16 +285,18 @@ clock-dependent checks graded against), skew-validated like
 `observed_at` but semantically load-bearing, because cause
 classification needs to know what "now" meant to the evidence.
 
-**Measurement-class checks are outside the lifecycle model entirely.**
-Checks the capability manifest marks `measurement` (timing values that
-vary by vantage) never create groups or occurrence records: they ride
-snapshots as measurement samples (`check`, `route`, `value`), the
-server stores them as bounded series under event retention, and they
-surface as current values and trends, never as tripwires. Bootstrap
-group entries naming a measurement-class canonical id are rejected
-(`422`), and the payload builder maps the desktop's local
-measurement-class findings into samples rather than groups. One noisy
-sample must never arm, disarm, or fire the states that matter.
+Checks the capability manifest marks `measurement` ride snapshots as
+measurement samples (`check`, `route`, `value`). Connect stores them as
+bounded series under event retention and surfaces current values and trends.
+One noisy sample must never arm, disarm, or fire the states that matter. The desktop payload builder maps
+local measurement-class findings into samples. A desktop bootstrap group
+naming a measurement-class canonical id is rejected (`422`).
+
+If a measurement's manifest entry carries a `grade`, Connect grades the
+median of the newest five hosted samples in the same series observed in the
+last 28 days, including the current scan's sample. Fewer than three samples
+yield no verdict. With four samples, the median is the mean of the two middle
+values. Only that series verdict can create, re-evidence, or resolve its group.
 
 The measurement contract is wire-level, not prose. Snapshots and the
 internal hosted commit carry `measurement_samples`
@@ -299,13 +306,14 @@ values validated against per-unit sanity bounds, oversize batches
 execution profile, and the **unit authority is the capability
 manifest**: a measurement check's manifest entry declares its unit,
 and a sample whose unit disagrees is `422`. The server stores that entry's
-semantic `contract` beside the sample; a trend or threshold never compares
-rows across contracts or units. Measurement checks create
-no lifecycle pair. The version-1 sanity bounds are inclusive
-`0..86,400,000` for `ms` and `0..100` for `ratio`; changing either is a
-protocol change, not an adapter preference. A present sample is the execution record for that
-route; an unavailable metric produces no sample and cannot resolve,
-regress, or create any issue state. The read is
+semantic `contract` beside the sample. Trends and grading use samples with the
+same contract and unit. An optional `grade` supplies `good` and `poor` limits
+in the declared unit. A value at or below `good` passes, and one over `poor`
+fails. A value above `good` and at or below `poor` needs improvement. The
+version-1 sanity bounds are inclusive `0..86,400,000` for `ms` and `0..100`
+for `ratio`. Changing either requires a protocol change. A present sample
+is the execution record for that route. An unavailable metric produces no
+sample and cannot resolve, regress, or create any issue state. The read is
 `GET /v1/sites/{site}/measurements?check=&route=&vantage=&from=&to=&cursor=&limit=`:
 `from`/`to` are epoch milliseconds bounded by retention, `vantage` is
 an explicit filter and series are **always grouped per
@@ -373,17 +381,21 @@ is the record's identity epoch, and epoch migration mirrors key rotation:
   reveals nothing, but it lets the server detect a client hashing under
   the wrong key for a claimed version (`409 key_commitment_mismatch`)
   instead of silently corrupting identity matching. Code snapshots carry
-  the commitment of the key they used. **Version 1 is claimed at site
-  creation**: `POST /v1/sites` requires the version-1 commitment and a
-  signed-in person through the dashboard. The shipped desktop generates
-  the key locally, but its installation token cannot call this route.
-  No implemented handoff transfers that commitment to the dashboard's
-  site-creation request. The commitment exists before any accepted
-  snapshot, independently of whether the bootstrap contains code. There is
-  no unclaimed window in which a
-  web-only bootstrap would let the first later CI or desktop submission
-  establish a conflicting key; a version-1 submission with a different
-  commitment is `409 key_commitment_mismatch` like any other version.
+  the commitment of the key they used. A new site has no key version.
+  Approving a `sitecmd connect` code claims the next version with that
+  code's commitment, as `connect:<code_id>`, in the same transaction as
+  the approval. The signed-in person's account must own the verified site
+  and its linked repository, the code must name that repository (without
+  regard to case), and that person's own connected GitHub identity must
+  still administer it. The installation must be active, and an initial
+  hosted observation must have applied before the first code baseline.
+  A non-rotation request is refused after connection secrets were written;
+  `--rotate` is refused while no key exists. A retry before its earlier
+  baseline aborts that earlier connect claim and burns its version. A
+  retry after its baseline, while connection secrets remain unwritten,
+  is treated as a rotation even without `--rotate`. A claim belonging to
+  another caller remains in progress. The first accepted complete project
+  baseline completes the claim; the server never receives the key itself.
 - **Distribution to CI:** the CI door needs the key to compute matching
   code fingerprints inside the checkout. It travels as one secret
   alongside the CI token, pasted into the repository's secret store once.
@@ -475,7 +487,7 @@ behavior must not depend on whether a laptop is awake:
   observation may execute it: re-observation transitions the group to
   `active`, and the recorded event attributes the transition to the
   stored policy, not to the scanner. Reopening this way does not alert.
-- `{ "kind": "blocked", "reason"? }` - durable. Nothing but an explicit
+- `{ "kind": "blocked" }` - durable. Nothing but an explicit
   user mutation changes it. This is the dismissal that means "stop".
 
 `verified_fixed` groups carry
@@ -1194,8 +1206,10 @@ declares them with defaults: `false` for the flags, `null` for the
 expiry fields, and `0` for the overflow count. They are response fields,
 never submission fields. Connect returns `scope_effective_route_count`
 and `scope_route_cap`. A site cannot leave `pending_bootstrap` until
-both bootstrap and a person's initial scope (`scope_revision` above 0)
-have committed; a discovered scope does not count.
+bootstrap has committed and either a person's initial scope
+(`scope_revision` above 0) exists or a hosted observation has applied.
+An applied hosted observation establishes the discovered scope even while
+its revision remains 0; a history-only scan does not count.
 
 Until a person sets one, the scope holds the routes the site's last
 applied hosted scan discovered or retained (hosted scanner spec, the
@@ -1230,6 +1244,31 @@ reconciliation, and non-bootstrap desktop observations require
 second bootstrap answers `409 already_bootstrapped` **from that marker,
 never from group-set emptiness**, because a legitimate bootstrap can
 contain zero groups and must still commit the phase transition.
+
+`POST /v1/connect/baseline` accepts `{ schema_version: 1, site_id,
+snapshot }`, with one code snapshot and the 4 MiB submission body ceiling,
+under the approved connection token. It uses the desktop lane and the
+producer `connect:<code_id>`, with submission sequence 1. On a site with no
+`bootstrapped_at`, it imports an empty group set and the code snapshot as
+its bootstrap; on a connected site it applies that snapshot as a rotation.
+The response is `200 { status: "bootstrapped" | "applied", key_version }`.
+It records `baseline_at` atomically with the evidence and the key's
+completion, and writes no finding alert intent. Activity records
+`code_connected` or `connection_keys_replaced` for the approved operation.
+Without a standing refusal, a second baseline is `409 baseline_recorded`.
+A mismatched commitment, incomplete project coverage, or unclaimed version is respectively
+`409 key_commitment_mismatch`, `409 rotation_incomplete`, or
+`409 unclaimed_key_version`. The snapshot must use the exact version the
+approval claimed. Erasing the site before the baseline is `401`.
+A standing setup refusal recorded after approval is also refused before
+applying the baseline: `409 ci_token_refused`, `409 setup_pull_request_refused`
+or `409 repository_unlinking`. Suspension takes precedence and answers
+`409 installation_suspended` with the existing repository-specific sentence.
+A repeated baseline answers a standing refusal before `baseline_recorded`.
+The baseline receipt also checks the repository state it observed and refuses
+a suspended GitHub connection for the approving person and installation; a
+change during planning rolls back the baseline, key completion and receipt
+together.
 
 Bootstrap carries the group set with, for every group whose local state
 is `verified`, the claimed state and the last-known occurrence
@@ -1308,7 +1347,7 @@ spec):
       "versions": {
         "engine_release": "1.5.4",
         "fingerprint_schema": 1,
-        "canonicalizer": 1,
+        "canonicalizer": 3,
         "crawl_profile": 1
       },
       "manifest_digest": "9e4b…",
@@ -1357,7 +1396,7 @@ spec):
         "engine_release": "1.5.4",
         "fingerprint_schema": 1,
         "fingerprint_key_version": 1,
-        "canonicalizer": 1
+        "canonicalizer": 3
       },
       "manifest_digest": "9e4b…",
       "evaluation_time": 1754780390000,
@@ -1471,8 +1510,7 @@ Field notes:
   in the claim (`accessibility.axe.`) means the family's RUNNER executed,
   which is the only thing a fixed finding leaves behind: its own id is
   gone. Members that ran without concluding are excepted by id, and an
-  exception always beats the family claim. `ScanCoverageManifest` in
-  `sitecmd_engine::coverage` is this encoding, shared by every producer;
+  exception always beats the family claim. The engine module's `ScanCoverageManifest` is this encoding, shared by every producer;
   its `covers(route, check)` is the decision, and no consumer reimplements
   it.
 - `correlation_pairs` is keyed by the caller's actor, `user:<subject>` or
@@ -1494,8 +1532,8 @@ inspector and `--dry-run` render exactly these objects.
 ## Credentials
 
 Two credential families. **Bearer credentials** include dashboard sessions
-and Connect's personal, CI, and job tokens. Connect mints the latter
-three with the checksum format below and stores only their SHA-256 digests.
+and Connect's personal, CI, job, and connection tokens. Connect mints these
+four with the checksum format below and stores only their SHA-256 digests.
 **Capability tokens** are narrow, single-purpose, and mostly
 single-use; each grants exactly one operation on exactly one resource,
 and the complete inventory lives with the public-surface table below -
@@ -1505,8 +1543,10 @@ there is no such thing as an unlisted way in.
 | -------------------------- | ---------- | ---------------------------------------------- | -------------------------------- | ---------------------------- |
 | Dashboard session          | bearer     | The signed-in person's account                 | WorkOS AuthKit                   | Dashboard                    |
 | Personal token             | bearer     | Account or selected sites, with named scopes   | Signed-in person                 | Client credential store      |
+| Connection token           | bearer     | One approved site connection                   | Signed-in dashboard approval     | CLI memory                   |
+| GitHub secrets token       | bearer     | Actions secrets write in the linked repository | Connect through the GitHub App   | CLI memory                   |
 | Job token                  | bearer     | Assigned fix-job operations                    | Connect                          | Fix-job runner               |
-| CI token                   | bearer     | Submit and read deployment cursor for one site | Signed-in person                 | CI secret store              |
+| CI token                   | bearer     | Submit and read deployment cursor for one site | Signed-in person or SiteCMD App  | CI secret store              |
 | Webhook secret             | MAC        | Sign deploy events for one site environment    | Signed-in person                 | Deploy pipeline secret store |
 | Report link token          | capability | Render one report until TTL or revocation      | Service, at report creation      | Email or clipboard           |
 | Alert nonce                | capability | Redeem one alert view, once                    | Service, at alert delivery       | The alert email              |
@@ -1527,6 +1567,14 @@ there is no such thing as an unlisted way in.
   reaches every site in the account unless limited to specified site ids.
   Connect stores only its SHA-256 digest and shows the secret once. A client
   stores it in its credential store, outside SQLite and connection exports.
+  `sitecmd login` obtains one by code approval in a signed-in dashboard
+  session. It holds every scope on every site in the approving session's
+  account, labeled `SiteCMD CLI`. Its listing has `minted_by: "cli"` and a
+  `device` with nullable `os` and `client_version`. Dashboard mints have
+  `minted_by: "dashboard"` and `device: null`. Device OS is one of `macos`,
+  `windows`, `linux`; a version is recognized only when Connect's published
+  engine-manifest record names it under its configured publisher. Unknown
+  values are stored as null; no device-supplied free text is kept.
   An account holds at most 50 live personal tokens; revocation frees a place.
   Revoked tokens remain visible for 30 days after revocation, then are deleted.
   Missing scope answers `403 insufficient_scope`; a site-limited token
@@ -1535,9 +1583,66 @@ there is no such thing as an unlisted way in.
   with `403 signed_in_required`, regardless of their scopes. A session
   without an account receives `403 account_required` on account routes;
   an unavailable sign-in provider answers `503 identity_unavailable`.
-- **Minted bearer format.** Personal, CI, and job tokens use
+- **App-written CI token.** Linking a repository authorizes the App to write
+  `SITECMD_CI_TOKEN`, sealed to that repository's Actions public key. Connect
+  reads the key before minting and retains only the token's SHA-256 digest,
+  public id and provenance pins, with `created_by = app:github`. A failed
+  write revokes its minted token. Revoking this App token through the site
+  token route, secret scanning or site disconnect clears `ci_token_id`,
+  `ci_token_written_at` and `secrets_provisioned_at` in the same transaction;
+  after reconnect where needed, the next minute pass writes a replacement. The connection export and its passphrase are written
+  by the CLI; Connect never receives either. Provisioning completes only when
+  both the App CI token and the two connection secrets have written stamps.
+- **Connection token.** An approved `sitecmd connect` code redeems once at
+  `POST /v1/cli/token` for `{ kind: "connect", connection_token, site_id,
+site_url, key_version, repository }`. The `sitecmd_cnx_` token is stored
+  only as its SHA-256 hash and expires 3,600 seconds after redemption.
+  It binds the approving account and person, site, repository, and claimed
+  key version. It reaches only the connection doors, never account or CI
+  operations. Completion of provisioning ends it. An unknown, expired,
+  completed, erased, disconnected, superseded by a later key claim, or no longer linked
+  connection answers the uniform `401 unauthorized`.
+- **Secrets token.** After its baseline, a connection token calls
+  `POST /v1/connect/secrets-token` once for `{ token, expires_at, repository }`.
+  Connect rechecks repository admin access with the approving person's own
+  GitHub user id. The GitHub installation token requests exactly
+  `repository_ids: [<linked repository id>]` and `permissions: { secrets: "write" }`.
+  Connect stores no copy. The CLI writes `SITECMD_CONNECTION_EXPORT` and
+  `SITECMD_CONNECTION_PASSPHRASE`, revokes this token through GitHub, then
+  reports `{ token_revoked: boolean }` to `POST /v1/connect/secrets-provisioned`.
+  A false records the revoke failure and still records the secrets as written.
+  With setup available, before the baseline issuance answers
+  `409 baseline_required`; a second
+  issuance answers `409 connection_spent`. The admin and connection checks
+  can answer `403 not_repository_admin`, `403 github_not_connected`,
+  `409 installation_suspended`, or `503 unavailable`. A standing repository
+  setup refusal is a specific `409 ci_token_refused`,
+  `409 setup_pull_request_refused`, or `409 repository_unlinking` at either
+  secrets door. The first two carry the existing setup permission sentences.
+  The unlinking refusal carries: "SiteCMD is unlinking this repository. Once
+  it finishes, link it again in the site's Settings, then run the command again."
+  Suspension takes precedence over
+  a setup refusal at lookup, approval and all three connection doors. Thus a
+  repository both suspended and unlinking is installation_suspended, with the
+  existing repository-specific suspension sentence. Lookup reports that code
+  in its connection view; approval refuses before claiming a key.
+  A report before issuance answers `409 connection_spent`. An accepted
+  report answers `200 { provisioned: boolean, workflow_state: "setup_pending" |
+"setup_pr_open" | "installed" | "setup_pr_closed" }` and ends the connection token,
+  even if the App CI token is still awaiting its write. Later calls answer
+  `401 unauthorized`. All three secrets count as provisioned once both
+  writers have recorded their writes. With an installed workflow, that
+  releases jobs awaiting setup. A rotation's report writes a fresh App CI
+  token before revoking its predecessor. A transient failed CI write or setup
+  already in progress answers `503 unavailable` and leaves the report
+  retryable. A recorded setup refusal instead answers its specific 409.
+  A lost issuance answer or an unreported secrets write is recovered by
+  running the same command again, including `--rotate` for an explicit
+  rotation. The next approved key claim ends the old run, and an unfinished
+  first connection is rotated automatically.
+- **Minted bearer format.** Personal, CI, job, and connection tokens use
   `sitecmd_<kind>_` followed by 30 base62 body characters and a six-character
-  base62 CRC32 checksum. The kinds are `pat`, `ci`, and `job`.
+  base62 CRC32 checksum. The kinds are `pat`, `ci`, `job`, and `cnx`.
   The alphabet is `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
   The body encodes 22 random bytes and is left-padded with `0` to 30
   characters. The checksum covers the prefix and body, encodes the unsigned
@@ -1706,6 +1811,10 @@ capability it does not describe is one the service does not have.
 
 ### The public surface
 
+`POST /v1/cli/codes` and `POST /v1/cli/token` are public code-flow doors:
+nothing is granted until a person approves the code in a signed-in dashboard
+session. Both answer JSON and problem details, with no cookies or redirects.
+
 Every internet-reachable route that does not take a tenant bearer,
 normative and closed, in **two route classes** with
 different rules, because signed deploy hooks and mail systems are not
@@ -1713,7 +1822,7 @@ browsers and must not be handed browser assumptions:
 
 - **Server-to-server doors** (the signed webhook doors, fix-job doors,
   the RFC 8058 unsubscribe, the deploy's storage probe, and the restore
-  operation): no origin policy and no
+  operation and the CLI code doors): no origin policy and no
   cookies - the callers cannot and need not establish browser context;
   authentication is the signature, runner OIDC token, or single-purpose
   token alone.
@@ -1741,31 +1850,36 @@ limits come from the beta operating configuration, which carries
 per-class keys (hook doors per site, Resend intake globally, browser-form
 routes per source address per resource).
 
-| Method + path                           | Authentication                                               | Single-use                 | TTL                                    | Behavior                                                                                |
-| --------------------------------------- | ------------------------------------------------------------ | -------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
-| `POST /v1/hooks/github-secret-scanning` | GitHub ECDSA signature over raw body                         | Revocation is idempotent   | n/a                                    | Leaked-token feedback and security notice; 1 MiB body limit                             |
-| `POST /v1/hooks/github`                 | `X-Hub-Signature-256`: HMAC-SHA256 over raw body             | No                         | n/a                                    | GitHub App pull-request deliveries for the fix loop                                     |
-| `POST /v1/fix-jobs/{id}/claim`          | `X-GitHub-OIDC-Token`, checked against the job binding       | One claim per purpose      | OIDC validity                          | Issues a purpose-scoped job token for execute or publish                                |
-| `POST /v1/fix-jobs/{id}/result`         | Purpose-scoped job-token bearer                              | One result per job attempt | Job timeout                            | Commits the outcome and revokes the job's live tokens                                   |
-| `POST /v1/fix-jobs/{id}/publish-token`  | Publish-purpose job-token bearer                             | No                         | Job timeout                            | Mints a GitHub token for contents and pull requests in one repository                   |
-| `POST /v1/fix-jobs/{id}/issue-token`    | Publish-purpose job-token bearer                             | No                         | Job timeout                            | Mints a GitHub token for issues in one repository                                       |
-| `POST /v1/hooks/{site}/deploy`          | `sha256=` HMAC over `{sent_at}.{raw body}`                   | Dedup by `event_id`        | 5-minute skew window                   | Generic deploy door; body schema below; duplicate `event_id` converges `200`            |
-| `POST /v1/hooks/resend`                 | Svix signature over raw body                                 | Dedup by `svix-id`         | 5-minute tolerance                     | Bounce and complaint intake (delivery spec)                                             |
-| `POST /v1/hooks/stripe`                 | `Stripe-Signature`, verified by the Stripe SDK over raw body | Dedup by event id          | 5-minute tolerance                     | Refreshes the customer's newest subscription; an unprocessed delivery remains retryable |
-| `GET /a/{alert}/{nonce}`                | None (landing renders nothing sensitive)                     | No (non-consuming)         | 72h from first send initiation         | Alert landing page: one button, no alert content                                        |
-| `POST /a/{alert}/{nonce}/redeem`        | Alert nonce (bound to `{alert}`)                             | Yes                        | 72h from first send initiation         | Exchanges nonce for the 30-minute view session cookie                                   |
-| `GET /a/view`                           | Alert view session cookie                                    | No                         | 30 minutes                             | The alert view (delivery spec's content ceiling)                                        |
-| `POST /a/{alert}/{nonce}/resend`        | The nonce record (used or expired counts)                    | Rate-limited               | Nonce TTL + 7 days                     | Fresh link to the currently verified destination only; generic `200` always             |
-| `GET /d/{token}`                        | None (landing, non-consuming)                                | No                         | 24h from first send initiation         | Destination confirmation landing: one button                                            |
-| `POST /d/{token}/confirm`               | Confirmation token                                           | Yes                        | 24h from first send initiation         | Confirms the destination (double-opt-in completes)                                      |
-| `GET /e/{token}`                        | Erasure confirmation token (landing, non-consuming)          | No                         | 24h to confirm; replay until cancelled | Account erasure confirmation landing: one button, or the confirmed schedule             |
-| `POST /e/{token}`                       | Erasure confirmation token                                   | No; idempotent replay      | 24h to confirm; replay until cancelled | Records confirmation and schedules account erasure 30 days later                        |
-| `GET /s/{token}`                        | Site removal token (landing, non-consuming)                  | No                         | 24h from request                       | Site removal confirmation landing: one button                                           |
-| `POST /s/{token}`                       | Site removal token                                           | Yes                        | 24h from request                       | Removes the site at once                                                                |
-| `POST /u/{token}`                       | Unsubscribe token (RFC 8058)                                 | Yes, idempotent replay     | 30d from first send initiation         | Sets destination policy per its message class; expired answers `410`                    |
-| `GET /r/{token}`                        | Report link token plus registry check                        | No                         | Report TTL, revocable                  | Renders the stored report projection                                                    |
-| `GET /v1/internal/storage-probe`        | Deploy probe bearer, constant-time                           | No                         | n/a                                    | Deploy check: writes, reads back and deletes one row; no tenant data                    |
-| `POST /v1/internal/restore/reapply`     | `RESTORE_TOKEN` bearer, constant-time; `RESTORE_MODE=1`      | No; same-cursor retries    | Restore mode only                      | Reapplies erasures and revocations by cursor; no email; 4 KiB body limit                |
+| Method + path                           | Authentication                                               | Single-use                         | TTL                                    | Behavior                                                                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------ | ---------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/cli/codes`                    | The code flow; no grant before signed-in dashboard approval  | A retry starts a new code          | 15 minutes                             | Issues device and user codes; 2048-byte body limit                                                                                                 |
+| `POST /v1/cli/token`                    | The device code, with a signed-in decision before any grant  | One token delivery per code        | 15 minutes                             | Polls approval and redeems once; 2048-byte body limit                                                                                              |
+| `POST /v1/connect/baseline`             | The connection token one approved code handed over           | One baseline per connection        | One hour after code redemption         | Records the first code baseline and completes the approved key claim; 4 MiB body limit                                                             |
+| `POST /v1/connect/secrets-token`        | The connection token one approved code handed over           | One issuance per connection        | One hour after code redemption         | Rechecks the approving person's admin access and issues a GitHub token for secrets write in the linked repository alone                            |
+| `POST /v1/connect/secrets-provisioned`  | The connection token one approved code handed over           | One accepted report per connection | One hour after code redemption         | Records the CLI's secrets write and token revocation result, refreshes the App CI token on rotation, and ends the connection; 4096-byte body limit |
+| `POST /v1/hooks/github-secret-scanning` | GitHub ECDSA signature over raw body                         | Revocation is idempotent           | n/a                                    | Leaked-token feedback and security notice; 1 MiB body limit                                                                                        |
+| `POST /v1/hooks/github`                 | `X-Hub-Signature-256`: HMAC-SHA256 over raw body             | No                                 | n/a                                    | GitHub App `pull_request` deliveries for setup and fix pull requests, `installation` deliveries, and `installation_repositories` deliveries        |
+| `POST /v1/fix-jobs/{id}/claim`          | `X-GitHub-OIDC-Token`, checked against the job binding       | One claim per purpose              | OIDC validity                          | Issues a purpose-scoped job token for execute or publish                                                                                           |
+| `POST /v1/fix-jobs/{id}/result`         | Purpose-scoped job-token bearer                              | One result per job attempt         | Job timeout                            | Commits the outcome and revokes the job's live tokens                                                                                              |
+| `POST /v1/fix-jobs/{id}/publish-token`  | Publish-purpose job-token bearer                             | No                                 | Job timeout                            | Mints a GitHub token for contents and pull requests in one repository                                                                              |
+| `POST /v1/fix-jobs/{id}/issue-token`    | Publish-purpose job-token bearer                             | No                                 | Job timeout                            | Mints a GitHub token for issues in one repository                                                                                                  |
+| `POST /v1/hooks/{site}/deploy`          | `sha256=` HMAC over `{sent_at}.{raw body}`                   | Dedup by `event_id`                | 5-minute skew window                   | Generic deploy door; body schema below; duplicate `event_id` converges `200`                                                                       |
+| `POST /v1/hooks/resend`                 | Svix signature over raw body                                 | Dedup by `svix-id`                 | 5-minute tolerance                     | Bounce and complaint intake (delivery spec)                                                                                                        |
+| `POST /v1/hooks/stripe`                 | `Stripe-Signature`, verified by the Stripe SDK over raw body | Dedup by event id                  | 5-minute tolerance                     | Refreshes the customer's newest subscription; an unprocessed delivery remains retryable                                                            |
+| `GET /a/{alert}/{nonce}`                | None (landing renders nothing sensitive)                     | No (non-consuming)                 | 72h from first send initiation         | Alert landing page: one button, no alert content                                                                                                   |
+| `POST /a/{alert}/{nonce}/redeem`        | Alert nonce (bound to `{alert}`)                             | Yes                                | 72h from first send initiation         | Exchanges nonce for the 30-minute view session cookie                                                                                              |
+| `GET /a/view`                           | Alert view session cookie                                    | No                                 | 30 minutes                             | The alert view (delivery spec's content ceiling)                                                                                                   |
+| `POST /a/{alert}/{nonce}/resend`        | The nonce record (used or expired counts)                    | Rate-limited                       | Nonce TTL + 7 days                     | Fresh link to the currently verified destination only; generic `200` always                                                                        |
+| `GET /d/{token}`                        | None (landing, non-consuming)                                | No                                 | 24h from first send initiation         | Destination confirmation landing: one button                                                                                                       |
+| `POST /d/{token}/confirm`               | Confirmation token                                           | Yes                                | 24h from first send initiation         | Confirms the destination (double-opt-in completes)                                                                                                 |
+| `GET /e/{token}`                        | Erasure confirmation token (landing, non-consuming)          | No                                 | 24h to confirm; replay until cancelled | Account erasure confirmation landing: one button, or the confirmed schedule                                                                        |
+| `POST /e/{token}`                       | Erasure confirmation token                                   | No; idempotent replay              | 24h to confirm; replay until cancelled | Records confirmation and schedules account erasure 30 days later                                                                                   |
+| `GET /s/{token}`                        | Site removal token (landing, non-consuming)                  | No                                 | 24h from request                       | Site removal confirmation landing: one button                                                                                                      |
+| `POST /s/{token}`                       | Site removal token                                           | Yes                                | 24h from request                       | Removes the site at once                                                                                                                           |
+| `POST /u/{token}`                       | Unsubscribe token (RFC 8058)                                 | Yes, idempotent replay             | 30d from first send initiation         | Sets destination policy per its message class; expired answers `410`                                                                               |
+| `GET /r/{token}`                        | Report link token plus registry check                        | No                                 | Report TTL, revocable                  | Renders the stored report projection                                                                                                               |
+| `GET /v1/internal/storage-probe`        | Deploy probe bearer, constant-time                           | No                                 | n/a                                    | Deploy check: writes, reads back and deletes one row; no tenant data                                                                               |
+| `POST /v1/internal/restore/reapply`     | `RESTORE_TOKEN` bearer, constant-time; `RESTORE_MODE=1`      | No; same-cursor retries            | Restore mode only                      | Reapplies erasures and revocations by cursor; no email; 4 KiB body limit                                                                           |
 
 The generic deploy door's body, exact:
 
@@ -2022,6 +2136,168 @@ resumes from now without needing any per-site state.
 
 ### Endpoints
 
+GitHub authorization (signed in through the dashboard service binding only;
+personal tokens answer `403 signed_in_required`):
+
+- `POST /v1/github/connections` (`github.connections.create`) accepts
+  `{ code, code_verifier, redirect_uri }`, with `redirect_uri` exactly
+  `<DASHBOARD_ORIGIN>/github/callback`. The body limit is 4096 bytes.
+  The dashboard starts the OAuth web flow with state and S256 PKCE.
+  Its host-only state cookie includes the SHA-256 of the initiating session
+  id. A callback from another signed-in session is refused before Connect is
+  called. The callback clears the state cookie, and sign-out clears both
+  GitHub state and installation-return cookies. Connect
+  exchanges the code through GitHub's web endpoint, reads `/user`, pages
+  `/user/installations` for its own App, and pages each installation's user
+  repositories. Only repositories with `permissions.admin = true` survive;
+  installations with none are dropped. A per-installation repository listing's
+  `403` or `404` contributes no repositories for that installation, including
+  any earlier pages. A rate-limit `403` (`x-ratelimit-remaining: 0` or a
+  `retry-after` header), transport failure or `5xx` aborts authorization with
+  `503 unavailable` and records no connections or repository ids.
+  Installation state still comes from GitHub's suspension field.
+  A setup URL's `installation_id`
+  grants nothing. Connect deletes the user's whole App grant, including its
+  refresh tokens, in this request, before recording any connection. No user
+  token, refresh token, login, repository name or provider response is stored.
+  The person's sign-in provider, issuer and subject, scoped to this account,
+  are the natural replacement key: one transaction replaces only their
+  connections and administered repository ids. A second member's
+  authorization never changes the first member's rows. `200` returns
+  `{ connections: GitHubConnectionView[] }`; a refused code or callback URI
+  is `400 github_authorization_failed`, and an unreachable provider or
+  unsuccessful grant deletion is `503 unavailable`.
+- `GET /v1/github/connections` (`github.connections.list`) returns
+  `{ connections: GitHubConnectionView[] }` for this person in this account.
+  Each view is `{ installation_id, account_login, account_type, state, repositories }`. `account_login` and `account_type` are read live and
+  nullable; type is `User` or `Organization`, state is `active` or
+  `suspended`, read from GitHub's suspension at authorization, and
+  `repositories` counts that person's administered ids after excluding the
+  erasure refusal list. An unavailable installation display read leaves
+  `account_login` and `account_type` null and still answers `200`, including
+  after a successful authorization write.
+- `GET /v1/github/connections/{installation}/repositories`
+  (`github.repositories.list`) accepts a positive integer `page`, default 1,
+  and returns at most 100 of this person's administered ids, ordered by id,
+  as `{ repositories: [{ repository_id, full_name, default_branch, linked_site_id }], next_page }`.
+  The erasure refusal list is excluded before counting or slicing ids.
+  Names and default branches are read live
+  with one installation token restricted to exactly this page's ids and
+  `metadata: read`, revoked after use. No token can cover a repository in
+  the erasure refusal list. `linked_site_id` is nullable and names only a
+  site belonging to this account; `next_page` is null at the end. Another
+  person's or account's connection answers `404 installation_not_connected`;
+  a suspended connection answers `409 installation_suspended`. Provider
+  failures answer `503 unavailable`.
+
+Repository links (signed in through the dashboard service binding only;
+all three routes refuse a site outside this account with `404`, and personal
+tokens with `403 signed_in_required`):
+
+- `POST /v1/sites/{site}/repository` (`site.repository.link`) accepts
+  `{ installation_id, repository_id }`, both positive decimal GitHub id
+  strings fitting signed 64-bit integers, with a 4096-byte body limit and
+  optional `Idempotency-Key`. Connect checks this person's active connection
+  to the installation, the site's standing ownership proof, the current
+  repository name and default branch, and this person's current admin
+  permission, in that order. The admin check resolves this person's durable
+  GitHub user id to its current login, then reads repository permission;
+  only `permission = admin` admits the link. Another member's GitHub rights
+  grant nothing. `201` returns the repository view, or `200` for the same
+  site, repository and installation again. Refusals are `403 unverified_site`,
+  `403 not_repository_admin`, `403 github_not_connected`,
+  `404 installation_not_connected`, and `409 installation_suspended`,
+  `repository_linked`, `site_linked`, `repository_refused` or
+  `installation_being_removed`. GitHub reads that fail answer
+  `503 unavailable`. GitHub failures during setup leave the link standing
+  for the minute pass to retry.
+- `DELETE /v1/sites/{site}/repository` (`site.repository.unlink`) revokes
+  the App's CI credentials, deletes `SITECMD_CONNECTION_EXPORT`,
+  `SITECMD_CONNECTION_PASSPHRASE` and `SITECMD_CI_TOKEN`, closes an open setup
+  pull request and removes the link. A ledger outage does not fail the unlink.
+  `200` returns `{ secrets: deleted }`, or `{ secrets: unreachable }` when
+  GitHub could not delete the secrets; either answer removes the local link.
+  An absent link answers `404 repository_not_linked`, including after a lost
+  unlink answer, with detail "{host} has no linked repository." and makes no
+  claim about remote secrets. While setup is running, unlink may answer
+  `503 unavailable`. If an unlink is interrupted, the retained link reports
+  `setup_refusal: unlinking`; setup cannot provision it or clear that intent,
+  and link or setup retries answer `503 unavailable`. Retry unlink to finish
+  removing it. The workflow file remains in the repository.
+- `POST /v1/sites/{site}/repository/setup` (`site.repository.setup`) clears
+  a permission refusal (`ci_token` or `setup_pull_request`), retries an unwritten
+  CI token and opens a closed setup pull request again. It accepts optional
+  `Idempotency-Key` and returns the repository view with `200`. It preserves
+  `unlinking` and answers `503 unavailable` until unlink is retried.
+
+For a keyed link or setup retry, acceptance includes both the repository
+snapshot and the link or refusal-clearing change. A retry replays that
+accepted snapshot without another GitHub operation. Setup is attempted
+after acceptance and is retried after a crash or GitHub outage. Read the
+repository again for its latest setup progress.
+
+The repository view returned by these writes and the existing repository read
+includes `ci_token_id`, `ci_token_written_at`, `connection_secrets_written_at`,
+`setup_refusal` (null, `ci_token`, `setup_pull_request` or `unlinking`) and
+`installation_state` (`active` or `suspended`), beside its repository ids,
+name, branch, workflow state and timestamps. Token ids and stamps are metadata,
+never credentials. The minute pass attempts at most 25 unfinished links,
+with never-attempted links first and older attempts before newer attempts,
+so links that keep failing do not starve later links. Disconnected sites,
+suspended installations and setup refusals pause GitHub setup work.
+Missing App configuration or an untrusted or missing Action pin also pauses
+setup. A GitHub `403` or `404`, or a token-mint `422`, pauses that setup step
+until retry; rate limits and transport or server failures remain pending.
+A failed site's attempt does not prevent other sites or an already-committed
+link from succeeding. Automatic revocations use `replaced`, `write_failed` or `access_lost`.
+A ledger outage does not prevent setup or unlink from finishing, and missed
+revocations are reconciled later. Disconnected sites issue no replacement
+credential until reconnect.
+
+GitHub `installation` deliveries update each link's `installation_state`
+from the installation's current `suspended_at`. If that read fails, a
+`suspend` still suspends the installation, while an `unsuspend` preserves
+the stored state; both answer `503 unavailable` so redelivery re-reads GitHub.
+`new_permissions_accepted` clears only permission refusals while preserving
+`unlinking`. Removing an installation or repository immediately marks the
+link `unlinking` and revokes its App CI credentials as `access_lost`; a
+redelivery finishes unlinking once setup releases its claim. The repository's
+Actions secrets remain. Activity names the two connection secrets to remove
+only when `connection_secrets_written_at` records their provisioning.
+
+Setup pull-request deliveries are fenced by GitHub's `updated_at`. A merge
+records `installed` only after Connect reads a workflow on the linked default
+branch that exactly matches the render for a pin still in `PUBLISH_WORKFLOW_SHAS`;
+its version comments may describe that earlier release; a different or missing file returns setup to
+`setup_pending`, and an unreadable file leaves the delivery unfinished.
+Delivery work is bounded by GitHub's ten-second response deadline. An
+unfinished probe answers `503 unavailable`; only definite mint refusals establish
+access loss. Selection probes run at most three repositories concurrently, and
+confirmed losses are recorded before retrying unfinished work. The next delivery
+starts with unprobed links, then the oldest recorded attempts, so a stalled prefix
+does not prevent progress. Failed deliveries require manual or API redelivery.
+
+The setup pull request uses `sitecmd/setup` as its natural GitHub write key.
+Connect adopts an open pull request only against the default branch, with
+exactly the rendered workflow as its whole change. It builds a one-file
+commit on the default head and moves the setup branch directly to that
+finished commit, keeping an existing pull request open. It re-reads an open
+pull request after a creation `422` and restores the finished commit before
+adopting that pull request too. The default branch's file is read before
+changing the setup branch: an exact render records `installed`, including
+directly from `setup_pr_closed`, without creating a branch or opening a pull
+request. Commits use the App's identity with no custom author, committer or
+signature, and the branch is moved only after GitHub verifies the commit. The workflow runs
+only `repository_dispatch` with action `sitecmd-fix`; top-level permissions
+are `contents: read`, each job grants `contents: read` and `id-token: write`,
+and checkout uses the dispatched `base_sha` with credentials persistence off.
+Checkout is `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1`
+with the version comment `v7`.
+The released Action commit must be a 40-character hex SHA named in
+`PUBLISH_WORKFLOW_SHAS`, with a `vMAJOR.MINOR.PATCH` version. The publish job
+calls the reusable workflow at that same pinned commit and runs only when
+the autofix job outputs `publish = true`.
+
 Site lifecycle (signed in through the dashboard):
 
 - `POST /v1/sites` - create a connected site; `201` with `Location`,
@@ -2091,6 +2367,24 @@ State and sync:
 Reads (signed in or a personal token with `read`), cursor-paginated, keyset or sequence based as
 specified:
 
+- `GET /v1/sites/{site}/offers` - the registered connections that apply to
+  the site's last detected stack. Answers
+  `{ "offers": [{ "connection": "github", "state": "available" }], "not_offered": [], "stack_observed_at": null }`.
+  GitHub is the only registered connection. Its state is `connected` while
+  a repository is linked, including after ownership lapses and whatever the
+  detected stack names; a linked site always has an empty `not_offered`.
+  Without a link, the state is `available` while the site's proof stands,
+  and `needs_verification` otherwise. A named hosting label decides whether
+  GitHub is offered: Squarespace, Wix, Framer, Webflow, Shopify and
+  WordPress.com withhold it; any other named host offers it regardless of
+  CMS. Only when hosting is unknown does a CMS label naming one of those
+  builders withhold GitHub. When withheld, `offers` is empty and
+  `not_offered` names the builder, for example
+  `[{ "connection": "github", "builder": "Squarespace" }]`; `builder` can
+  only be one of those six labels. An undetected stack is offered GitHub.
+  `stack_observed_at` is the deciding stack's observation time, or null
+  before detection. This read is not paginated. Another account's site,
+  or a site outside a personal token's site limit, answers `404 not_found`.
 - `GET /v1/sites/{site}/groups?cursor=&limit=` - all lifecycle groups
   with state, policy, and last-change revision.
 - `GET /v1/sites/{site}/occurrences?cursor=&limit=` - all occurrence
@@ -2261,6 +2555,55 @@ Baselines (signed in or a personal token with `read` for the site):
   profile per fact family, with the provenance of each fact and the
   revision the acceptance endpoint guards on.
 
+CLI codes:
+
+- `POST /v1/cli/codes` has a 2048-byte body limit. A login request is
+  `{ "kind": "login", "client": { "version": "1.2.3", "os": "linux" } }`.
+  A connect request additionally names `url`, `repository` (`owner/name`),
+  a 64-character lowercase hex `commitment`, and boolean `rotate`.
+  `url` must be an HTTPS URL on a public domain; only its host is retained.
+  Each client field is at most 20 characters. No Idempotency-Key is used:
+  retrying starts a new code. `200` has `device_code`, `user_code`,
+  `verification_uri` (`<dashboard origin>/device`), `expires_in: 900`,
+  and `interval: 5`. No complete verification URI is sent.
+- The device code is 32 random bytes in base64url. The user code has eight
+  uniformly drawn letters from `BCDFGHJKLMNPQRSTVWXZ`, displayed `XXXX-XXXX`.
+  Both are stored only as SHA-256 hashes. Entry uppercases and drops every
+  character outside that alphabet; exactly eight must remain.
+- `POST /v1/cli/token` takes `{ "device_code": "<device_code>" }`,
+  without an Idempotency-Key. Before approval it answers
+  `400 authorization_pending`. While pending or redeemable, an early poll
+  answers `400 slow_down` with
+  `interval`, increasing the polling interval by five seconds up to sixty.
+  Denial answers `400 access_denied`, including on an early poll; an expired, unknown or redeemed code
+  answers `400 expired_token`. Approval's next eligible poll atomically
+  redeems the code and mints one personal token, returning `200` with
+  `kind: "login"`, `token`, `token_id`, and nullable `account_name` once.
+  A concurrent or later poll mints nothing. A redemption at the token limit
+  answers `400 token_limit_reached` without consuming the approval.
+- `POST /v1/cli/codes/lookup`, `/approve` and `/deny` take `{ "user_code":
+"BCDF-GHJK" }` through a signed-in dashboard session in an active account;
+  personal tokens are refused. They share ten attempts per minute per
+  session, keyed by the SHA-256 of its session id, answering
+  `429 rate_limited` thereafter. Expired, decided and unknown codes all
+  answer `404 code_not_found`.
+- Lookup returns `kind`, `requested_at`, `client` (`version` and `os`, each
+  nullable), `account` (`name`, `live_tokens`, `token_limit`), `scopes`,
+  nullable `refusal`, and nullable `connect`. At fifty live personal tokens,
+  a login lookup has `refusal: "token_limit_reached"`; approval answers
+  `409 token_limit_reached`. Approve and deny accept an optional
+  Idempotency-Key; a retry with the same key replays `200` with
+  `status: "approved"` or `status: "denied"`. The approving session chooses
+  the account; someone in two accounts switches account before approving.
+  A connect lookup returns its site id, host, repository, rotation flag and
+  nullable refusal in `connect`. Suspension takes precedence over a standing setup refusal,
+  including a repository marked suspended and unlinking together. Otherwise
+  lookup reports `ci_token_refused`, `setup_pull_request_refused`, or
+  `repository_unlinking`, and approval answers the matching 409. Otherwise the approved code redeems for the connection
+  credential described above.
+- Code rows expire one day after their code expiry, or connection expiry
+  when later. Account and site erasure cascade their decided code rows.
+
 Accounts, personal tokens, and sessions:
 
 - `GET /v1/session` requires a dashboard session and returns `200` with
@@ -2299,9 +2642,15 @@ Accounts, personal tokens, and sessions:
 - `GET /v1/account/tokens` accepts sign-in or a full personal token with
   `read`. `200` returns `{ "tokens": [...] }`, oldest first. Each item has
   `token_id`, `label`, `scopes`, `site_ids`, `created_at`, nullable
-  `last_used_at`, and nullable `revoked_at`. Secrets never appear.
+  `last_used_at`, nullable `revoked_at`, `minted_by`, and nullable `device`
+  with nullable `os` and `client_version`. Secrets never appear.
   `last_used_at` is written at most once in five minutes. Revoked tokens
   appear for 30 days after revocation and are then deleted.
+- `DELETE /v1/account/tokens/current` takes a full personal token holding
+  `read`, including in a read-only account, and returns `204` after revoking
+  that presenting token through the erasure ledger. A session answers
+  `400 malformed_request` with "Only a personal token can revoke itself here."
+  Site-limited and read-less tokens use signed-in revocation instead.
 - `DELETE /v1/account/tokens/{token_id}` requires sign-in and returns `204`.
   Repeating it while the revoked token is retained also returns `204` and
   preserves the first revocation time. After deletion it returns `404`.
@@ -2396,7 +2745,12 @@ GitHub secret scanning:
   bodies `413`, throttling `429`, and unavailable published keys `503`.
 - Personal, CI, and job tokens are revoked atomically with a
   `token_found_in_public` security notice. A job-token report revokes
-  every token of that job.
+  every token of that job. A connection-token report ends the connection
+  by expiring its grant, atomically with a `cnx` notice naming the code id
+  and its approving account. A completed or expired run still owes one
+  notice. The label is the site's alias or host. The notice calls it a
+  "connection" token and explains that `sitecmd connect` must be run again
+  while unfinished, or that nothing else needs doing when it had finished.
   Notices keep internal identifiers and a closed source value, never the
   reported URL, token, or token hash. The security lane sends them to
   verified, unsuppressed destinations independently of alert preferences
@@ -2622,6 +2976,12 @@ CI token:
   job must grant `permissions: id-token: write`. A GitHub Actions submission
   that cannot obtain the witness fails visibly rather than silently entering
   the generic lane.
+- **App token pins.** The App's `SITECMD_CI_TOKEN` records the linked
+  repository's `owner/name`, immutable repository id,
+  `owner/name/.github/workflows/sitecmd.yml` as `expected_workflow_ref`,
+  and `refs/heads/<default_branch>` as `expected_ref`. The workflow prefix
+  has no `@ref` suffix; the separate exact ref pin supplies that constraint.
+  Provisioning never substitutes a generic CI credential for these pins.
 - **Generic CI is `unattested`, permanently non-governing and
   non-causal.** Not `compatible`: that kind carries the RFC's
   known-ancestor-with-unchanged-files predicate, which an unverified
@@ -3355,23 +3715,55 @@ Retention values, v1. This spec is the authority for these numbers; the
 trust and privacy pages must state them, and the guardrail in the
 disclosure section keeps the two in agreement.
 
-| Data                                            | Retention                                                       |
-| ----------------------------------------------- | --------------------------------------------------------------- |
-| Current state (groups, occurrence records)      | Life of the connected site, compacted                           |
-| Current deployment head and ordering watermarks | Life of the connected site                                      |
-| Events, observations, deployments, alerts       | 90 days                                                         |
-| Disconnected-site state                         | 30 days after disconnect, then expired                          |
-| Idempotency-Key records (key stored as a hash)  | 24 hours                                                        |
-| Route profiles (signatures, MAC salt)           | Life of the site; 180-day route compaction is not implemented   |
-| Measurement series                              | 90 days                                                         |
-| Notification settings, alert webhooks           | Life of the connected site                                      |
-| Destinations (account-level)                    | Life of the account or explicit delete                          |
-| Report registry rows                            | Life of the site; links by their TTL                            |
-| Coalescing generation watermark                 | Life of the site; survives disconnect, resets only with erasure |
-| `delivery_attempt` rows (every delivery class)  | 7 days after terminal outcome, then deleted                     |
-| Personal tokens                                 | Live until revoked; deleted 30 days after revocation            |
-| Security notices                                | Pending until drained; deleted 30 days after draining           |
-| Erasure receipts (see contents below)           | 1 year                                                          |
+| Data                                               | Retention                                                                               |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Current state (groups, occurrence records)         | Life of the connected site, compacted                                                   |
+| Current deployment head and ordering watermarks    | Life of the connected site                                                              |
+| Events, observations, deployments, alerts          | 90 days                                                                                 |
+| Disconnected-site state                            | 30 days after disconnect, then expired                                                  |
+| Idempotency-Key records (key stored as a hash)     | 24 hours                                                                                |
+| Route profiles (signatures, MAC salt)              | Life of the site; 180-day route compaction is not implemented                           |
+| Measurement series                                 | 90 days                                                                                 |
+| Notification settings, alert webhooks              | Life of the connected site                                                              |
+| Destinations (account-level)                       | Life of the account or explicit delete                                                  |
+| Report registry rows                               | Life of the site; links by their TTL                                                    |
+| Coalescing generation watermark                    | Life of the site; survives disconnect, resets only with erasure                         |
+| `delivery_attempt` rows (every delivery class)     | 7 days after terminal outcome, then deleted                                             |
+| Personal tokens                                    | Live until revoked; deleted 30 days after revocation                                    |
+| Security notices                                   | Pending until drained; deleted 30 days after draining                                   |
+| GitHub connections and administered repository ids | Until the person authorizes again, the installation is removed or the account is erased |
+| Erasure receipts (see contents below)              | 1 year                                                                                  |
+
+Account erasure captures every installation
+its connections or linked repositories name before deleting its connection
+records, including installations with no linked repository. It removes each
+installation unless another SiteCMD account still has a connection or linked
+repository using it. Site erasure also keeps an installation while anyone in
+the site's account has a connection to it or another linked repository uses
+it. A retained installation with no erased repository creates no repository
+refusal.
+
+Before the erasure fence deletes any data, Connect records each captured
+cleanup once per scope and target in the erasure ledger, outside Postgres
+backups. Cleanup records hold only the scope, account, installation and
+optional repository ids. The scope entry also retains its real erasure job
+id, requested and fence instants, and fixed start reason. An undecided cleanup
+remains owed until its step settles. A capture that changes between preflight
+and the fence is refused as `concurrent_write`. The site confirmation answers
+`409`; a daily start logs the conflict and retries on its next run. Retrying
+records the new target before another fence.
+
+After a restore, the database pass leaves existing captured steps on their
+real jobs. Missing work is reconstructed under the job named by its scope
+entry. With no captured step, an entry whose scope is absent or has no job
+record is skipped because nothing is owed. Restore leaves notice and mail
+timestamps unchanged and makes no GitHub request. GitHub cleanup is excluded
+from the restore's `provider_deletions` count and does not delay the end of
+restore mode. After serving resumes, the ordinary erasure pass clears repository
+secrets before deciding about the installation, using its usual installation
+lock, current connection and repository checks, retries and notices. Removal
+stays pending until that pass reads GitHub's `404`; a stalled removal holds
+its erasure receipt pending while the restored service serves requests.
 
 **The export record registry, v1.** Connect's Postgres data families are
 classified into exactly one of four classes, and the classification
@@ -3393,7 +3785,13 @@ itself is part of this registry:
   `slot_lease` (site, release time),
   `account_settings`, `member` (provider identifiers and membership),
   `subscription`, `personal_token` (metadata, never its hash or secret),
-  and `personal_token_site`.
+  `personal_token_site`, `github_connection` and
+  `github_connection_repository`. The two GitHub record types are
+  account-scoped: the former exports the account and person provider ids,
+  installation id, GitHub user id, state and connection/update times; the
+  latter exports the same account/person/installation key and each
+  administered repository id. Replacing a person's authorization replaces
+  their repository rows too.
 - **Operational** is service telemetry about the tenant's traffic,
   not tenant content, excluded from export with its retention stated:
   `security_notices` contains internal token identifiers and a closed
@@ -4363,6 +4761,153 @@ authentication: it stores and sends an installation token, which Connect
 refuses with `401`. It does not implement personal-token custody. Direct
 clients use personal tokens for routes accepting their scopes; routes
 requiring sign-in are called through the dashboard at `app.sitecmd.com`.
+`sitecmd login` requests a code, displays the user code and dashboard
+verification URI, and polls no faster than `interval`. The person types and
+compares the code at `/device`, switching account first when needed. The CLI
+honors each increased interval, stops at denial or expiry, and saves the
+personal token in its credential store before revoking an earlier stored
+token through `DELETE /v1/account/tokens/current`, authenticated with that
+earlier token. The CLI keeps one personal token per canonical Connect origin,
+in the system keychain or a private file. Re-login saves the replacement first
+and revokes every distinct earlier locally stored bearer, including a second
+copy in the file fallback. A failed earlier-token revocation warns the person
+to revoke it on your account's Personal tokens page while keeping the replacement saved. If saving
+the freshly minted token fails, the CLI revokes that new token before reporting
+the storage failure; a failed cleanup is reported as a refusal.
+
+`sitecmd logout` revokes stored tokens through the same endpoint and deletes
+local copies even when remote revocation fails. A remote failure prints the
+Personal tokens recovery instruction and exits 2. With no saved token, logout
+contacts nothing. It never revokes `SITECMD_TOKEN` and prints the shell-override
+notice when that variable is set, while still handling any stored token.
+
+For login, logout, and subsequent connection setup, the origin comes from
+`--connect-origin`, then `SITECMD_CONNECT_ORIGIN`, then the build's
+`SITECMD_CONNECTED_ENDPOINT`. With none set the command refuses; it never
+reads the scanned repository for this choice. Endpoints must be HTTPS origins
+without user information, paths, queries, or fragments; only local test doubles
+may use loopback HTTP. `SITECMD_TOKEN` may authenticate the build's own endpoint
+or an origin explicitly chosen by the person through the flag or environment,
+never an origin selected by repository configuration. Login and logout operate
+on persisted credentials independently of that override. Denial, expiry, and
+the personal-token limit exit 1; other refusals exit 2; success exits 0.
+Login exits 130 on Ctrl-C after revoking an unsaved token or finishing the earlier revoke; a successful keychain write or completed file persist commits the save; accepted residuals are that a token the person approved after an interrupt whose revoke failed stays stored, and a revoked record whose delete failed is replaced by the next login.
+When cleanup fails while a save is unresolved, login prints a waiting notice.
+A second Ctrl-C exits 130 immediately without waiting for the save or an
+in-flight revoke. Before a save commits, it prints the recovery instruction
+without a reason. After a save commits, it prints the earlier-token recovery
+instruction if an earlier distinct token's revoke is unfinished, and the saved
+sign-in confirmation unless cleanup is known to have revoked the new token.
+Otherwise login waits for the save and reports its final state.
+
+Further accepted residuals, beyond the two above: a kill, including an
+unhandled SIGTERM or SIGHUP, after Connect issues the new token and before its
+save commits can leave that token live and unstored. A commit that login has not
+yet seen when a second Ctrl-C reads custody (written by the OS but not yet
+reported, landing between that read and exit, or landing as the process exits)
+makes login print the recovery instruction without the earlier-token
+instruction. The new token is then stored, an earlier token it overwrote stays
+live and unnamed, and following the instruction revokes the stored token.
+Closing this window needs a cancellable save.
+
+`sitecmd connect <url> [--repo owner/name] [--rotate]` also accepts
+`--connect-origin <url>` and `--path <PATH>`. It attaches the selected checkout
+to the verified site the dashboard created. Both the supplied address and
+Connect's `site_url` use `url::Url` as their sole URL parser. The parsed scheme
+must be HTTPS, with no username or password, no non-default port, and a host.
+The URL parser canonicalizes an explicit HTTPS port 443 to no port, so that
+form is accepted. Raw control characters remain forbidden at the command
+boundary, independently of URL normalization. The command requires a Git
+checkout with a HEAD, then resolves the repository from the flag or its GitHub `origin` (HTTPS, scp-style SSH, or SSH
+URL). The address becomes `https://<lowercased host>` with its path dropped.
+That exact key registers the project environment in a disposable audit
+database and later locates the same project's snapshot: a trailing slash or
+mixed-case hostname cannot split the audit and snapshot between projects.
+
+The CLI generates a 32-byte fingerprint key and its commitment, audits the
+checkout, requests a connection code carrying the normalized URL, repository,
+commitment and rotate flag, displays the code and verification URI, and waits
+under the same polling rules as login. On approval it builds the snapshot
+with the approved key version and the checkout's HEAD, using the original
+audit environment key, and sends `POST /v1/connect/baseline`. An applied or
+bootstrapped receipt must name that key version. A refusal stops before
+requesting a secrets token or writing any repository secret. Only the approved
+code-flow and connection-use details, or the signed key-epoch details, can
+supply the baseline refusal reason. The code alone selects that reason,
+without a separate HTTP-status guard. Other codes, including unauthorized and
+unavailable, local transport errors and empty problem details use the approved
+standalone recovery sentence: "SiteCMD couldn't
+save this repository's first scan. Nothing was written to {repository}. Try
+the same command again." The permitted reason codes are `code_not_found`,
+`authorization_pending`, `slow_down`, `access_denied`, `expired_token`,
+`baseline_recorded`, `baseline_required`, `connection_spent`,
+`github_not_connected`, `stale_key_version`, `key_commitment_mismatch`,
+`unclaimed_key_version` and `rotation_incomplete`.
+
+Only after the baseline receipt does the CLI request the secrets token.
+Repository-admin, suspension and GitHub-unavailable refusals select their CLI
+recovery sentences by code, even without detail. At both secret doors only
+`ci_token_refused`, `setup_pull_request_refused`, `repository_unlinking`,
+`baseline_required`, `connection_spent` and `github_not_connected` may print
+Connect's sanitized nonempty detail on its own. Both doors map suspension to
+the CLI sentence including the unsuspend instruction. All other codes, absent
+detail or a transport failure use "SiteCMD couldn't finish connecting
+{repository}. Run the same command again." The CLI generates a passphrase
+from 32 random bytes encoded as base64url and encrypts
+the connection export with the approved site id, key version and Connect's
+exact `site_url`, including its entry path. It reads GitHub's repository
+public key, seals each value with a libsodium-compatible sealed box, and
+writes `SITECMD_CONNECTION_EXPORT` followed by
+`SITECMD_CONNECTION_PASSPHRASE` as standard-base64 sealed values. The key,
+passphrase, export and owned token buffers use zeroizing memory, outside the
+temporary database, files and environment. Export plaintext is serialized into
+a pre-sized zeroizing buffer, with room for the authentication tag, so JSON
+growth cannot free a buffer containing the key. Received application buffers
+and formatted bearer temporaries are zeroizing; HTTP header storage and
+reqwest, hyper and TLS transport buffers can retain copies outside application
+zeroization. By-value key copies on the stack remain best effort. Repository
+display text is printable and
+capped at 200 characters; raw response fields never become diagnostics.
+
+Every path receiving an installation token attempts its GitHub revocation,
+including preparation, public-key and secret-write failures. Only two
+successful writes allow `POST /v1/connect/secrets-provisioned`, which reports
+whether revocation succeeded. Any accepted `200` report records the CLI's two
+secrets and ends its connection token. The CLI prints the written-secrets
+confirmation and exits 0 for either boolean. When `provisioned` is false it
+also prints "SiteCMD could not write SITECMD_CI_TOKEN yet. It tries again on its
+own." It does not request a new approval or rotate otherwise valid keys.
+A `503 unavailable` report is retryable within this invocation: at most three
+attempts, waiting the `Retry-After` delay when supplied or one second otherwise.
+A delay above 30 seconds stops rather than imposing an unbounded wait. The
+report body and its actual revoke result are unchanged across retries.
+Provisioned-door refusals use the same six-code detail allowlist and suspension
+instruction as the secrets-token door. Everything else, including unauthorized
+and exhausted unavailable retries, uses the connection recovery sentence. A transport failure is not automatically
+retried because its delivery may already have committed.
+The final success line follows the report's `workflow_state`: `installed`
+confirms the workflow is in place, `setup_pr_closed` explains that fixes await
+its workflow, and `setup_pending`, `setup_pr_open` or an unknown state use the
+setup-pull-request instruction. An explicit rotation prints the
+replacement-keys confirmation.
+Setup code requests and polling are public doors; no personal token or
+repository-selected credential origin enters this flow. A retry after a
+baseline accepted before a secrets refusal requests a new code and key;
+Connect may approve the next key version without an explicit rotate flag.
+
+`sitecmd connect` exits 0 after an accepted provisioning report, including incomplete
+App CI-token provisioning, 1 on code denial or expiry, and 2 on parsing,
+validation, transport or other refusal errors. A kill between installation-token
+issuance and revocation can leave that secrets-write token live for up to one
+hour. The CLI holds it in memory only and cannot guarantee remote revocation
+after process termination.
+
+The two GitHub secret PUTs are not atomic. A refused passphrase PUT can leave a
+new export beside the old passphrase. The baseline has already advanced the
+key version, so the old pair is obsolete as well. The CLI attempts revocation,
+prints the secret-write refusal, sends no provisioning report, and recovers
+through the same command with a new code and key.
+
 The local producer behavior and the service's access rules are distinct:
 
 1. **Release provenance.** Every persisted scan run carries the engine release,

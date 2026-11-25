@@ -13,15 +13,10 @@ and disagreed with.
 Guidance lives in `AGENTS.md` files, one per surface, read before editing that
 surface:
 
-- `AGENTS.md` (root) - product contract, repository map, commands, Tauri IPC
-  registration rules, data and scoring invariants, the shared-source list, and
-  the code and comment style rules.
-- `apps/desktop/AGENTS.md` - app shell, navigation state, component and styling
-  rules.
-- `apps/desktop/src-tauri/AGENTS.md` - the database worker thread, migrations,
-  the command surface, and crate layout.
-- `apps/mcp-server/AGENTS.md` - the read boundary against the desktop database
-  and the tool contract.
+- `AGENTS.md` (root) - product contract, repository map, commands, data and
+  scoring invariants, the shared-source list, and code and comment style.
+- `apps/desktop/src-tauri/AGENTS.md` - the Rust workspace, database worker,
+  migrations, and portable check contracts.
 
 The `CLAUDE.md` beside each one is a thin pointer to its `AGENTS.md`, so a rule
 has a single home no matter which tool reads it.
@@ -33,7 +28,7 @@ audit logging, and webhook signing, because the characteristic failure of an
 agent is a plausible second copy rather than a syntax error.
 
 Guidance is itself checked. `tools/scripts/audit/check-agents-md.mjs` runs in
-the push gate as the `agents-md` check and fails when an `AGENTS.md` cites a
+GitHub CI and local verification. It fails when an `AGENTS.md` cites a
 file path, a `pnpm` script, or a Tauri command that does not exist, so guidance
 cannot rot into confident false statements.
 `tools/scripts/lib/guardrail-agent-guidance-rules.mjs` requires the per-surface
@@ -64,8 +59,8 @@ work:
   and "as we can see". It also rejects comments that cite maintainer-only
   tooling absent from this repository as a design authority.
 - **Punctuation.** `guardrail-em-dash-rules.mjs` bans U+2014 across maintained
-  docs, per-app guides, tooling scripts, the Rust and desktop sources, and the
-  MCP server. The same-line `allow-em-dash` marker is reserved for a line where
+  docs, per-app guides, tooling scripts, Rust, and scanner fixtures.
+  The same-line `allow-em-dash` marker is reserved for a line where
   the character is the thing being detected.
 - **Publication hygiene.** `publication-hygiene-rules.mjs` pins the required
   public files, allows a fixed set of root files and directories, and rejects
@@ -82,46 +77,42 @@ work:
 
 `lefthook.yml` defines three hook tiers. Pre-commit runs typecheck, ESLint,
 Prettier, `cargo fmt`, and gitleaks over staged files. Commit-msg runs the
-message-format check and the budget ratchet. Pre-push runs `pnpm verify:push`.
+message-format check and the budget ratchet. Pre-push validates outgoing
+history for public remotes.
 
-`tools/scripts/verify-push.mjs` runs 41 checks in seven tiers, ordered from
-static analysis toward builds and browser tests. The first tier holds
-typecheck, lint, formatting, dependency and license audits, secret scanning,
-`pnpm guardrails:repo`, and the `agents-md` staleness check. Later tiers run
-the JavaScript suites, then Rust tests, clippy, the declared MSRV, and the wasm
-targets, then performance baselines, the desktop build, size limits, and
-Playwright. `pnpm verify:push:all` reports every failing tier in one run rather
-than stopping at the first.
+`tools/scripts/verify-push.mjs` builds the stand-in engine module, runs static
+checks and JavaScript tests, then runs the Rust checks. Tier 4 runs nextest,
+both Clippy checks, and both MSRV checks one at a time because they share a
+Cargo build directory. Each uses the full worker budget unless the caller sets
+`CARGO_BUILD_JOBS`. Checks in other tiers can run concurrently within their
+tier. `pnpm verify:push:all` continues through every tier after a failure.
 
 `pnpm guardrails:repo` is one command over four runners: the rule fleet,
 repository label and protection contracts, and publication hygiene.
 
-On GitHub, `main` is governed by the contract in
-`.github/repository-protection.json`: pull requests required, linear history,
-signed commits, no deletion or force push, and five required status checks.
-Merges are squashes, so each merged pull request is one reviewable commit.
-`pnpm protection:check` verifies that every required check names a job in a
-workflow that runs on every pull request, and `--live` compares the contract
-against the repository's actual settings.
+Public contributions go through a pull request to `brambleworks/SiteCMD-Local`.
+GitHub runs the required checks and approved pull requests merge by squash.
+`pnpm protection:check` verifies the check names for the current checkout.
+The `--live` option checks that repository's protection settings against
+its contract in `.github/repository-protection.json`.
 
 ## The product audits this repository
 
 SiteCMD's Code Scan looks for what fast, assisted development leaves behind. The
 `placeholder-density` check measures the density of `TODO`, `FIXME`, `HACK`,
-`XXX`, `CHANGEME`, and `PLACEHOLDER` markers. The `ai-scaffolding` category in
-`apps/desktop/src-tauri/src/core/code_scan/ai_scaffolding.rs` reads a project's
-own agent instruction files and reports four things: a guide with almost no
-meaningful content, several substantive instruction files where none points at
-another, a credential-shaped literal in an instruction or MCP configuration
-file, and a superseded single-file rule format. The second of those is the check
-this repository's own `CLAUDE.md` pointers satisfy.
+`XXX`, `CHANGEME`, and `PLACEHOLDER` markers. The agent instruction checks
+read a project's own instruction files and report a guide with almost no
+meaningful content, several substantive instruction files where none points
+at another, a credential-shaped literal in an instruction or MCP
+configuration file, and a superseded single-file rule format. These findings
+are Reliability, except that the secret rule is Security. This repository's
+`CLAUDE.md` pointers satisfy the fragmented instructions check by pointing to
+their corresponding `AGENTS.md` files.
 
 The same scanner runs against this repository.
-`.github/workflows/app-guardrails.yml` builds the CLI and runs
-`sitecmd_cli audit . --fail-on high` on every pull request and every push to
-`main`, writes the summary to the job summary, and uploads the full review as an
-artifact. Its job, `Audit repository code`, is one of the five required checks
-on `main`, so a high finding from SiteCMD's own engine blocks a SiteCMD merge.
+In SiteCMD-Local, the `Audit repository code` check runs Code Scan on pull
+requests. High-severity findings fail the required check. The job publishes a
+summary and uploads a review artifact.
 
 ## What this process does not claim
 

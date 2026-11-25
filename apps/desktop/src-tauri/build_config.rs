@@ -1,4 +1,4 @@
-//! Public configuration shared by the desktop and headless runtime builds.
+//! Public runtime build configuration.
 
 use std::{
     collections::HashMap,
@@ -6,30 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const NUMERIC_LICENSE_CONFIG_ENVS: &[&str] = &[
-    "SITECMD_LICENSE_STORE_ID",
-    "SITECMD_LICENSE_CORE_MONTHLY_VARIANT_ID",
-    "SITECMD_LICENSE_CORE_ANNUAL_VARIANT_ID",
-    "SITECMD_LICENSE_PRO_MONTHLY_VARIANT_ID",
-    "SITECMD_LICENSE_PRO_ANNUAL_VARIANT_ID",
-];
-
-const CHECKOUT_URL_ENVS: &[&str] = &[
-    "SITECMD_LICENSE_CORE_CHECKOUT_URL",
-    "SITECMD_LICENSE_PRO_CHECKOUT_URL",
-];
-
-// Bake optional public connected-service configuration into release binaries.
-const OPTIONAL_BAKED_ENVS: &[&str] = &[
-    "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET",
-    "GITHUB_CLIENT_ID",
-    "SITECMD_CONNECTED_ENDPOINT",
-    "VITE_SITECMD_SENTRY_DSN",
-];
-
-const REQUIRE_LICENSE_CONFIG_ENV: &str = "SITECMD_REQUIRE_LICENSE_CONFIG";
-const CHECKOUT_URL_PREFIX: &str = "https://shop.sitecmd.com/checkout/buy/";
+const BAKED_ENVS: &[&str] = &["SITECMD_CONNECTED_ENDPOINT"];
 
 fn repo_env_file(source_root: &Path) -> Option<PathBuf> {
     let mut path = source_root.to_path_buf();
@@ -37,7 +14,8 @@ fn repo_env_file(source_root: &Path) -> Option<PathBuf> {
         path.pop();
     }
     path.push(".env");
-    Some(path)
+    // Cargo treats a missing watched file as dirty on every build.
+    path.is_file().then_some(path)
 }
 
 fn parse_dotenv_line(line: &str) -> Option<(String, String)> {
@@ -88,11 +66,7 @@ fn config_value(key: &str, dotenv: &HashMap<String, String>) -> Option<String> {
 }
 
 fn expose_dotenv_fallbacks(dotenv: &HashMap<String, String>) {
-    for key in NUMERIC_LICENSE_CONFIG_ENVS
-        .iter()
-        .chain(CHECKOUT_URL_ENVS.iter())
-        .chain(OPTIONAL_BAKED_ENVS.iter())
-    {
+    for key in BAKED_ENVS {
         if std::env::var(key).is_err() {
             if let Some(value) = config_value(key, dotenv) {
                 println!("cargo:rustc-env={key}={value}");
@@ -111,49 +85,36 @@ pub fn configure_runtime(source_root: &Path) {
         println!("cargo:rerun-if-changed={}", path.display());
     }
     let dotenv = env_file
-        .as_ref()
-        .filter(|path| path.exists())
-        .map(|path| load_dotenv_values(path))
+        .as_deref()
+        .map(load_dotenv_values)
         .unwrap_or_default();
 
-    for key in NUMERIC_LICENSE_CONFIG_ENVS
-        .iter()
-        .chain(CHECKOUT_URL_ENVS.iter())
-        .chain(OPTIONAL_BAKED_ENVS.iter())
-    {
+    for key in BAKED_ENVS {
         println!("cargo:rerun-if-env-changed={key}");
     }
-    println!("cargo:rerun-if-env-changed={REQUIRE_LICENSE_CONFIG_ENV}");
     expose_dotenv_fallbacks(&dotenv);
+}
 
-    if config_value(REQUIRE_LICENSE_CONFIG_ENV, &dotenv).as_deref() == Some("1") {
-        let mut missing_or_invalid: Vec<_> = NUMERIC_LICENSE_CONFIG_ENVS
-            .iter()
-            .filter(|key| {
-                config_value(key, &dotenv)
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .is_none_or(|value| value == 0)
-            })
-            .copied()
-            .collect();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        missing_or_invalid.extend(
-            CHECKOUT_URL_ENVS
-                .iter()
-                .filter(|key| {
-                    config_value(key, &dotenv).is_none_or(|value| {
-                        let value = value.trim();
-                        value.is_empty() || !value.starts_with(CHECKOUT_URL_PREFIX)
-                    })
-                })
-                .copied(),
-        );
+    #[test]
+    fn an_optional_dotenv_is_only_watched_when_it_exists() {
+        // Bug: Watching a missing dotenv makes clean checkouts rebuild on every command.
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("apps/desktop/src-tauri");
+        fs::create_dir_all(&source).unwrap();
+        let dotenv = root.path().join(".env");
 
-        if !missing_or_invalid.is_empty() {
-            panic!(
-                "release builds require real LemonSqueezy config; missing/invalid env vars: {}",
-                missing_or_invalid.join(", ")
-            );
-        }
+        assert_eq!(repo_env_file(&source), None);
+        fs::write(
+            &dotenv,
+            "SITECMD_CONNECTED_ENDPOINT=https://connect.sitecmd.com",
+        )
+        .unwrap();
+        assert_eq!(repo_env_file(&source), Some(dotenv.clone()));
+        fs::remove_file(&dotenv).unwrap();
+        assert_eq!(repo_env_file(&source), None);
     }
 }

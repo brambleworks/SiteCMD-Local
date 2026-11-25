@@ -1,10 +1,10 @@
+use super::tests::run_audit;
 use super::*;
-use std::path::Path;
 use tempfile::TempDir;
 
 fn local_database_project() -> TempDir {
-    let project = tempfile::tempdir_in(std::env::current_dir().expect("working directory"))
-        .expect("temporary project");
+    let project =
+        crate::test_home::tempdir_in_worktree(&std::env::current_dir().expect("working directory"));
     let prisma = project.path().join("prisma");
     let migrations = prisma.join("migrations/20260101000000_init");
     std::fs::create_dir_all(&migrations).expect("migration directory");
@@ -45,33 +45,8 @@ fn audit_roots(project: &TempDir) -> Vec<PathBuf> {
 }
 
 #[test]
-fn local_database_findings_are_relative_to_each_audit_root() {
-    let project = local_database_project();
-    for root in audit_roots(&project) {
-        let report = audit_project_with_options(
-            &root,
-            CodeScanOptions {
-                inspect_local_databases: true,
-            },
-        )
-        .expect("local database analysis");
-        let findings = report
-            .issues
-            .iter()
-            .filter(|issue| issue.id.starts_with("local-"))
-            .collect::<Vec<_>>();
-        assert!(findings.len() >= 2, "migration and schema drift findings");
-        for issue in findings {
-            assert!(!Path::new(&issue.relative_path).is_absolute());
-            assert_eq!(issue.relative_path, "prisma/dev.db");
-            assert!(issue.line.is_none());
-            assert!(issue.source_excerpt.is_none());
-        }
-    }
-}
-
-#[test]
 fn local_database_reports_never_contain_the_absolute_audit_root() {
+    // Report headers or findings can expose the selected database audit root.
     let project = local_database_project();
     let canonical = project.path().canonicalize().expect("canonical project");
     let mut leaked_formats = Vec::new();
@@ -84,7 +59,7 @@ fn local_database_reports_never_contain_the_absolute_audit_root() {
             CodeScanReportFormat::Github,
             CodeScanReportFormat::Sarif,
         ] {
-            let outcome = run(&AuditArgs {
+            let outcome = run_audit(&AuditArgs {
                 project_path: root.clone(),
                 format,
                 fail_on: None,
@@ -122,7 +97,7 @@ fn absolute_audit_targets_use_the_audit_root_in_report_titles() {
         CodeScanReportFormat::Markdown,
         CodeScanReportFormat::Review,
     ] {
-        let outcome = run(&AuditArgs {
+        let outcome = run_audit(&AuditArgs {
             project_path: project.path().to_path_buf(),
             format,
             fail_on: None,
@@ -139,5 +114,31 @@ fn absolute_audit_targets_use_the_audit_root_in_report_titles() {
         } else {
             assert!(outcome.rendered.contains("- Project: `.`"));
         }
+    }
+}
+
+#[test]
+fn standin_database_offer_findings_are_relative_to_each_audit_root() {
+    // Findings for a database outside the listing can inherit the selected root's absolute path.
+    let project = local_database_project();
+    std::fs::write(project.path().join(".gitignore"), "prisma/\n").unwrap();
+    for root in audit_roots(&project) {
+        let report = crate::core::audit::audit_project_with_options(
+            &root,
+            CodeScanOptions {
+                inspect_local_databases: true,
+            },
+        )
+        .unwrap();
+        let findings: Vec<_> = report
+            .issues
+            .iter()
+            .filter(|issue| issue.id.ends_with(":database"))
+            .collect();
+        assert_eq!(findings.len(), 1, "database offer for {}", root.display());
+        let issue = findings[0];
+        assert_eq!(issue.relative_path, "prisma/dev.db");
+        assert_eq!(issue.id, "standin.rule:prisma/dev.db:database");
+        assert!(issue.line.is_none());
     }
 }

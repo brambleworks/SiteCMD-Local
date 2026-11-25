@@ -1,16 +1,26 @@
+import { posix as path } from "node:path";
+import { CI_WORKFLOW, QUEUE_OR_DISPATCH } from "./ci-workflow-contract.mjs";
+import {
+  children,
+  readJobs,
+  runCommand,
+  scalar,
+  sequence,
+  workflowFields,
+  workflowJobSteps,
+} from "./guardrail-workflow-yaml.mjs";
 import { cliDocumentationFailures } from "./cli-documentation.mjs";
+import { isPrivateRustPath } from "./guardrail-protocol-contents-rules.mjs";
+import { tomlFields } from "./toml-fields.mjs";
 
 const CLI = "apps/desktop/src-tauri/crates/cli/src/main.rs";
 const CLI_MANIFEST = "apps/desktop/src-tauri/crates/cli/Cargo.toml";
+const RUNTIME_MANIFEST = "apps/desktop/src-tauri/crates/runtime/Cargo.toml";
 const APP_MANIFEST = "apps/desktop/src-tauri/Cargo.toml";
-const SCAN_TYPES = "apps/desktop/src-tauri/src/core/scanner/types.rs";
+export const SCAN_TYPES = new Set(["health", "security", "accessibility", "polish"]);
 const ACTION = ".github/actions/sitecmd-gate";
 const SETUP_ACTION = ".github/actions/setup-sitecmd";
 const DEV_WRAPPER = "tools/scripts/sitecmd.mjs";
-const AUDIT_WORKFLOW = ".github/workflows/app-guardrails.yml";
-const POSTGRES_WORKFLOW = ".github/workflows/code-scan-postgres-integration.yml";
-const WORKFLOW_GENERATOR = "apps/desktop/src/components/settings/cicd-workflow.ts";
-const TAURI_CONFIG = "apps/desktop/src-tauri/tauri.conf.json";
 const PUBLIC_INSTALLER = "install.sh";
 const PACKAGE = "package.json";
 const README = "README.md";
@@ -58,11 +68,35 @@ function dispatchedSubcommands(cli) {
   return names;
 }
 
-/** Every value `--type` accepts, read from the enum that parses it. */
-function scanTypeValues(types) {
-  const asStr = block(types, "pub fn as_str(self)");
-  if (asStr === null) return null;
-  return new Set([...asStr.matchAll(/=>\s*"([a-z]+)"/g)].map((match) => match[1]));
+export function cliDependencyFailures(
+  read,
+  exists,
+  includeManifest = (file) => !isPrivateRustPath(file),
+  additionalManifests = [],
+) {
+  const failures = [];
+  const manifests = new Set([APP_MANIFEST, CLI_MANIFEST, ...additionalManifests]);
+  for (const file of manifests) {
+    if (!exists(file)) {
+      failures.push(`CLI dependency manifest is missing: ${file}.`);
+      continue;
+    }
+    const dependencies = new Set();
+    for (const { path: keys, value } of tomlFields(read(file))) {
+      const i = keys.findIndex((part) => /^(?:(?:dev|build)-)?dependencies$/.test(part));
+      if (i < 0 || keys[i + 1] === undefined) continue;
+      dependencies.add(keys[i + 1]);
+      if (keys[i + 2] === "package") dependencies.add(value);
+      if (keys[i + 2] === "path" && typeof value === "string") {
+        const manifest = path.join(path.dirname(file), value, "Cargo.toml");
+        if (includeManifest(manifest)) manifests.add(manifest);
+      }
+    }
+    for (const dependency of ["headless_chrome", "hickory-resolver"]) {
+      if (dependencies.has(dependency)) failures.push(`${file} must not depend on ${dependency}.`);
+    }
+  }
+  return failures;
 }
 
 /**
@@ -78,13 +112,10 @@ export function cliSurfaceFailures(read, exists, listFiles) {
   const requiredFiles = [
     CLI,
     CLI_MANIFEST,
+    RUNTIME_MANIFEST,
     APP_MANIFEST,
-    SCAN_TYPES,
     DEV_WRAPPER,
-    AUDIT_WORKFLOW,
-    POSTGRES_WORKFLOW,
-    WORKFLOW_GENERATOR,
-    TAURI_CONFIG,
+    CI_WORKFLOW,
     PUBLIC_INSTALLER,
     PACKAGE,
     README,
@@ -98,17 +129,14 @@ export function cliSurfaceFailures(read, exists, listFiles) {
     ];
   }
 
+  failures.push(...cliDependencyFailures(read, exists));
+
   const subcommands = dispatchedSubcommands(read(CLI));
   check(
     subcommands !== null && subcommands.size >= 5,
     `${CLI} main dispatcher could not be read, so no message naming a subcommand can be checked against it. Update guardrail-cli-surface-rules.mjs.`,
   );
-  const types = scanTypeValues(read(SCAN_TYPES));
-  check(
-    types !== null && types.size >= 3,
-    `${SCAN_TYPES} ScanType::as_str could not be read, so no message naming a scan type can be checked against it. Update guardrail-cli-surface-rules.mjs.`,
-  );
-  if (subcommands === null || types === null) return failures;
+  if (subcommands === null) return failures;
 
   const commands = new Set(
     [...subcommands].filter((name) => name !== "help" && !name.startsWith("-")),
@@ -118,15 +146,13 @@ export function cliSurfaceFailures(read, exists, listFiles) {
   const files = [
     ...listFiles("apps/desktop/src-tauri/src/cli", (file) => file.endsWith(".rs")),
     ...listFiles("apps/desktop/src-tauri/crates/cli/src", (file) => file.endsWith(".rs")),
-    ...listFiles("apps/desktop/src-tauri/examples", (file) => file.endsWith(".rs")),
     ...listFiles(ACTION, (file) => file.endsWith(".yml") || file.endsWith(".md")),
     ...listFiles(
       SETUP_ACTION,
       (file) => file.endsWith(".yml") || file.endsWith(".md") || file.endsWith(".sh"),
     ),
     DEV_WRAPPER,
-    AUDIT_WORKFLOW,
-    WORKFLOW_GENERATOR,
+    CI_WORKFLOW,
   ];
   check(
     files.length > 2,
@@ -134,7 +160,13 @@ export function cliSurfaceFailures(read, exists, listFiles) {
   );
 
   for (const file of files) {
-    const source = read(file);
+    const source = read(file).replace(/\\\r?\n/g, " ");
+    for (const [, options] of source.matchAll(/\bsitecmd[ \t]+scan\b([^\r\n`]*)/g)) {
+      check(
+        !/(?:^|\s)--type(?:[\s"'`]|=|$)/.test(options),
+        `${file} names \`sitecmd scan --type\`, which the scan argument parser rejects. Use \`--categories\` instead.`,
+      );
+    }
     for (const [, invocation] of source.matchAll(/`sitecmd ([^`\n]+)`/g)) {
       const tokens = invocation.trim().split(/\s+/);
       const [name] = tokens;
@@ -145,13 +177,6 @@ export function cliSurfaceFailures(read, exists, listFiles) {
           `${file} tells a reader to run \`sitecmd ${name}\`, which main does not dispatch. A message that names a command the CLI does not have spends the reader's next attempt on a failure.`,
         );
       }
-      const flag = tokens.indexOf("--type");
-      if (flag === -1 || flag + 1 >= tokens.length) continue;
-      const value = tokens[flag + 1];
-      check(
-        types.has(value),
-        `${file} names \`--type ${value}\`, which the scan argument parser rejects. The accepted values come from ScanType and are: ${[...types].join(", ")}.`,
-      );
     }
   }
 
@@ -175,52 +200,63 @@ export function cliSurfaceFailures(read, exists, listFiles) {
     `${CLI_MANIFEST} must remain a Tauri-free workspace package that depends on the shared sitecmd-runtime.`,
   );
 
-  const auditWorkflow = read(AUDIT_WORKFLOW);
-  check(
-    auditWorkflow.includes("crates/cli/Cargo.toml") &&
-      auditWorkflow.includes("target/debug/sitecmd_cli audit .") &&
-      !auditWorkflow.includes("audit_guardrails") &&
-      !auditWorkflow.includes("SITECMD_LICENSE_KEY"),
-    `${AUDIT_WORKFLOW} must exercise the shipped free Code Scan CLI, never a deleted or license-gated audit binary.`,
-  );
-  check(
-    auditWorkflow.includes("\n  push:") &&
-      auditWorkflow.includes("\n  pull_request:") &&
-      auditWorkflow.includes("\n  merge_group:") &&
-      auditWorkflow.includes("--fail-on high") &&
-      !auditWorkflow.includes("--fail-on critical"),
-    `${AUDIT_WORKFLOW} must dogfood the shipped Code Scan CLI automatically on proposed and merged changes at the High severity threshold.`,
-  );
+  if (exists(".github/ci-job-visibility.json")) {
+    const ciJobs = readJobs(workflowFields(read(CI_WORKFLOW)));
+    const ciSteps = workflowJobSteps(ciJobs);
+    const audit = ciJobs.get("code-scan-audit") ?? new Map();
+    const auditSteps = ciSteps.get("code-scan-audit") ?? [];
+    const auditCommand = auditSteps.find((step) => runCommand(step)?.includes('"$cli" audit .'));
+    const auditRun = runCommand(auditCommand ?? new Map()) ?? "";
+    const releaseSteps = ciSteps.get("cli-release-smoke") ?? [];
+    // The inventory pins the engine build command in this job.
+    const localEngineBuild = releaseSteps.findIndex(
+      (step) => scalar(step.get("name")) === "Build the local engine" && !step.has("if"),
+    );
+    const releaseCliBuild = releaseSteps.findIndex(
+      (step) =>
+        runCommand(step) === "cargo build --locked --release -p sitecmd-cli" && !step.has("if"),
+    );
+    const auditConfig = JSON.stringify([[...audit], ...auditSteps.map((step) => [...step])]);
+    check(
+      auditRun.includes(
+        'cli="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target/release/sitecmd_cli"',
+      ) && !/audit_guardrails|SITECMD_LICENSE_KEY/.test(auditConfig),
+      "ci.yml must exercise the shipped free Code Scan CLI, never a deleted or license-gated audit binary.",
+    );
+    check(
+      scalar(audit.get("if")) === QUEUE_OR_DISPATCH &&
+        sequence(audit.get("needs")).includes("cli-release-smoke") &&
+        localEngineBuild >= 0 &&
+        localEngineBuild < releaseCliBuild &&
+        !auditCommand?.has("if") &&
+        auditRun.includes("--fail-on high") &&
+        !auditRun.includes("--fail-on critical"),
+      "ci.yml must dogfood the shipped Code Scan CLI with the current engine at the High severity threshold in the merge queue.",
+    );
 
-  const postgresWorkflow = read(POSTGRES_WORKFLOW);
-  check(
-    postgresWorkflow.includes("\n  push:") &&
-      postgresWorkflow.includes("\n  pull_request:") &&
-      postgresWorkflow.includes("\n  schedule:") &&
-      postgresWorkflow.includes("SITECMD_POSTGRES_TEST_URL") &&
-      postgresWorkflow.includes("postgres_live -- --ignored"),
-    `${POSTGRES_WORKFLOW} must automatically exercise supported localhost Postgres inspection on relevant changes and a weekly schedule.`,
-  );
+    const postgres = ciJobs.get("postgres-engine-tests") ?? new Map();
+    check(
+      scalar(postgres.get("if")) === QUEUE_OR_DISPATCH &&
+        children(postgres.get("env")).has("SITECMD_POSTGRES_TEST_URL") &&
+        ciSteps
+          .get("postgres-engine-tests")
+          ?.some(
+            (step) =>
+              !step.has("if") &&
+              runCommand(step)?.includes("-p sitecmd-runtime postgres_live -- --ignored"),
+          ),
+      "ci.yml must automatically exercise supported localhost Postgres inspection in the merge queue.",
+    );
+  }
 
   const setupAction = read(`${SETUP_ACTION}/action.yml`);
   const setupInstaller = read(`${SETUP_ACTION}/install.sh`);
   const gateAction = read(`${ACTION}/action.yml`);
-  const generatedWorkflow = read(WORKFLOW_GENERATOR);
   const publicInstaller = read(PUBLIC_INSTALLER);
   const readme = read(README);
   const installerCheck = JSON.parse(read(PACKAGE)).scripts?.["installer:check"];
   const committedPublicKey = read(`${SETUP_ACTION}/updater-public-key.pub`).trim();
   const publicKeyLine = committedPublicKey.split(/\r?\n/).find((line) => line.startsWith("RW"));
-  const tauriPublicKey = Buffer.from(
-    JSON.parse(read(TAURI_CONFIG)).plugins.updater.pubkey,
-    "base64",
-  )
-    .toString("utf8")
-    .trim();
-  check(
-    committedPublicKey === tauriPublicKey,
-    `${SETUP_ACTION}/updater-public-key.pub must exactly match the updater trust root in ${TAURI_CONFIG}.`,
-  );
   check(
     setupInstaller.includes("$archive.sig") &&
       setupInstaller.includes("minisign -Vm") &&
@@ -256,9 +292,6 @@ export function cliSurfaceFailures(read, exists, listFiles) {
   check(
     gateAction.includes('"$GITHUB_ACTION_PATH/../setup-sitecmd/install.sh"') &&
       !gateAction.includes("https://sitecmd.com/install.sh") &&
-      generatedWorkflow.includes(".github/actions/setup-sitecmd@${setupActionRef(") &&
-      generatedWorkflow.includes("permissions:\n  contents: read") &&
-      !generatedWorkflow.includes("https://sitecmd.com/install.sh") &&
       !read(`${ACTION}/README.md`).includes("@main"),
     "CI workflows and the connected gate must use the signed setup action through an immutable release ref, never a mutable branch or piped remote installer.",
   );

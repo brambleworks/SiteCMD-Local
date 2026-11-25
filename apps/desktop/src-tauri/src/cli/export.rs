@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::core::scanner::ScanResult;
+use crate::core::scan_types::ScanResult;
 
 mod artifacts;
 mod fix_prompts;
@@ -11,16 +11,18 @@ mod issues_markdown;
 mod labels;
 mod rules_markdown;
 
-use artifacts::{build_last_scan_json, write_file};
+use artifacts::build_last_scan_json;
+pub(super) use artifacts::write_file;
 use fix_prompts::enrich_with_fix_prompts;
 use issues_json::build_issues_json;
 use issues_markdown::build_issues_md;
 pub use labels::verify_hint;
 use rules_markdown::build_rules_md;
+pub(super) use rules_markdown::render_rules_md;
 
 /// Write the complete scan artifact set under `.sitecmd/`.
 pub fn export_scan(sitecmd_dir: &Path, result: &ScanResult) -> Result<(), String> {
-    let sanitized = enrich_with_fix_prompts(result.clone());
+    let sanitized = enrich_with_fix_prompts(result.clone())?;
     std::fs::create_dir_all(sitecmd_dir)
         .map_err(|e| format!("failed to create {}: {}", sitecmd_dir.display(), e))?;
 
@@ -36,23 +38,78 @@ pub fn export_scan(sitecmd_dir: &Path, result: &ScanResult) -> Result<(), String
     Ok(())
 }
 
+pub(super) fn export_native_scan(sitecmd_dir: &Path, scan: &ScanResult) {
+    if super::hosted::report::read_artifact(sitecmd_dir).is_ok() {
+        return;
+    }
+    if let Err(e) = export_scan(sitecmd_dir, scan) {
+        eprintln!("Warning: failed to export scan results: {}", e);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checks::{CheckResult, CheckStatus, ScanCategory, Severity};
-    use crate::core::scanner::ScanResult;
-    use crate::scoring::calculator::CategoryScore;
+    use crate::core::scan_types::ScanResult;
+    use crate::core::scan_types::{Category, CheckResult, CheckStatus, Severity};
+    use sitecmd_protocol::score::CategoryScore;
+
+    #[test]
+    fn scan_result_preserves_stored_and_exported_json() {
+        // Bug: Renaming scan fields breaks saved scans and their issues.json exports.
+        let stored = serde_json::json!({
+            "url": "https://example.com/",
+            "mode": "live",
+            "scanType": "security",
+            "overallScore": 98,
+            "categories": [{
+                "category": "security",
+                "score": 98,
+                "issuesTotal": 0,
+                "issuesCritical": 0,
+                "issuesHigh": 0,
+                "issuesMedium": 0,
+                "issuesLow": 0,
+                "issuesPassed": 1
+            }],
+            "issues": [],
+            "detectedStack": null,
+            "durationMs": 17,
+            "timestamp": "2026-11-21T12:00:00Z"
+        });
+        let result: ScanResult = serde_json::from_value(stored.clone()).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&build_last_scan_json(&result).unwrap())
+                .unwrap(),
+            stored,
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&build_issues_json(&result).unwrap())
+                .unwrap(),
+            serde_json::json!({
+                "url": "https://example.com/",
+                "score": 98,
+                "scan_type": "security",
+                "detected_stack": {},
+                "scanned_at": "2026-11-21T12:00:00Z",
+                "recoverable_points": 0,
+                "issues": [],
+                "categories": [{"key": "security", "name": "Security", "score": 98, "issues": 0}],
+            }),
+        );
+    }
 
     fn make_check_result(
         check_id: &str,
         title: &str,
-        category: ScanCategory,
+        category: Category,
         severity: Severity,
         status: CheckStatus,
     ) -> CheckResult {
         CheckResult {
+            covered: false,
             check_id: check_id.to_string(),
-            category,
+            category: Some(category),
             title: title.to_string(),
             description: format!("Description for {}", check_id),
             status,
@@ -60,13 +117,14 @@ mod tests {
             fix_prompt: None,
             manual_fix: None,
             raw_data: None,
-            confidence: crate::checks::IssueConfidence::High,
+            confidence: crate::core::scan_types::IssueConfidence::High,
             confidence_reason: None,
+            skip_reason: None,
             why_it_matters: None,
         }
     }
 
-    fn make_category_score(category: ScanCategory, score: u32) -> CategoryScore {
+    fn make_category_score(category: Category, score: u32) -> CategoryScore {
         CategoryScore {
             category,
             score,
@@ -81,16 +139,15 @@ mod tests {
 
     fn make_scan_result(issues: Vec<CheckResult>) -> ScanResult {
         ScanResult {
-            page_signals: None,
-            site_facts: None,
             url: "https://example.com".to_string(),
             mode: "live".to_string(),
-            scan_type: crate::core::scanner::ScanType::Health,
+            scan_type: crate::core::scan_types::ScanType::Health,
             overall_score: 67,
             categories: vec![
-                make_category_score(ScanCategory::Security, 45),
-                make_category_score(ScanCategory::Performance, 80),
+                make_category_score(Category::Security, 45),
+                make_category_score(Category::Performance, 80),
             ],
+            fix_points: vec![0; issues.len()],
             issues,
             detected_stack: Some(serde_json::json!({
                 "summary": "Next.js / Vercel",
@@ -99,6 +156,40 @@ mod tests {
             duration_ms: 1200,
             timestamp: "2024-01-15T10:30:00Z".to_string(),
         }
+    }
+
+    #[test]
+    fn issues_json_omits_unused_points_basis() {
+        // issues.json emits an unused explanation field outside its supported shape.
+        let result = make_scan_result(vec![]);
+        let json: serde_json::Value =
+            serde_json::from_str(&build_issues_json(&result).unwrap()).unwrap();
+        assert!(json.get("points_basis").is_none());
+    }
+
+    #[test]
+    fn issues_json_names_categories_by_key_and_label() {
+        // issues.json names a category by an old word.
+        let spf = make_check_result(
+            "security.dns.spf",
+            "SPF",
+            Category::Email,
+            Severity::High,
+            CheckStatus::Fail,
+        );
+        let mut result = make_scan_result(vec![spf]);
+        result.categories = vec![
+            make_category_score(Category::Email, 88),
+            make_category_score(Category::DomainHttps, 90),
+        ];
+        let json: serde_json::Value =
+            serde_json::from_str(&build_issues_json(&result).expect("issues JSON"))
+                .expect("valid JSON");
+        assert_eq!(json["issues"][0]["category"], "email");
+        assert_eq!(json["categories"][0]["key"], "domain_https");
+        assert_eq!(json["categories"][0]["name"], "Domain and HTTPS");
+        assert_eq!(json["categories"][1]["key"], "email");
+        assert_eq!(json["categories"][1]["name"], "Email");
     }
 
     #[test]
@@ -120,7 +211,7 @@ mod tests {
         let result = make_scan_result(vec![make_check_result(
             "security.headers.csp",
             "CSP Header",
-            ScanCategory::Security,
+            Category::Security,
             Severity::Critical,
             CheckStatus::Pass,
         )]);
@@ -135,7 +226,7 @@ mod tests {
         let issues = vec![make_check_result(
             "security.headers.csp",
             "CSP Header Missing",
-            ScanCategory::Security,
+            Category::Security,
             Severity::Critical,
             CheckStatus::Fail,
         )];
@@ -155,7 +246,7 @@ mod tests {
         let issues = vec![make_check_result(
             "security.headers.csp",
             "CSP Header Missing",
-            ScanCategory::Security,
+            Category::Security,
             Severity::Critical,
             CheckStatus::Fail,
         )];
@@ -175,42 +266,42 @@ mod tests {
             make_check_result(
                 "security.headers.csp",
                 "CSP Header Missing",
-                ScanCategory::Security,
+                Category::Security,
                 Severity::High,
                 CheckStatus::Fail,
             ),
             make_check_result(
                 "security.headers.hsts",
                 "HSTS Header Missing",
-                ScanCategory::Security,
+                Category::DomainHttps,
                 Severity::High,
                 CheckStatus::Fail,
             ),
             make_check_result(
                 "security.headers.x_frame_options",
                 "Clickjacking protection missing",
-                ScanCategory::Security,
+                Category::Security,
                 Severity::Medium,
                 CheckStatus::Fail,
             ),
             make_check_result(
-                "seo.meta.title",
+                "seo.title",
                 "Page title needs review",
-                ScanCategory::Seo,
+                Category::Seo,
                 Severity::Low,
                 CheckStatus::Warn,
             ),
             make_check_result(
-                "seo.meta.description",
+                "seo.meta_description",
                 "Meta description needs review",
-                ScanCategory::Seo,
+                Category::Seo,
                 Severity::Low,
                 CheckStatus::Warn,
             ),
             make_check_result(
                 "accessibility.image_alt",
                 "Image alternative text needs review",
-                ScanCategory::Accessibility,
+                Category::Accessibility,
                 Severity::Medium,
                 CheckStatus::Fail,
             ),
@@ -259,9 +350,9 @@ mod tests {
     #[test]
     fn generic_rules_do_not_convert_a_missing_title_into_an_universal_requirement() {
         let issue = make_check_result(
-            "custom.unmapped",
+            "config.print_stylesheet",
             "Missing optional integration marker",
-            ScanCategory::Config,
+            Category::Polish,
             Severity::Low,
             CheckStatus::Warn,
         );
@@ -285,7 +376,7 @@ mod tests {
 
     #[test]
     fn verify_hint_fallback() {
-        let hint = verify_hint("seo.meta.description", "https://example.com");
+        let hint = verify_hint("seo.meta_description", "https://example.com");
         assert_eq!(hint, "sitecmd scan --diff");
     }
 
@@ -294,7 +385,7 @@ mod tests {
         let mut issue = make_check_result(
             "security.headers.csp",
             "CSP Header Missing",
-            ScanCategory::Security,
+            Category::Security,
             Severity::Critical,
             CheckStatus::Fail,
         );
@@ -310,44 +401,11 @@ mod tests {
     }
 
     #[test]
-    fn export_scan_populates_fix_prompt() {
-        // Simulate a check that did not set fix_prompt itself (most checks don't).
-        let issue = make_check_result(
-            "security.headers.csp",
-            "CSP Header Missing",
-            ScanCategory::Security,
-            Severity::Critical,
-            CheckStatus::Fail,
-        );
-
-        let dir = tempfile::tempdir().expect("temp dir");
-        export_scan(dir.path(), &make_scan_result(vec![issue]))
-            .expect("core export should succeed");
-
-        let stored = std::fs::read_to_string(dir.path().join("last-scan.json"))
-            .expect("last-scan.json should exist");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&stored).expect("last-scan.json should parse");
-
-        let fp = &parsed["issues"][0]["fixPrompt"];
-        assert!(
-            fp.is_string(),
-            "fix_prompt should be populated for Core tier"
-        );
-        let fp_str = fp.as_str().unwrap();
-        assert!(!fp_str.is_empty(), "fix_prompt should be non-empty");
-        assert!(
-            fp_str.contains("CSP Header Missing"),
-            "fix_prompt should mention the issue title"
-        );
-    }
-
-    #[test]
     fn export_scan_writes_complete_last_scan_json() {
         let mut issue = make_check_result(
             "security.headers.csp",
             "CSP Header Missing",
-            ScanCategory::Security,
+            Category::Security,
             Severity::Critical,
             CheckStatus::Fail,
         );
@@ -370,5 +428,38 @@ mod tests {
             "Set Content-Security-Policy in the server config."
         );
         assert!(!parsed["issues"][0]["rawData"].is_null());
+    }
+
+    #[test]
+    fn export_scan_writes_a_module_prompt_for_a_finding_without_one() {
+        // Export can drop module guidance when the original finding has no prompt.
+        let issue = make_check_result(
+            "standin.rule",
+            "Sample finding",
+            Category::Reliability,
+            Severity::Critical,
+            CheckStatus::Fail,
+        );
+
+        let result = make_scan_result(vec![issue]);
+        let expected =
+            crate::core::fixes::one_fix_text(sitecmd_protocol::engine_abi::FixTextTarget::Web {
+                issue: Box::new(result.issues[0].clone()),
+                url: result.url.clone(),
+                detected_stack: result.detected_stack.clone(),
+            })
+            .expect("module prompt");
+        assert!(!expected.is_empty());
+        let dir = tempfile::tempdir().expect("temp dir");
+        export_scan(dir.path(), &result).expect("core export should succeed");
+
+        let stored = std::fs::read_to_string(dir.path().join("last-scan.json"))
+            .expect("last-scan.json should exist");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&stored).expect("last-scan.json should parse");
+
+        let stored_issue = &parsed["issues"][0];
+        assert_eq!(stored_issue["fixPrompt"], expected);
+        assert_eq!(stored_issue["title"], result.issues[0].title);
     }
 }

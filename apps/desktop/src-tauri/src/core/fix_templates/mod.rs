@@ -1,19 +1,17 @@
-//! The template fix engine: host detection, per-check fixers that decline
-//! rather than guess, and formatting-preserving writers.
+//! Host configuration and filesystem support for template fixes.
 
 pub mod build_check;
-pub mod fixers;
 pub mod hosts;
 pub mod subprocess;
 pub mod writers;
 
-use std::path::{Component, Path, PathBuf};
+use std::io::{Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Finding {
-    pub check_id: String,
-    pub identity: String,
-}
+use cap_std::fs::File;
+use sitecmd_protocol::engine_abi::{Patch, AUDIT_MAX_FILE_BYTES};
+
+use super::safe_fs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostKind {
@@ -27,59 +25,9 @@ pub struct HostTarget {
     pub config_path: PathBuf,
 }
 
-/// A fixer's refusal: its prerequisites are not met on this checkout, with
-/// the reason a person can act on. Never a guess.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Unsupported {
-    pub reason: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Patch {
-    /// Relative to the checkout root.
-    pub path: PathBuf,
-    /// The file's content before the edit, or None when the file is created.
-    pub before: Option<String>,
-    pub after: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Applied {
-    pub written: Vec<PathBuf>,
-}
-
-pub trait Fixer: Sync {
-    fn check_id(&self) -> &'static str;
-    fn title(&self) -> &'static str;
-    /// The files this fixer may write on this target: the publish job refuses
-    /// a patch that reaches outside it.
-    fn write_set(&self, target: &HostTarget) -> Vec<PathBuf>;
-    fn prerequisites(
-        &self,
-        finding: &Finding,
-        target: &HostTarget,
-        root: &Path,
-    ) -> Result<(), Unsupported>;
-    fn plan(
-        &self,
-        finding: &Finding,
-        target: &HostTarget,
-        root: &Path,
-    ) -> Result<Option<Patch>, Unsupported>;
-}
-
-// Fixers register here as they land.
-static FIXERS: &[&dyn Fixer] = &[&fixers::x_content_type_options::XContentTypeOptions];
-
-pub fn all_fixers() -> &'static [&'static dyn Fixer] {
-    FIXERS
-}
-
-pub fn fixer_for(check_id: &str) -> Option<&'static dyn Fixer> {
-    FIXERS
-        .iter()
-        .copied()
-        .find(|fixer| fixer.check_id() == check_id)
+pub(crate) struct PreparedPatch {
+    patch: Patch,
+    file: File,
 }
 
 /// `security.headers.x_content_type_options` becomes `x-content-type-options`:
@@ -92,54 +40,116 @@ pub fn slug(check_id: &str) -> String {
         .replace('_', "-")
 }
 
-fn safe_relative(root: &Path, relative: &Path) -> Result<PathBuf, String> {
-    if relative.is_absolute()
-        || relative
-            .components()
-            .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
-    {
+pub(crate) fn prepare(root: &Path, patch: Patch) -> Result<PreparedPatch, String> {
+    let path = Path::new(patch.path.as_str());
+    let directory = safe_fs::open_project_dir(root).map_err(|error| {
+        format!(
+            "{} could not open {}: {error}",
+            path.display(),
+            root.display()
+        )
+    })?;
+    let mut file = open_patch_file(&directory, path)?;
+    let bytes = safe_fs::read_file_limited(&mut file, AUDIT_MAX_FILE_BYTES)
+        .map_err(|error| format!("{} could not be read: {error}", path.display()))?;
+    if bytes.len() as u64 > AUDIT_MAX_FILE_BYTES || Patch::hash_base(&bytes) != patch.base_sha256 {
         return Err(format!(
-            "{} reaches outside the checkout",
-            relative.display()
+            "{} changed since the patch was planned",
+            path.display()
         ));
     }
-    Ok(root.join(relative))
+    std::str::from_utf8(&bytes)
+        .map_err(|error| format!("{} is not UTF-8: {error}", path.display()))?;
+    Ok(PreparedPatch { patch, file })
 }
 
-pub fn apply(patches: &[Patch], root: &Path) -> Result<Applied, String> {
-    let mut applied = Applied::default();
-    for patch in patches {
-        let path = safe_relative(root, &patch.path)?;
-        let current = match std::fs::read_to_string(&path) {
-            Ok(content) => Some(content),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-            Err(error) => {
-                return Err(format!(
-                    "{} could not be read: {error}",
-                    patch.path.display()
-                ))
-            }
-        };
-        if current != patch.before {
-            return Err(format!(
-                "{} changed since the patch was planned",
-                patch.path.display()
-            ));
+/// The refusal for a write path that passes through a symbolic link.
+pub(crate) fn symlink_refusal(path: impl std::fmt::Display) -> String {
+    format!("{path} contains a symbolic link")
+}
+
+fn open_patch_file(directory: &cap_std::fs::Dir, path: &Path) -> Result<File, String> {
+    safe_fs::open_writable_project_file(directory, path).map_err(|error| {
+        if safe_fs::project_path_is_symlink(directory, path) {
+            symlink_refusal(path.display())
+        } else {
+            format!("{} could not be opened: {error}", path.display())
         }
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|error| format!("{}: {error}", parent.display()))?;
-        }
-        std::fs::write(&path, &patch.after)
-            .map_err(|error| format!("{} could not be written: {error}", patch.path.display()))?;
-        applied.written.push(patch.path.clone());
-    }
-    Ok(applied)
+    })
+}
+
+pub(crate) fn apply(prepared: PreparedPatch) -> Result<Patch, String> {
+    let PreparedPatch { patch, mut file } = prepared;
+    let content = patch.content.as_bytes();
+    file.seek(SeekFrom::Start(0))
+        .and_then(|_| file.write_all(content))
+        .and_then(|_| file.set_len(content.len() as u64))
+        .map_err(|error| format!("{} could not be written: {error}", patch.path.as_str()))?;
+    Ok(patch)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sitecmd_protocol::engine_abi::RelPath;
+
+    fn patch(before: &str, after: &str) -> Patch {
+        Patch {
+            path: RelPath::parse("vercel.json").unwrap(),
+            base_sha256: Patch::hash_base(before.as_bytes()),
+            content: after.into(),
+        }
+    }
+
+    #[cfg(unix)]
+    fn link(target: &Path, path: &Path) {
+        std::os::unix::fs::symlink(target, path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_symlinked_targets_and_parent_directories() {
+        // Bug M2: regenerated template patches write through checkout symlinks.
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("vercel.json"), "{}\n").unwrap();
+        link(
+            &outside.path().join("vercel.json"),
+            &root.path().join("vercel.json"),
+        );
+        assert!(prepare(root.path(), patch("{}\n", "{\"headers\":[]}")).is_err());
+        assert_eq!(
+            std::fs::read_to_string(outside.path().join("vercel.json")).unwrap(),
+            "{}\n"
+        );
+        link(outside.path(), &root.path().join("config"));
+        let directory = safe_fs::open_project_dir(root.path()).unwrap();
+        assert!(open_patch_file(&directory, Path::new("config/new.json")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_swapped_in_before_writing_cannot_redirect_the_patch() {
+        // Bug: A target swapped for a symlink after validation redirects the write.
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let path = root.path().join("vercel.json");
+        let target = outside.path().join("vercel.json");
+        std::fs::write(&path, "{}").unwrap();
+        std::fs::write(&target, "{}").unwrap();
+        let prepared = prepare(root.path(), patch("{}", "{\"headers\":[]}")).unwrap();
+        let original = root.path().join("original.json");
+        std::fs::rename(&path, &original).unwrap();
+        link(&target, &path);
+
+        apply(prepared).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(original).unwrap(),
+            "{\"headers\":[]}"
+        );
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "{}");
+    }
 
     #[test]
     fn slug_takes_the_last_segment_with_dashes() {
@@ -154,12 +164,9 @@ mod tests {
     fn apply_refuses_a_patch_whose_before_no_longer_matches() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(temp.path().join("vercel.json"), "{}").unwrap();
-        let patch = Patch {
-            after: "{\"a\":1}".into(),
-            before: Some("{ }".into()),
-            path: "vercel.json".into(),
-        };
-        let error = apply(&[patch], temp.path()).unwrap_err();
+        let error = prepare(temp.path(), patch("{ }", "{\"a\":1}"))
+            .err()
+            .unwrap();
         assert!(error.contains("changed"), "{error}");
         assert_eq!(
             std::fs::read_to_string(temp.path().join("vercel.json")).unwrap(),
@@ -171,32 +178,29 @@ mod tests {
     fn apply_writes_matching_patches_and_reports_them() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(temp.path().join("vercel.json"), "{}").unwrap();
-        let patch = Patch {
-            after: "{\"a\":1}".into(),
-            before: Some("{}".into()),
-            path: "vercel.json".into(),
-        };
-        let applied = apply(&[patch], temp.path()).unwrap();
-        assert_eq!(
-            applied.written,
-            vec![std::path::PathBuf::from("vercel.json")]
-        );
+        let applied = apply(prepare(temp.path(), patch("{}", "{\"a\":1}")).unwrap()).unwrap();
+        assert_eq!(applied.path.as_str(), "vercel.json");
         assert_eq!(
             std::fs::read_to_string(temp.path().join("vercel.json")).unwrap(),
             "{\"a\":1}"
+        );
+        apply(prepare(temp.path(), patch("{\"a\":1}", "{}")).unwrap()).unwrap();
+        assert_eq!(
+            std::fs::read(temp.path().join("vercel.json")).unwrap(),
+            b"{}"
         );
     }
 
     #[test]
     fn apply_refuses_paths_that_escape_the_root() {
-        let temp = tempfile::tempdir().unwrap();
-        let patch = Patch {
-            after: "x".into(),
-            before: None,
-            path: "../escape.json".into(),
-        };
-        assert!(apply(&[patch], temp.path())
-            .unwrap_err()
-            .contains("outside"));
+        let parent = tempfile::tempdir().unwrap();
+        let checkout = parent.path().join("checkout");
+        std::fs::create_dir(&checkout).unwrap();
+        let outside = parent.path().join("escape.json");
+        std::fs::write(&outside, "{}").unwrap();
+        let directory = safe_fs::open_project_dir(&checkout).unwrap();
+        assert!(RelPath::parse("../escape.json").is_err());
+        assert!(open_patch_file(&directory, Path::new("../escape.json")).is_err());
+        assert_eq!(std::fs::read_to_string(outside).unwrap(), "{}");
     }
 }

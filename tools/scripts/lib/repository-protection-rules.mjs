@@ -3,6 +3,13 @@
 // branch, or event filter skips. Live half: the settings SECURITY.md and the
 // docs promise, including which refs each ruleset actually governs.
 
+const GITHUB_ACTIONS_INTEGRATION_ID = 15368;
+const ENGINE_REPOSITORY = "brambleworks/SiteCMD-Engine";
+
+function statusCheck(entry) {
+  return typeof entry === "string" ? { context: entry } : entry;
+}
+
 function pullRequestTriggerBody(source) {
   const trigger = /^ {2}pull_request:(.*)$/m.exec(source);
   if (!trigger) return null;
@@ -71,7 +78,16 @@ export function requiredCheckWorkflowFailures(contract, read, listFiles) {
     file,
     source: read(file),
   }));
-  for (const context of contract.branchRuleset.requiredStatusChecks) {
+  for (const entry of contract.branchRuleset.requiredStatusChecks) {
+    const { context, integration_id: integrationId } = statusCheck(entry);
+    if (
+      (integrationId !== undefined || contract.repository === ENGINE_REPOSITORY) &&
+      integrationId !== GITHUB_ACTIONS_INTEGRATION_ID
+    ) {
+      failures.push(
+        `required check "${context}" must pin integration_id ${GITHUB_ACTIONS_INTEGRATION_ID} for GitHub Actions; found ${integrationId ?? "none"}.`,
+      );
+    }
     const owners = workflows.filter(({ source }) =>
       jobNames(source).some((name) => jobNameMatches(name, context, source)),
     );
@@ -94,20 +110,67 @@ export function requiredCheckWorkflowFailures(contract, read, listFiles) {
   return failures;
 }
 
+export function selectRepositoryProtectionContract(config, checkout) {
+  const repository = Object.hasOwn(config.repositories, checkout)
+    ? checkout
+    : config.publicRepository;
+  return { ...config.repositories[repository], repository };
+}
+
+export function readLiveRepositoryProtection(contract, gh) {
+  const prefix = `repos/${contract.repository}`;
+  const repository = gh(prefix);
+  const rulesets = gh(`${prefix}/rulesets`).map(({ id }) => gh(`${prefix}/rulesets/${id}`));
+  return {
+    privateVulnerabilityReporting:
+      contract.privateVulnerabilityReporting &&
+      gh(`${prefix}/private-vulnerability-reporting`).enabled,
+    securityAndAnalysis: repository.security_and_analysis,
+    mergeMethods: ["merge", "squash", "rebase"].filter(
+      (method) => repository[`allow_${method}_merge`] === true,
+    ),
+    rulesets,
+  };
+}
+
+const settingValues = (values) => [...values].sort().join(", ");
+
+function checkRuleParameters(ruleset, type, expected, failures) {
+  const parameters = ruleset.rules?.find((rule) => rule.type === type)?.parameters;
+  for (const [key, wanted] of Object.entries(expected)) {
+    const actual = parameters?.[key];
+    const matches = Array.isArray(wanted)
+      ? Array.isArray(actual) && settingValues(actual) === settingValues(wanted)
+      : actual === wanted;
+    if (!matches) {
+      failures.push(
+        `ruleset "${ruleset.name}" ${type}.${key} is ${JSON.stringify(actual)}; expected ${JSON.stringify(wanted)}.`,
+      );
+    }
+  }
+}
+
 export function liveRepositoryProtectionFailures(contract, live) {
   const failures = [];
-  if (live.privateVulnerabilityReporting !== true) {
+  if (contract.privateVulnerabilityReporting && live.privateVulnerabilityReporting !== true) {
     failures.push(
       "Private vulnerability reporting is disabled; SECURITY.md and the issue chooser route reporters to it.",
     );
   }
-  for (const [setting, expected] of Object.entries(contract.securityAndAnalysis)) {
+  for (const [setting, expected] of Object.entries(contract.securityAndAnalysis ?? {})) {
     const actual = live.securityAndAnalysis?.[setting]?.status ?? "missing";
     if (actual !== expected) {
       failures.push(`security_and_analysis.${setting} is ${actual}; expected ${expected}.`);
     }
   }
-  for (const expected of [contract.branchRuleset, contract.tagRuleset]) {
+  if (contract.mergeMethods) {
+    const actual = settingValues(live.mergeMethods ?? []);
+    const expected = settingValues(contract.mergeMethods);
+    if (actual !== expected) {
+      failures.push(`Repository merge methods are [${actual}]; expected [${expected}].`);
+    }
+  }
+  for (const expected of [contract.branchRuleset, contract.tagRuleset].filter(Boolean)) {
     const ruleset = live.rulesets.find((candidate) => candidate.name === expected.name);
     if (!ruleset) {
       failures.push(`ruleset "${expected.name}" does not exist.`);
@@ -142,16 +205,36 @@ export function liveRepositoryProtectionFailures(contract, live) {
       if (!types.has(type))
         failures.push(`ruleset "${expected.name}" is missing the ${type} rule.`);
     }
+    if (expected.pullRequest)
+      checkRuleParameters(ruleset, "pull_request", expected.pullRequest, failures);
+    if (expected.mergeQueue)
+      checkRuleParameters(ruleset, "merge_queue", expected.mergeQueue, failures);
     if (expected.requiredStatusChecks) {
       const rule = (ruleset.rules ?? []).find(
         (candidate) => candidate.type === "required_status_checks",
       );
-      const contexts = new Set(
-        (rule?.parameters?.required_status_checks ?? []).map((check) => check.context),
+      const checks = rule?.parameters?.required_status_checks ?? [];
+      const contexts = new Set(checks.map(({ context }) => context));
+      const expectedChecks = new Map(
+        expected.requiredStatusChecks
+          .map(statusCheck)
+          .map(({ context, integration_id }) => [context, integration_id]),
       );
-      for (const context of expected.requiredStatusChecks) {
+      for (const context of expectedChecks.keys()) {
         if (!contexts.has(context)) {
           failures.push(`ruleset "${expected.name}" does not require "${context}".`);
+        }
+      }
+      for (const { context, integration_id: integrationId } of checks) {
+        if (!expectedChecks.has(context)) {
+          failures.push(`ruleset "${expected.name}" also requires "${context}".`);
+          continue;
+        }
+        const expectedIntegrationId = expectedChecks.get(context);
+        if (expectedIntegrationId !== undefined && integrationId !== expectedIntegrationId) {
+          failures.push(
+            `ruleset "${expected.name}" requires "${context}" from integration ${integrationId ?? "unrestricted"}; expected ${expectedIntegrationId}.`,
+          );
         }
       }
     }
@@ -208,28 +291,32 @@ export function ownedRepositoryReferences(owner, files) {
 
 export function repositoryNameFailures(contract, observed) {
   const failures = [];
-  const [owner] = contract.repository.split("/");
+  const repository = contract.publicRepository;
+  const [owner] = repository.split("/");
   const checkout = observed.checkoutRepository;
   // Only when the owner matches: a contributor's fork is a different owner and
   // has nothing to say about our contract, while a rename keeps the owner and
   // is the case worth failing on.
-  if (checkout && checkout !== contract.repository && checkout.startsWith(`${owner}/`)) {
+  // The private repository this public one is exported from is a checkout of
+  // the same tree under its source name, so it passes too.
+  const names = new Set(Object.keys(contract.repositories));
+  if (checkout && !names.has(checkout) && checkout.startsWith(`${owner}/`)) {
     failures.push(
-      `this checkout belongs to ${checkout} but .github/repository-protection.json names ${contract.repository}. ` +
+      `this checkout belongs to ${checkout} but .github/repository-protection.json names ${repository}. ` +
         "GitHub redirects the old path, so links keep working, but the release pipeline compares the name as a string: " +
         "the connect manifest registry's publisher allowlist, npm provenance, and `uses:` action refs all refuse a mismatch.",
     );
   }
-  if (observed.labelsRepository !== contract.repository) {
+  if (observed.labelsRepository !== repository) {
     failures.push(
-      `.github/repository-labels.json names ${observed.labelsRepository}; the protection contract names ${contract.repository}.`,
+      `.github/repository-labels.json names ${observed.labelsRepository}; the protection contract names ${repository}.`,
     );
   }
-  const allowed = new Set([contract.repository, ...(contract.referencedRepositories ?? [])]);
+  const allowed = new Set([repository, ...(contract.referencedRepositories ?? [])]);
   for (const { file, line, slug } of observed.references) {
     if (!allowed.has(slug)) {
       failures.push(
-        `${file}:${line} references ${slug}; this repository is ${contract.repository}. ` +
+        `${file}:${line} references ${slug}; this repository is ${repository}. ` +
           "Add a sibling to referencedRepositories in the contract if the reference is deliberate.",
       );
     }

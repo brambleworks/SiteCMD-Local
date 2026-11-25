@@ -1,7 +1,0 @@
-{
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "sitecmd-project-execution",
-  "description": "Elevated SiteCMD project command execution. The bridge window only receives the broker dispatch permission; run_project_command (the only command in this scope) is reachable as a regular Rust function call inside run_project_execution_command, never as a direct Tauri IPC call. This forces every elevated invocation through token_state.consume() and the native confirmation dialog before any process starts.",
-  "windows": ["project-execution"],
-  "permissions": ["core:event:default", "allow-run-project-execution-command"]
-}

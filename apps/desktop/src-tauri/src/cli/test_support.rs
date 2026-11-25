@@ -31,7 +31,7 @@ pub(crate) fn exported_site(
         site_id,
         ENVIRONMENT_URL,
         1,
-        [7; sitecmd_engine::sync::FINGERPRINT_KEY_LEN],
+        [7; sitecmd_protocol::sync::FINGERPRINT_KEY_LEN],
         PASSPHRASE,
     )
     .expect("export");
@@ -46,10 +46,7 @@ pub(crate) fn exported_site(
 /// A one-commit git checkout with a finding for the audit to report, clean so
 /// its basis can be exact. Answers the checkout guard, root and head commit.
 pub(crate) fn clean_checkout() -> (tempfile::TempDir, PathBuf, String) {
-    let home_root = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .expect("HOME must be set for tests");
-    let repo = tempfile::tempdir_in(&home_root).expect("repo tempdir");
+    let repo = crate::test_home::tempdir();
     let root = repo.path().to_path_buf();
     std::fs::write(
         root.join("package.json"),
@@ -79,8 +76,8 @@ pub(crate) fn clean_checkout() -> (tempfile::TempDir, PathBuf, String) {
     git(&["add", "-A"]);
     git(&["commit", "-q", "-m", "one commit"]);
 
-    let status = crate::core::git::get_git_status(&root.to_string_lossy(), 1);
-    assert!(status.is_git_repo && !status.has_uncommitted, "{status:?}");
-    let head = status.commits[0].hash.clone();
+    let (head, clean) =
+        crate::core::git::checkout_head_and_clean(&root.to_string_lossy()).expect("checkout");
+    assert!(clean, "fixture checkout is dirty");
     (repo, root, head)
 }

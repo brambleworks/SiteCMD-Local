@@ -1,7 +1,6 @@
 const ACTION = ".github/actions/sitecmd-gate/action.yml";
-const MINT_CARD = "apps/desktop/src/components/settings/ConnectedServiceManagement.tsx";
 
-// Claims every CI credential surface must include.
+// Missing capability disclosures give users an incomplete account of the CI token.
 const CAPABILITIES = [
   { name: "the gate", pattern: /gate/i },
   { name: "the deployment-ordering cursor", pattern: /deployment-ordering cursor/i },
@@ -36,16 +35,6 @@ export function ciCredentialDisclosureFailures(read) {
             `the credential's description must name everything it can do`,
         );
       }
-    }
-  }
-
-  const mintCard = read(MINT_CARD);
-  for (const capability of CAPABILITIES) {
-    if (!capability.pattern.test(mintCard)) {
-      failures.push(
-        `${MINT_CARD}: the CI credential card no longer states ${capability.name}; ` +
-          `the mint copy must name everything the token can do`,
-      );
     }
   }
 

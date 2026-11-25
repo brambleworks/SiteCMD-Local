@@ -1,6 +1,6 @@
 import { walkProdLines } from "./guardrail-rust-rules.mjs";
 
-const CORE_DIR = "apps/desktop/src-tauri/src/core";
+const CORE_DIRS = ["apps/desktop/src-tauri/src/core"];
 
 function isTestFile(file) {
   if (/[/\\]tests[/\\]/.test(file)) return true;
@@ -8,9 +8,11 @@ function isTestFile(file) {
   return /(_tests?\.rs|^tests\.rs)$/.test(name);
 }
 
-export function coreLayeringFailures(read, listFiles) {
+export function coreLayeringFailures(read, listFiles, extraRoots = []) {
   const failures = [];
-  const files = listFiles(CORE_DIR, (file) => file.endsWith(".rs") && !isTestFile(file));
+  const files = [...CORE_DIRS, ...extraRoots].flatMap((dir) =>
+    listFiles(dir, (file) => file.endsWith(".rs") && !isTestFile(file)),
+  );
   for (const file of files) {
     walkProdLines(read(file), (line, index) => {
       // Only executable references violate the dependency boundary.

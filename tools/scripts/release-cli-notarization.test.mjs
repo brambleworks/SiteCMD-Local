@@ -17,31 +17,6 @@ afterEach(() => {
 });
 
 describe("CLI release notarization", () => {
-  it("supplies notary credentials and retains evidence even when the CLI build fails", () => {
-    const workflow = fs.readFileSync(
-      new URL("../../.github/workflows/release.yml", import.meta.url),
-      "utf8",
-    );
-    const step = (name) => {
-      const start = workflow.indexOf(`      - name: ${name}\n`);
-      expect(start, name).toBeGreaterThan(-1);
-      return workflow.slice(start, workflow.indexOf("\n      - ", start + 1));
-    };
-    const build = step("Build CLI (headless scanner)");
-    expect(build).toContain("APPLE_API_KEY_ID:");
-    expect(build).toContain("secrets.APPLE_API_KEY_ID");
-    expect(build).toContain("APPLE_API_ISSUER:");
-    expect(build).toContain("secrets.APPLE_API_ISSUER");
-    const evidence = step("Preserve CLI notarization evidence");
-    expect(evidence).toContain("always()");
-    expect(evidence).toContain("startsWith(matrix.target, 'darwin')");
-    expect(evidence).toContain("uses: actions/upload-artifact@");
-    for (const name of ["submission.json", "submission-id.txt", "notary-log.json"]) {
-      expect(evidence).toContain(`cli-notarization/${name}`);
-    }
-    expect(evidence).not.toContain("asc_api_key.p8");
-  });
-
   it("submits the signed universal bytes and packages them only after acceptance", () => {
     const created = fixture();
     const result = created.run("build-cli.sh");
@@ -112,6 +87,33 @@ describe("CLI release notarization", () => {
     expect(calls).toContainEqual({
       name: "codesign",
       args: ["-vvvv", "-R=notarized", "--check-notarization", "cli-check/sitecmd"],
+    });
+  });
+
+  it("rejects a CLI signed by another macOS team before notarization", () => {
+    // The builder can submit a CLI signed by the wrong Developer ID team.
+    const created = fixture();
+    const result = created.run("build-cli.sh", { APPLE_TEAM_ID: "OTHERTEAM" });
+    expect(result.status, result.stderr).not.toBe(0);
+    expect(
+      created.calls().some((call) => call.name === "codesign" && call.args.includes("-dv")),
+    ).toBe(true);
+    expect(created.calls().some((call) => call.name === "xcrun")).toBe(false);
+    expect(
+      fs.existsSync(path.join(created.root, "sitecmd-cli_1.5.0_darwin-universal.tar.gz")),
+    ).toBe(false);
+  });
+
+  it("rejects a signed macOS archive whose team differs from its fragment", () => {
+    // Valid macOS signatures can belong to a team other than the one recorded for the release.
+    const created = fixture();
+    expect(created.run("build-cli.sh").status).toBe(0);
+    created.prepareVerification("OTHERTEAM");
+    const result = created.run("verify-unix-artifacts.sh", { EXPECTED_VERSION: "1.5.0" });
+    expect(result.status, result.stderr).not.toBe(0);
+    expect(created.calls()).toContainEqual({
+      name: "codesign",
+      args: ["-dv", "--verbose=4", "cli-check/sitecmd"],
     });
   });
 

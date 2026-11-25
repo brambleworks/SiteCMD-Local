@@ -36,7 +36,4 @@ runs:
       shell: bash
       env:
         SITECMD_INSTALL_DIR: ${{ inputs.install-dir }}
-      run: |
-        set -euo pipefail
-        install_dir="${SITECMD_INSTALL_DIR:-${RUNNER_TEMP}/sitecmd-bin}"
-        echo "$install_dir" >> "$GITHUB_PATH"
+      run: bash "$GITHUB_ACTION_PATH/add-path.sh"

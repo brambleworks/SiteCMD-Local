@@ -1,0 +1,65 @@
+{
+  "approved": "Owner-approved 2026-11-25: moved out of the engine on purpose for the first public export.",
+  "moves": [
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/authorization_tests.rs",
+      "blob": "a990679596916f6b6e2ec1ade5957935fcc011a6"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/bearer_encoding_tests.rs",
+      "blob": "8ca529de39480d9f101ad84c38c3b436ab6fb74f"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/login_mask_tests.rs",
+      "blob": "7ebee45b2a5c3441922916317734c440cf3cb665"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/test_support.rs",
+      "blob": "e27dd180a89b9e00c976bfa56e0d00ebbe98d809"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/unicode_boundary_tests.rs",
+      "blob": "f89bb74d9d1c6e5f78a2ed0b5966e442d2e54377"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/url_encoding_tests.rs",
+      "blob": "002992cf4653c379145a91e2d1ab6dc5e07ec779"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/sync/mod.rs",
+      "blob": "bdafcfbbb01f5fdfdc2c8119b7cecc3e46b0bd7d"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/sync/payload.rs",
+      "blob": "d32e33f58e1d7ae4769392fba60d50ec37130177"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/sync/payload_tests.rs",
+      "blob": "d686b0a528a2a685f2baf7478fe9c903da2c7f2c"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/time/date.rs",
+      "blob": "bdb24bb6751e9b745e5251274e7e169d514a5c10"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/time/format.rs",
+      "blob": "9768c98a11285fa012e4fd7b83e87ca22029388f"
+    },
+    {
+      "path": "apps/desktop/src-tauri/crates/protocol/src/time/parse.rs",
+      "blob": "ac86539be78db243391840c4e09b1a9072606500"
+    },
+    {
+      "path": "apps/desktop/src-tauri/src/core/audit/fingerprints.rs",
+      "blob": "b9b58145413a3a33ccf0e3bfbc6649016a0b1086"
+    },
+    {
+      "path": "apps/desktop/src-tauri/src/core/audit/metadata_offer_tests.rs",
+      "blob": "9ac134698d5da1d1e651a539309e8f2c0c78f267"
+    },
+    {
+      "path": "apps/desktop/src-tauri/src/core/audit/session_host/tests.rs",
+      "blob": "c66d9bba1e118d35453f2a0125e53098e546df2d"
+    }
+  ]
+}

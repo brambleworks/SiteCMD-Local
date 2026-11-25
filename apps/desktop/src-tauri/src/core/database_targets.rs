@@ -4,6 +4,13 @@ use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use url::Url;
 
+mod discovery;
+mod env;
+pub(super) use crate::core::database_targets::discovery::{
+    collect_local_targets, PostgresTarget, Target,
+};
+pub(super) use crate::core::database_targets::env::summarize_remote_local_dev_database_targets;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalDatabaseKind {
     Sqlite,
@@ -143,11 +150,6 @@ fn postgres_host_display(host: &PostgresHost) -> String {
         #[cfg(unix)]
         PostgresHost::Unix(path) => path.to_string_lossy().into_owned(),
     }
-}
-
-#[tracing::instrument(skip(raw))]
-pub fn is_local_database_target(raw: &str) -> bool {
-    validate_local_database_target(raw).is_ok()
 }
 
 #[tracing::instrument(skip(raw, project_root, env_file_path), fields(has_env_file = env_file_path.is_some()))]
@@ -304,9 +306,9 @@ fn is_local_db_host(host: &str) -> bool {
 mod tests {
     use std::path::Path;
 
-    use super::{
-        canonicalize_local_sqlite_path, is_local_database_target, resolve_local_sqlite_path,
-        validate_local_database_target, validated_local_postgres_config, LocalDatabaseKind,
+    use crate::core::database_targets::{
+        canonicalize_local_sqlite_path, resolve_local_sqlite_path, validate_local_database_target,
+        validated_local_postgres_config, LocalDatabaseKind,
     };
     use tempfile::tempdir;
 
@@ -360,9 +362,6 @@ mod tests {
             validate_local_database_target("postgresql://user:pass@db.supabase.co:5432/postgres")
                 .unwrap_err();
         assert!(error.contains("Remote database host"));
-        assert!(!is_local_database_target(
-            "postgresql://user:pass@db.supabase.co:5432/postgres"
-        ));
     }
 
     #[test]

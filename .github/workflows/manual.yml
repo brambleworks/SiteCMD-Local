@@ -1,0 +1,79 @@
+name: Manual checks
+
+# On-demand Rust coverage report.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  SITECMD_ENGINE_WASM: ${{ github.workspace }}/apps/desktop/src-tauri/target/standin/sitecmd_engine_standin.wasm
+  SITECMD_ENGINE_UNPINNED: "1"
+
+jobs:
+  coverage:
+    name: cargo llvm-cov
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned Rust toolchain
+        working-directory: apps/desktop/src-tauri
+        run: |
+          rustc --version
+          rustup default "$(rustup show active-toolchain | cut -d ' ' -f 1)"
+          rustup component add llvm-tools-preview
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+          shared-key: ci-dependencies
+          save-if: false
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-nextest@0.9.133
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-llvm-cov@0.8.5
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Use the runner CPU count
+        run: echo "CARGO_BUILD_JOBS=$(node -p 'require("node:os").availableParallelism()')" >> "$GITHUB_ENV"
+
+      - name: Build the stand-in engine
+        run: node tools/scripts/build-standin.mjs
+
+      - name: Generate coverage (LCOV + summary)
+        env:
+          CARGO_TERM_COLOR: always
+        working-directory: apps/desktop/src-tauri
+        run: |
+          cargo llvm-cov nextest --locked --workspace --no-fail-fast --lcov --output-path lcov.info
+          cargo llvm-cov report --summary-only | tee coverage-summary.txt
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rust-coverage
+          path: |
+            apps/desktop/src-tauri/lcov.info
+            apps/desktop/src-tauri/coverage-summary.txt
+          retention-days: 30

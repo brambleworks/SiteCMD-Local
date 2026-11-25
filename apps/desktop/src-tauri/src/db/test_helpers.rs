@@ -111,3 +111,143 @@ pub fn insert_test_work_item_at(
     })??;
     Ok(())
 }
+
+#[cfg(test)]
+pub(crate) use super::migrations::tests::migrated_conn;
+
+#[cfg(test)]
+pub(crate) fn seed_site(db: &Database, project_id: i64, url: &str) -> Result<i64, super::DbError> {
+    let url = super::helpers::normalize_url(url).0;
+    db.execute(move |conn| {
+        conn.execute(
+            "INSERT INTO sites (project_id, url) VALUES (?1, ?2)
+             ON CONFLICT DO NOTHING",
+            rusqlite::params![project_id, url],
+        )?;
+        conn.query_row(
+            "SELECT id FROM sites WHERE project_id = ?1 AND url = ?2",
+            rusqlite::params![project_id, url],
+            |row| row.get(0),
+        )
+        .map_err(super::DbError::from)
+    })?
+}
+
+#[cfg(test)]
+pub(crate) use code_runs::code_batch;
+pub use code_runs::code_execution;
+
+mod code_runs {
+    use super::Database;
+    #[cfg(test)]
+    use crate::core::normalized_scan::{
+        NormalizedFinding, NormalizedRunBatch, ScanCoverageKind, ScanCoverageManifest,
+        ScanEvidenceSource, ScanFindingLocationKind, ScanRunKind, ScanRunStatus,
+    };
+    use crate::core::scan_execution::{
+        NewScanExecution, ScanAdmissionClass, ScanComponentStatus, ScanExecutionMode, ScanTrigger,
+    };
+    #[cfg(test)]
+    use crate::core::scan_types::{CheckStatus, IssueConfidence, Severity};
+
+    pub fn code_execution(db: &Database, project_id: i64, scope: &str, key: &str) -> i64 {
+        db.admit_scan_execution(
+            NewScanExecution {
+                project_id: Some(project_id),
+                environment_id: None,
+                environment_url: None,
+                environment_scope_key: scope.into(),
+                requested_mode: ScanExecutionMode::Code,
+                web_focus: None,
+                trigger: ScanTrigger::Manual,
+                admission_class: ScanAdmissionClass::GeneralScan,
+                idempotency_key: key.into(),
+                request_fingerprint: format!("v1:{key}"),
+                now_ms: 100,
+                web_status: None,
+                web_detail: None,
+                code_status: Some(ScanComponentStatus::Planned),
+                code_detail: None,
+            },
+            900,
+        )
+        .expect("code execution") // allow-expect: test fixture, panic at call site
+        .execution
+        .id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn code_batch(
+        project_id: i64,
+        execution_id: i64,
+        scope: &str,
+        checks: &[(&str, CheckStatus)],
+    ) -> NormalizedRunBatch {
+        let mut coverage = ScanCoverageManifest::declared(
+            ScanCoverageKind::Project,
+            Vec::new(),
+            checks.iter().map(|(check, _)| (*check).into()).collect(),
+        );
+        for (check, status) in checks {
+            if *status == CheckStatus::Skipped {
+                coverage
+                    .exceptions
+                    .push(sitecmd_protocol::coverage::CoverageException {
+                        route: None,
+                        checks_not_run: vec![(*check).into()],
+                        reason: sitecmd_protocol::coverage::CoverageExceptionReason::CheckSkipped,
+                    });
+            }
+        }
+        NormalizedRunBatch {
+            execution_id,
+            parent_run_id: None,
+            project_id: Some(project_id),
+            site_id: None,
+            environment_url: None,
+            environment_scope_key: scope.into(),
+            source: ScanEvidenceSource::CodeScan,
+            run_kind: ScanRunKind::Code,
+            status: ScanRunStatus::Complete,
+            timestamp_text: "2026-09-12T00:00:00Z".into(),
+            started_at: 100,
+            completed_at: 110,
+            duration_ms: 10,
+            coverage,
+            diagnostics: Default::default(),
+            status_detail: None,
+            findings: checks
+                .iter()
+                .map(|(check, verdict)| {
+                    let rule = check.strip_prefix("code_scan.").unwrap_or(check);
+                    NormalizedFinding {
+                        occurrence_id: format!("code_scan:{rule}:src/fixture.ts:1"),
+                        source: ScanEvidenceSource::CodeScan,
+                        canonical_check_id: (*check).into(),
+                        producer_check_id: rule.into(),
+                        producer_category: "security".into(),
+                        category: "security".into(),
+                        domain: Some("security".into()),
+                        verdict: *verdict,
+                        severity: Severity::High,
+                        confidence: IssueConfidence::Confirmed,
+                        confidence_reason: None,
+                        title: (*check).into(),
+                        description: "detail".into(),
+                        fix_prompt: None,
+                        producer_fix_prompt: None,
+                        manual_fix: None,
+                        why_it_matters: None,
+                        verification_hint: None,
+                        raw_data: None,
+                        detail_json: None,
+                        location_kind: ScanFindingLocationKind::File,
+                        page_url: None,
+                        relative_path: Some("src/fixture.ts".into()),
+                        line: Some(1),
+                    }
+                })
+                .collect(),
+        }
+    }
+}

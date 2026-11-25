@@ -61,7 +61,7 @@ function isCovered(file, coveredPaths) {
 /** Returns tracked paths, or null outside a Git checkout. */
 function gitTrackedFiles(root) {
   try {
-    return execFileSync("git", ["ls-files", "-z"], {
+    return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
       cwd: root,
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
@@ -90,7 +90,9 @@ function directoriesIn(root, relativePath) {
  */
 export function testWiringFailures(read, options = {}) {
   const root = options.root ?? process.cwd();
-  const listTrackedFiles = options.listTrackedFiles ?? (() => gitTrackedFiles(root));
+  const listTrackedFiles =
+    options.listTrackedFiles ??
+    (() => gitTrackedFiles(root)?.filter((file) => fs.existsSync(path.join(root, file))) ?? null);
   const listDirectories = options.listDirectories ?? ((dir) => directoriesIn(root, dir));
   const failures = [];
 
@@ -114,7 +116,7 @@ export function testWiringFailures(read, options = {}) {
     ];
   }
 
-  for (const file of trackedFiles) {
+  for (const file of new Set(trackedFiles)) {
     if (!TEST_FILE_PATTERN.test(file)) continue;
     if (isCovered(file, coveredPaths)) continue;
     failures.push(

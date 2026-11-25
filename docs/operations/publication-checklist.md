@@ -17,8 +17,8 @@ Passing one boundary does not prove the others.
 
 ## Before the maintenance window
 
-- [ ] Commit the exact tree that will become the public root and pass the full
-      local push gate on that commit.
+- [ ] Commit the exact tree that will become the public root and pass GitHub CI
+      for that tree.
 - [ ] Complete the maintained-surface review and record founder acceptance
       privately. Automation cannot supply this decision.
 - [ ] Run the current-tree publication and legal checks.

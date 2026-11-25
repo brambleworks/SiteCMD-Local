@@ -40,15 +40,13 @@ export function releasePublicationSafetyFailures(read) {
       ) &&
       verifierCommands.includes("cmp -s checksum-signature.sig payload/SHA256SUMS.minisig") &&
       verifierCommands.includes(
-        '"$verifier" updater-public-key.pub payload/SHA256SUMS checksum-signature.sig',
+        '"$verifier" "$public_key" payload/SHA256SUMS checksum-signature.sig',
       ) &&
       verifierCommands.includes(
         `expected=$(awk -v name="$(basename "$1")" '$2 == name { print $1 }' payload/SHA256SUMS)`,
       ) &&
       verifierCommands.includes('test "$(sha256_file "$1")" = "$expected"') &&
-      verifierCommands.includes('verify_listed "$dir/$filename"') &&
       verifierCommands.includes('verify_listed "$dir/$cli_archive"') &&
-      verifierCommands.includes('if [ -n "$dmg_name" ]; then verify_listed "$dir/$dmg_name"; fi') &&
       publisherJob.includes("add_upload payload/SHA256SUMS SHA256SUMS") &&
       publisherJob.includes("add_upload payload/SHA256SUMS.minisig SHA256SUMS.minisig") &&
       publisherJob.includes(uploadPlanCrossCheck) &&
@@ -61,10 +59,10 @@ export function releasePublicationSafetyFailures(read) {
         "https://releases.sitecmd.com/api/releases-admin",
         'gh release create "$TAG_NAME"',
       ),
-    "release.yml must sign one release-wide SHA256SUMS with the production updater key, verify its .minisig without secrets and every artifact (including the DMG) against it, cross-check every uploaded checksum against the upload plan, upload both beside the artifacts, and create the GitHub Release (verified tag, changelog notes, checksum assets) only after the updater manifest advanced.",
+    "release.yml must sign one release-wide SHA256SUMS with the production updater key, verify its .minisig without secrets and every CLI archive against it, cross-check every uploaded checksum against the upload plan, upload both beside the artifacts, and create the GitHub Release (verified tag, changelog notes, checksum assets) only after the release manifest advanced.",
   );
 
-  // The updater manifest advances before the Release is created, so a Release
+  // The release manifest advances before the Release is created, so a Release
   // that is missing, draft, or asset-less leaves clients offered a version they
   // cannot verify; re-running the publisher has to repair it.
   check(
@@ -94,10 +92,7 @@ export function releasePublicationSafetyFailures(read) {
   const nonPublisherJobs = releaseWorkflow.replace(publisherJob, "");
   const attestSubjectPaths = `          subject-path: |
             payload/*/*.tar.gz
-            payload/*/*.AppImage
-            payload/*/*-setup.exe
             payload/*/*.zip
-            payload/*/*.dmg
             payload/SHA256SUMS`;
   check(
     /uses: actions\/attest-build-provenance@[0-9a-f]{40}/.test(publisherJob) &&
@@ -115,9 +110,7 @@ export function releasePublicationSafetyFailures(read) {
   );
 
   // Publication ends with a public smoke test: every upload-plan object
-  // re-fetched and hash-matched, the advertised latest version correct, and
-  // update discovery answering for every shipped OS (an offer on 0.0.0 with
-  // the OS's platform keys, 204 on the released version).
+  // re-fetched and hash-matched, with the advertised latest version checked.
   check(
     publisherJob.includes("- name: Smoke test the public release surface") &&
       publisherJob.includes("done < publication/upload-plan.tsv") &&
@@ -125,18 +118,14 @@ export function releasePublicationSafetyFailures(read) {
         'got=$(curl -fsSL -A "$SMOKE_UA" --retry 5 --retry-delay 3 "$url" | sha256sum | awk \'{print $1}\')',
       ) &&
       publisherJob.includes(`jq -r '.latest_version'`) &&
-      publisherJob.includes("for target in darwin linux windows; do") &&
-      publisherJob.includes('"https://releases.sitecmd.com/${target}/0.0.0"') &&
-      publisherJob.includes("'.platforms | has($k)'") &&
-      publisherJob.includes('"https://releases.sitecmd.com/${target}/${VERSION}"') &&
-      publisherJob.includes('if [ "$code" != "204" ]; then') &&
+      publisherJob.includes('if [ "$latest" != "$VERSION" ]; then') &&
       orderedBefore(
         publisherJob,
         "uses: actions/attest-build-provenance@",
         "- name: Smoke test the public release surface",
       ) &&
       publisherJob.trimEnd().endsWith('exit "$fail"'),
-    "release.yml publish-release must end with a public smoke test that re-downloads every upload-plan object from releases.sitecmd.com and hash-matches it, confirms the advertised latest version, and exercises updater discovery for darwin, linux, and windows: /{os}/0.0.0 offers the released version with that OS's platform keys, and /{os}/{version} answers 204; the job's last line must exit with the accumulated failure flag.",
+    "release.yml publish-release must end with a public smoke test that re-downloads and hash-matches every upload-plan object, verifies the advertised latest version, and exits with the accumulated failure flag.",
   );
 
   // The releases worker keeps monitor User-Agents out of download and

@@ -1,5 +1,4 @@
-packages:
-  - "apps/*"
+packages: []
 
 # Reject dependency releases less than one day old.
 minimumReleaseAge: 1440
@@ -23,8 +22,9 @@ engineStrict: true
 
 # Allow only the native build and hook-install scripts the workspace requires.
 allowBuilds:
-  better-sqlite3: true
-  lefthook: true
+  # prepare installs the hooks and skips linked worktrees; lefthook's own
+  # postinstall would install them from whichever checkout ran pnpm install.
+  lefthook: false
   esbuild: false
   sharp: false
   workerd: false

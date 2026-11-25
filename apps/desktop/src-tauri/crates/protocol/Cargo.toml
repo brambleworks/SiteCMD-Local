@@ -1,0 +1,50 @@
+[package]
+name = "sitecmd-protocol"
+version = "0.1.0"
+description = "SiteCMD wire types and shared protocol helpers"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+rust-version = "1.95.0"
+
+[features]
+default = []
+test-support = ["dep:regex-automata"]
+
+[dependencies]
+base64 = { version = "0.23.1", default-features = false, features = ["std"] }
+hmac = "0.13"
+hex = "0.4"
+http = "1"
+icu_normalizer = { version = "2.3.0", default-features = false, features = ["compiled_data"] }
+# Keep timestamp operations independent of the ambient clock.
+jiff = { version = "0.2.35", default-features = false, features = ["alloc"] }
+memchr = "2.8.3"
+regex = { version = "1", default-features = false, features = [
+    "std",
+    "perf-cache",
+    "perf-dfa",
+    "perf-backtrack",
+    "perf-inline",
+    "perf-literal",
+    "unicode",
+] }
+regex-automata = { version = "0.4.18", default-features = false, features = [
+    "std",
+    "syntax",
+    "dfa-build",
+    "unicode",
+], optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.11"
+url = "2"
+zeroize = "1"
+
+[dev-dependencies]
+regex-automata = { version = "0.4.18", default-features = false, features = [
+    "std",
+    "syntax",
+    "dfa-build",
+    "unicode",
+] }

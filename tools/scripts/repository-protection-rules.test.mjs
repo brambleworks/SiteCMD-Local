@@ -1,11 +1,189 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
   liveRepositoryProtectionFailures,
   ownedRepositoryReferences,
+  readLiveRepositoryProtection,
   repositoryNameFailures,
   requiredCheckWorkflowFailures,
+  selectRepositoryProtectionContract,
 } from "./lib/repository-protection-rules.mjs";
+
+const configured = JSON.parse(
+  readFileSync(new URL("../../.github/repository-protection.json", import.meta.url), "utf8"),
+);
+const publicSlug = "brambleworks/SiteCMD-Local";
+const engineSlug = "brambleworks/SiteCMD-Engine";
+const publicChecks = [{ context: "CI", integration_id: 15368 }];
+const queueParameters = {
+  merge_method: "SQUASH",
+  grouping_strategy: "ALLGREEN",
+  max_entries_to_build: 5,
+  min_entries_to_merge: 1,
+  max_entries_to_merge: 5,
+  min_entries_to_merge_wait_minutes: 0,
+  check_response_timeout_minutes: 60,
+};
+const branchRules = [
+  "deletion",
+  "non_fast_forward",
+  "required_linear_history",
+  "required_signatures",
+  "pull_request",
+  "required_status_checks",
+  "merge_queue",
+];
+
+it.each([
+  [publicSlug, publicChecks],
+  [engineSlug, [{ context: "CI", integration_id: 15368 }]],
+  ["contributor/SiteCMD-Local", publicChecks],
+])("selects %s's required checks", (checkout, checks) => {
+  expect(selectRepositoryProtectionContract(configured, checkout)).toMatchObject({
+    repository: checkout === engineSlug ? engineSlug : publicSlug,
+    branchRuleset: { requiredStatusChecks: checks },
+  });
+});
+
+it.each([
+  [publicSlug, true],
+  [engineSlug, false],
+])("reads live settings only for %s", (slug, reportsVulnerabilities) => {
+  const endpoints = [];
+  const prefix = `repos/${slug}`;
+  const payloads = {
+    [prefix]: { allow_squash_merge: true, allow_merge_commit: false, allow_rebase_merge: false },
+    [`${prefix}/rulesets`]: [{ id: 14 }],
+    [`${prefix}/rulesets/14`]: { name: "protect-main" },
+    [`${prefix}/private-vulnerability-reporting`]: { enabled: true },
+  };
+  const contract = selectRepositoryProtectionContract(configured, slug);
+  const settings = readLiveRepositoryProtection(contract, (endpoint) => {
+    endpoints.push(endpoint);
+    return payloads[endpoint];
+  });
+  expect(endpoints).toEqual([
+    prefix,
+    `${prefix}/rulesets`,
+    `${prefix}/rulesets/14`,
+    ...(reportsVulnerabilities ? [`${prefix}/private-vulnerability-reporting`] : []),
+  ]);
+  expect(settings).toMatchObject({
+    mergeMethods: ["squash"],
+    rulesets: [{ name: "protect-main" }],
+  });
+});
+
+function liveEngine() {
+  return {
+    privateVulnerabilityReporting: true,
+    mergeMethods: ["squash"],
+    rulesets: [
+      {
+        name: "protect-main",
+        target: "branch",
+        enforcement: "active",
+        bypass_actors: [],
+        conditions: { ref_name: { include: ["refs/heads/main"], exclude: [] } },
+        rules: [
+          ...branchRules.slice(0, 4).map((type) => ({ type })),
+          {
+            type: "pull_request",
+            parameters: {
+              allowed_merge_methods: ["squash"],
+              required_approving_review_count: 0,
+              required_review_thread_resolution: true,
+            },
+          },
+          {
+            type: "required_status_checks",
+            parameters: { required_status_checks: [{ context: "CI", integration_id: 15368 }] },
+          },
+          { type: "merge_queue", parameters: { ...queueParameters } },
+        ],
+      },
+    ],
+  };
+}
+
+function engineFailures(change = () => {}) {
+  const live = liveEngine();
+  change(live, live.rulesets[0]);
+  const engine = selectRepositoryProtectionContract(configured, engineSlug);
+  return liveRepositoryProtectionFailures(engine, live);
+}
+
+it("accepts the engine ruleset target", () => {
+  expect(engineFailures()).toEqual([]);
+});
+
+it.each(branchRules)("requires the engine %s rule", (type) => {
+  expect(
+    engineFailures((_, branch) => {
+      branch.rules = branch.rules.filter((rule) => rule.type !== type);
+    }),
+  ).toContain(`ruleset "protect-main" is missing the ${type} rule.`);
+});
+
+it.each(
+  Object.entries({
+    merge_method: "MERGE",
+    grouping_strategy: "HEADGREEN",
+    max_entries_to_build: 4,
+    min_entries_to_merge: 2,
+    max_entries_to_merge: 6,
+    min_entries_to_merge_wait_minutes: 1,
+    check_response_timeout_minutes: 59,
+  }),
+)("rejects a changed engine queue parameter %s", (field, value) => {
+  expect(
+    engineFailures((_, branch) => {
+      branch.rules.find(({ type }) => type === "merge_queue").parameters[field] = value;
+    }),
+  ).toContainEqual(expect.stringContaining(`merge_queue.${field}`));
+});
+
+it.each([
+  ["allowed_merge_methods", ["squash", "merge"]],
+  ["required_approving_review_count", 1],
+  ["required_review_thread_resolution", false],
+])("rejects a changed engine pull request parameter %s", (field, value) => {
+  expect(
+    engineFailures((_, branch) => {
+      branch.rules.find(({ type }) => type === "pull_request").parameters[field] = value;
+    }),
+  ).toContainEqual(expect.stringContaining(`pull_request.${field}`));
+});
+
+it("rejects extra engine status checks and repository merge methods", () => {
+  const failures = engineFailures((live, branch) => {
+    live.mergeMethods.push("merge");
+    branch.rules
+      .find(({ type }) => type === "required_status_checks")
+      .parameters.required_status_checks.push({ context: "Audit" });
+  });
+  expect(failures).toContain('ruleset "protect-main" also requires "Audit".');
+  expect(failures).toContain("Repository merge methods are [merge, squash]; expected [squash].");
+});
+
+it.each([
+  [42, "42"],
+  [undefined, "unrestricted"],
+])("rejects a live CI check with integration %s", (integrationId, label) => {
+  expect(
+    engineFailures((_, branch) => {
+      const checks = branch.rules.find(({ type }) => type === "required_status_checks");
+      checks.parameters.required_status_checks[0].integration_id = integrationId;
+    }),
+  ).toContain(`ruleset "protect-main" requires "CI" from integration ${label}; expected 15368.`);
+});
+
+it("rejects engine bypass actors", () => {
+  expect(engineFailures((_, branch) => branch.bypass_actors.push({ actor_id: 1 }))).toContainEqual(
+    expect.stringContaining("grants bypass actors"),
+  );
+});
 
 const contract = {
   repository: "brambleworks/SiteCMD-Local",
@@ -66,8 +244,8 @@ const workflows = {
     "          - rust",
     "",
   ].join("\n"),
-  ".github/workflows/frontend-quality.yml": [
-    "name: frontend-quality",
+  ".github/workflows/tooling-quality.yml": [
+    "name: tooling-quality",
     "",
     "on:",
     "  pull_request:",
@@ -77,7 +255,7 @@ const workflows = {
     "",
     "jobs:",
     "  check:",
-    "    name: Frontend quality",
+    "    name: Tooling quality gates",
     "",
   ].join("\n"),
   ".github/workflows/size-limit.yml": [
@@ -162,6 +340,24 @@ describe("requiredCheckWorkflowFailures", () => {
     expect(requiredCheckWorkflowFailures(contract, read, listFiles)).toEqual([]);
   });
 
+  it.each([
+    [{ context: "CI", integration_id: 42 }, "42"],
+    ["CI", "none"],
+  ])("rejects an engine check without the GitHub Actions pin (%j)", (check, actual) => {
+    const engine = selectRepositoryProtectionContract(configured, engineSlug);
+    engine.branchRuleset = { ...engine.branchRuleset, requiredStatusChecks: [check] };
+    const source = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+    expect(
+      requiredCheckWorkflowFailures(
+        engine,
+        () => source,
+        () => [".github/workflows/ci.yml"],
+      ),
+    ).toContain(
+      `required check "CI" must pin integration_id 15368 for GitHub Actions; found ${actual}.`,
+    );
+  });
+
   it("rejects a check no workflow job produces", () => {
     const failures = requiredCheckWorkflowFailures(
       {
@@ -190,7 +386,10 @@ describe("requiredCheckWorkflowFailures", () => {
     const failures = requiredCheckWorkflowFailures(
       {
         ...contract,
-        branchRuleset: { ...contract.branchRuleset, requiredStatusChecks: ["Frontend quality"] },
+        branchRuleset: {
+          ...contract.branchRuleset,
+          requiredStatusChecks: ["Tooling quality gates"],
+        },
       },
       read,
       listFiles,
@@ -337,11 +536,11 @@ describe("the repository the contract names", () => {
   });
 
   it("passes when the checkout, the label contract, and every reference agree", () => {
-    expect(repositoryNameFailures(contract, clean())).toEqual([]);
+    expect(repositoryNameFailures(configured, clean())).toEqual([]);
   });
 
   it("reports a checkout the contract has not caught up with", () => {
-    const failures = repositoryNameFailures(contract, {
+    const failures = repositoryNameFailures(configured, {
       ...clean(),
       checkoutRepository: "brambleworks/SiteCMD-app",
     });
@@ -350,9 +549,25 @@ describe("the repository the contract names", () => {
     );
   });
 
+  it("accepts a checkout of the private source the public tree is exported from", () => {
+    // Bug: the engine checkout fails every gate because its origin names the private source.
+    expect(
+      repositoryNameFailures(configured, {
+        ...clean(),
+        checkoutRepository: "brambleworks/SiteCMD-Engine",
+      }),
+    ).toEqual([]);
+    expect(
+      repositoryNameFailures(configured, {
+        ...clean(),
+        checkoutRepository: "brambleworks/SiteCMD-app",
+      }),
+    ).toHaveLength(1);
+  });
+
   it("says nothing about a fork, which owns neither the contract nor the name", () => {
     expect(
-      repositoryNameFailures(contract, {
+      repositoryNameFailures(configured, {
         ...clean(),
         checkoutRepository: "contributor/SiteCMD-Local",
       }),
@@ -360,11 +575,13 @@ describe("the repository the contract names", () => {
   });
 
   it("checks nothing about the checkout when nothing names it", () => {
-    expect(repositoryNameFailures(contract, { ...clean(), checkoutRepository: null })).toEqual([]);
+    expect(repositoryNameFailures(configured, { ...clean(), checkoutRepository: null })).toEqual(
+      [],
+    );
   });
 
   it("reports the two contracts disagreeing", () => {
-    const failures = repositoryNameFailures(contract, {
+    const failures = repositoryNameFailures(configured, {
       ...clean(),
       labelsRepository: "brambleworks/SiteCMD-app",
     });
@@ -380,7 +597,7 @@ describe("the repository the contract names", () => {
       line: 8,
       slug: "brambleworks/SiteCMD-app",
     });
-    const failures = repositoryNameFailures(contract, observed);
+    const failures = repositoryNameFailures(configured, observed);
     expect(failures.join("\n")).toContain(
       "packaging/npm/cli/package.json:8 references brambleworks/SiteCMD-app",
     );
@@ -395,7 +612,7 @@ describe("the repository the contract names", () => {
     });
     expect(
       repositoryNameFailures(
-        { ...contract, referencedRepositories: ["brambleworks/SiteCMD-Web"] },
+        { ...configured, referencedRepositories: ["brambleworks/SiteCMD-Web"] },
         observed,
       ),
     ).toEqual([]);

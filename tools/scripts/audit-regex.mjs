@@ -1,33 +1,39 @@
 #!/usr/bin/env node
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import safe from "safe-regex";
 import ts from "typescript";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const ROOTS = [
-  ...readdirSync(path.join(ROOT, "apps"), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join("apps", entry.name, "src"))
-    .filter((relative) => {
-      try {
-        return statSync(path.join(ROOT, relative)).isDirectory();
-      } catch {
-        return false;
-      }
-    }),
-  "tools/scripts",
-];
-const EXPECTED_ROOTS = 3;
-if (ROOTS.length < EXPECTED_ROOTS) {
-  console.error(
-    `audit-regex: expected at least ${EXPECTED_ROOTS} roots, derived ${ROOTS.length}: ${ROOTS}`,
-  );
-  process.exit(2);
-}
 const SKIP_DIRS = new Set(["node_modules", "dist", ".astro", "target"]);
 const EXTS = new Set([".ts", ".tsx", ".js", ".mjs"]);
+
+/** Every JavaScript and TypeScript file git tracks under root, sorted. Leftover folders
+ *  a clean checkout doesn't have never count. */
+export function trackedSources(root) {
+  // A hook's GIT_DIR would point git at another repository.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
+  );
+  return execFileSync("git", ["-C", root, "ls-files", "-z"], {
+    encoding: "utf8",
+    env,
+    maxBuffer: 64 * 1024 * 1024,
+  })
+    .split("\0")
+    .filter(
+      (file) =>
+        EXTS.has(path.extname(file)) &&
+        !file.split("/").some((part) => SKIP_DIRS.has(part)) &&
+        // Vendored libraries and the sample bundles the engine's tests scan aren't our code.
+        !file.endsWith(".min.js") &&
+        !file.split("/").includes("fixtures") &&
+        existsSync(path.join(root, file)),
+    )
+    .sort();
+}
 
 const ALLOWED_SAFE_REGEX_FALSE_POSITIVES = new Map([
   [
@@ -147,27 +153,6 @@ const ALLOWED_SAFE_REGEX_FALSE_POSITIVES = new Map([
   ],
 ]);
 
-function* walk(relativeDir) {
-  const absoluteDir = path.join(ROOT, relativeDir);
-  try {
-    statSync(absoluteDir);
-  } catch {
-    return;
-  }
-
-  for (const name of readdirSync(absoluteDir)) {
-    if (SKIP_DIRS.has(name)) continue;
-    const relativePath = path.join(relativeDir, name);
-    const absolutePath = path.join(ROOT, relativePath);
-    const st = statSync(absolutePath);
-    if (st.isDirectory()) {
-      yield* walk(relativePath);
-    } else if (EXTS.has(path.extname(name))) {
-      yield relativePath;
-    }
-  }
-}
-
 function scriptKindFor(file) {
   if (file.endsWith(".tsx")) return ts.ScriptKind.TSX;
   if (file.endsWith(".ts")) return ts.ScriptKind.TS;
@@ -196,10 +181,15 @@ function lineFor(sourceFile, node) {
   return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
 }
 
-const findings = [];
+function main() {
+  const files = trackedSources(ROOT);
+  if (!files.some((file) => file.startsWith("tools/scripts/"))) {
+    console.error("audit-regex: found no tracked sources under tools/scripts");
+    process.exit(2);
+  }
+  const findings = [];
 
-for (const root of ROOTS) {
-  for (const file of walk(root)) {
+  for (const file of files) {
     const source = readFileSync(path.join(ROOT, file), "utf8");
     const sourceFile = ts.createSourceFile(
       file,
@@ -233,16 +223,19 @@ for (const root of ROOTS) {
 
     visit(sourceFile);
   }
+
+  if (findings.length === 0) {
+    console.log(`safe-regex: no catastrophic patterns found in ${files.length} tracked files`);
+    process.exit(0);
+  }
+
+  console.log(`safe-regex flagged ${findings.length} pattern(s):\n`);
+  for (const finding of findings) {
+    console.log(`  ${finding.file}:${finding.line} (${finding.form})`);
+    console.log(`    /${finding.pattern}/`);
+  }
+  process.exit(1);
 }
 
-if (findings.length === 0) {
-  console.log("safe-regex: no catastrophic patterns found");
-  process.exit(0);
-}
-
-console.log(`safe-regex flagged ${findings.length} pattern(s):\n`);
-for (const finding of findings) {
-  console.log(`  ${finding.file}:${finding.line} (${finding.form})`);
-  console.log(`    /${finding.pattern}/`);
-}
-process.exit(1);
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href)
+  main();

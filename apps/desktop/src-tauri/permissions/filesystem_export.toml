@@ -1,8 +1,0 @@
-[[permission]]
-identifier = "sitecmd-filesystem-export"
-description = "Allows confirmed SiteCMD filesystem export writes, including report exports and database backups."
-commands.allow = [
-    "write_export_file",
-    "write_export_bytes",
-    "export_database"
-]

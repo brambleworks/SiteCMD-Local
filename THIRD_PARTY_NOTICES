@@ -1,27 +1,35 @@
 SiteCMD includes third-party material under its upstream license.
 
-This file identifies third-party material committed directly to this repository.
-Desktop distributions and CLI archives also include THIRD_PARTY_DEPENDENCIES.json,
-the union of resolved production dependencies shipped by the desktop, bundled MCP
-server, and CLI. It records each package's declared license expression and the
-upstream license files available in the installed package. THIRD_PARTY_LICENSES.txt
-contains those discovered files. CLI archives additionally include a
+This file identifies vendored data and material embedded in the engine module.
+CLI archives also include THIRD_PARTY_DEPENDENCIES.json, the inventory of
+resolved production dependencies shipped by the CLI. It records each package's
+declared license expression and the upstream license files available in the
+installed package. THIRD_PARTY_LICENSES.txt contains those discovered files.
+CLI archives additionally include a
 platform-specific THIRD_PARTY_LICENSES.tsv dependency inventory.
 
-axe-core 4.11.2
-Copyright 2015-2026 Deque Systems, Inc.
-License: Mozilla Public License 2.0
-Source: https://github.com/dequelabs/axe-core
-Vendored file: apps/desktop/src-tauri/crates/engine/browser/axe.min.js
+Embedded engine module materials
 
-The vendored file preserves Deque's copyright and license notice. The Mozilla
-Public License 2.0 is available at https://mozilla.org/MPL/2.0/.
+axe-core 4.11.2
+Source: https://github.com/dequelabs/axe-core
+License: Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/)
+
+/*! axe v4.11.2
+ * Copyright (c) 2015 - 2026 Deque Systems, Inc.
+ *
+ * Your use of this Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * This entire copyright notice must appear in every copy of this file you
+ * distribute or in any file that contains substantial portions of this source
+ * code.
+ */
 
 Polish word list sources
-The polish checks' word lists (apps/desktop/src-tauri/crates/engine/src/checks/polish/word_lists.json)
-record short entries and unmodified verbatim quotes from the sources below. Each quote stays under
-its source's license, and each RFC extract is attributed to the IETF and the RFC it is taken from.
-The file records each source's address and retrieval date.
+The engine module's word lists include short entries and unchanged quotes
+from the sources below. Each quote retains its source's license. RFC extracts
+are attributed to the IETF and the source RFC.
 
 - Amazon Web Services, "Setting up custom domains". License: CC BY-SA 4.0 (content), MIT-0 (code samples). License text: https://opensource.org/license/mit-0; https://creativecommons.org/licenses/by-sa/4.0/. Source: https://docs.aws.amazon.com/amplify/latest/userguide/custom-domains.html
 - Angular (angular/angular-cli), "Angular CLI application schematic at v22.2.5". License: MIT. License text: https://opensource.org/license/mit. Source: https://github.com/angular/angular-cli/tree/v22.2.5/packages/schematics/angular/application/files
@@ -99,3 +107,85 @@ The file records each source's address and retrieval date.
 - Vue (vuejs/vue-cli), "Vue CLI generator template at v5.0.9". License: MIT. License text: https://opensource.org/license/mit. Source: https://github.com/vuejs/vue-cli/tree/v5.0.9/packages/@vue/cli-service/generator/template
 - Wikipedia, Wikimedia Foundation, "Wikipedia:Manual of Style/Words to watch (section "Puffery")". License: CC BY-SA 4.0. License text: https://creativecommons.org/licenses/by-sa/4.0/. Source: https://en.wikipedia.org/wiki/Wikipedia:Manual_of_Style/Words_to_watch
 - Wikipedia, WikiProject AI Cleanup, Wikimedia Foundation, "Wikipedia:Signs of AI writing". License: CC BY-SA 4.0. License text: https://creativecommons.org/licenses/by-sa/4.0/. Source: https://en.wikipedia.org/w/index.php?title=Wikipedia:Signs_of_AI_writing&oldid=1384336333
+- arXiv preprint v4, ICML 2024 (Liang, Izzo, Zhang, Lepp, Cao, Zhao, Chen, Ye, Liu, Huang, McFarland, Zou), "Monitoring AI-Modified Content at Scale: A Case Study on the Impact of ChatGPT on AI Conference Peer Reviews". License: arXiv non-exclusive distribution license, quoted briefly. Source: https://arxiv.org/abs/2403.07183v4
+- Alfred University, "Web Standards: Writing for the Web". License: Copyright, quoted briefly. Source: https://my.alfred.edu/information-technology-services/web-standards/writing-for-the-web.cfm
+- University of Bath, "Writing Course Search content that complies with the Competition and Markets Authority". License: Copyright, quoted briefly. Source: https://www.bath.ac.uk/guides/writing-course-search-content-that-complies-with-the-competition-and-markets-authority/
+- arXiv preprint, ASONAM 2016 (Chakraborty, Paranjape, Kakarla, Ganguly), "Stop Clickbait: Detecting and Preventing Clickbaits in Online News Media". License: arXiv non-exclusive distribution license, quoted briefly. Source: https://arxiv.org/pdf/1610.09786
+- University of St Andrews, Digital Communications team, "Why to avoid marketese on the web". License: Copyright, quoted briefly. Source: https://digitalcommunications.wp.st-andrews.ac.uk/2019/02/07/why-to-avoid-marketese-on-the-web/
+- Base44, "Setting up your custom domain". License: Copyright, quoted briefly. Source: https://docs.base44.com/Setting-up-your-app/setting-up-your-custom-domain
+- Bolt, "Bolt hosting". License: Copyright, quoted briefly. Source: https://support.bolt.new/cloud/hosting.md
+- DigitalOcean, "App spec reference". License: Copyright, quoted briefly. Source: https://docs.digitalocean.com/products/app-platform/reference/app-spec/
+- Meta (Facebook Help Center), "How usernames and user IDs are used on Facebook profiles". License: Copyright, quoted briefly. Source: https://www.facebook.com/help/211813265517027
+- Heroku, "Custom domain names for apps". License: Copyright, quoted briefly. Source: https://devcenter.heroku.com/articles/custom-domains
+- Meta (Instagram Help Center), "Instagram on the web". License: Copyright, quoted briefly. Source: https://help.instagram.com/471765489521608
+- Koyeb, "Apps". License: Copyright, quoted briefly. Source: https://www.koyeb.com/docs/reference/apps
+- LinkedIn, "Find your LinkedIn public profile URL". License: Copyright, quoted briefly. Source: https://www.linkedin.com/help/linkedin/answer/a522735/find-your-linkedin-public-profile-url
+- Lovable, "Custom domain". License: Copyright, quoted briefly. Source: https://docs.lovable.dev/features/custom-domain
+- Netlify, "Get started with domains". License: Copyright, quoted briefly. Source: https://docs.netlify.com/manage/domains/get-started-with-domains/
+- Pinterest, "Edit your profile". License: Copyright, quoted briefly. Source: https://help.pinterest.com/en/article/edit-your-profile
+- placebear.com, "placebear". License: Copyright, quoted briefly. Source: https://placebear.com/
+- placebeard.it, "PlaceBeard.it". License: Copyright, quoted briefly. Source: https://placebeard.it/
+- Placehold.co, "Placehold". License: Copyright, quoted briefly. Source: https://placehold.co/
+- placeholder.pics, "Placeholder pics". License: Copyright, quoted briefly. Source: https://placeholder.pics/
+- Pravatar, "Pravatar". License: Copyright, quoted briefly. Source: https://pravatar.cc/
+- PythonAnywhere, "Web app basics". License: Copyright, quoted briefly. Source: https://help.pythonanywhere.com/pages/WebAppBasics/
+- Railway, "Working with domains". License: Copyright, quoted briefly. Source: https://docs.railway.com/networking/domains/working-with-domains
+- Render, "Custom domains on Render". License: Copyright, quoted briefly. Source: https://render.com/docs/custom-domains
+- Replit, "Custom domains". License: Copyright, quoted briefly. Source: https://docs.replit.com/cloud-services/deployments/custom-domains
+- Surge, "Getting started". License: Copyright, quoted briefly. Source: https://surge.sh/docs/getting-started
+- Val Town, "HTTP". License: Copyright, quoted briefly. Source: https://docs.val.town/vals/http/
+- Vercel, "Working with domains". License: Copyright, quoted briefly. Source: https://vercel.com/docs/domains/working-with-domains
+- placeholder ltd., "via.placeholder.com: free placeholder images". License: Copyright, quoted briefly. Source: https://via.placeholder.com/
+- Webflow, "Webflow staging subdomain". License: Copyright, quoted briefly. Source: https://help.webflow.com/hc/en-us/articles/33961419650067-Webflow-staging-subdomain
+- Wix, "About domains". License: Copyright, quoted briefly. Source: https://support.wix.com/en/article/about-domains
+- Microsoft, "How to insert sample text in Microsoft Office Word". License: Copyright, quoted briefly. Source: https://support.microsoft.com/en-us/word/how-to-insert-sample-text-in-microsoft-office-word
+- Automattic (WordPress.com), "Manage your WordPress.com domains". License: Copyright, quoted briefly. Source: https://wordpress.com/support/domains/
+- X Corp. (X Help Center), "Email, phone, or username already in use". License: Copyright, quoted briefly. Source: https://help.x.com/en/managing-your-account/when-email-phone-number-or-usernname-is-already-in-use
+- Google (YouTube Help), "Handles and channel URLs". License: Copyright, quoted briefly. Source: https://support.google.com/youtube/answer/2657968
+
+Vendored conformance data
+
+Unicode 17.0.0 normalization conformance data
+License: Unicode-3.0
+Source: https://www.unicode.org/Public/17.0.0/ucd/
+Conformance data: apps/desktop/src-tauri/tests/fixtures/sync/nfkc-cases.txt
+
+UNICODE LICENSE V3
+
+COPYRIGHT AND PERMISSION NOTICE
+
+Copyright © 1991-2026 Unicode, Inc.
+
+NOTICE TO USER: Carefully read the following legal agreement. BY
+DOWNLOADING, INSTALLING, COPYING OR OTHERWISE USING DATA FILES, AND/OR
+SOFTWARE, YOU UNEQUIVOCALLY ACCEPT, AND AGREE TO BE BOUND BY, ALL OF THE
+TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT
+DOWNLOAD, INSTALL, COPY, DISTRIBUTE OR USE THE DATA FILES OR SOFTWARE.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of data files and any associated documentation (the "Data Files") or
+software and any associated documentation (the "Software") to deal in the
+Data Files or Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, and/or sell
+copies of the Data Files or Software, and to permit persons to whom the
+Data Files or Software are furnished to do so, provided that either (a)
+this copyright and permission notice appear with all copies of the Data
+Files or Software, or (b) this copyright and permission notice appear in
+associated Documentation.
+
+THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
+THIRD PARTY RIGHTS.
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS NOTICE
+BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES,
+OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE DATA
+FILES OR SOFTWARE.
+
+Except as contained in this notice, the name of a copyright holder shall
+not be used in advertising or otherwise to promote the sale, use or other
+dealings in these Data Files or Software without prior written
+authorization of the copyright holder.

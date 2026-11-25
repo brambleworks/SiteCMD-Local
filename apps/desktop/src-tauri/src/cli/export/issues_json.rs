@@ -1,10 +1,11 @@
 use crate::cli::export::labels::{category_display_name, category_label, verify_hint};
 use crate::cli::impact;
-use crate::core::scanner::ScanResult;
+use crate::core::scan_types::Category;
+use crate::core::scan_types::ScanResult;
 
 pub(super) fn build_issues_json(result: &ScanResult) -> Result<String, String> {
     let ranked = impact::rank_issues(&result.issues, result.detected_stack.as_ref());
-    let total_recoverable: u32 = ranked.iter().map(|r| r.estimated_points).sum();
+    let total_recoverable: u32 = result.fix_points.iter().sum();
 
     let issues: Vec<serde_json::Value> = ranked
         .iter()
@@ -23,8 +24,8 @@ pub(super) fn build_issues_json(result: &ScanResult) -> Result<String, String> {
                 "id": issue.check_id,
                 "title": issue.title,
                 "severity": format!("{:?}", issue.severity).to_lowercase(),
-                "category": category_label(&issue.category),
-                "points": ri.estimated_points,
+                "category": issue.category.map(|category| category_label(&category)),
+                "points": result.fix_points.get(ri.actionable_index).copied().unwrap_or_default(),
                 "applicability": ri.applicability.label(),
                 "fix_summary": fix_summary,
                 "verify": verify,
@@ -32,11 +33,17 @@ pub(super) fn build_issues_json(result: &ScanResult) -> Result<String, String> {
         })
         .collect();
 
-    let categories: Vec<serde_json::Value> = result
-        .categories
+    let categories: Vec<serde_json::Value> = Category::ALL
         .iter()
+        .filter_map(|category| {
+            result
+                .categories
+                .iter()
+                .find(|bar| bar.category == *category)
+        })
         .map(|c| {
             serde_json::json!({
+                "key": category_label(&c.category),
                 "name": category_display_name(&c.category),
                 "score": c.score,
                 "issues": c.issues_total,

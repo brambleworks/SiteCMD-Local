@@ -1,0 +1,73 @@
+{
+  "audit": [
+    {
+      "name": "lengths",
+      "files": { "a.txt": [97, 98], "b.txt": [195, 169, 10] },
+      "total": 5,
+      "per_file": 5,
+      "issues": { "a.txt": "2", "b.txt": "3" },
+      "refusals": {}
+    },
+    {
+      "name": "refused inputs",
+      "files": {
+        ".env": [97],
+        "a-binary.txt": [255],
+        "b-unavailable.txt": null,
+        "c-answered.txt": [97],
+        "d-budget.txt": [97, 98],
+        "e-large.txt": [97, 98, 99]
+      },
+      "total": 2,
+      "per_file": 2,
+      "preanswered": ["c-answered.txt"],
+      "issues": {},
+      "refusals": {
+        ".env": "not_listed",
+        "a-binary.txt": "not_text",
+        "b-unavailable.txt": "unavailable",
+        "c-answered.txt": "already_answered",
+        "d-budget.txt": "budget_spent",
+        "e-large.txt": "too_large"
+      }
+    }
+  ],
+  "quote": {
+    "path": "quote.txt",
+    "line": "The moonlit fixture keeps its own words.",
+    "refusal": "handed_line"
+  },
+  "rule": {
+    "id": "standin.rule",
+    "title": "Sample finding",
+    "domain": "operations",
+    "default_severity": "low",
+    "check_id": "code_scan.standin.rule",
+    "category": "reliability",
+    "rationale": null
+  },
+  "local_page": {
+    "path": "index.html",
+    "check_id": "standin.rule",
+    "title": "Sample finding",
+    "category": {
+      "category": "reliability",
+      "score": 100,
+      "issuesTotal": 1,
+      "issuesCritical": 0,
+      "issuesHigh": 0,
+      "issuesMedium": 0,
+      "issuesLow": 1,
+      "issuesPassed": 0
+    }
+  },
+  "want_parent": "want-parent.txt",
+  "memory": "grow.txt",
+  "interrupt": "spin.txt",
+  "deadline": "spin.txt",
+  "trap": "trap.txt",
+  "malformed": {
+    "frame": [1, 0, 0, 0],
+    "answer": { "error": "invalid_frame" }
+  }
+}

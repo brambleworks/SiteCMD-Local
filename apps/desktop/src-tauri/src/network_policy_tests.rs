@@ -3,13 +3,13 @@
 
 use super::{
     validate_ip_target, validate_redirect_target_nonblocking, validate_resolved_domain_ip_target,
-    validate_url_blocking, LocalOrigin, UrlPolicy,
+    validate_url, LocalOrigin, UrlPolicy,
 };
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 #[test]
 fn local_origin_matches_the_predicates_it_replaces() {
-    use crate::core::localhost::{is_localhost, is_strict_localhost};
+    use sitecmd_protocol::network_class::{is_localhost, is_strict_localhost};
     for url in [
         "http://localhost:3000",
         "http://127.0.0.1:8080",
@@ -24,12 +24,12 @@ fn local_origin_matches_the_predicates_it_replaces() {
         let parsed = url::Url::parse(url).expect(url);
         let origin = LocalOrigin::classify(&parsed);
         assert_eq!(
-            origin.is_local_environment(),
+            origin != LocalOrigin::Public,
             is_localhost(&parsed),
             "{url}"
         );
         assert_eq!(
-            origin.is_strict_loopback(),
+            origin == LocalOrigin::Loopback,
             is_strict_localhost(&parsed),
             "{url}"
         );
@@ -41,30 +41,36 @@ fn local_origin_matches_the_predicates_it_replaces() {
     }
     // The one deliberate widening: every 127/8 literal is loopback.
     let wide = url::Url::parse("http://127.0.0.2:5173").unwrap();
-    assert!(LocalOrigin::classify(&wide).is_strict_loopback());
+    assert!(LocalOrigin::classify(&wide) == LocalOrigin::Loopback);
     assert!(!is_strict_localhost(&wide));
 
     // A second deliberate widening: a trailing-dot FQDN form of
     // localhost normalizes the same way `is_local_dev_domain` (and
     // therefore `LocalOrigin::classify`) already normalizes it
     // elsewhere in this file, so `LocalOrigin` treats "localhost." as
-    // loopback even though the two `core::localhost` predicates compare
+    // loopback even though the two protocol predicates compare
     // `host_str()` without trimming the trailing dot.
     let trailing_dot = url::Url::parse("http://localhost./").unwrap();
     let trailing_dot_origin = LocalOrigin::classify(&trailing_dot);
-    assert!(trailing_dot_origin.is_strict_loopback());
+    assert!(trailing_dot_origin == LocalOrigin::Loopback);
     assert!(!is_strict_localhost(&trailing_dot));
-    assert!(trailing_dot_origin.is_local_environment());
+    assert!(trailing_dot_origin != LocalOrigin::Public);
     assert!(!is_localhost(&trailing_dot));
     assert!(trailing_dot_origin.allows_local_dev());
     assert!(LocalOrigin::classify(&trailing_dot).allows_local_dev());
 }
 
-#[test]
-fn scan_validation_allows_explicit_local_dev_loopback() {
-    assert!(validate_url_blocking("http://localhost:5173", UrlPolicy::Scan).is_ok());
-    assert!(validate_url_blocking("http://127.0.0.1:5173", UrlPolicy::Scan).is_ok());
-    assert!(validate_url_blocking("http://[::1]:5173", UrlPolicy::Scan).is_ok());
+#[tokio::test]
+async fn scan_validation_allows_explicit_local_dev_loopback() {
+    assert!(validate_url("http://localhost:5173", UrlPolicy::Scan)
+        .await
+        .is_ok());
+    assert!(validate_url("http://127.0.0.1:5173", UrlPolicy::Scan)
+        .await
+        .is_ok());
+    assert!(validate_url("http://[::1]:5173", UrlPolicy::Scan)
+        .await
+        .is_ok());
 }
 
 #[test]
@@ -95,18 +101,36 @@ fn only_explicit_local_scan_origins_inherit_the_loopback_exception() {
     }
 }
 
-#[test]
-fn scan_validation_rejects_private_non_loopback_targets() {
-    assert!(validate_url_blocking("http://192.168.1.10", UrlPolicy::Scan).is_err());
-    assert!(validate_url_blocking("http://10.0.0.5", UrlPolicy::Scan).is_err());
-    assert!(validate_url_blocking("http://169.254.169.254", UrlPolicy::Scan).is_err());
+#[tokio::test]
+async fn scan_validation_rejects_private_non_loopback_targets() {
+    assert!(validate_url("http://192.168.1.10", UrlPolicy::Scan)
+        .await
+        .is_err());
+    assert!(validate_url("http://10.0.0.5", UrlPolicy::Scan)
+        .await
+        .is_err());
+    assert!(validate_url("http://169.254.169.254", UrlPolicy::Scan)
+        .await
+        .is_err());
 }
 
-#[test]
-fn external_callback_validation_rejects_local_targets() {
-    assert!(validate_url_blocking("http://localhost:5173", UrlPolicy::ExternalCallback).is_err());
-    assert!(validate_url_blocking("http://127.0.0.1:5173", UrlPolicy::ExternalCallback).is_err());
-    assert!(validate_url_blocking("http://[::1]:5173", UrlPolicy::ExternalCallback).is_err());
+#[tokio::test]
+async fn external_callback_validation_rejects_local_targets() {
+    assert!(
+        validate_url("http://localhost:5173", UrlPolicy::ExternalCallback)
+            .await
+            .is_err()
+    );
+    assert!(
+        validate_url("http://127.0.0.1:5173", UrlPolicy::ExternalCallback)
+            .await
+            .is_err()
+    );
+    assert!(
+        validate_url("http://[::1]:5173", UrlPolicy::ExternalCallback)
+            .await
+            .is_err()
+    );
 }
 
 fn ipv4(a: u8, b: u8, c: u8, d: u8) -> IpAddr {
@@ -120,8 +144,8 @@ fn ip_target_rejects_rfc1918_under_external_callback_policy() {
     assert!(validate_ip_target(ipv4(192, 168, 1, 1), UrlPolicy::ExternalCallback).is_err());
 }
 
-#[test]
-fn a_named_scan_target_may_reach_the_networks_this_machine_is_on() {
+#[tokio::test]
+async fn a_named_scan_target_may_reach_the_networks_this_machine_is_on() {
     // SiteCMD runs as the person who typed the address, on their machine,
     // with their network. Naming a box they can already reach grants no
     // access they did not have.
@@ -133,22 +157,24 @@ fn a_named_scan_target_may_reach_the_networks_this_machine_is_on() {
         "http://[fd00::1]:8080/",
     ] {
         assert!(
-            validate_url_blocking(target, UrlPolicy::Scan).is_err(),
+            validate_url(target, UrlPolicy::Scan).await.is_err(),
             "{target} is not a subordinate fetch's to reach"
         );
         assert!(
-            validate_url_blocking(target, UrlPolicy::ExternalCallback).is_err(),
+            validate_url(target, UrlPolicy::ExternalCallback)
+                .await
+                .is_err(),
             "{target} must never be a callback"
         );
         assert!(
-            validate_url_blocking(target, UrlPolicy::ScanTarget).is_ok(),
+            validate_url(target, UrlPolicy::ScanTarget).await.is_ok(),
             "{target} is a target a person can name"
         );
     }
 }
 
-#[test]
-fn no_policy_reaches_link_local_or_the_addresses_that_are_not_hosts() {
+#[tokio::test]
+async fn no_policy_reaches_link_local_or_the_addresses_that_are_not_hosts() {
     // Cloud metadata answers on link-local, and a scan body is persisted,
     // exported, and can be sent to an AI provider. The rest are not hosts.
     for target in [
@@ -166,7 +192,7 @@ fn no_policy_reaches_link_local_or_the_addresses_that_are_not_hosts() {
             UrlPolicy::ExternalCallback,
         ] {
             assert!(
-                validate_url_blocking(target, policy).is_err(),
+                validate_url(target, policy).await.is_err(),
                 "{target} under {policy:?}"
             );
         }
@@ -174,16 +200,12 @@ fn no_policy_reaches_link_local_or_the_addresses_that_are_not_hosts() {
 }
 
 #[test]
-fn a_public_page_never_earns_reach_the_person_did_not_ask_for() {
-    // The whole SSRF boundary for a local scanner: a page can name any URL
-    // it likes, and it inherits the origin's reach rather than a target's.
-    let public = LocalOrigin::classify(&url::Url::parse("https://example.com/").expect("url"));
-    assert_eq!(public, LocalOrigin::Public);
-    let steered = |target: &str, origin: LocalOrigin| {
-        super::validate_page_subresource_target(
-            &url::Url::parse(target).expect("target url"),
-            origin.subordinate_policy(),
-        )
+fn redirect_policy_preserves_the_target_reach() {
+    let public_origin =
+        LocalOrigin::classify(&url::Url::parse("https://example.com/").expect("url"));
+    assert_eq!(public_origin, LocalOrigin::Public);
+    let public = UrlPolicy::Redirect {
+        allow_local_dev: false,
     };
     for stolen in [
         "http://192.168.1.40/",
@@ -191,7 +213,7 @@ fn a_public_page_never_earns_reach_the_person_did_not_ask_for() {
         "http://10.0.0.5/",
     ] {
         assert!(
-            steered(stolen, public).is_err(),
+            redirect_nonblocking(stolen, public).is_err(),
             "{stolen} from a public page"
         );
     }
@@ -199,8 +221,8 @@ fn a_public_page_never_earns_reach_the_person_did_not_ask_for() {
     // A target the person named on their own network keeps its own reach.
     let lan = LocalOrigin::classify(&url::Url::parse("http://192.168.1.40:8080/").expect("url"));
     assert_eq!(lan, LocalOrigin::PrivateNetwork);
-    assert!(steered("http://192.168.1.41/app.css", lan).is_ok());
-    assert!(steered("http://169.254.169.254/", lan).is_err());
+    assert!(redirect_nonblocking("http://192.168.1.41/app.css", UrlPolicy::ScanTarget).is_ok());
+    assert!(redirect_nonblocking("http://169.254.169.254/", UrlPolicy::ScanTarget).is_err());
 }
 
 #[test]
@@ -377,6 +399,19 @@ fn security_regression_domain_resolution_rejects_loopback_under_scan_policy() {
 }
 
 #[test]
+fn a_mapped_loopback_answer_requires_a_localhost_name() {
+    // Bug: A public hostname can resolve to an IPv4-mapped loopback address under ScanTarget.
+    let mapped = IpAddr::V6(Ipv4Addr::LOCALHOST.to_ipv6_mapped());
+    assert!(
+        validate_resolved_domain_ip_target("rebind.example", mapped, UrlPolicy::ScanTarget)
+            .is_err()
+    );
+    assert!(
+        validate_resolved_domain_ip_target("app.localhost", mapped, UrlPolicy::ScanTarget).is_ok()
+    );
+}
+
+#[test]
 fn local_dev_domain_resolution_must_stay_loopback() {
     let lo = ipv4(127, 0, 0, 1);
     let private = ipv4(192, 168, 1, 10);
@@ -401,43 +436,40 @@ fn redirect_policy_rejects_ip_literal_internal_targets_inline() {
     assert!(redirect_nonblocking("http://[::ffff:127.0.0.1]/", policy).is_err());
 }
 
-fn subresource(url: &str, allow_local_dev: bool) -> Result<(), String> {
-    super::validate_page_subresource_target(
-        &url::Url::parse(url).expect("parse url"),
-        UrlPolicy::Redirect { allow_local_dev },
-    )
+fn redirect_with_local_dev(url: &str, allow_local_dev: bool) -> Result<(), String> {
+    redirect_nonblocking(url, UrlPolicy::Redirect { allow_local_dev })
 }
 
 #[test]
-fn page_subresource_rejects_ip_literal_internal_targets() {
-    assert!(subresource("http://169.254.169.254/latest/meta-data/", false).is_err());
-    assert!(subresource("http://10.0.0.5/admin", false).is_err());
-    assert!(subresource("http://192.168.1.1/reboot", false).is_err());
-    assert!(subresource("http://127.0.0.1:11434/api", false).is_err());
-    assert!(subresource("http://[::1]/", false).is_err());
-    assert!(subresource("http://[::ffff:127.0.0.1]/", false).is_err());
+fn redirect_target_rejects_ip_literal_internal_targets() {
+    assert!(redirect_with_local_dev("http://169.254.169.254/latest/meta-data/", false).is_err());
+    assert!(redirect_with_local_dev("http://10.0.0.5/admin", false).is_err());
+    assert!(redirect_with_local_dev("http://192.168.1.1/reboot", false).is_err());
+    assert!(redirect_with_local_dev("http://127.0.0.1:11434/api", false).is_err());
+    assert!(redirect_with_local_dev("http://[::1]/", false).is_err());
+    assert!(redirect_with_local_dev("http://[::ffff:127.0.0.1]/", false).is_err());
 }
 
 #[test]
-fn page_subresource_allows_public_targets() {
-    assert!(subresource("https://cdn.example.com/style.css", false).is_ok());
-    assert!(subresource("https://fonts.example.org/f.css", false).is_ok());
+fn redirect_target_allows_public_targets() {
+    assert!(redirect_with_local_dev("https://cdn.example.com/style.css", false).is_ok());
+    assert!(redirect_with_local_dev("https://fonts.example.org/f.css", false).is_ok());
 }
 
 #[test]
-fn page_subresource_allows_loopback_only_when_scanning_local_dev() {
+fn redirect_target_allows_loopback_only_when_scanning_local_dev() {
     // Scanning a localhost dev server must still fetch its own same-origin
     // assets (allow_local_dev=true), but a public scan (false) must not.
-    assert!(subresource("http://127.0.0.1:5173/app.css", true).is_ok());
-    assert!(subresource("http://127.0.0.1:5173/app.css", false).is_err());
+    assert!(redirect_with_local_dev("http://127.0.0.1:5173/app.css", true).is_ok());
+    assert!(redirect_with_local_dev("http://127.0.0.1:5173/app.css", false).is_err());
     // Even under local-dev, a private (non-loopback) LAN target stays blocked.
-    assert!(subresource("http://192.168.1.10/x.css", true).is_err());
+    assert!(redirect_with_local_dev("http://192.168.1.10/x.css", true).is_err());
 }
 
 #[test]
-fn page_subresource_rejects_non_http_schemes() {
-    assert!(subresource("file:///etc/passwd", false).is_err());
-    assert!(subresource("ftp://internal/x", false).is_err());
+fn redirect_target_rejects_non_http_schemes() {
+    assert!(redirect_with_local_dev("file:///etc/passwd", false).is_err());
+    assert!(redirect_with_local_dev("ftp://internal/x", false).is_err());
 }
 
 #[test]

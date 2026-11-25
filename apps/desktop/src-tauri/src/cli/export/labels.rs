@@ -1,4 +1,4 @@
-use crate::checks::ScanCategory;
+use crate::core::scan_types::Category;
 
 pub(super) fn stack_summary_string(stack: Option<&serde_json::Value>) -> String {
     if let Some(s) = stack {
@@ -9,12 +9,12 @@ pub(super) fn stack_summary_string(stack: Option<&serde_json::Value>) -> String 
     "Unknown".to_string()
 }
 
-pub(super) fn category_label(cat: &ScanCategory) -> &'static str {
-    cat.as_str()
+pub(super) fn category_label(cat: &Category) -> &'static str {
+    cat.key()
 }
 
-pub(super) fn category_display_name(cat: &ScanCategory) -> &'static str {
-    cat.display_label()
+pub(super) fn category_display_name(cat: &Category) -> &'static str {
+    cat.label()
 }
 
 /// Generate a concise verify command for a given check ID.

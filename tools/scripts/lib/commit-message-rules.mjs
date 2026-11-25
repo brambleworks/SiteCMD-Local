@@ -95,18 +95,12 @@ function hasConventionalPrefix(subject) {
   return prefix.endsWith(")") && !prefix.slice(scopeStart + 1, -1).includes(")");
 }
 
-export function commitMessageFailures(message, { subjectOnly = false } = {}) {
-  const lines = visibleLines(message);
-  while (lines.length > 0 && lines.at(-1).trim() === "") lines.pop();
-  while (lines.length > 0 && lines[0].trim() === "") lines.shift();
-
-  const subject = lines[0]?.trim() ?? "";
+function subjectFailures(subject, { allowDependencyBump = false } = {}) {
   if (!subject) return ["Write a commit subject."];
-
   const failures = [];
   const words = subject.split(/\s+/u);
 
-  if (subject.length > MAX_SUBJECT_LENGTH && !isDependencyBump(subject)) {
+  if (subject.length > MAX_SUBJECT_LENGTH && !(allowDependencyBump && isDependencyBump(subject))) {
     failures.push(`Keep the subject at ${MAX_SUBJECT_LENGTH} characters or fewer.`);
   }
   if (words.length < 2) {
@@ -136,6 +130,39 @@ export function commitMessageFailures(message, { subjectOnly = false } = {}) {
     failures.push("Name the specific behavior or component being changed.");
   }
 
+  return failures;
+}
+
+function bodyFailures(bodyLines) {
+  const failures = [];
+  const bodyLength = bodyLines.join("\n").length;
+  if (bodyLines.length > MAX_BODY_LINES) {
+    failures.push(`Keep the body at ${MAX_BODY_LINES} non-empty lines or fewer.`);
+  }
+  if (bodyLength > MAX_BODY_LENGTH) {
+    failures.push(`Keep the body at ${MAX_BODY_LENGTH} characters or fewer.`);
+  }
+  return failures;
+}
+
+export function prTitleAndBodyFailures(title, body) {
+  if (/[\r\n]/.test(title)) return ["Write a title on one line."];
+  const bodyLines = body
+    .split(/\r\n?|\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return [...subjectFailures(title.trim()), ...bodyFailures(bodyLines)];
+}
+
+export function commitMessageFailures(message, { subjectOnly = false } = {}) {
+  const lines = visibleLines(message);
+  while (lines.length > 0 && lines.at(-1).trim() === "") lines.pop();
+  while (lines.length > 0 && lines[0].trim() === "") lines.shift();
+
+  const subject = lines[0]?.trim() ?? "";
+
+  const failures = subjectFailures(subject, { allowDependencyBump: true });
+
   if (!subjectOnly) {
     const hasBody = lines.slice(1).some((line) => line.trim() !== "");
     if (hasBody && lines[1]?.trim() !== "") {
@@ -146,13 +173,7 @@ export function commitMessageFailures(message, { subjectOnly = false } = {}) {
       .slice(2)
       .map((line) => line.trim())
       .filter((line) => line !== "" && !isTrailer(line));
-    const bodyLength = bodyLines.join("\n").length;
-    if (bodyLines.length > MAX_BODY_LINES) {
-      failures.push(`Keep the body at ${MAX_BODY_LINES} non-empty lines or fewer.`);
-    }
-    if (bodyLength > MAX_BODY_LENGTH) {
-      failures.push(`Keep the body at ${MAX_BODY_LENGTH} characters or fewer.`);
-    }
+    failures.push(...bodyFailures(bodyLines));
   }
 
   return [...new Set(failures)];

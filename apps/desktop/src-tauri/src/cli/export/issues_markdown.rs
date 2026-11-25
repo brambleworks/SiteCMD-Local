@@ -1,12 +1,12 @@
 use crate::cli::export::labels::{stack_summary_string, verify_hint};
 use crate::cli::impact;
-use crate::core::scanner::ScanResult;
+use crate::core::scan_types::ScanResult;
 
 pub(super) fn build_issues_md(result: &ScanResult) -> String {
     let stack_summary = stack_summary_string(result.detected_stack.as_ref());
     let ranked = impact::rank_issues(&result.issues, result.detected_stack.as_ref());
 
-    let total_recoverable: u32 = ranked.iter().map(|r| r.estimated_points).sum();
+    let total_recoverable: u32 = result.fix_points.iter().sum();
 
     let mut out = String::with_capacity(2048);
 
@@ -23,7 +23,7 @@ pub(super) fn build_issues_md(result: &ScanResult) -> String {
     }
 
     out.push_str(&format!(
-        "## Fixes ({} issues, ~{} points recoverable)\n",
+        "## Fixes ({} issues, {} points recoverable)\n\nPoints show score gains when fixes are applied in this order.\n",
         ranked.len(),
         total_recoverable,
     ));
@@ -37,7 +37,11 @@ pub(super) fn build_issues_md(result: &ScanResult) -> String {
             "\n### {}. {} [+{} pts] {}\nID: {} | {}\n\n{}\n",
             ri.rank,
             issue.title,
-            ri.estimated_points,
+            result
+                .fix_points
+                .get(ri.actionable_index)
+                .copied()
+                .unwrap_or_default(),
             ri.applicability.tag(),
             issue.check_id,
             severity_label,

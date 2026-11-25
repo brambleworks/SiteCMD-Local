@@ -1,7 +1,0 @@
-{
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "sitecmd-filesystem-export",
-  "description": "Elevated SiteCMD filesystem export commands. The bridge window only receives the broker dispatch permission; export writes and database backups are reachable as regular Rust function calls inside run_filesystem_export_command, never as direct Tauri IPC calls. This forces every elevated invocation through token_state.consume() and the native overwrite/export confirmation dialogs.",
-  "windows": ["filesystem-export"],
-  "permissions": ["core:event:default", "allow-run-filesystem-export-command"]
-}

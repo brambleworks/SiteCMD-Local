@@ -1,6 +1,6 @@
 import { stripNonCode } from "./guardrail-source-text.mjs";
 
-// Runner node in the import graph.
+// Default runner node in the import graph.
 export const RUNNER = "check-repo-guardrails.mjs";
 
 const IMPORT_PATTERN = /import\s*\{([^}]*)\}\s*from\s*"([^"]+)";/g;
@@ -54,12 +54,14 @@ function resolveModule(specifier) {
 }
 
 /**
- * @param {Map<string, string>} sources guardrail modules plus the runner
+ * @param {Map<string, string>} sources guardrail modules plus their runners
+ * @param {string[]} runners entry points that execute guardrail rules
  * @returns {string[]} unreachable rule exports
  */
-export function runnerWiringFailures(sources) {
-  const runnerSource = sources.get(RUNNER);
-  if (typeof runnerSource !== "string") return [`${RUNNER} is missing from the module graph.`];
+export function runnerWiringFailures(sources, runners = [RUNNER]) {
+  for (const runner of runners) {
+    if (!sources.has(runner)) return [`${runner} is missing from the module graph.`];
+  }
 
   const exportsByModule = new Map();
   const usesByModule = new Map();
@@ -86,8 +88,8 @@ export function runnerWiringFailures(sources) {
   };
 
   const wired = new Set();
-  const reachable = new Set([RUNNER]);
-  const pending = [RUNNER];
+  const reachable = new Set(runners);
+  const pending = [...runners];
   while (pending.length > 0) {
     for (const invocation of invocationsFrom(pending.pop())) {
       if (wired.has(invocation)) continue;
@@ -102,11 +104,11 @@ export function runnerWiringFailures(sources) {
 
   const failures = [];
   for (const [name, exported] of exportsByModule) {
-    if (name === RUNNER || !/^guardrail-.*\.mjs$/.test(name)) continue;
+    if (runners.includes(name) || !/^guardrail-.*\.mjs$/.test(name)) continue;
     for (const rule of exported) {
       if (!rule.endsWith("Failures") || wired.has(`${name}::${rule}`)) continue;
       failures.push(
-        `tools/scripts/lib/${name} exports ${rule}, which nothing reaches from ${RUNNER}. An unwired rule passes its own tests and guards nothing - call it from the runner, reach it from a rule the runner calls, or delete it.`,
+        `tools/scripts/lib/${name} exports ${rule}, which nothing reaches from ${runners.join(" or ")}. An unwired rule passes its own tests and guards nothing - call it from a runner, reach it from a rule a runner calls, or delete it.`,
       );
     }
   }

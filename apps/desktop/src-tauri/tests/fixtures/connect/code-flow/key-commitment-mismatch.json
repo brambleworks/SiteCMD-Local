@@ -1,0 +1,14 @@
+{
+  "status": 409,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": {
+    "type": "about:blank",
+    "title": "Conflict",
+    "status": 409,
+    "detail": "The key this evidence was hashed under does not match the commitment registered for its claimed version.",
+    "code": "key_commitment_mismatch",
+    "request_id": "REQUESTIDFIXTURE"
+  }
+}

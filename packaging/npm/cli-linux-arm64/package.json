@@ -2,7 +2,7 @@
   "name": "@sitecmd/cli-linux-arm64",
   "version": "0.0.0-dev",
   "description": "The Linux arm64 sitecmd binary for @sitecmd/cli.",
-  "license": "Apache-2.0",
+  "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/brambleworks/SiteCMD-Local.git"

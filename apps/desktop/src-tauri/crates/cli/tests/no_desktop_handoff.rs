@@ -1,85 +1,41 @@
 #![cfg(unix)]
 
-use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
-use std::process::{Child, Command, Output, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
 
-mod support;
+#[path = "support/cli_binary.rs"]
+mod cli_binary;
+use cli_binary::cli_binary;
 
-struct Project {
-    dir: tempfile::TempDir,
-    db_path: PathBuf,
-    launches: PathBuf,
-}
+#[path = "support/handoff.rs"]
+mod handoff;
+use handoff::{rendered, Project};
 
-impl Project {
-    fn new() -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("sitecmd.db");
-        let launches = dir.path().join("launches.log");
-        drop(sitecmd_runtime::db::Database::open(db_path.clone()).unwrap());
-        let bin = dir.path().join("bin");
-        std::fs::create_dir(&bin).unwrap();
-        for launcher in ["open", "xdg-open"] {
-            let path = bin.join(launcher);
-            std::fs::write(
-                &path,
-                "#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$LAUNCH_LOG\"\n",
-            )
+#[path = "support/local_site.rs"]
+mod local_site;
+
+#[test]
+fn connected_and_gate_help_describe_the_local_store() {
+    // Bug: Help still attributes the local store and preview to the removed desktop app.
+    for command in ["connected", "gate"] {
+        let output = Command::new(cli_binary())
+            .args([command, "--help"])
+            .output()
             .unwrap();
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
-        Self {
-            dir,
-            db_path,
-            launches,
-        }
-    }
-
-    fn command(&self) -> Command {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_sitecmd_cli"));
-        let mut paths = vec![self.dir.path().join("bin")];
-        paths.extend(std::env::split_paths(
-            &std::env::var_os("PATH").unwrap_or_default(),
-        ));
-        command
-            .current_dir(self.dir.path())
-            .env("PATH", std::env::join_paths(paths).unwrap())
-            .env("SITECMD_DB_PATH", &self.db_path)
-            .env("LAUNCH_LOG", &self.launches);
-        command
-    }
-
-    fn configure(&self, url: &str) {
-        sitecmd_runtime::cli::write_config(
-            &self.dir.path().join(".sitecmd"),
-            &sitecmd_runtime::cli::CliConfig::new(url, "Fixture"),
-        )
-        .unwrap();
-    }
-
-    fn assert_no_handoff(&self, output: &str) {
-        let launches = std::fs::read_to_string(&self.launches).unwrap_or_default();
-        let db = sitecmd_runtime::db::Database::open(self.db_path.clone()).unwrap();
-        let projects = db.get_projects().unwrap();
+        let help = rendered(&output);
+        assert!(output.status.success(), "{help}");
         assert!(
-            launches.is_empty()
-                && projects.is_empty()
-                && !output.to_lowercase().contains("desktop")
-                && !output.contains("sitecmd://"),
-            "launches: {launches:?}; imported projects: {}; output: {output}",
-            projects.len()
+            help.contains("Local SiteCMD SQLite database (sitecmd.db)"),
+            "{help}"
         );
+        assert!(!help.to_lowercase().contains("desktop"), "{help}");
+        if command == "connected" {
+            assert!(
+                help.contains("stored-evidence submission payload"),
+                "{help}"
+            );
+            assert!(help.contains("reserving no submission sequence"), "{help}");
+        }
     }
-}
-
-fn rendered(output: &Output) -> String {
-    format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    )
 }
 
 #[test]
@@ -132,57 +88,9 @@ fn init_and_watch_help_exclude_handoff_and_init_rejects_removed_flag() {
     assert!(!project.dir.path().join(".sitecmd").exists());
 }
 
-struct RunningWatch(Child);
-
-impl Drop for RunningWatch {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-#[test]
-fn watch_stays_local_across_scans_and_reports_score_changes() {
-    let site = support::LocalSite::new();
-    let project = Project::new();
-    project.configure(&site.url);
-    let stdout_path = project.dir.path().join("stdout.log");
-    let stderr_path = project.dir.path().join("stderr.log");
-    let watch = RunningWatch(
-        project
-            .command()
-            .args(["watch", "--interval", "1"])
-            .stdout(Stdio::from(std::fs::File::create(&stdout_path).unwrap()))
-            .stderr(Stdio::from(std::fs::File::create(&stderr_path).unwrap()))
-            .spawn()
-            .unwrap(),
-    );
-    let deadline = Instant::now() + Duration::from_secs(90);
-    let output = loop {
-        let output = std::fs::read_to_string(&stderr_path).unwrap();
-        if output.contains("[#1] Baseline - Score:") {
-            site.degrade();
-        }
-        if output.contains("[#2] Score:") {
-            break output;
-        }
-        assert!(Instant::now() < deadline, "watch did not rescan: {output}");
-        std::thread::sleep(Duration::from_millis(20));
-    };
-    drop(watch);
-    assert!(output.contains("Watching "), "{output}");
-    assert!(
-        output.contains("(interval: 1s, Ctrl+C to stop)"),
-        "{output}"
-    );
-    assert!(project.dir.path().join(".sitecmd/last-scan.json").is_file());
-    assert!(std::fs::read_to_string(stdout_path).unwrap().is_empty());
-    project.assert_no_handoff(&output);
-}
-
 #[test]
 fn scan_and_diff_export_results_without_handoff() {
-    let site = support::LocalSite::new();
+    let site = local_site::LocalSite::new("<html><body>Updated fixture</body></html>");
     let project = Project::new();
     project.configure(&site.url);
     let mut output = String::new();
@@ -194,6 +102,38 @@ fn scan_and_diff_export_results_without_handoff() {
         assert!(result.status.success(), "{}", rendered(&result));
         output.push_str(&rendered(&result));
         assert!(project.dir.path().join(".sitecmd/last-scan.json").is_file());
+        site.degrade();
     }
     project.assert_no_handoff(&output);
+}
+
+#[test]
+fn check_reports_only_actionable_criticals_from_the_cached_scan() {
+    // A cached passing critical check can inflate the reported failure count.
+    let project = Project::new();
+    project.configure("http://127.0.0.1/");
+    let config = project.dir.path().join(".sitecmd");
+    std::fs::write(
+        config.join("last-scan.json"),
+        r#"{
+            "url": "http://127.0.0.1/",
+            "mode": "live",
+            "scanType": "health",
+            "overallScore": 55,
+            "categories": [],
+            "issues": [
+                {"checkId":"security.env_leak","category":"security","title":"Environment leak","description":"Details","status":"fail","severity":"critical"},
+                {"checkId":"security.source_maps","category":"security","title":"No public source maps","description":"Details","status":"pass","severity":"critical"}
+            ],
+            "durationMs": 100,
+            "timestamp": "2099-01-01T00:00:00Z"
+        }"#,
+    ).unwrap();
+    let output = project
+        .command()
+        .args(["check", "--threshold", "80"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{}", rendered(&output));
+    assert!(rendered(&output).contains("score 55/100 is below threshold 80 (1 critical issues)"));
 }

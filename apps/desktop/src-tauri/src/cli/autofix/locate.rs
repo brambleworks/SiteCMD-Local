@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use sitecmd_engine::sync::ProjectFingerprintKey;
+use sitecmd_protocol::sync::ProjectFingerprintKey;
 
 use super::brief::identities;
 use super::secrets::{read_env_secret, read_export, ExportSource};

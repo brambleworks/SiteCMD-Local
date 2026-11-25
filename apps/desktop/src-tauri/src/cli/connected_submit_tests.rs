@@ -5,14 +5,13 @@ use super::*;
 
 use crate::cli::test_support::{clean_checkout, exported_site, through, CI_TOKEN, ENVIRONMENT_URL};
 use crate::connected_service::deployment_ordering::CiSubmissionAttestation;
+use crate::connected_service::deployment_ordering::ConnectedOrderingAuthority;
 use crate::connected_service::test_double::{
     request_line, respond_in_sequence, ACCOUNT_INACTIVE_PROBLEM, ENTITLEMENT_SUSPENDED_PROBLEM,
 };
-use crate::connected_service::{
-    ConnectedOrderingAuthority, ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE,
-};
-use crate::db::{ConnectedSubmissionRequest, Database};
-use sitecmd_engine::sync::ProjectFingerprintKey;
+use crate::connected_service::{ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE};
+use crate::db::Database;
+use sitecmd_protocol::sync::ProjectFingerprintKey;
 
 const SITE_ID: &str = "site_cli_submit";
 
@@ -33,7 +32,7 @@ fn error(code: &str, message: &str) -> ConnectedServiceError {
         status: 409,
         code: code.into(),
         message: message.into(),
-        request_id: Some("req_9f2".into()),
+        request_id: Some("req_9f2".parse().expect("fixture identifier")),
         details: None,
         retry_after: None,
     }
@@ -41,9 +40,14 @@ fn error(code: &str, message: &str) -> ConnectedServiceError {
 
 fn facts() -> DeploymentFacts {
     DeploymentFacts {
-        provider_deployment_id: "run-42".into(),
-        commit_sha: "c0ffee1".into(),
-        ..DeploymentFacts::default()
+        provider_deployment_id: "run-42".parse().expect("fixture identifier"),
+        commit_sha: "c0ffee1".parse().expect("fixture identifier"),
+        git_ref: None,
+        target: None,
+        previous_sha: None,
+        provider_created_at: None,
+        published: false,
+        ordering: None,
     }
 }
 
@@ -52,10 +56,12 @@ fn deployment_head(current: Option<&str>) -> CiDeploymentHead {
         current_deployment_id: current.map(str::to_string),
         submission_attestation: CiSubmissionAttestation::GithubOidc,
         ordering_authority: Some(ConnectedOrderingAuthority {
-            authority_id: "github:1296269:authority".into(),
+            authority_id: "github:1296269:authority"
+                .parse()
+                .expect("fixture identifier"),
             current_deployment_id: current.map(str::to_string),
             epoch: 3,
-            kind: "publish_attestation".into(),
+            kind: "publish_attestation".parse().expect("fixture identifier"),
             publish_sequence: Some(7),
         }),
     }
@@ -64,8 +70,10 @@ fn deployment_head(current: Option<&str>) -> CiDeploymentHead {
 fn submit_args() -> SubmitArgs {
     SubmitArgs {
         connection_export: PathBuf::from(MISSING_EXPORT),
-        passphrase_env: "SITECMD_CONNECTION_PASSPHRASE".into(),
-        token_env: UNSET_TOKEN_ENV.into(),
+        passphrase_env: "SITECMD_CONNECTION_PASSPHRASE"
+            .parse()
+            .expect("fixture identifier"),
+        token_env: UNSET_TOKEN_ENV.parse().expect("fixture identifier"),
         db_path: None,
         project_path: None,
         deployment: facts(),
@@ -75,6 +83,7 @@ fn submit_args() -> SubmitArgs {
 
 #[test]
 fn a_refusal_names_the_code_the_reason_and_the_next_action() {
+    // N8: baseline setup remediation must name the dashboard after desktop setup was removed.
     let rendered = refusal(
         &error(
             "bootstrap_required",
@@ -86,7 +95,7 @@ fn a_refusal_names_the_code_the_reason_and_the_next_action() {
 
     assert!(rendered.contains("bootstrap_required"), "{rendered}");
     assert!(rendered.contains("no baseline yet"), "{rendered}");
-    assert!(rendered.contains("desktop app"), "{rendered}");
+    assert!(rendered.contains("SiteCMD dashboard"), "{rendered}");
     assert!(rendered.contains("req_9f2"), "{rendered}");
 }
 
@@ -94,10 +103,10 @@ fn a_refusal_names_the_code_the_reason_and_the_next_action() {
 fn a_refusal_carries_neither_the_token_nor_the_tenant_content_it_was_handed() {
     let leaky = ConnectedServiceError {
         status: 409,
-        code: "deployment_conflict".into(),
+        code: "deployment_conflict".parse().expect("fixture identifier"),
         message: "This provider deployment identity already exists with different immutable facts."
             .into(),
-        request_id: Some("req_9f2".into()),
+        request_id: Some("req_9f2".parse().expect("fixture identifier")),
         details: Some(Box::new(serde_json::json!({
             "existing": {
                 "commit_sha": "deadbeefcafe",
@@ -148,6 +157,26 @@ fn in_progress_issued_secret_and_media_type_refusals_name_a_next_action() {
 }
 
 #[test]
+fn fingerprint_key_refusals_point_to_sitecmd_connect() {
+    // Fingerprint-key recovery needs the site URL and writes both secrets.
+    for code in [
+        "stale_key_version",
+        "key_commitment_mismatch",
+        "unclaimed_key_version",
+        "rotation_incomplete",
+    ] {
+        let action = next_action(&error(code, "refused"), UNSET_TOKEN_ENV);
+        assert_eq!(
+            action.as_deref(),
+            Some(
+                "The connection export in this pipeline was made under a different project fingerprint key. From the repository checkout, run `sitecmd connect <url>` with the site's URL. To replace the keys for an existing connection, run `sitecmd connect <url> --rotate`. After approval, SiteCMD writes SITECMD_CONNECTION_EXPORT and SITECMD_CONNECTION_PASSPHRASE to the repository's GitHub Actions secrets."
+            ),
+            "{code}"
+        );
+    }
+}
+
+#[test]
 fn an_in_progress_refusal_names_the_wait_its_retry_after_gave() {
     let mut in_progress = error("request_in_progress", "refused");
     in_progress.retry_after = Some(42);
@@ -187,7 +216,7 @@ fn an_already_issued_secret_says_where_to_revoke_it_and_names_it() {
         "issued": { "kind": "ci_token", "id": "cit_0123456789abcdef" }
     })));
     let action = next_action(&issued, "SITECMD_CI_TOKEN").expect("a next action");
-    assert!(action.contains("desktop app"), "{action}");
+    assert!(action.contains("SiteCMD dashboard"), "{action}");
     assert!(action.contains("cit_0123456789abcdef"), "{action}");
 
     let unnamed = next_action(
@@ -195,7 +224,7 @@ fn an_already_issued_secret_says_where_to_revoke_it_and_names_it() {
         "SITECMD_CI_TOKEN",
     )
     .expect("a next action");
-    assert!(unnamed.contains("desktop app"), "{unnamed}");
+    assert!(unnamed.contains("SiteCMD dashboard"), "{unnamed}");
 }
 
 #[test]
@@ -235,15 +264,18 @@ fn an_oidc_pin_refusal_tells_the_operator_what_to_check() {
 
 #[test]
 fn deployment_facts_are_checked_before_anything_is_opened() {
-    let error = block_on(run_submit(SubmitArgs {
-        deployment: DeploymentFacts {
-            commit_sha: "not-a-sha".into(),
-            ..facts()
-        },
-        ..submit_args()
-    }))
-    .expect_err("invalid sha");
-    assert!(error.contains("--commit"), "{error}");
+    // I4: malformed flags must fail before any connection file is opened.
+    let error = crate::deployment_input::DeploymentInput {
+        provider_deployment_id: "run-42".into(),
+        commit_sha: "not-a-sha".into(),
+        ..Default::default()
+    }
+    .finish()
+    .expect_err("invalid SHA is rejected at flag entry");
+    assert_eq!(
+        error,
+        "--commit must be a commit SHA of 7 to 64 lowercase hex digits"
+    );
 }
 
 #[test]
@@ -251,8 +283,10 @@ fn a_deploy_without_a_site_says_which_flags_name_one() {
     let error = block_on(run_deploy(DeployArgs {
         site_id: None,
         connection_export: None,
-        passphrase_env: "SITECMD_CONNECTION_PASSPHRASE".into(),
-        token_env: UNSET_TOKEN_ENV.into(),
+        passphrase_env: "SITECMD_CONNECTION_PASSPHRASE"
+            .parse()
+            .expect("fixture identifier"),
+        token_env: UNSET_TOKEN_ENV.parse().expect("fixture identifier"),
         deployment: facts(),
     }))
     .expect_err("no site");
@@ -271,9 +305,11 @@ fn the_first_ci_publish_advances_the_authoritys_seeded_sequence() {
     assert_eq!(
         deployment.ordering,
         Some(PublishOrdering {
-            authority_id: "github:1296269:authority".into(),
+            authority_id: "github:1296269:authority"
+                .parse()
+                .expect("fixture identifier"),
             epoch: 3,
-            kind: "publish_sequence".into(),
+            kind: "publish_sequence".parse().expect("fixture identifier"),
             predecessor_deployment_id: None,
             publish_sequence: Some(8),
         })
@@ -310,7 +346,7 @@ fn retrying_the_current_deployment_does_not_invent_a_second_publish_fact() {
 fn a_credential_without_the_selected_authority_records_history_without_failing() {
     let mut deployment = facts();
     let no_authority = CiDeploymentHead {
-        current_deployment_id: Some("provider-run-41".into()),
+        current_deployment_id: Some("provider-run-41".parse().expect("fixture identifier")),
         submission_attestation: CiSubmissionAttestation::Unattested,
         ordering_authority: None,
     };
@@ -356,7 +392,7 @@ fn a_generic_credential_off_github_still_submits_unattested_evidence() {
     // non-governing, and presence evidence from it is the lane it belongs in.
     let mut deployment = facts();
     let no_authority = CiDeploymentHead {
-        current_deployment_id: Some("provider-run-41".into()),
+        current_deployment_id: Some("provider-run-41".parse().expect("fixture identifier")),
         submission_attestation: CiSubmissionAttestation::Unattested,
         ordering_authority: None,
     };
@@ -416,29 +452,10 @@ fn an_unseeded_or_contradictory_cursor_cannot_invent_publish_order() {
         .ordering_authority
         .as_mut()
         .expect("authority")
-        .current_deployment_id = Some("run-40".into());
+        .current_deployment_id = Some("run-40".parse().expect("fixture identifier"));
     let error = apply_publish_ordering_from_head(&contradictory, &mut facts())
         .expect_err("contradictory cursor");
     assert!(error.contains("contradictory"), "{error}");
-}
-
-// A database holding one registered environment, which is what the snapshot
-// builder resolves a project against.
-fn registered_project() -> (tempfile::TempDir, Database, i64) {
-    let directory = tempfile::tempdir().expect("tempdir");
-    let db = Database::open(directory.path().join("sitecmd.db")).expect("database");
-    let project_id = db
-        .upsert_project("CLI Submit", directory.path().to_str().expect("path"), None)
-        .expect("project");
-    db.add_environment(
-        project_id,
-        ENVIRONMENT_URL,
-        "Production",
-        "production",
-        "test",
-    )
-    .expect("environment");
-    (directory, db, project_id)
 }
 
 #[cfg(unix)]
@@ -459,38 +476,13 @@ fn connected_checkout_accepts_a_ci_workspace_outside_home() {
     let database = tempfile::tempdir().expect("database directory");
     let db = Database::open(database.path().join("sitecmd.db")).expect("database");
     let connection = ImportedSiteConnection {
-        site_id: SITE_ID.into(),
-        environment_scope_key: ENVIRONMENT_URL.into(),
+        site_id: SITE_ID.parse().expect("fixture identifier"),
+        environment_scope_key: ENVIRONMENT_URL.parse().expect("fixture identifier"),
         fingerprint_key_version: 1,
-        fingerprint_key: [7; sitecmd_engine::sync::FINGERPRINT_KEY_LEN],
+        fingerprint_key: [7; sitecmd_protocol::sync::FINGERPRINT_KEY_LEN],
     };
 
     scan_this_checkout(&db, &connection, Some(&root)).expect("connected audit outside HOME");
-}
-
-#[test]
-fn a_candidate_is_built_without_a_producer_sequence_at_all() {
-    let (_directory, db, project_id) = registered_project();
-    let snapshot = db
-        .build_connected_code_snapshot(
-            project_id,
-            ENVIRONMENT_URL,
-            ConnectedSubmissionRequest {
-                site_id: SITE_ID.into(),
-                submission_sequence: 0,
-                include_groups: true,
-                fingerprint_key: Some(ProjectFingerprintKey::from_bytes(
-                    [7; sitecmd_engine::sync::FINGERPRINT_KEY_LEN],
-                )),
-                fingerprint_key_version: 1,
-                pending_rotation: None,
-                deployed_commit: None,
-            },
-        )
-        .expect("a candidate needs no producer sequence");
-    // No code scan has been recorded, so there is no snapshot to return; what
-    // matters is that the builder answered rather than refusing the request.
-    assert!(snapshot.is_none());
 }
 
 #[test]
@@ -499,22 +491,23 @@ fn an_audited_checkout_renders_as_the_ci_submission_the_service_reads() {
     let database = tempfile::tempdir().expect("db tempdir");
     let db = Database::open(database.path().join("sitecmd.db")).expect("database");
     let connection = ImportedSiteConnection {
-        site_id: SITE_ID.into(),
-        environment_scope_key: ENVIRONMENT_URL.into(),
+        site_id: SITE_ID.parse().expect("fixture identifier"),
+        environment_scope_key: ENVIRONMENT_URL.parse().expect("fixture identifier"),
         fingerprint_key_version: 1,
-        fingerprint_key: [7; sitecmd_engine::sync::FINGERPRINT_KEY_LEN],
+        fingerprint_key: [7; sitecmd_protocol::sync::FINGERPRINT_KEY_LEN],
     };
 
-    scan_this_checkout(&db, &connection, Some(&root)).expect("audit");
-    let snapshot = build_candidate_snapshot(&db, &connection, Some(&head)).expect("snapshot");
+    let audit = scan_this_checkout(&db, &connection, Some(&root)).expect("audit");
+    let snapshot =
+        build_candidate_snapshot(&db, &connection, &audit, Some(&head)).expect("snapshot");
     assert_eq!(
         snapshot.code_basis.kind,
-        sitecmd_engine::sync::CodeBasisKind::ExactCheckout
+        sitecmd_protocol::sync::CodeBasisKind::ExactCheckout
     );
-    assert_eq!(snapshot.code_basis.commit_sha, Some(head.clone()));
+    assert_eq!(snapshot.code_basis.commit_sha, Some(head.parse().unwrap()));
 
     let deployment = DeploymentFacts {
-        commit_sha: head.clone(),
+        commit_sha: head.parse().unwrap(),
         ..facts()
     };
     let rendered =
@@ -537,28 +530,29 @@ fn a_gate_candidate_claims_no_relationship_to_a_deployment() {
     let database = tempfile::tempdir().expect("db tempdir");
     let db = Database::open(database.path().join("sitecmd.db")).expect("database");
     let connection = ImportedSiteConnection {
-        site_id: SITE_ID.into(),
-        environment_scope_key: ENVIRONMENT_URL.into(),
+        site_id: SITE_ID.parse().expect("fixture identifier"),
+        environment_scope_key: ENVIRONMENT_URL.parse().expect("fixture identifier"),
         fingerprint_key_version: 1,
-        fingerprint_key: [7; sitecmd_engine::sync::FINGERPRINT_KEY_LEN],
+        fingerprint_key: [7; sitecmd_protocol::sync::FINGERPRINT_KEY_LEN],
     };
 
-    scan_this_checkout(&db, &connection, Some(&root)).expect("audit");
-    let snapshot = build_candidate_snapshot(&db, &connection, None).expect("snapshot");
+    let audit = scan_this_checkout(&db, &connection, Some(&root)).expect("audit");
+    let snapshot = build_candidate_snapshot(&db, &connection, &audit, None).expect("snapshot");
     assert_eq!(
         snapshot.code_basis.kind,
-        sitecmd_engine::sync::CodeBasisKind::Unknown
+        sitecmd_protocol::sync::CodeBasisKind::Unknown
     );
 }
 
 #[test]
-fn connected_snapshots_exclude_findings_acknowledged_by_project_policy() {
+fn standin_connected_snapshots_exclude_findings_acknowledged_by_project_policy() {
+    // A finding acknowledged by local project policy can still reach Connect.
     let (_repo, root, _head) = clean_checkout();
-    let route = root.join("app/api/evaluate/route.ts");
+    let route = root.join("app/api/evaluate/fixture-findings.txt");
     std::fs::create_dir_all(route.parent().expect("route parent")).expect("route directory");
     std::fs::write(
         &route,
-        "export async function POST(request: Request) {\n  const body = await request.json();\n  return Response.json(eval(body.formula));\n}\n",
+        "Synthetic finding covered by the checked-in policy.\n",
     )
     .expect("vulnerable route fixture");
     let sitecmd_dir = root.join(".sitecmd");
@@ -573,8 +567,8 @@ fn connected_snapshots_exclude_findings_acknowledged_by_project_policy() {
     "suppressions": [
       {
         "match": {
-          "path": "app/api/evaluate/route.ts",
-          "rule": "code_scan.eval-exec-injection"
+          "path": "app/api/evaluate/fixture-findings.txt",
+          "rule": "code_scan.standin.rule"
         },
         "reason": "The intentionally vulnerable file is a connected snapshot fixture."
       }
@@ -586,22 +580,24 @@ fn connected_snapshots_exclude_findings_acknowledged_by_project_policy() {
     let database = tempfile::tempdir().expect("db tempdir");
     let db = Database::open(database.path().join("sitecmd.db")).expect("database");
     let connection = ImportedSiteConnection {
-        site_id: SITE_ID.into(),
-        environment_scope_key: ENVIRONMENT_URL.into(),
+        site_id: SITE_ID.parse().expect("fixture identifier"),
+        environment_scope_key: ENVIRONMENT_URL.parse().expect("fixture identifier"),
         fingerprint_key_version: 1,
-        fingerprint_key: [7; sitecmd_engine::sync::FINGERPRINT_KEY_LEN],
+        fingerprint_key: [7; sitecmd_protocol::sync::FINGERPRINT_KEY_LEN],
     };
 
     let summary = scan_this_checkout(&db, &connection, Some(&root)).expect("audit");
-    let snapshot = build_candidate_snapshot(&db, &connection, None).expect("snapshot");
+    let snapshot = build_candidate_snapshot(&db, &connection, &summary, None).expect("snapshot");
 
     assert_eq!(summary.ignored_findings, 1);
     assert_eq!(summary.stale_suppressions, 0);
     assert_eq!(summary.configured_suppressions, 1);
+    let suppressed_location = ProjectFingerprintKey::from_bytes([7; 32])
+        .location_hash("standin.rule", "app/api/evaluate/fixture-findings.txt");
     assert!(snapshot
         .occurrences
         .iter()
-        .all(|finding| finding.check != "code_scan.eval-exec-injection"));
+        .all(|finding| finding.location_hash.as_str() != suppressed_location));
 }
 
 #[test]
@@ -645,7 +641,7 @@ fn live_submit_args(
         db_path: Some(workspace.join("sitecmd.db")),
         project_path,
         deployment: DeploymentFacts {
-            commit_sha: commit_sha.into(),
+            commit_sha: commit_sha.parse().unwrap(),
             ..facts()
         },
         dry_run: false,
@@ -656,9 +652,11 @@ fn deploy_args(variable_prefix: &str) -> DeployArgs {
     let token_env = format!("{variable_prefix}_TOKEN");
     std::env::set_var(&token_env, CI_TOKEN);
     DeployArgs {
-        site_id: Some(SITE_ID.into()),
+        site_id: Some(SITE_ID.parse().expect("fixture identifier")),
         connection_export: None,
-        passphrase_env: "SITECMD_CONNECTION_PASSPHRASE".into(),
+        passphrase_env: "SITECMD_CONNECTION_PASSPHRASE"
+            .parse()
+            .expect("fixture identifier"),
         token_env,
         deployment: facts(),
     }
@@ -673,8 +671,13 @@ async fn a_submission_for_an_inactive_account_exits_zero_with_the_notice() {
         None,
         "c0ffee1",
     );
-    let (origin, captured) =
-        respond_in_sequence(vec![(ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden")]).await;
+    let (origin, captured) = respond_in_sequence(vec![(
+        ACCOUNT_INACTIVE_PROBLEM
+            .parse()
+            .expect("fixture identifier"),
+        "403 Forbidden",
+    )])
+    .await;
 
     let output = run_submit_with(args, through(&origin))
         .await
@@ -700,8 +703,16 @@ async fn evidence_refused_as_inactive_says_the_result_was_not_recorded() {
         &head,
     );
     let (origin, captured) = respond_in_sequence(vec![
-        (UNATTESTED_HEAD.into(), "200 OK"),
-        (ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden"),
+        (
+            UNATTESTED_HEAD.parse().expect("fixture identifier"),
+            "200 OK",
+        ),
+        (
+            ACCOUNT_INACTIVE_PROBLEM
+                .parse()
+                .expect("fixture identifier"),
+            "403 Forbidden",
+        ),
     ])
     .await;
 
@@ -733,7 +744,9 @@ async fn a_suspended_subscription_still_fails_the_submission() {
         "c0ffee1",
     );
     let (origin, _captured) = respond_in_sequence(vec![(
-        ENTITLEMENT_SUSPENDED_PROBLEM.into(),
+        ENTITLEMENT_SUSPENDED_PROBLEM
+            .parse()
+            .expect("fixture identifier"),
         "403 Forbidden",
     )])
     .await;
@@ -749,8 +762,13 @@ async fn a_suspended_subscription_still_fails_the_submission() {
 
 #[tokio::test]
 async fn a_deployment_for_an_inactive_account_exits_zero_with_the_notice() {
-    let (origin, captured) =
-        respond_in_sequence(vec![(ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden")]).await;
+    let (origin, captured) = respond_in_sequence(vec![(
+        ACCOUNT_INACTIVE_PROBLEM
+            .parse()
+            .expect("fixture identifier"),
+        "403 Forbidden",
+    )])
+    .await;
 
     let output = run_deploy_with(
         deploy_args("SITECMD_TEST_DEPLOY_INACTIVE"),
@@ -771,8 +789,16 @@ async fn a_deployment_for_an_inactive_account_exits_zero_with_the_notice() {
 #[tokio::test]
 async fn a_deployment_record_refused_as_inactive_says_it_was_not_recorded() {
     let (origin, captured) = respond_in_sequence(vec![
-        (UNATTESTED_HEAD.into(), "200 OK"),
-        (ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden"),
+        (
+            UNATTESTED_HEAD.parse().expect("fixture identifier"),
+            "200 OK",
+        ),
+        (
+            ACCOUNT_INACTIVE_PROBLEM
+                .parse()
+                .expect("fixture identifier"),
+            "403 Forbidden",
+        ),
     ])
     .await;
 
@@ -802,8 +828,13 @@ async fn a_published_deployment_refused_at_its_only_door_says_it_was_not_recorde
     let mut args = deploy_args("SITECMD_TEST_PUBLISHED_INACTIVE");
     apply_publish_ordering_from_head(&deployment_head(None), &mut args.deployment)
         .expect("publish ordering");
-    let (origin, captured) =
-        respond_in_sequence(vec![(ACCOUNT_INACTIVE_PROBLEM.into(), "403 Forbidden")]).await;
+    let (origin, captured) = respond_in_sequence(vec![(
+        ACCOUNT_INACTIVE_PROBLEM
+            .parse()
+            .expect("fixture identifier"),
+        "403 Forbidden",
+    )])
+    .await;
 
     let output = run_deploy_with(args, through(&origin))
         .await
@@ -824,7 +855,9 @@ async fn a_published_deployment_refused_at_its_only_door_says_it_was_not_recorde
 #[tokio::test]
 async fn a_suspended_subscription_still_fails_the_deployment() {
     let (origin, _captured) = respond_in_sequence(vec![(
-        ENTITLEMENT_SUSPENDED_PROBLEM.into(),
+        ENTITLEMENT_SUSPENDED_PROBLEM
+            .parse()
+            .expect("fixture identifier"),
         "403 Forbidden",
     )])
     .await;
@@ -838,4 +871,194 @@ async fn a_suspended_subscription_still_fails_the_deployment() {
 
     assert!(error.contains("(entitlement_suspended)"), "{error}");
     assert!(error.contains("This subscription is suspended"), "{error}");
+}
+
+fn module_observations(
+    rule: &str,
+    lines: &[u32],
+    claimed_count: usize,
+) -> Result<Vec<ObservedOccurrence>, String> {
+    let (wire, audit) = module_audit(rule, lines, claimed_count);
+    submission_observations(&wire, &audit, sitecmd_engine_host::load().unwrap().info())
+}
+
+fn module_audit(rule: &str, lines: &[u32], claimed_count: usize) -> (AuditReport, SuppressedAudit) {
+    use crate::core::audit::{CodeIssue, CodeScanReport};
+    use sitecmd_protocol::engine_abi::AuditIssue;
+    use sitecmd_protocol::vocab::{IssueConfidence, Severity};
+
+    let engine = sitecmd_engine_host::load().unwrap();
+    let check_id = &engine.info().code_rule(rule).unwrap().check_id;
+    let report = CodeScanReport {
+        checked_at: "2025-01-01T00:00:00Z".into(),
+        framework: None,
+        issue_count: claimed_count,
+        critical_count: 0,
+        high_count: claimed_count,
+        medium_count: 0,
+        low_count: 0,
+        issues: lines
+            .iter()
+            .map(|line| CodeIssue {
+                id: format!("{rule}:src/app.js:{line}"),
+                check_id: check_id.clone(),
+                category: "security".into(),
+                severity: Severity::High,
+                title: "Finding title".into(),
+                description: "Finding description".into(),
+                relative_path: "src/app.js".into(),
+                absolute_path: "/checkout/src/app.js".into(),
+                line: Some(*line),
+                evidence: None,
+                why_now: None,
+                likely_fix: None,
+                confidence: IssueConfidence::Confirmed,
+                confidence_reason: None,
+                verify_hint: None,
+            })
+            .collect(),
+        skipped_scopes: Default::default(),
+    };
+    let wire = AuditReport {
+        checked_at: report.checked_at.clone(),
+        framework: None,
+        issue_count: claimed_count,
+        critical_count: 0,
+        high_count: claimed_count,
+        medium_count: 0,
+        low_count: 0,
+        issues: report
+            .issues
+            .iter()
+            .cloned()
+            .map(AuditIssue::try_from)
+            .collect::<Result<_, _>>()
+            .unwrap(),
+        skipped_scopes: Default::default(),
+        coverage: Vec::new(),
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let audit =
+        crate::cli::audit_suppressions::apply_project_suppressions_at(directory.path(), report, 0)
+            .unwrap();
+    (wire, audit)
+}
+
+#[test]
+fn submission_ignores_a_module_count() {
+    // A covert channel from module to network
+    let observations = module_observations("standin.rule", &[2, 8], 999).unwrap();
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].identity.instance_count, 2);
+    assert_eq!(
+        observations[0].severity,
+        sitecmd_protocol::vocab::Severity::High
+    );
+    assert_eq!(
+        observations[0].confidence,
+        sitecmd_protocol::vocab::IssueConfidence::Confirmed
+    );
+}
+
+#[test]
+fn submission_refuses_an_unknown_rule_id() {
+    // A covert channel from module to network
+    let engine = sitecmd_engine_host::load().unwrap();
+    let (mut wire, audit) = module_audit(&engine.info().code_rules[0].id, &[1], 1);
+    wire.issues[0].rule_id = "unregistered-fixture-rule".into();
+    assert_eq!(
+        submission_observations(&wire, &audit, engine.info()).unwrap_err(),
+        "The engine reported an unknown Code Scan rule."
+    );
+}
+
+#[test]
+fn standin_location_hash_never_depends_on_line() {
+    // A covert channel from module to network
+    let key = ProjectFingerprintKey::from_bytes([7; sitecmd_protocol::sync::FINGERPRINT_KEY_LEN]);
+    let basis = crate::db::connected_payload::ConnectedCodeBasis {
+        commit_sha: None,
+        kind: sitecmd_protocol::sync::CodeBasisKind::Unknown,
+    };
+    let location_hash = |line| {
+        let observations = module_observations("standin.rule", &[line], 1).unwrap();
+        crate::db::connected_payload::code_occurrence(&observations[0], &key, &basis)
+            .unwrap()
+            .location_hash
+    };
+    let original = location_hash(1);
+    assert_eq!(original, location_hash(71));
+    assert_eq!(
+        original.as_str(),
+        key.location_hash("standin.rule", "src/app.js")
+    );
+}
+
+#[test]
+fn standin_submission_uses_the_canonical_check_for_the_rule() {
+    // A covert channel from module to network
+    let (mut wire, audit) = module_audit("standin.rule", &[1], 1);
+    wire.issues[0].check_id = "code_scan.untrusted-check".into();
+    let observations =
+        submission_observations(&wire, &audit, sitecmd_engine_host::load().unwrap().info())
+            .unwrap();
+    assert_eq!(observations[0].identity.check_id, "code_scan.standin.rule");
+}
+
+#[test]
+fn submission_counts_a_repeated_finding_once() {
+    // A covert channel from module to network
+    let observations = module_observations("standin.rule", &[2, 2, 2], 3).unwrap();
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].identity.instance_count, 1);
+}
+
+#[test]
+fn submission_counts_distinct_same_line_findings() {
+    // Merging distinct same-line findings undercounts what the service grades.
+    let (mut wire, mut audit) = module_audit("standin.rule", &[1, 1, 1], 3);
+    for ((wire, native), dependency) in wire
+        .issues
+        .iter_mut()
+        .zip(&mut audit.report.issues)
+        .zip(["one", "two", "three"])
+    {
+        native.id = format!("standin.rule:{dependency}:src/app.js:1");
+        wire.id.clone_from(&native.id);
+    }
+    let observations =
+        submission_observations(&wire, &audit, sitecmd_engine_host::load().unwrap().info())
+            .unwrap();
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].identity.instance_count, 3);
+}
+
+#[test]
+fn submission_refuses_an_inconsistent_retained_index() {
+    // A covert channel from module to network
+    let engine = sitecmd_engine_host::load().unwrap();
+    let mut rules = engine.info().clone();
+    let original_rule = rules.code_rules[0].id.clone();
+    let (mut wire, mut audit) = module_audit(&original_rule, &[1, 2], 2);
+    let mut other_rule = rules.code_rules[0].clone();
+    other_rule.id = "another-fixture-rule".into();
+    other_rule.check_id = "code_scan.another-fixture-rule".into();
+    rules.code_rules.push(other_rule);
+
+    let assert_inconsistent = |wire: &AuditReport, audit: &SuppressedAudit| {
+        assert_eq!(
+            submission_observations(wire, audit, &rules).unwrap_err(),
+            INCONSISTENT_CODE_RULE
+        );
+    };
+    audit.retained_indices.swap(0, 1);
+    assert_inconsistent(&wire, &audit);
+    audit.retained_indices.swap(0, 1);
+    wire.issues[0].rule_id = "another-fixture-rule".into();
+    assert_inconsistent(&wire, &audit);
+    wire.issues[0].rule_id = original_rule;
+    audit.retained_indices[0] = wire.issues.len();
+    assert_inconsistent(&wire, &audit);
+    audit.retained_indices.pop();
+    assert_inconsistent(&wire, &audit);
 }

@@ -1,20 +1,18 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { desktopInvocation } from "./lib/sitecmd-desktop-command.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 
 /** Resolve checkout commands while preserving the shipped CLI's arguments. */
-export function invocationFor(input, platform = process.platform) {
+export function invocationFor(input) {
   const args = [...input];
   if (args[0] === "--") args.shift();
-  if (args[0] === "open") return desktopInvocation(args.slice(1), platform);
 
   const manifest = path.join(
     repoRoot,
@@ -59,7 +57,18 @@ export async function run(input, launch = spawn) {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+/** Whether node was asked to run this file, directly or through a symlink such
+ *  as a linked `sitecmd` bin, which path.resolve alone does not follow. */
+export function isEntryPoint(argv1, filename = __filename) {
+  if (!argv1) return false;
+  try {
+    return realpathSync(argv1) === realpathSync(filename);
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint(process.argv[1])) {
   try {
     process.exitCode = await run(process.argv.slice(2));
   } catch (error) {

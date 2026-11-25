@@ -6,34 +6,20 @@ Use `docs/` only for information that should be treated as current project truth
 
 ## Sections
 
-- `engineering/` - architecture, tooling, observability, performance, Tauri, naming conventions, and the connected-service implementation specifications (protocol and state, hosted scanner, alert delivery, maintained surfaces). The business strategy records those specifications fulfill (the publication decision, the connected-service architecture, the commercial terms, and the paid intelligence architecture) are maintained privately in the SiteCMD-Web repository and are named here in plain text only.
+- `engineering/` - architecture, tooling, naming conventions, and the connected-service implementation specifications (protocol and state, alert delivery, maintained surfaces). The business strategy records those specifications fulfill (the publication decision, the connected-service architecture, the commercial terms, and the paid intelligence architecture) are maintained privately in the SiteCMD-Web repository and are named here in plain text only.
 - `operations/` - release and launch-smoke runbooks
-- `product/` - product behavior, scanner accuracy, and onboarding
-- `qa/` - repeatable manual test procedures and review templates
+- `product/` - product behavior and scanner accuracy
+- `qa/` - scanner input and fuzz verification
 
 ## High-Signal Entry Points
 
 - [Code Scan audit and rules](../README.md#code-scan-audit) (local CLI usage and rule inventory fields)
-
-- [Adding a detector](engineering/adding-a-detector.md) (a public-only walkthrough
-  from input and regression fixtures to registration and local guidance)
-- [Connected service implementation specifications](engineering/connected-service/connected-protocol-spec.md) (protocol and state, hosted scanner, alert delivery, and maintained surfaces)
+- [Connected service implementation specifications](engineering/connected-service/connected-protocol-spec.md) (protocol and state, alert delivery, and maintained surfaces)
 - [Maintained-surface matrix](engineering/connected-service/maintained-surfaces.md)
+- [Native workspace tests](qa/native-tests.md)
 - [AI-assisted development](engineering/ai-assisted-development.md) (how coding agents are directed, and what automated review does and does not stand in for)
-- [Entitlement threat model](engineering/entitlement-threat-model.md)
-- [Privileged broker threat model](engineering/privileged-broker-threat-model.md)
 - [Public repository and release security](engineering/repository-release-security-spec.md)
-- [Releasing the desktop app](operations/releasing.md)
-- [Tauri command and capability guide](engineering/tauri.md)
-- [Unified scan architecture](engineering/unified-scan-architecture.md)
-- [Native runtime boundary](engineering/native-runtime-boundary.md) (shared Rust ownership and standalone CLI builds)
-- [Hosted WASM builds](engineering/hosted-wasm-builds.md) (vendoring, recorded flags, and byte reproduction)
-- [Issue and alert architecture](engineering/issue-and-alert-architecture.md)
-- [Get value in five minutes](product/get-value-in-5-minutes.md)
-- [Fix your first issue](product/fix-your-first-issue.md)
-- [Manual testing runbook](qa/manual-testing-runbook.md)
-- [Native desktop and scanner fuzz tests](qa/native-and-fuzz-tests.md)
-- [Acceptance review template](qa/acceptance-review-template.md)
+- [Releasing SiteCMD](operations/releasing.md)
 
 ## Historical procedures
 

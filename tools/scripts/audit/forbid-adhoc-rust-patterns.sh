@@ -5,25 +5,25 @@ set -e
 SRC="apps/desktop/src-tauri/src"
 
 # A missing source tree must not look like a successful no-match.
-for dir in "$SRC/checks" "$SRC/core" "$SRC/commands" "$SRC/db"; do
+for dir in "$SRC/cli" "$SRC/core" "$SRC/db"; do
   if [ ! -d "$dir" ]; then
     echo "forbid-adhoc-rust-patterns: scanned directory missing: $dir (moved? update this script)" >&2
     exit 2
   fi
 done
 
-# HTTP in these modules must use http_client::for_url().
+# HTTP in these modules must use the shared http_client.
 violations=$(grep -rnE "reqwest::Client::(new|builder)|reqwest::ClientBuilder::new|(^|[^A-Za-z0-9_:])Client::(new|builder)\(|(^|[^A-Za-z0-9_:])ClientBuilder::new\(" \
-  "$SRC/checks" "$SRC/core" "$SRC/commands" 2>/dev/null | grep -v "allow-ad-hoc-client" || true)
+  "$SRC/cli" "$SRC/core" 2>/dev/null | grep -v "allow-ad-hoc-client" || true)
 if [ -n "$violations" ]; then
-  echo "Direct reqwest::Client construction is forbidden -- use http_client::for_url instead:"
+  echo "Direct reqwest::Client construction is forbidden -- use the shared http_client:"
   echo "$violations"
   exit 1
 fi
 
 # Production command errors must be sanitized; the DB layer keeps typed errors.
 error_violations=""
-for f in $(grep -rln "map_err(|e| e\.to_string())" "$SRC/commands" "$SRC/db" 2>/dev/null \
+for f in $(grep -rln "map_err(|e| e\.to_string())" "$SRC/cli" "$SRC/db" 2>/dev/null \
   | grep -vE '(_tests\.rs|/tests\.rs|/test_helpers\.rs)$'); do
   # Ignore inline test modules by tracking their brace depth.
   offending=$(awk '

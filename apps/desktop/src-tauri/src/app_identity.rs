@@ -1,9 +1,7 @@
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-pub const DESKTOP_BUNDLE_IDENTIFIER: &str = "com.sitecmd.desktop";
 pub const STORAGE_DIR_NAME: &str = "com.sitecmd.app";
-pub const KEYRING_SERVICE_NAME: &str = STORAGE_DIR_NAME;
 pub const APP_DB_FILENAME: &str = "sitecmd.db";
 
 fn default_app_data_root() -> Option<PathBuf> {
@@ -53,16 +51,6 @@ pub fn ensure_private_directory(path: &Path) -> io::Result<()> {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
-    }
-    Ok(())
-}
-
-pub fn restrict_private_file(path: &Path) -> io::Result<()> {
-    validate_private_file_target(path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
 }
@@ -123,13 +111,6 @@ mod tests {
     #[test]
     fn storage_dir_name_stays_on_legacy_namespace() {
         assert_eq!(STORAGE_DIR_NAME, "com.sitecmd.app");
-        assert_eq!(KEYRING_SERVICE_NAME, STORAGE_DIR_NAME);
-    }
-
-    #[test]
-    fn desktop_bundle_identifier_avoids_app_suffix() {
-        assert_eq!(DESKTOP_BUNDLE_IDENTIFIER, "com.sitecmd.desktop");
-        assert!(!DESKTOP_BUNDLE_IDENTIFIER.ends_with(".app"));
     }
 
     #[cfg(unix)]

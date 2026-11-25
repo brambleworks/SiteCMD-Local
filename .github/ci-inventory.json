@@ -1,0 +1,295 @@
+[
+  {
+    "check": "standin-build",
+    "command": "node tools/scripts/build-standin.mjs",
+    "job": "cli-build-smoke",
+    "stages": ["queue"],
+    "was": "gate",
+    "note": "Also built by the workspace and platform jobs that use it."
+  },
+  {
+    "check": "lint",
+    "command": "pnpm run lint",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "prettier",
+    "command": "pnpm exec prettier --check .",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "legal-artifacts",
+    "command": "pnpm run legal:check",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "installer",
+    "command": "pnpm run installer:check",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "workflows",
+    "command": "pnpm run workflows:check",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "guardrails:repo",
+    "command": "pnpm run guardrails:repo",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "knip:budget",
+    "command": "pnpm run knip:exports-budget",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "knip:files",
+    "command": "pnpm run knip:files",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "cargo-fmt",
+    "command": "cargo fmt --check --all",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "rust-toolchain",
+    "command": "node tools/scripts/audit/check-rust-toolchain.mjs",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "rust-patterns",
+    "command": "bash tools/scripts/audit/forbid-adhoc-rust-patterns.sh",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "gitleaks",
+    "command": "gitleaks git --redact --no-banner --config=.gitleaks.toml --log-opts=\"${range}\"",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "agents-md",
+    "command": "node tools/scripts/audit/check-agents-md.mjs",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "regex-audit",
+    "command": "pnpm run audit:regex",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "audit:deps:rust",
+    "command": "pnpm run audit:deps:rust",
+    "job": "dependency-audit",
+    "stages": ["pr", "queue"],
+    "was": "gate",
+    "note": "SITECMD_RUST_AUDIT_FETCH=1 in the audit step."
+  },
+  {
+    "check": "audit:deps:js",
+    "command": "pnpm run audit:deps:js",
+    "job": "dependency-audit",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "audit:deps:signer",
+    "command": "pnpm run audit:deps:signer",
+    "job": "dependency-audit",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "cargo-deny",
+    "command": "pnpm run audit:deps:rust-policy --no-advisories",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "gate"
+  },
+  {
+    "check": "cli-build",
+    "command": "cargo build --locked --manifest-path crates/cli/Cargo.toml",
+    "job": "cli-build-smoke",
+    "stages": ["queue"],
+    "was": "gate"
+  },
+  {
+    "check": "guardrails-tests",
+    "command": "pnpm run guardrails:repo:test",
+    "job": "guardrails-tests",
+    "stages": ["queue"],
+    "was": "gate"
+  },
+  {
+    "check": "cli-smoke",
+    "command": "node tools/scripts/cli-smoke.mjs --standin",
+    "job": "cli-build-smoke",
+    "stages": ["queue"],
+    "was": "gate"
+  },
+  {
+    "check": "cli-headless-clippy",
+    "command": "cargo clippy --locked --manifest-path crates/cli/Cargo.toml --all-targets -- -D warnings",
+    "job": "cli-headless-clippy",
+    "stages": ["queue"],
+    "was": "gate"
+  },
+  {
+    "check": "rust-msrv-workspace",
+    "command": "cargo +1.95.0 check --locked --workspace --all-targets",
+    "job": "msrv",
+    "stages": ["queue"],
+    "was": "gate"
+  },
+  {
+    "check": "rust-msrv-cli",
+    "command": "cargo +1.95.0 check --locked --manifest-path crates/cli/Cargo.toml --all-targets",
+    "job": "msrv",
+    "stages": ["queue"],
+    "was": "gate"
+  },
+  {
+    "check": "rust-doctest",
+    "command": "cargo test --locked --doc --workspace",
+    "job": "doctest",
+    "stages": ["queue"],
+    "was": "gate"
+  },
+  {
+    "check": "cli-linux-arm64",
+    "command": "cargo build --locked --manifest-path crates/cli/Cargo.toml\ntarget/debug/sitecmd_cli --version",
+    "job": "cli-linux-arm64",
+    "stages": ["queue"],
+    "was": "rust-tests.yml"
+  },
+  {
+    "check": "dependency-policy-all-features",
+    "command": "cargo deny --all-features check licenses sources\ncargo deny --all-features --workspace check bans",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "dependency-audit.yml"
+  },
+  {
+    "check": "budget-ratchet",
+    "command": "node tools/scripts/check-budget-ratchet.mjs --range \"${BASE_SHA}..${HEAD_SHA}\" \"${message_args[@]}\"",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "tooling-quality.yml"
+  },
+  {
+    "check": "pr-title",
+    "command": "node tools/scripts/pr-title.mjs --title=\"$PR_TITLE\" --body-file \"$body_file\" --author \"$PR_AUTHOR\"",
+    "job": "pr-title",
+    "stages": ["pr"],
+    "was": "repository-guardrails.yml"
+  },
+  {
+    "check": "actionlint",
+    "command": "pnpm run workflows:check",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "repository-guardrails.yml"
+  },
+  {
+    "check": "zizmor",
+    "command": "zizmor --no-progress .",
+    "job": "workflow-lint",
+    "stages": ["pr", "queue"],
+    "was": "nowhere"
+  },
+  {
+    "check": "ci-verdict",
+    "command": "re-actors/alls-green",
+    "job": "CI",
+    "stages": ["pr", "queue"],
+    "was": "nowhere"
+  },
+  {
+    "check": "dependency-paths",
+    "command": "dorny/paths-filter",
+    "job": "dependency-paths",
+    "stages": ["pr", "queue"],
+    "was": "dependency-audit.yml"
+  },
+  {
+    "check": "cargo-deny-advisories",
+    "command": "cargo deny --all-features check advisories",
+    "job": "dependency-audit",
+    "stages": ["pr", "queue"],
+    "was": "dependency-audit.yml"
+  },
+  {
+    "check": "rust-coverage",
+    "command": "cargo llvm-cov nextest --locked --workspace --no-fail-fast --lcov --output-path lcov.info\ncargo llvm-cov report --summary-only | tee coverage-summary.txt",
+    "job": "coverage",
+    "workflow": "manual.yml",
+    "stages": ["manual"],
+    "was": "rust-coverage.yml"
+  },
+  {
+    "check": "public-tree",
+    "command": "exec node tools/scripts/check-publication-history.mjs --pre-push \"$@\"",
+    "job": "public-tree",
+    "workflow": "lefthook.yml",
+    "stages": ["pre-push"],
+    "was": "repository-guardrails.yml",
+    "note": "Checks the history sent to public remotes."
+  },
+  {
+    "check": "public-tree-pr",
+    "command": "node \"$selector_file\" \"$BASE_SHA\" \"$HEAD_SHA\"",
+    "job": "public-tree",
+    "stages": ["pr"],
+    "was": "repository-guardrails.yml",
+    "note": "Runs only on SiteCMD-Local pull requests."
+  },
+  {
+    "check": "public-rust-tests",
+    "command": "cargo test --locked --no-fail-fast -p sitecmd-protocol -p sitecmd-engine-host -p sitecmd-engine-standin -p sitecmd-runtime -p sitecmd-cli",
+    "job": "rust-tests",
+    "stages": ["queue"],
+    "was": "ci.yml"
+  },
+  {
+    "check": "public-rust-clippy",
+    "command": "cargo clippy --locked --all-targets -p sitecmd-protocol -p sitecmd-engine-host -p sitecmd-engine-standin -p sitecmd-runtime -p sitecmd-cli -- -D warnings",
+    "job": "rust-tests",
+    "stages": ["queue"],
+    "was": "ci.yml"
+  },
+  {
+    "check": "codeql",
+    "command": "github/codeql-action/analyze",
+    "job": "codeql",
+    "stages": ["pr", "queue"],
+    "was": "codeql.yml"
+  }
+]

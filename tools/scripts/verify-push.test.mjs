@@ -1,18 +1,69 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import {
-  classifyBindError,
-  isolatedGitEnvironment,
-  missingBrowserPaths,
-  parseBrowserInstallLocations,
-  resolveRepositoryRoot,
-} from "./verify-push-lib.mjs";
+import { workerCount } from "./lib/test-workers.mjs";
+import { isolatedGitEnvironment, resolveRepositoryRoot } from "./verify-push-lib.mjs";
+
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal()),
+  spawn: vi.fn(),
+}));
+
+const msrvWorkflow = readFileSync(
+  new URL("../../.github/workflows/ci.yml", import.meta.url),
+  "utf8",
+);
+const msrv = /rustup toolchain install (\d+\.\d+\.\d+)/.exec(msrvWorkflow)?.[1];
+const tierFourCommands = [
+  "cargo nextest run --no-fail-fast --workspace",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "cargo clippy --manifest-path crates/cli/Cargo.toml --all-targets -- -D warnings",
+  `cargo +${msrv} check --locked --workspace --all-targets`,
+  `cargo +${msrv} check --locked --manifest-path crates/cli/Cargo.toml --all-targets`,
+];
+
+async function runWithFakeChecks(cargoJobs) {
+  const checks = new Map();
+  const events = [];
+  const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+  vi.stubEnv("VITEST_MAX_WORKERS", "4");
+  vi.stubEnv("CARGO_BUILD_JOBS", cargoJobs);
+  vi.mocked(spawn).mockImplementation((_shell, [_flag, command], { env }) => {
+    const child = new EventEmitter();
+    checks.set(command, {
+      jobs: env.CARGO_BUILD_JOBS,
+      output: env.SITECMD_VERIFY_ENGINE_OUT,
+      wasm: env.SITECMD_ENGINE_WASM,
+      unpinned: env.SITECMD_ENGINE_UNPINNED,
+    });
+    events.push([command, "start"]);
+    setImmediate(() => {
+      events.push([command, "finish"]);
+      child.emit("close", 0);
+    });
+    return child;
+  });
+
+  try {
+    vi.resetModules();
+    await import("./verify-push.mjs");
+    await vi.waitFor(() => {
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringContaining("verify-push: all checks passed"),
+      );
+    });
+    return { checks, events };
+  } finally {
+    stderr.mockRestore();
+    vi.mocked(spawn).mockReset();
+    vi.unstubAllEnvs();
+  }
+}
 
 describe("push-hook Git environment", () => {
   it("keeps a dependency repository reset from changing the checkout being verified", () => {
@@ -63,19 +114,6 @@ describe("push-hook Git environment", () => {
   });
 });
 
-describe("push-gate port preflight", () => {
-  it("distinguishes an occupied port from other bind failures", () => {
-    expect(classifyBindError({ code: "EADDRINUSE" })).toBe("occupied");
-    expect(classifyBindError({ code: "EACCES" })).toBe("denied");
-    expect(classifyBindError({ code: "EPERM" })).toBe("denied");
-    expect(classifyBindError(new Error("network unavailable"))).toBe("unavailable");
-  });
-
-  it("does not report an unusable address as a permission failure", () => {
-    expect(classifyBindError({ code: "EADDRNOTAVAIL" })).toBe("unavailable");
-  });
-});
-
 describe("repository root resolution", () => {
   it("decodes spaces in checkout paths", () => {
     expect(
@@ -86,97 +124,100 @@ describe("repository root resolution", () => {
   });
 });
 
-const DRY_RUN_OUTPUT = `Chrome for Testing 149.0.7827.55 (playwright chromium v1228)
-  Install location:    /cache/ms-playwright/chromium-1228
-  Download url:        https://cdn.playwright.dev/builds/cft/149.0.7827.55/mac-arm64/chrome-mac-arm64.zip
+describe("local verification resource isolation", () => {
+  let result;
 
-FFmpeg (playwright ffmpeg v1011)
-  Install location:    /cache/ms-playwright/ffmpeg-1011
-  Download url:        https://cdn.playwright.dev/builds/ffmpeg/1011/ffmpeg-mac-arm64.zip
-  Download fallback 1: https://playwright.download.prss.microsoft.com/builds/ffmpeg/1011/ffmpeg-mac-arm64.zip
-
-Chrome Headless Shell 149.0.7827.55 (playwright chromium-headless-shell v1228)
-  Install location:    /cache/ms-playwright/chromium_headless_shell-1228
-  Download url:        https://cdn.playwright.dev/builds/cft/149.0.7827.55/mac-arm64/chrome-headless-shell-mac-arm64.zip
-`;
-
-describe("playwright browser preflight", () => {
-  it("reads every required install location, ignoring download URLs", () => {
-    expect(parseBrowserInstallLocations(DRY_RUN_OUTPUT)).toEqual([
-      "/cache/ms-playwright/chromium-1228",
-      "/cache/ms-playwright/ffmpeg-1011",
-      "/cache/ms-playwright/chromium_headless_shell-1228",
-    ]);
+  beforeAll(async () => {
+    result = await runWithFakeChecks(undefined);
   });
 
-  it("passes when every browser is on disk", () => {
-    expect(missingBrowserPaths(DRY_RUN_OUTPUT, () => true)).toEqual([]);
-  });
-
-  it("names only the browsers that are absent", () => {
-    const present = new Set([
-      "/cache/ms-playwright/chromium-1228",
-      "/cache/ms-playwright/ffmpeg-1011",
-    ]);
-    expect(missingBrowserPaths(DRY_RUN_OUTPUT, (path) => present.has(path))).toEqual([
-      "/cache/ms-playwright/chromium_headless_shell-1228",
-    ]);
-  });
-
-  it("reports unparseable output instead of claiming everything is installed", () => {
-    expect(missingBrowserPaths("Downloading Chromium...\ndone\n", () => false)).toBeNull();
-    expect(missingBrowserPaths("", () => false)).toBeNull();
-  });
-});
-
-describe("push-gate resource isolation", () => {
-  it("does not run desktop UI tests beside the heavy Rust suite", () => {
-    const source = readFileSync(
-      fileURLToPath(new URL("./verify-push.mjs", import.meta.url)),
-      "utf8",
+  it("starts each Tier 4 Cargo child after the previous one finishes", () => {
+    const rustEvents = result.events.filter(([command]) => tierFourCommands.includes(command));
+    expect(rustEvents).toEqual(
+      tierFourCommands.flatMap((command) => [
+        [command, "start"],
+        [command, "finish"],
+      ]),
     );
-    const desktopTest = source.indexOf('name: "desktop-vitest"');
-    expect(desktopTest).toBeGreaterThan(-1);
-    const tierStart = source.lastIndexOf("  [", desktopTest);
-    const tierEnd = source.indexOf("\n  ],", desktopTest);
-    expect(tierStart).toBeGreaterThan(-1);
-    expect(tierEnd).toBeGreaterThan(desktopTest);
-    const desktopTier = source.slice(tierStart, tierEnd);
-    expect(desktopTier).not.toContain('name: "rust-nextest"');
-    expect(desktopTier).not.toContain('name: "rust-clippy"');
+  });
+
+  it("gives each Tier 4 Cargo child the full worker budget", () => {
+    const workers = workerCount({ env: { VITEST_MAX_WORKERS: "4" } });
+    expect(tierFourCommands.map((command) => result.checks.get(command)?.jobs)).toEqual(
+      tierFourCommands.map(() => String(workers)),
+    );
+    for (const [command, check] of result.checks) {
+      if (command.startsWith("cargo ")) expect(check.jobs, command).toBe(String(workers));
+    }
+  });
+
+  it.each(["7", ""])("keeps the caller's Cargo job setting (%j)", async (jobs) => {
+    const { checks } = await runWithFakeChecks(jobs);
+    expect(tierFourCommands.map((command) => checks.get(command)?.jobs)).toEqual(
+      tierFourCommands.map(() => jobs),
+    );
+  });
+
+  it("keeps non-Cargo steps in another tier concurrent", () => {
+    const lint = "pnpm run lint";
+    const prettier = "pnpm exec prettier --check .";
+    expect(result.events.filter(([command]) => command === lint || command === prettier)).toEqual([
+      [lint, "start"],
+      [prettier, "start"],
+      [lint, "finish"],
+      [prettier, "finish"],
+    ]);
   });
 
   it("runs doctests after nextest, since both build the same test-profile libraries", () => {
-    const source = readFileSync(
-      fileURLToPath(new URL("./verify-push.mjs", import.meta.url)),
-      "utf8",
-    );
-    const doctest = source.indexOf('name: "rust-doctest"');
-    expect(doctest).toBeGreaterThan(-1);
-    const tierStart = source.lastIndexOf("  [", doctest);
-    const tierEnd = source.indexOf("\n  ],", doctest);
-    expect(tierStart).toBeGreaterThan(-1);
-    expect(tierEnd).toBeGreaterThan(doctest);
-    expect(source.slice(tierStart, tierEnd)).not.toContain('name: "rust-nextest"');
-    expect(source.indexOf('name: "rust-nextest"')).toBeLessThan(tierStart);
+    const nextest = tierFourCommands[0];
+    const doctests = "cargo test --doc --workspace";
+    expect(
+      result.events.filter(([command]) => command === nextest || command === doctests),
+    ).toEqual([
+      [nextest, "start"],
+      [nextest, "finish"],
+      [doctests, "start"],
+      [doctests, "finish"],
+    ]);
+  });
+
+  it("provides a freshly built module before checks compile the engine host", () => {
+    const standin = result.events[0][0];
+    expect(standin).toContain('build-standin.mjs --out "$SITECMD_VERIFY_ENGINE_OUT"');
+    expect(result.events.slice(0, 2)).toEqual([
+      [standin, "start"],
+      [standin, "finish"],
+    ]);
+    const { output } = result.checks.get(standin);
+    expect(output).toBeTruthy();
+    for (const [command, check] of result.checks) {
+      expect(check.wasm, command).toBe(join(output, "sitecmd_engine_standin.wasm"));
+      expect(check.unpinned, command).toBe("1");
+    }
+  });
+
+  it("runs private guardrail tests only in the engine checkout", () => {
+    const scripts = JSON.parse(
+      readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+    ).scripts;
+    const testScript = "private:guardrails:test";
+    const privateCheck =
+      /tools\/engine\/|private:guardrails|\bsitecmd-(?:engine-wasm|local-engine|code-scan)\b/;
+    const scriptNames = [...result.checks.keys()]
+      .filter((command) => privateCheck.test(command))
+      .map((command) => command.split(" ").at(-1));
+    expect(scriptNames).toEqual(Object.hasOwn(scripts, testScript) ? [testScript] : []);
   });
 
   it("mirrors dependency policy and the declared Rust MSRV", () => {
-    const source = readFileSync(
-      fileURLToPath(new URL("./verify-push.mjs", import.meta.url)),
-      "utf8",
-    );
-    const msrvWorkflow = readFileSync(
-      fileURLToPath(new URL("../../.github/workflows/rust-msrv.yml", import.meta.url)),
-      "utf8",
-    );
-    const msrv = /toolchain:\s*(\d+\.\d+\.\d+)/.exec(msrvWorkflow)?.[1];
     expect(msrv).toBeTruthy();
-    expect(source).toContain('name: "audit:licenses:js"');
-    expect(source).toContain('name: "cargo-deny"');
-    expect(source).toContain(`cargo +${msrv} check --locked --workspace --all-targets`);
-    expect(source).toContain(
-      `cargo +${msrv} check --locked --manifest-path crates/cli/Cargo.toml --all-targets`,
-    );
+    expect(result.checks.has("pnpm run audit:deps:rust-policy")).toBe(true);
+    expect(result.checks.has(`cargo +${msrv} check --locked --workspace --all-targets`)).toBe(true);
+    expect(
+      result.checks.has(
+        `cargo +${msrv} check --locked --manifest-path crates/cli/Cargo.toml --all-targets`,
+      ),
+    ).toBe(true);
   });
 });

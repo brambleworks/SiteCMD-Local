@@ -1,11 +1,4 @@
-const WEB_SCAN_CATEGORIES: [&str; 6] = [
-    "security",
-    "seo",
-    "performance",
-    "accessibility",
-    "compliance",
-    "config",
-];
+use sitecmd_runtime::core::scan_types::Category;
 
 pub(crate) fn parse_score(value: &str, option: &str) -> Result<u32, String> {
     let score = value
@@ -32,21 +25,21 @@ pub(crate) fn warn_deprecated_flag(old: &str, new: &str) {
     eprintln!("warning: {old} is deprecated; use {new}");
 }
 
-pub(crate) fn parse_categories(value: &str) -> Result<Vec<String>, String> {
+pub(crate) fn parse_category(value: &str) -> Result<Category, String> {
+    let value = value.trim();
+    value.to_ascii_lowercase().parse().map_err(|_| {
+        format!(
+            "Unknown category: {}. Use: {}",
+            if value.is_empty() { "<empty>" } else { value },
+            Category::ALL.map(Category::key).join(", ")
+        )
+    })
+}
+
+pub(crate) fn parse_categories(value: &str) -> Result<Vec<Category>, String> {
     let mut categories = Vec::new();
     for raw in value.split(',') {
-        let category = raw.trim().to_ascii_lowercase();
-        if category.is_empty() || !WEB_SCAN_CATEGORIES.contains(&category.as_str()) {
-            return Err(format!(
-                "Unknown Web Scan category: {}. Use: {}",
-                if category.is_empty() {
-                    "<empty>"
-                } else {
-                    &category
-                },
-                WEB_SCAN_CATEGORIES.join(", ")
-            ));
-        }
+        let category = parse_category(raw)?;
         if !categories.contains(&category) {
             categories.push(category);
         }
@@ -77,9 +70,16 @@ mod tests {
     fn categories_are_normalized_deduplicated_and_allowlisted() {
         assert_eq!(
             parse_categories("SEO, security,seo"),
-            Ok(vec!["seo".into(), "security".into()])
+            Ok(vec![Category::Seo, Category::Security])
         );
         assert!(parse_categories("").is_err());
         assert!(parse_categories("security,typo").is_err());
+        assert_eq!(
+            parse_category(" Typo "),
+            Err(format!(
+                "Unknown category: Typo. Use: {}",
+                Category::ALL.map(Category::key).join(", ")
+            ))
+        );
     }
 }

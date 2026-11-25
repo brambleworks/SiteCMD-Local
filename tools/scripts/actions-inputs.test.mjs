@@ -5,6 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  children,
+  runCommand,
+  scalar,
+  workflowFields,
+  workflowSteps,
+} from "./lib/guardrail-workflow-yaml.mjs";
+
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const read = (file) => fs.readFileSync(path.join(ROOT, file), "utf8");
 
@@ -52,8 +60,8 @@ case "$STUB_OUTCOME" in
     printf 'verdict=fail\\nnew=2\\n' > "$outputs"
     exit 1 ;;
   inactive)
-    echo "SiteCMD Connect says this account is inactive, so the gate graded nothing. Renew it from the SiteCMD dashboard to resume."
-    echo "::notice title=SiteCMD::SiteCMD Connect says this account is inactive, so the gate graded nothing. Renew it from the SiteCMD dashboard to resume."
+    echo "SiteCMD says this account is inactive, so the gate graded nothing. Renew it from the dashboard to resume."
+    echo "::notice title=SiteCMD::SiteCMD says this account is inactive, so the gate graded nothing. Renew it from the dashboard to resume."
     printf 'verdict=inactive\\nnew=0\\n' > "$outputs"
     exit 0 ;;
   no-verdict)
@@ -124,7 +132,7 @@ describe("sitecmd-gate action verdict", () => {
     expect(run.status).toBe(0);
     expect(run.outputs).toBe("verdict=inactive\nnew=0\n");
     expect(run.summary).toBe(
-      "### SiteCMD gate: inactive\n\nSiteCMD Connect says this account is inactive, so the gate graded nothing.\n",
+      "### SiteCMD gate: inactive\n\nSiteCMD says this account is inactive, so the gate graded nothing.\n",
     );
     expect(run.summary).not.toContain("::notice");
     // The annotation still reaches the runner through the step's own log.
@@ -173,4 +181,93 @@ describe("sitecmd-gate action verdict", () => {
       expect(run.summary, outcome).toBe("");
     }
   });
+});
+
+it.each([
+  ["", true],
+  ["custom directory with spaces", true],
+  ["custom\nextra-path", false],
+  ["custom\rpath", false],
+])("exports only the selected install directory for %j", (installDir, allowed) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sitecmd-path-"));
+  try {
+    const githubPath = path.join(root, "github-path");
+    fs.writeFileSync(githubPath, "existing\n");
+    const result = spawnSync(
+      "bash",
+      [path.join(ROOT, ".github/actions/setup-sitecmd/add-path.sh")],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          RUNNER_TEMP: root,
+          GITHUB_PATH: githubPath,
+          SITECMD_INSTALL_DIR: installDir,
+        },
+      },
+    );
+    expect(result.status).toBe(allowed ? 0 : 2);
+    expect(fs.readFileSync(githubPath, "utf8")).toBe(
+      allowed ? `existing\n${installDir || path.join(root, "sitecmd-bin")}\n` : "existing\n",
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("the gate installer adds its selected CLI directory to PATH", () => {
+  const runs = children(
+    workflowFields(read(".github/actions/sitecmd-gate/action.yml")).get("runs"),
+  );
+  const installStep = workflowSteps(runs.get("steps")).find(
+    (step) => scalar(step.get("name")) === "Install the SiteCMD CLI",
+  );
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sitecmd-gate-install-"));
+  try {
+    const gateDir = path.join(root, "sitecmd-gate");
+    const setupDir = path.join(root, "setup-sitecmd");
+    const bin = path.join(root, "bin");
+    for (const directory of [gateDir, setupDir, bin]) fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(bin, "minisign"), "#!/bin/sh\n", { mode: 0o755 });
+    fs.writeFileSync(
+      path.join(setupDir, "install.sh"),
+      '#!/bin/sh\nprintf "%s\\n" "$SITECMD_INSTALL_DIR" > "$INSTALL_LOG"\n',
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(
+      path.join(setupDir, "add-path.sh"),
+      '#!/bin/sh\nprintf "%s\\n" "$SITECMD_INSTALL_DIR" > "$ADD_PATH_LOG"\nexec bash "$REAL_ADD_PATH"\n',
+    );
+    const runnerTemp = path.join(root, "runner temp");
+    const installDir = scalar(children(installStep.get("env")).get("SITECMD_INSTALL_DIR")).replace(
+      "${{ runner.temp }}",
+      runnerTemp,
+    );
+    const githubPath = path.join(root, "github-path");
+    const installLog = path.join(root, "install-log");
+    const addPathLog = path.join(root, "add-path-log");
+    fs.writeFileSync(githubPath, "");
+    fs.writeFileSync(addPathLog, "");
+    const result = spawnSync("bash", ["-c", runCommand(installStep)], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: bin + path.delimiter + process.env.PATH,
+        RUNNER_TEMP: runnerTemp,
+        GITHUB_ACTION_PATH: gateDir,
+        GITHUB_PATH: githubPath,
+        SITECMD_INSTALL_DIR: installDir,
+        INSTALL_LOG: installLog,
+        ADD_PATH_LOG: addPathLog,
+        REAL_ADD_PATH: path.join(ROOT, ".github/actions/setup-sitecmd/add-path.sh"),
+      },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(installDir).toBe(path.join(runnerTemp, "sitecmd-bin"));
+    expect(fs.readFileSync(installLog, "utf8")).toBe(installDir + "\n");
+    expect(fs.readFileSync(addPathLog, "utf8")).toBe(installDir + "\n");
+    expect(fs.readFileSync(githubPath, "utf8")).toBe(installDir + "\n");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

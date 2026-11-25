@@ -3,7 +3,7 @@ import { publicationRecordFailures } from "./lib/guardrail-publication-record-ru
 
 const MATRIX = "docs/engineering/connected-service/maintained-surfaces.md";
 const PUBLICATION_CHECKLIST = "docs/operations/publication-checklist.md";
-const HOSTED_SPEC = "docs/engineering/connected-service/hosted-scanner-spec.md";
+const HOSTED_SPEC = "docs/engineering/connected-service/example-spec.md";
 const PRODUCT = "apps/desktop/PRODUCT.md";
 const DEV_SH = "tools/scripts/dev.sh";
 const LIB = "tools/scripts/lib/guardrail-example-rules.mjs";
@@ -16,11 +16,11 @@ function sources() {
 
 | Surface | Claims | Must agree with | Disposition | Sign-off |
 | ------- | ------ | --------------- | ----------- | -------- |
-| \`README.md\` | Privacy posture | \`product-facts.json\` | Sweep | Pending |
+| \`README.md\` | Privacy posture | \`commercial-model.json\` | Sweep | Pending |
 | \`CONTRIBUTING.md\` | What is open | Publication decision | Done | Pending |
 | \`SECURITY.md\` | The privacy boundary | Trust pages | Done | Pending |
 | \`AGENTS.md\` | Shipped entitlement behavior | \`license_constants.json\` | Migration train | Pending |
-| \`apps/desktop/PRODUCT.md\` | The paid axis | \`product-facts.json\` | Migration train | Pending |
+| \`apps/desktop/PRODUCT.md\` | The paid axis | \`commercial-model.json\` | Migration train | Pending |
 | \`docs/engineering/connected-service/\` | The connected contract | Each other | Keep | Pending |
 
 ## SiteCMD-Web
@@ -28,7 +28,7 @@ function sources() {
 | Surface | Claims | Must agree with | Disposition | Sign-off |
 | ------- | ------ | --------------- | ----------- | -------- |
 | \`docs/engineering/publication-decision.md\` | License and scope | Commercial terms | Relocated there 2026-08-09 | Pending |
-| \`pricing.astro\` | Prices | \`product-facts.json\` | Rewrite | Pending |
+| \`pricing.astro\` | Prices | \`commercial-model.json\` | Rewrite | Pending |
 `,
     [HOSTED_SPEC]: `# Hosted scanner
 

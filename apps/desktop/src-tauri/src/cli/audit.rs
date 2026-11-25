@@ -1,24 +1,29 @@
-use crate::checks::Severity;
+use sitecmd_protocol::engine_abi::EngineInfo;
+
+use crate::time::now_millis;
+
+#[cfg(test)]
+use crate::cli::audit_suppressions::{apply_project_suppressions, issue_fingerprint};
 use crate::cli::audit_suppressions::{
-    apply_project_suppressions, issue_fingerprint, IgnoredFinding, SuppressedAudit,
-    SuppressionState,
+    apply_project_suppressions_at, IgnoredFinding, SuppressedAudit, SuppressionState,
 };
-use crate::core::code_scan::{
-    audit_project_with_options, format_report, CodeIssueView, CodeScanOptions,
+use crate::core::audit::{
+    audit_with_interrupt_at, escape_terminal_text, format_report, CodeIssueView, CodeScanOptions,
     CodeScanReportFormat, CodeScanReportView,
 };
+use crate::core::scan_types::Severity;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
-pub const HELP: &str = concat!(
+const HELP_TEMPLATE: &str = concat!(
     "SiteCMD audit - Run Code Scan against a source checkout\n\n",
     "Usage:\n  sitecmd audit <path> [options]\n\n",
     "Reviewed findings can be suppressed through .sitecmd/config.json. JSON reports include occurrence fingerprints and suppression status.\n\n",
     "Options:\n",
-    "  --format <FORMAT>      summary, json, markdown, review, github, or sarif (default: summary)\n",
+    "  --format <FORMAT>      {formats} (default: summary)\n",
     "  --fail-on <SEVERITY>   Exit 1 when a critical, high, medium, or low finding meets the threshold\n",
     "  --output <PATH>        Write the report to a file instead of stdout\n",
-    "  --baseline <PATH>      A previous --format json report; findings whose fingerprint it lists never trip --fail-on\n",
+    "  --baseline <PATH>      A previous --format json report; per-rule, per-file counts exclude known findings; lower counts report stale entries\n",
     "  --inspect-local-databases\n",
     "                         Opt in to local dotenv target discovery and read-only inspection of project SQLite and loopback PostgreSQL schemas\n",
     "  --help, -h             Show this help\n\n",
@@ -33,6 +38,18 @@ pub const HELP: &str = concat!(
     "  sitecmd audit . --format github --fail-on high\n",
     "  sitecmd audit . --format sarif --output sitecmd.sarif\n",
 );
+
+pub fn help() -> String {
+    HELP_TEMPLATE.replace("{formats}", &format_names())
+}
+
+fn format_names() -> String {
+    CodeScanReportFormat::ALL
+        .iter()
+        .map(|(_, name)| *name)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditArgs {
@@ -68,19 +85,16 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<AuditArgs, S
         match token.as_str() {
             "--format" => {
                 let value = next_value(&mut args, "--format")?;
-                format = match value.as_str() {
-                    "summary" => CodeScanReportFormat::Summary,
-                    "json" => CodeScanReportFormat::Json,
-                    "markdown" | "md" => CodeScanReportFormat::Markdown,
-                    "review" => CodeScanReportFormat::Review,
-                    "github" | "gh" => CodeScanReportFormat::Github,
-                    "sarif" => CodeScanReportFormat::Sarif,
-                    _ => {
-                        return Err(format!(
-                            "Unknown format: {value}. Use: summary, json, markdown, review, github, sarif"
-                        ))
-                    }
+                let name = match value.as_str() {
+                    "md" => "markdown",
+                    "gh" => "github",
+                    name => name,
                 };
+                format = CodeScanReportFormat::ALL
+                    .iter()
+                    .find(|(_, candidate)| *candidate == name)
+                    .map(|(format, _)| *format)
+                    .ok_or_else(|| format!("Unknown format: {value}. Use: {}", format_names()))?;
             }
             "--fail-on" => {
                 let value = next_value(&mut args, "--fail-on")?;
@@ -123,12 +137,52 @@ fn next_value(args: &mut impl Iterator<Item = String>, option: &str) -> Result<S
         .ok_or_else(|| format!("Missing value for {option}"))
 }
 
-pub fn run(args: &AuditArgs) -> Result<AuditOutcome, String> {
-    let report = audit_project_with_options(
+pub fn run_with_interrupt(
+    args: &AuditArgs,
+    interrupt: &super::engine::Interrupt,
+) -> Result<AuditOutcome, String> {
+    run_with_interrupt_at(
+        args,
+        super::output::OutputContext::current(),
+        now_millis(),
+        interrupt,
+    )
+}
+
+#[cfg(test)]
+fn run_with_output(
+    args: &AuditArgs,
+    context: super::output::OutputContext,
+) -> Result<AuditOutcome, String> {
+    run_with_output_at(args, context, now_millis())
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn run_with_output_at(
+    args: &AuditArgs,
+    context: super::output::OutputContext,
+    now_ms: i64,
+) -> Result<AuditOutcome, String> {
+    let result = run_with_interrupt_at(args, context, now_ms, &super::engine::Interrupt::new())?;
+    if let Some(path) = &args.output {
+        write_report(path, &result.rendered)?;
+    }
+    Ok(result)
+}
+
+fn run_with_interrupt_at(
+    args: &AuditArgs,
+    context: super::output::OutputContext,
+    now_ms: i64,
+    interrupt: &super::engine::Interrupt,
+) -> Result<AuditOutcome, String> {
+    let report = audit_with_interrupt_at(
         &args.project_path,
         CodeScanOptions {
             inspect_local_databases: args.inspect_local_databases,
         },
+        now_ms,
+        interrupt,
     )
     .map_err(|error| format!("Code Scan audit failed: {error}"))?;
     let project_root = std::fs::canonicalize(&args.project_path).map_err(|error| {
@@ -137,7 +191,7 @@ pub fn run(args: &AuditArgs) -> Result<AuditOutcome, String> {
             args.project_path.display()
         )
     })?;
-    let audit = apply_project_suppressions(&project_root, report, chrono::Utc::now().date_naive())?;
+    let audit = apply_project_suppressions_at(&project_root, report, now_ms)?;
     let baseline = match &args.baseline {
         Some(path) => read_baseline_fingerprints(path)?,
         None => std::collections::HashSet::new(),
@@ -147,37 +201,56 @@ pub fn run(args: &AuditArgs) -> Result<AuditOutcome, String> {
     } else {
         &args.project_path
     };
-    let rendered = format_audit_report(&audit, display_path, args.format, &baseline)
+    let engine = sitecmd_engine_host::load()
         .map_err(|error| format!("Could not render Code Scan report: {error}"))?;
+    let rendered = format_audit_report(
+        &audit,
+        engine.info(),
+        display_path,
+        args.format,
+        &baseline,
+        context.allows_local_details(args.output.is_some()),
+    )
+    .map_err(|error| format!("Could not render Code Scan report: {error}"))?;
 
-    if let Some(output_path) = &args.output {
-        if let Some(parent) = output_path.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent).map_err(|error| {
-                    format!(
-                        "Could not create output directory {}: {error}",
-                        parent.display()
-                    )
-                })?;
-            }
-        }
-        std::fs::write(output_path, rendered.as_bytes()).map_err(|error| {
-            format!(
-                "Could not write report to {}: {error}",
-                output_path.display()
-            )
-        })?;
+    if interrupt.is_triggered() {
+        return Err("Code scan cancelled.".into());
     }
 
     Ok(AuditOutcome {
         threshold_failed: args.fail_on.is_some_and(|severity| {
-            audit.report.issues.iter().any(|issue| {
-                issue.severity.sort_rank() <= severity.sort_rank()
-                    && !baseline.contains(&issue_fingerprint(issue))
-            })
+            audit
+                .report
+                .issues
+                .iter()
+                .zip(&audit.fingerprints)
+                .any(|(issue, fingerprint)| {
+                    issue.severity.sort_rank() <= severity.sort_rank()
+                        && !baseline.contains(fingerprint)
+                })
         }),
         rendered,
     })
+}
+
+pub fn write_report(output_path: &std::path::Path, rendered: &str) -> Result<(), String> {
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "Could not create output directory {}: {error}",
+                    parent.display()
+                )
+            })?;
+        }
+    }
+    std::fs::write(output_path, rendered.as_bytes()).map_err(|error| {
+        format!(
+            "Could not write report to {}: {error}",
+            output_path.display()
+        )
+    })?;
+    Ok(())
 }
 
 /// Fingerprints from a previous `--format json` report, open or ignored.
@@ -192,41 +265,73 @@ fn read_baseline_fingerprints(
             path.display()
         )
     })?;
+    let regenerate = || {
+        format!("Baseline {} uses an unsupported fingerprint scheme; regenerate with sitecmd audit . --format json --output {}", path.display(), path.display())
+    };
+    if report["fingerprintVersion"].as_str() != Some(crate::core::audit::fingerprints::SARIF_KEY) {
+        return Err(regenerate());
+    }
+    let mut counts = std::collections::HashMap::new();
     let mut fingerprints = std::collections::HashSet::new();
     for key in ["issues", "ignoredFindings"] {
-        for finding in report[key].as_array().into_iter().flatten() {
-            if let Some(fingerprint) = finding["fingerprint"].as_str() {
-                fingerprints.insert(fingerprint.to_string());
+        let findings = report[key].as_array().ok_or_else(regenerate)?;
+        for finding in findings {
+            let value = finding["fingerprint"].as_str().ok_or_else(regenerate)?;
+            let digest = value
+                .strip_prefix(crate::core::audit::fingerprints::PREFIX)
+                .ok_or_else(regenerate)?;
+            if digest.len() != 64
+                || !digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            {
+                return Err(regenerate());
             }
+            let rule = finding["checkId"].as_str().ok_or_else(regenerate)?;
+            let path = finding["relativePath"]
+                .as_str()
+                .ok_or_else(regenerate)?
+                .replace('\\', "/");
+            let count = counts.entry((rule.to_string(), path.clone())).or_insert(0);
+            *count += 1;
+            fingerprints.insert(crate::core::audit::fingerprints::fingerprint(
+                rule, &path, *count,
+            ));
         }
-    }
-    if fingerprints.is_empty() {
-        return Err(format!(
-            "Baseline {} lists no fingerprints; generate it with sitecmd audit --format json",
-            path.display()
-        ));
     }
     Ok(fingerprints)
 }
 
 fn format_audit_report(
     audit: &SuppressedAudit,
+    rules: &EngineInfo,
     project_path: &std::path::Path,
     format: CodeScanReportFormat,
     baseline: &std::collections::HashSet<String>,
+    local_summary: bool,
 ) -> Result<String, String> {
+    let published = published_audit(audit, rules)?;
+    let audit = if local_summary && format == CodeScanReportFormat::Summary {
+        audit
+    } else {
+        &published
+    };
     if format == CodeScanReportFormat::Json {
-        return format_audit_json(audit, baseline);
+        return format_audit_json(audit, rules, baseline);
     }
     if format == CodeScanReportFormat::Sarif {
-        return format_audit_sarif(audit, baseline);
+        return format_audit_sarif(audit, rules, baseline);
     }
 
-    let mut rendered = format_report(&audit.report, project_path, format)?;
+    let mut rendered = format_report(&audit.report, rules, project_path, format)?;
     if audit.suppressions.is_empty() && baseline.is_empty() {
         return Ok(rendered);
     }
 
+    if format != CodeScanReportFormat::Summary && !baseline.is_empty() {
+        let stale = stale_baseline_count(audit, baseline);
+        let _ = writeln!(rendered, "\nBaseline: {stale} stale entries");
+    }
     match format {
         CodeScanReportFormat::Summary => {
             if !audit.suppressions.is_empty() {
@@ -240,14 +345,13 @@ fn format_audit_report(
             }
             if !baseline.is_empty() {
                 let baseline_count = audit
-                    .report
-                    .issues
+                    .fingerprints
                     .iter()
-                    .filter(|issue| baseline.contains(&issue_fingerprint(issue)))
+                    .filter(|fingerprint| baseline.contains(*fingerprint))
                     .count();
                 let _ = writeln!(
                     rendered,
-                    "\nBaseline: {baseline_count} known finding(s) excluded from --fail-on"
+                    "\nBaseline: {baseline_count} known finding(s) excluded from --fail-on; {} stale entries", stale_baseline_count(audit, baseline)
                 );
             }
         }
@@ -283,12 +387,36 @@ fn format_audit_report(
     Ok(rendered)
 }
 
+fn published_audit(
+    audit: &SuppressedAudit,
+    rules: &EngineInfo,
+) -> Result<SuppressedAudit, &'static str> {
+    let mut ignored_findings = audit.ignored_findings.clone();
+    for finding in &mut ignored_findings {
+        finding.issue = crate::core::audit::published_issue(&finding.issue, rules)?;
+        finding.reason = "Configured suppression.".into();
+    }
+    let mut suppressions = audit.suppressions.clone();
+    for suppression in &mut suppressions {
+        suppression.reason = "Configured suppression.".into();
+    }
+    Ok(SuppressedAudit {
+        report: crate::core::audit::published_report(&audit.report, rules)?,
+        fingerprints: audit.fingerprints.clone(),
+        retained_indices: audit.retained_indices.clone(),
+        ignored_findings,
+        suppressions,
+    })
+}
+
 fn format_audit_sarif(
     audit: &SuppressedAudit,
+    rules: &EngineInfo,
     baseline: &std::collections::HashSet<String>,
 ) -> Result<String, String> {
     let mut sarif: serde_json::Value = serde_json::from_str(&format_report(
         &audit.report,
+        rules,
         std::path::Path::new("."),
         CodeScanReportFormat::Sarif,
     )?)
@@ -296,14 +424,13 @@ fn format_audit_sarif(
     let results = sarif["runs"][0]["results"]
         .as_array_mut()
         .ok_or_else(|| "SARIF report has no results array".to_string())?;
-    for (result, issue) in results.iter_mut().zip(&audit.report.issues) {
-        let fingerprint = issue_fingerprint(issue);
-        result["baselineState"] = serde_json::Value::String(if baseline.contains(&fingerprint) {
+    for (result, fingerprint) in results.iter_mut().zip(&audit.fingerprints) {
+        result["baselineState"] = serde_json::Value::String(if baseline.contains(fingerprint) {
             "unchanged".into()
         } else {
             "new".into()
         });
-        result["partialFingerprints"] = serde_json::json!({ "sitecmd/v1": fingerprint });
+        result["partialFingerprints"] = serde_json::json!({ "sitecmd/v3": fingerprint });
     }
     for finding in &audit.ignored_findings {
         results.push(serde_json::json!({
@@ -314,10 +441,12 @@ fn format_audit_sarif(
                 "artifactLocation": { "uri": finding.issue.relative_path.replace('\\', "/"), "uriBaseId": "%SRCROOT%" },
                 "region": { "startLine": finding.issue.line.unwrap_or(1) }
             } }],
-            "partialFingerprints": { "sitecmd/v1": finding.fingerprint },
+            "partialFingerprints": { "sitecmd/v3": finding.fingerprint },
             "suppressions": [{ "kind": "external", "justification": finding.reason }],
         }));
     }
+    sarif["runs"][0]["properties"]["staleBaselineCount"] =
+        serde_json::json!(stale_baseline_count(audit, baseline));
     serde_json::to_string_pretty(&sarif)
         .map_err(|error| format!("Could not serialize SARIF report: {error}"))
 }
@@ -327,9 +456,10 @@ const LOCAL_CHECKOUT_PATH_FIELD: &str = "absolutePath";
 
 fn format_audit_json(
     audit: &SuppressedAudit,
+    rules: &EngineInfo,
     baseline: &std::collections::HashSet<String>,
 ) -> Result<String, String> {
-    let mut value = serde_json::to_value(CodeScanReportView::from(&audit.report))
+    let mut value = serde_json::to_value(CodeScanReportView::new(&audit.report, rules)?)
         .map_err(|error| format!("Could not serialize code scan report: {error}"))?;
     let object = value
         .as_object_mut()
@@ -340,20 +470,30 @@ fn format_audit_json(
         .get_mut("issues")
         .and_then(serde_json::Value::as_array_mut)
     {
-        for (value, issue) in issues.iter_mut().zip(&audit.report.issues) {
+        for (value, fingerprint) in issues.iter_mut().zip(&audit.fingerprints) {
             if let Some(issue_object) = value.as_object_mut() {
                 issue_object.remove(LOCAL_CHECKOUT_PATH_FIELD);
-                let fingerprint = issue_fingerprint(issue);
-                let in_baseline = baseline.contains(&fingerprint);
+                let in_baseline = baseline.contains(fingerprint);
                 if in_baseline {
                     baseline_count += 1;
                 }
-                issue_object.insert("fingerprint".into(), serde_json::Value::String(fingerprint));
+                issue_object.insert(
+                    "fingerprint".into(),
+                    serde_json::Value::String(fingerprint.clone()),
+                );
                 issue_object.insert("inBaseline".into(), serde_json::Value::Bool(in_baseline));
             }
         }
     }
 
+    object.insert(
+        "fingerprintVersion".into(),
+        serde_json::json!(crate::core::audit::fingerprints::SARIF_KEY),
+    );
+    object.insert(
+        "staleBaselineCount".into(),
+        serde_json::json!(stale_baseline_count(audit, baseline)),
+    );
     object.insert("baselineCount".into(), serde_json::json!(baseline_count));
     object.insert(
         "ignoredCount".into(),
@@ -369,7 +509,7 @@ fn format_audit_json(
             audit
                 .ignored_findings
                 .iter()
-                .map(ignored_finding_json)
+                .map(|finding| ignored_finding_json(finding, rules))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
     );
@@ -382,8 +522,11 @@ fn format_audit_json(
         .map_err(|error| format!("Could not serialize code scan report: {error}"))
 }
 
-fn ignored_finding_json(finding: &IgnoredFinding) -> Result<serde_json::Value, String> {
-    let mut value = serde_json::to_value(CodeIssueView::from(&finding.issue))
+fn ignored_finding_json(
+    finding: &IgnoredFinding,
+    rules: &EngineInfo,
+) -> Result<serde_json::Value, String> {
+    let mut value = serde_json::to_value(CodeIssueView::new(&finding.issue, rules)?)
         .map_err(|error| format!("Could not serialize ignored Code Scan finding: {error}"))?;
     let object = value
         .as_object_mut()
@@ -412,15 +555,35 @@ fn ignored_finding_json(finding: &IgnoredFinding) -> Result<serde_json::Value, S
     Ok(value)
 }
 
+fn stale_baseline_count(
+    audit: &SuppressedAudit,
+    baseline: &std::collections::HashSet<String>,
+) -> usize {
+    let current: std::collections::HashSet<_> = audit
+        .fingerprints
+        .iter()
+        .chain(
+            audit
+                .ignored_findings
+                .iter()
+                .map(|finding| &finding.fingerprint),
+        )
+        .collect();
+    baseline
+        .iter()
+        .filter(|fingerprint| !current.contains(fingerprint))
+        .count()
+}
+
 fn append_text_suppression_details(rendered: &mut String, audit: &SuppressedAudit) {
     for finding in &audit.ignored_findings {
         let _ = writeln!(
             rendered,
             "- Ignored `{}` in `{}` ({}) - {}",
             finding.issue.check_id,
-            finding.issue.relative_path,
+            escape_terminal_text(&finding.issue.relative_path),
             finding.fingerprint,
-            finding.reason
+            escape_terminal_text(&finding.reason)
         );
     }
     for (index, suppression) in audit.suppressions.iter().enumerate() {
@@ -432,7 +595,7 @@ fn append_text_suppression_details(rendered: &mut String, audit: &SuppressedAudi
             "- Suppression {} is {:?}: {}",
             index + 1,
             suppression.state,
-            suppression.reason
+            escape_terminal_text(&suppression.reason)
         );
     }
 }
@@ -444,3 +607,24 @@ mod tests;
 #[cfg(test)]
 #[path = "audit_database_tests.rs"]
 mod database_tests;
+
+#[cfg(test)]
+#[path = "publication_tests.rs"]
+mod publication_tests;
+
+#[cfg(test)]
+#[path = "publication_regressions.rs"]
+mod publication_regressions;
+
+#[cfg(feature = "test-support")]
+pub fn run_audit_with_output(
+    args: &AuditArgs,
+    terminal: bool,
+    ci: bool,
+) -> Result<AuditOutcome, String> {
+    run_with_output_at(
+        args,
+        super::output::OutputContext { terminal, ci },
+        now_millis(),
+    )
+}

@@ -109,12 +109,11 @@ describe("check-commit-message CLI", () => {
 describe("commit-message policy wiring", () => {
   it("checks local commits and pull request titles", () => {
     const hook = fs.readFileSync(path.join(ROOT, "lefthook.yml"), "utf8");
-    const workflow = fs.readFileSync(
-      path.join(ROOT, ".github/workflows/repository-guardrails.yml"),
-      "utf8",
-    );
+    const workflow = fs.readFileSync(path.join(ROOT, ".github/workflows/ci.yml"), "utf8");
     expect(hook).toContain('check-commit-message.mjs --file "{1}"');
-    expect(workflow).toContain("check-commit-message.mjs --env PR_TITLE");
+    expect(workflow).toContain(
+      'node tools/scripts/pr-title.mjs --title="$PR_TITLE" --body-file "$body_file"',
+    );
     expect(workflow).toContain("types: [opened, edited, reopened, synchronize, ready_for_review]");
   });
 

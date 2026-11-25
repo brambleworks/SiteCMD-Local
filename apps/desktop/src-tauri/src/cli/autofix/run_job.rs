@@ -5,24 +5,29 @@
 
 use std::path::{Path, PathBuf};
 
-use sitecmd_engine::sync::ProjectFingerprintKey;
+use sitecmd_protocol::{
+    engine_abi::{FixTarget, Patch},
+    sync::ProjectFingerprintKey,
+};
 
+use super::apply::write_patches;
 use super::artifact::{
     has_something_to_publish, write_artifact, write_outputs, Manifest, ManifestFinding,
     ARTIFACT_SCHEMA_VERSION,
 };
 use super::brief::{brief_artifact, code_slug, locate_findings};
-use super::redact;
-use super::repo;
 use super::secrets::{read_env_secret, read_export, ExportSource};
+use super::template_plan::TemplateFix;
+use super::{repo, template_plan};
 use crate::cli::{settle, ConnectStop};
 use crate::connected_export::decrypt_site_connection;
 use crate::connected_service::deployment_ordering::CiSubmissionAttestation;
 use crate::connected_service::{
     ClaimedJob, ConnectedServiceClient, FindingOutcomeReport, ResultReport,
 };
+use crate::core::fix_templates::build_check;
 use crate::core::fix_templates::build_check::BuildOutcome;
-use crate::core::fix_templates::{apply, build_check, fixer_for, hosts, Finding, Patch};
+use crate::core::project_listing::list_project;
 
 /// What a job reports when it cannot read its own secrets. The fix never
 /// started, so the summary names the repair instead of the failure, and it
@@ -101,6 +106,7 @@ pub(super) fn parse(mut args: impl Iterator<Item = String>) -> Result<RunJobArgs
 #[derive(Debug)]
 pub struct FixJobExecution {
     pub manifest: Manifest,
+    pub summary: String,
     pub patch: String,
     pub publish: bool,
     pub result: Option<ResultReport>,
@@ -123,7 +129,6 @@ fn manifest_for(claimed: &ClaimedJob) -> Manifest {
         job_id: claimed.job_id.clone(),
         outcome_code: None,
         schema_version: ARTIFACT_SCHEMA_VERSION,
-        summary: String::new(),
         write_set: Vec::new(),
     }
 }
@@ -140,14 +145,13 @@ fn set_outcome(manifest: &mut Manifest, check_id: &str, identity: &str, outcome:
 
 /// The attempt failed rather than declined. The result door refuses a finding
 /// outcome under a failure code, so a failure carries the code alone.
-fn failure_result(manifest: &Manifest, code: &str, summary: String) -> ResultReport {
+fn failure_result(manifest: &Manifest, code: &str) -> ResultReport {
     ResultReport {
         attempt: manifest.attempt,
         findings: Vec::new(),
         issue_number: None,
-        outcome_code: code.to_string(),
+        outcome_code: code.parse().expect("fixed outcome code"),
         pull_request: None,
-        summary,
         token_revoked: false,
     }
 }
@@ -155,32 +159,32 @@ fn failure_result(manifest: &Manifest, code: &str, summary: String) -> ResultRep
 /// The attempt ran and published nothing, so every finding reports what it
 /// reached. Nothing crossed to the publish job, so an outcome that claims a
 /// pull request or an issue is reported as unsupported.
-fn declined_result(manifest: &Manifest, code: &str, summary: String) -> ResultReport {
+fn declined_result(manifest: &Manifest, code: &str) -> ResultReport {
     ResultReport {
         attempt: manifest.attempt,
         findings: manifest
             .findings
             .iter()
-            .map(|f| FindingOutcomeReport {
-                check_id: f.check_id.clone(),
-                identity: f.identity.clone(),
-                outcome: match f.outcome.as_deref() {
-                    None | Some("applied") | Some("issue_opened") => "unsupported".to_string(),
-                    Some(outcome) => outcome.to_string(),
-                },
+            .filter_map(|f| {
+                FindingOutcomeReport::new(
+                    &f.check_id,
+                    &f.identity,
+                    match f.outcome.as_deref() {
+                        Some("no_template") => "no_template",
+                        _ => "unsupported",
+                    },
+                )
             })
             .collect(),
         issue_number: None,
-        outcome_code: code.to_string(),
+        outcome_code: code.parse().expect("fixed outcome code"),
         pull_request: None,
-        summary,
         token_revoked: false,
     }
 }
 
-/// What a failed build tells SiteCMD: the step and its status, never the log.
-/// The build's own output stays in the Actions run, which only the
-/// repository's own people can read.
+/// What a failed build tells the person running the job.
+/// Build tool output is forwarded to the customer's Actions log and never sent to SiteCMD.
 fn build_failure_summary(outcome: &BuildOutcome) -> String {
     match (outcome.failed_step, outcome.exit_status) {
         (Some(step), Some(status)) => {
@@ -195,8 +199,7 @@ fn build_failure_summary(outcome: &BuildOutcome) -> String {
 
 /// One attempt on a checkout, with no network of its own: template fixes
 /// applied and proved by the build, code findings located for the brief, and
-/// the manifest the publish job reads. Each build step reaches `out` as it
-/// finishes, which is the workflow log a maintainer reads after a failure.
+/// the manifest the publish job reads; build steps stream to the customer-owned log.
 pub fn execute_fix_job(
     claimed: &ClaimedJob,
     root: &Path,
@@ -207,17 +210,19 @@ pub fn execute_fix_job(
     let head = repo::head_sha(root)?;
     if head != claimed.base_sha {
         manifest.outcome_code = Some("stale_base".into());
-        manifest.summary = format!("checkout is at {head}, job expects {}", claimed.base_sha);
-        let result = failure_result(&manifest, "stale_base", manifest.summary.clone());
+        let summary = format!("checkout is at {head}, job expects {}", claimed.base_sha);
+        let result = failure_result(&manifest, "stale_base");
         return Ok(FixJobExecution {
             manifest,
+            summary,
             patch: String::new(),
             publish: false,
             result: Some(result),
         });
     }
 
-    let targets = hosts::detect(root);
+    let catalog = template_plan::catalog()?;
+    let mut project = None;
     let mut patches: Vec<Patch> = Vec::new();
     let mut write_set: Vec<String> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
@@ -230,7 +235,10 @@ pub fn execute_fix_job(
             wanted_code.push((finding.check_id.clone(), finding.identity.clone()));
             continue;
         }
-        let Some(fixer) = fixer_for(&finding.check_id) else {
+        let Some(fixer) = catalog
+            .iter()
+            .find(|fixer| fixer.check_id == finding.check_id)
+        else {
             set_outcome(
                 &mut manifest,
                 &finding.check_id,
@@ -241,35 +249,23 @@ pub fn execute_fix_job(
             continue;
         };
         had_fixer = true;
-        let template_finding = Finding {
+        let listing = match &project {
+            Some(listing) => listing,
+            None => project.insert(list_project(root).map_err(|error| error.to_string())?),
+        };
+        let target = FixTarget {
             check_id: finding.check_id.clone(),
             identity: finding.identity.clone(),
         };
-        // The host the checkout declares first is the one a fix is planned
-        // against; every answer it gives, including a refusal, is the answer.
-        let planned =
-            targets
-                .first()
-                .map(|target| match fixer.plan(&template_finding, target, root) {
-                    Ok(Some(patch)) => Ok((patch, fixer.write_set(target))),
-                    Ok(None) => Err(format!(
-                        "{}: {} already sets it",
-                        finding.check_id,
-                        target.config_path.display()
-                    )),
-                    Err(unsupported) => {
-                        Err(format!("{}: {}", finding.check_id, unsupported.reason))
-                    }
-                });
-        match planned {
-            Some(Ok((patch, allowed))) => {
-                for path in allowed {
-                    let text = path.to_string_lossy().to_string();
+        match template_plan::plan_finding(listing, target, fixer)? {
+            TemplateFix::Patches(entries) => {
+                for path in &fixer.write_set {
+                    let text = path.as_str().to_owned();
                     if !write_set.contains(&text) {
                         write_set.push(text);
                     }
                 }
-                patches.push(patch);
+                patches.extend(entries);
                 set_outcome(
                     &mut manifest,
                     &finding.check_id,
@@ -277,16 +273,7 @@ pub fn execute_fix_job(
                     "applied",
                 );
             }
-            Some(Err(reason)) => {
-                set_outcome(
-                    &mut manifest,
-                    &finding.check_id,
-                    &finding.identity,
-                    "unsupported",
-                );
-                notes.push(reason);
-            }
-            None => {
+            TemplateFix::Unavailable(_) => {
                 set_outcome(
                     &mut manifest,
                     &finding.check_id,
@@ -294,7 +281,7 @@ pub fn execute_fix_job(
                     "unsupported",
                 );
                 notes.push(format!(
-                    "{}: no recognized host configuration",
+                    "{}: template prerequisites are not met",
                     finding.check_id
                 ));
             }
@@ -339,25 +326,26 @@ pub fn execute_fix_job(
     }
 
     let mut patch = String::new();
-    if !patches.is_empty() {
-        apply(&patches, root)?;
+    if let Some(project) = project.filter(|_| !patches.is_empty()) {
+        write_patches(project.wire(), root, patches, |path| {
+            write_set.iter().any(|allowed| allowed == path.as_str())
+        })?;
         repo::stage(root, &write_set)?;
         let build = build_check::run_build_check_with_output(root, out)?;
         if !build.success {
             manifest.outcome_code = Some("build_failed".into());
-            manifest.summary = build_failure_summary(&build);
+            let summary = build_failure_summary(&build);
             manifest.write_set = write_set;
-            let result = failure_result(&manifest, "build_failed", manifest.summary.clone());
+            let result = failure_result(&manifest, "build_failed");
             return Ok(FixJobExecution {
                 manifest,
+                summary,
                 patch: String::new(),
                 publish: false,
                 result: Some(result),
             });
         }
-        // The note is the binary's own sentence either way: a check that ran
-        // nothing still logs why, and its log names the checkout's own files
-        // while the summary crosses back to SiteCMD.
+        // Build details stay in the customer's Actions log or terminal.
         notes.push(
             if build.ran {
                 "build passed"
@@ -369,7 +357,7 @@ pub fn execute_fix_job(
         patch = repo::staged_patch(root)?;
     }
     manifest.write_set = write_set;
-    manifest.summary = redact::summary(root, &notes.join("\n"));
+    let summary = notes.join("\n");
 
     let publish = has_something_to_publish(&manifest, &patch);
     let result = if publish {
@@ -381,10 +369,11 @@ pub fn execute_fix_job(
             "no_template"
         };
         manifest.outcome_code = Some(code.into());
-        Some(declined_result(&manifest, code, manifest.summary.clone()))
+        Some(declined_result(&manifest, code))
     };
     Ok(FixJobExecution {
         manifest,
+        summary,
         patch,
         publish,
         result,
@@ -511,13 +500,8 @@ async fn attempt(
             // The workflow reads `publish` whatever happens next, so it is
             // written before the report, which can fail on the network.
             refuse_publish(args)?;
-            let result = failure_result(
-                &manifest_for(&claimed),
-                "secrets_missing",
-                MISSING_SECRETS_SUMMARY.to_string(),
-            );
-            // SiteCMD is told the fixed sentence; the Actions log, which only
-            // the repository's own people can read, is told which secret.
+            let result = failure_result(&manifest_for(&claimed), "secrets_missing");
+            // Only the outcome code reaches SiteCMD; the log names the secret.
             let summary = format!("{MISSING_SECRETS_SUMMARY}\n{reason}");
             report_result(args, &claimed, &result, allow_http_loopback)
                 .await
@@ -526,8 +510,7 @@ async fn attempt(
         }
     };
 
-    // The build's output belongs in the workflow log as each step finishes,
-    // and the lock is released before the result goes back over the network.
+    // Build output streams only to Actions; the service receives closed outcome codes.
     let execution = {
         let mut log = std::io::stdout().lock();
         execute_fix_job(&claimed, &root, Some(&key), &mut log)?
@@ -537,7 +520,7 @@ async fn attempt(
         write_outputs(outputs, execution.publish)?;
     }
 
-    let mut summary = execution.manifest.summary.clone();
+    let mut summary = execution.summary.clone();
     let mut code = 0_u8;
     if let Some(result) = &execution.result {
         let state = report_result(args, &claimed, result, allow_http_loopback)

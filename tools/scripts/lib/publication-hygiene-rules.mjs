@@ -1,3 +1,5 @@
+import { ALLOWED_ROOT_FILES } from "./publication-root-files.mjs";
+
 const REQUIRED_FILES = [
   ".env.example",
   ".gitattributes",
@@ -27,43 +29,11 @@ const REQUIRED_FILES = [
   "tools/scripts/check-publication-history.test.mjs",
   "tools/scripts/prepare-public-history.mjs",
   "tools/scripts/prepare-public-history.test.mjs",
+  "tools/scripts/published-engine-moves.json",
   "tools/scripts/lib/publication-hygiene-rules.mjs",
   "tools/scripts/lib/publication-history-rules.mjs",
+  "tools/scripts/lib/publication-root-files.mjs",
 ];
-
-const ALLOWED_ROOT_FILES = new Set([
-  ".env.example",
-  ".gitattributes",
-  ".gitignore",
-  ".gitleaks.toml",
-  ".nvmrc",
-  ".prettierignore",
-  ".prettierrc.json",
-  "AGENTS.md",
-  "CHANGELOG.md",
-  "CLAUDE.md",
-  "CODE_OF_CONDUCT.md",
-  "CONTRIBUTING.md",
-  "GOVERNANCE.md",
-  "LICENSE",
-  "NOTICE",
-  "README.md",
-  "SECURITY.md",
-  "SUPPORT.md",
-  "THIRD_PARTY_DEPENDENCIES.json",
-  "THIRD_PARTY_LICENSES.txt",
-  "THIRD_PARTY_NOTICES",
-  "eslint.config.js",
-  "install.sh",
-  "knip.config.ts",
-  "lefthook.yml",
-  "package.json",
-  "pnpm-lock.yaml",
-  "pnpm-workspace.yaml",
-  "product-facts.json",
-  "renovate.json",
-  "vitest.config.mjs",
-]);
 
 const ALLOWED_ROOT_DIRECTORIES = new Set([".github", "apps", "docs", "tools"]);
 
@@ -218,10 +188,11 @@ function contentIncludes(read, path, expected) {
   }
 }
 
-export function publicationHygieneFailures(files, read) {
+export function publicationHygieneFailures(files, read, { additionalRootFiles = [] } = {}) {
   const failures = [];
   const paths = files.map((file) => file.path.replaceAll("\\", "/")).sort();
   const pathSet = new Set(paths);
+  const allowedRootFiles = new Set([...ALLOWED_ROOT_FILES, ...additionalRootFiles]);
 
   for (const required of REQUIRED_FILES) {
     if (!pathSet.has(required)) {
@@ -267,11 +238,7 @@ export function publicationHygieneFailures(files, read) {
     }
 
     const root = rootEntry(path);
-    if (
-      !path.includes("/") &&
-      !ALLOWED_ROOT_FILES.has(path) &&
-      !ALLOWED_ROOT_DIRECTORIES.has(root)
-    ) {
+    if (!path.includes("/") && !allowedRootFiles.has(path) && !ALLOWED_ROOT_DIRECTORIES.has(root)) {
       failures.push(`unexpected file at repository root: ${path}`);
     }
 
@@ -320,12 +287,12 @@ export function publicationHygieneFailures(files, read) {
       label: "open-source package metadata",
     },
     {
-      path: "apps/mcp-server/package.json",
-      expected: '"license": "Apache-2.0"',
+      path: "apps/desktop/src-tauri/crates/runtime/Cargo.toml",
+      expected: 'license = "Apache-2.0"',
       label: "open-source package metadata",
     },
     {
-      path: "apps/desktop/src-tauri/Cargo.toml",
+      path: "apps/desktop/src-tauri/crates/cli/Cargo.toml",
       expected: 'license = "Apache-2.0"',
       label: "open-source package metadata",
     },

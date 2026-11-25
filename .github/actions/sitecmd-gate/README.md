@@ -31,11 +31,14 @@ archive with SiteCMD's updater signing key before it runs any product code.
 
 ## The three secrets, and why they are three
 
-| Secret              | Where it comes from                        | What it is                                             |
-| ------------------- | ------------------------------------------ | ------------------------------------------------------ |
-| `connection-export` | Desktop app: Settings, Transfer Connection | The site id and the project fingerprint key, encrypted |
-| `passphrase`        | You chose it when creating the export      | What decrypts the above                                |
-| `ci-token`          | Desktop app: Settings, CI Gate Credential  | The bearer that may ask for a verdict on this site     |
+Run `sitecmd connect <url>` from the repository checkout with the site's URL,
+then approve the connection in the SiteCMD dashboard.
+
+| Action input        | Where the GitHub Actions secret comes from                                    | What it is                                             |
+| ------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `connection-export` | The CLI writes `SITECMD_CONNECTION_EXPORT` during setup                       | The site id and the project fingerprint key, encrypted |
+| `passphrase`        | The CLI generates the passphrase and writes `SITECMD_CONNECTION_PASSPHRASE`   | The passphrase that decrypts the export                |
+| `ci-token`          | SiteCMD Connect provisions `SITECMD_CI_TOKEN` for the repository during setup | The bearer that may ask for a verdict on this site     |
 
 They are separate because they fail separately. The export carries the
 fingerprint key, which is what makes a code location's identity mean anything
@@ -87,7 +90,7 @@ and anything else means the gate could not run at all. The third case is not
 reported as a pass, because a gate that cannot reach the service is not
 evidence that a branch is clean.
 
-When SiteCMD Connect answers `account_inactive`, the account is inactive and
+When SiteCMD answers `account_inactive`, the account is inactive and
 the gate grades nothing. It exits `0`, so pull requests are not blocked, but it
 is not reported as a pass either: the `verdict` output is `inactive`, `new` is
 `0`, and the step summary says the gate graded nothing.

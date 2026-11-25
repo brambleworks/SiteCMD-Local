@@ -1,30 +1,27 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   appendFileSync,
   closeSync,
-  existsSync,
   mkdtempSync,
   openSync,
   readFileSync,
+  rmSync,
   unlinkSync,
 } from "node:fs";
-import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  classifyBindError,
-  isolatedGitEnvironment,
-  missingBrowserPaths,
-  resolveRepositoryRoot,
-} from "./verify-push-lib.mjs";
+import { workerCount } from "./lib/test-workers.mjs";
+import { toolingEntries } from "./lib/tooling-entries.mjs";
+import { isolatedGitEnvironment, resolveRepositoryRoot } from "./verify-push-lib.mjs";
 
 const ROOT = resolveRepositoryRoot(import.meta.url);
 const CHECK_ENV = isolatedGitEnvironment(ROOT, process.env);
 
 const NO_BAIL = process.argv.slice(2).some((arg) => arg === "--no-bail" || arg === "--all");
+const SHARED_CARGO_TARGET_TIER = 4;
 
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
@@ -43,10 +40,13 @@ const RESET = "\x1b[0m";
 
 /** @type {Array<Check[]>} */
 const TIERS = [
-  // Knip resolves MCP test imports through the compiled output.
-  [{ name: "mcp-build", cmd: "pnpm --filter sitecmd-mcp run build" }],
   [
-    { name: "typecheck", cmd: "pnpm run typecheck" },
+    {
+      name: "standin-build",
+      cmd: 'fnm exec --using=26.13.1 node tools/scripts/build-standin.mjs --out "$SITECMD_VERIFY_ENGINE_OUT"',
+    },
+  ],
+  [
     { name: "lint", cmd: "pnpm run lint" },
     { name: "prettier", cmd: "pnpm exec prettier --check ." },
     { name: "legal-artifacts", cmd: "pnpm run legal:check" },
@@ -60,17 +60,9 @@ const TIERS = [
     { name: "rust-toolchain", cmd: "node tools/scripts/audit/check-rust-toolchain.mjs" },
     { name: "rust-patterns", cmd: "bash tools/scripts/audit/forbid-adhoc-rust-patterns.sh" },
     {
-      name: "frontend-constants",
-      cmd: "bash tools/scripts/audit/forbid-inline-frontend-constants.sh",
-    },
-    {
       name: "gitleaks",
       cmd: 'gitleaks git --redact --no-banner --log-opts="origin/main..HEAD"',
     },
-    // The same engine and suite the CodeQL workflow runs, limited to alerts on
-    // lines this branch added, so a pull-request blocker surfaces here instead
-    // of one CI round trip at a time.
-    { name: "codeql", cmd: "pnpm run audit:codeql" },
     { name: "agents-md", cmd: "node tools/scripts/audit/check-agents-md.mjs" },
     { name: "regex-audit", cmd: "pnpm run audit:regex" },
     {
@@ -78,13 +70,8 @@ const TIERS = [
       cmd: "SITECMD_RUST_AUDIT_FETCH=1 pnpm run audit:deps:rust",
     },
     { name: "audit:deps:js", cmd: "pnpm run audit:deps:js" },
-    { name: "audit:licenses:js", cmd: "pnpm run audit:licenses:js" },
     { name: "audit:deps:signer", cmd: "pnpm run audit:deps:signer" },
     { name: "cargo-deny", cmd: "pnpm run audit:deps:rust-policy" },
-    {
-      name: "tauri-commands",
-      cmd: "node tools/scripts/audit/tauri-command-surface.mjs --check",
-    },
     {
       name: "cli-build",
       cmd: "cargo build --manifest-path crates/cli/Cargo.toml",
@@ -93,18 +80,14 @@ const TIERS = [
   ],
   // Keep JavaScript suites separate from CPU-heavy Rust tests.
   [
-    { name: "desktop-vitest", cmd: "pnpm --filter @sitecmd/desktop run test" },
-    {
-      name: "worker-vitest",
-      cmd: "pnpm --filter sitecmd-mcp run test",
-    },
     {
       name: "guardrails-tests",
       cmd: "pnpm run guardrails:repo:test",
     },
+    ...(await toolingEntries(ROOT, "localGuardrailChecks")),
     {
       name: "cli-smoke",
-      cmd: "node tools/scripts/cli-smoke.mjs",
+      cmd: "node tools/scripts/cli-smoke.mjs --standin",
     },
   ],
   [
@@ -126,22 +109,12 @@ const TIERS = [
     },
     {
       name: "rust-msrv-workspace",
-      cmd: "cargo +1.89.0 check --locked --workspace --all-targets",
+      cmd: "cargo +1.95.0 check --locked --workspace --all-targets",
       cwd: "apps/desktop/src-tauri",
     },
     {
       name: "rust-msrv-cli",
-      cmd: "cargo +1.89.0 check --locked --manifest-path crates/cli/Cargo.toml --all-targets",
-      cwd: "apps/desktop/src-tauri",
-    },
-    {
-      name: "engine-wasm",
-      cmd: "cargo check -p sitecmd-engine-wasm --target wasm32-unknown-unknown",
-      cwd: "apps/desktop/src-tauri",
-    },
-    {
-      name: "engine-wasm-checks",
-      cmd: "cargo check -p sitecmd-engine-wasm --target wasm32-unknown-unknown --features checks",
+      cmd: "cargo +1.95.0 check --locked --manifest-path crates/cli/Cargo.toml --all-targets",
       cwd: "apps/desktop/src-tauri",
     },
   ],
@@ -151,26 +124,10 @@ const TIERS = [
     // could read a library the other is still writing.
     { name: "rust-doctest", cmd: "cargo test --doc --workspace", cwd: "apps/desktop/src-tauri" },
   ],
-  [{ name: "perf-baseline", cmd: "pnpm run perf:baseline" }],
-  [
-    {
-      name: "rust-perf-gates",
-      cmd: "cargo nextest run -p sitecmd-runtime --lib --run-ignored only --no-tests fail -- resolver_p95_under_60ms preview_deploy_risk_p95_under_200ms",
-      cwd: "apps/desktop/src-tauri",
-    },
-  ],
-  [{ name: "desktop-build", cmd: "pnpm --filter @sitecmd/desktop run build" }],
-  [
-    {
-      name: "size-limit",
-      cmd: "pnpm --filter @sitecmd/desktop exec size-limit",
-    },
-    { name: "playwright", cmd: "pnpm --filter @sitecmd/desktop exec playwright test e2e/" },
-    { name: "naming-audit", cmd: "pnpm run naming:audit" },
-  ],
 ];
 
 const tempDir = mkdtempSync(join(tmpdir(), "sitecmd-verify-"));
+const engineOutput = join(tempDir, "standin");
 const allChecks = TIERS.flat();
 /** @type {Map<string, {status: "pending"|"running"|"pass"|"fail", durationMs: number, logFile: string}>} */
 const state = new Map();
@@ -194,9 +151,10 @@ function runCheck(check) {
       env: {
         ...CHECK_ENV,
         CI: "1",
-        // Reuse the verified production build on the dedicated push-gate port.
-        SITECMD_VERIFY_PUSH: "1",
-        SITECMD_E2E_PORT: String(E2E_PORT),
+        CARGO_BUILD_JOBS: CHECK_ENV.CARGO_BUILD_JOBS ?? String(workerCount({ env: CHECK_ENV })),
+        SITECMD_VERIFY_ENGINE_OUT: engineOutput,
+        SITECMD_ENGINE_WASM: join(engineOutput, "sitecmd_engine_standin.wasm"),
+        SITECMD_ENGINE_UNPINNED: "1",
       },
     });
     child.on("close", (code) => {
@@ -245,89 +203,22 @@ function progressLine(check) {
 
 async function runTier(tier, tierIndex) {
   process.stderr.write(`${BOLD}Tier ${tierIndex + 1}/${TIERS.length}${RESET}\n`);
-  const promises = tier.map((check) => runCheck(check));
-  await Promise.all(promises);
+  if (tierIndex + 1 === SHARED_CARGO_TARGET_TIER) {
+    // These Cargo commands share a build directory and would wait on the same lock.
+    for (const check of tier) await runCheck(check);
+  } else {
+    await Promise.all(tier.map(runCheck));
+  }
   for (const check of tier) {
     process.stderr.write(`${progressLine(check)}\n`);
   }
 }
 
 // Playwright owns this IPv4 endpoint and never reuses the development server.
-const E2E_HOST = "127.0.0.1";
-const E2E_PORT = 5183;
-
-// Return the bind error for Playwright's exact IPv4 endpoint, if any.
-function bindError(host, port) {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once("error", (error) => resolve(error));
-    server.listen(port, host, () => server.close(() => resolve(null)));
-  });
-}
-
-async function preflightPortCheck() {
-  const error = await bindError(E2E_HOST, E2E_PORT);
-  if (error === null) return;
-
-  const classification = classifyBindError(error);
-  if (classification !== "occupied") {
-    const code = typeof error.code === "string" ? ` (${error.code})` : "";
-    const remedy =
-      classification === "denied"
-        ? "Playwright needs permission to open that local endpoint for its preview server.\n"
-        : "Playwright needs that exact address for its preview server; check the loopback interface and any network policy in effect.\n";
-    process.stderr.write(
-      `${RED}${BOLD}verify-push: could not bind ${E2E_HOST}:${E2E_PORT}${code}.${RESET}\n` + remedy,
-    );
-    process.exit(1);
-  }
-
-  const probe = spawnSync("bash", [
-    "-lc",
-    `lsof -nP -iTCP@${E2E_HOST}:${E2E_PORT} -sTCP:LISTEN -t 2>/dev/null`,
-  ]);
-  const pids = probe.stdout.toString().trim().split(/\s+/).filter(Boolean).join(" ");
-  process.stderr.write(
-    `${RED}${BOLD}verify-push: ${E2E_HOST}:${E2E_PORT} is already held${pids ? ` (PID ${pids})` : ""}.${RESET}\n` +
-      `Playwright (CI mode, no server reuse) needs to bind that address for its own preview server.\n` +
-      (pids ? `  Quick fix:  kill ${pids}\n` : ""),
-  );
-  process.exit(1);
-}
-
-// Fail early when the resolved Playwright version lacks Chromium.
-function preflightBrowserCheck() {
-  const probe = spawnSync(
-    "bash",
-    ["-lc", "pnpm --filter @sitecmd/desktop exec playwright install chromium --dry-run"],
-    { cwd: ROOT, env: CHECK_ENV },
-  );
-  if (probe.status !== 0) return;
-  const missing = missingBrowserPaths(probe.stdout.toString(), existsSync);
-  if (missing === null) {
-    // Unparseable output is distinct from a confirmed complete browser install.
-    process.stderr.write(
-      `${YELLOW}verify-push: could not read Playwright's install locations; skipping the browser preflight.${RESET}\n`,
-    );
-    return;
-  }
-  if (missing.length === 0) return;
-
-  process.stderr.write(
-    `${RED}${BOLD}verify-push: Playwright browsers are not installed.${RESET}\n` +
-      `The e2e tier would fail at browser launch after the full run.\n` +
-      missing.map((location) => `  missing: ${location}\n`).join("") +
-      `  Quick fix:  pnpm --filter @sitecmd/desktop exec playwright install chromium\n`,
-  );
-  process.exit(1);
-}
-
 (async () => {
-  await preflightPortCheck();
-  preflightBrowserCheck();
   if (NO_BAIL) {
     process.stderr.write(
-      `${DIM}--no-bail: running every tier even after a failure; dependent checks (size-limit, playwright) may cascade if their build fails.${RESET}\n`,
+      `${DIM}--no-bail: running every tier even after a failure; dependent checks may also fail.${RESET}\n`,
     );
   }
   const startedAt = Date.now();
@@ -383,5 +274,6 @@ function preflightBrowserCheck() {
     }
   }
 
+  rmSync(engineOutput, { recursive: true, force: true });
   process.stderr.write(`\n${GREEN}${BOLD}verify-push: all checks passed${RESET}\n`);
 })();

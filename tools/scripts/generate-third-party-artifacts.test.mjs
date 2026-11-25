@@ -10,6 +10,16 @@ const inventory = JSON.parse(
 );
 
 describe("third-party artifact coverage", () => {
+  it("lists only the CLI dependency scope", () => {
+    // The shipped license artifacts still listed dependencies for removed applications.
+    expect(inventory.generatedFrom).toEqual([
+      "apps/desktop/src-tauri/Cargo.lock",
+      "apps/desktop/src-tauri/Cargo.toml",
+      "apps/desktop/src-tauri/crates/cli/Cargo.toml",
+    ]);
+    expect([...new Set(inventory.packages.flatMap(({ scopes }) => scopes))]).toEqual(["cli-rust"]);
+  });
+
   it("includes every shipped dependency root", () => {
     expect(inventory.generatedFrom).toContain("apps/desktop/src-tauri/crates/cli/Cargo.toml");
     const cliDependency = inventory.packages.find(

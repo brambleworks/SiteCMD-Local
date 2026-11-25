@@ -7,11 +7,12 @@ use crate::cli::autofix::artifact::{
     ARTIFACT_SCHEMA_VERSION,
 };
 use crate::cli::autofix::repo::{self, init_test_repo};
+use crate::connected_service::autofix_jobs::Committer;
 use crate::connected_service::test_double::{
     request_line, respond_in_sequence, ACCOUNT_INACTIVE_PROBLEM, ENTITLEMENT_SUSPENDED_PROBLEM,
 };
 use crate::connected_service::{
-    ClaimedFinding, Committer, ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE,
+    ClaimedFinding, ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE,
 };
 
 const CHECK_ID: &str = "security.headers.x_content_type_options";
@@ -41,7 +42,7 @@ fn claimed(base_sha: &str) -> ClaimedJob {
         job_id: "job_0123456789abcdef".into(),
         job_token: PUBLISH_JOB_TOKEN.into(),
         opt_in_fixers: vec![],
-        previous_failure: None,
+
         purpose: "publish".into(),
         repository: "example-org/example-site".into(),
         site_url: "https://loop.example.com".into(),
@@ -61,9 +62,21 @@ fn manifest(base_sha: &str) -> Manifest {
         job_id: "job_0123456789abcdef".into(),
         outcome_code: None,
         schema_version: ARTIFACT_SCHEMA_VERSION,
-        summary: "planned".into(),
         write_set: vec!["vercel.json".into()],
     }
+}
+
+fn fixture_claimed(base_sha: &str) -> ClaimedJob {
+    let mut claim = claimed(base_sha);
+    claim.findings[0].check_id = "standin.rule".into();
+    claim
+}
+
+fn fixture_manifest(base_sha: &str) -> Manifest {
+    let mut manifest = manifest(base_sha);
+    manifest.write_set = vec!["vercel.json".into()];
+    manifest.findings[0].check_id = "standin.rule".into();
+    manifest
 }
 
 /// The publish claim the connected service answers with, as JSON on the
@@ -110,7 +123,8 @@ async fn publish_this_patch(
     head: &str,
     patch: &str,
 ) -> (Result<(u8, String), String>, Vec<String>) {
-    write_artifact(artifact_dir, &manifest(head), patch).unwrap();
+    write_artifact(artifact_dir, &manifest(head), "").unwrap();
+    std::fs::write(artifact_dir.join("patch.diff"), patch).unwrap();
     let (origin, captured) = respond_in_sequence(vec![
         (claim_body(head), "200 OK"),
         (RESULT_RECEIPT.to_string(), "200 OK"),
@@ -149,6 +163,29 @@ fn the_manifest_must_name_the_claimed_job_attempt_and_base() {
     assert!(manifest_matches_claim(&extra, &claimed(&base))
         .unwrap_err()
         .contains("findings"));
+    let mut with_brief = manifest(&base);
+    with_brief.brief = Some(BriefArtifact {
+        job_id: claimed(&base).job_id,
+        attempt: 1,
+        findings: vec![BriefFinding {
+            check_id: CHECK_ID.into(),
+            identity: "/".into(),
+            locations: vec![],
+        }],
+    });
+    assert!(manifest_matches_claim(&with_brief, &claimed(&base)).is_ok());
+    for field in ["job", "attempt", "identity"] {
+        let mut tampered = with_brief.clone();
+        let brief = tampered.brief.as_mut().unwrap();
+        match field {
+            "job" => brief.job_id = "job_ffffffffffffffff".into(),
+            "attempt" => brief.attempt += 1,
+            _ => brief.findings[0].identity = "other".into(),
+        }
+        assert!(manifest_matches_claim(&tampered, &claimed(&base))
+            .unwrap_err()
+            .contains("brief"));
+    }
 }
 
 #[test]
@@ -167,90 +204,31 @@ fn changed_paths_names_every_edited_and_added_file() {
 
 #[test]
 fn the_write_set_comes_from_the_binary_and_never_admits_workflows() {
+    // An artifact can expand the module write set or permit a workflow edit.
     let (repo, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
-    let allowed = allowed_write_set(&claimed(&head), repo.path());
+    let allowed = allowed_write_set(
+        &fixture_claimed(&head),
+        repo.path(),
+        &template_plan::catalog().unwrap(),
+    );
     assert_eq!(allowed, vec!["vercel.json".to_string()]);
-    assert!(write_set_violations(&["vercel.json".into()], &allowed).is_empty());
+    use super::super::apply::check_write_set;
+    use sitecmd_protocol::engine_abi::{Patch, RelPath};
+
+    let patch = |path| Patch {
+        path: RelPath::parse(path).unwrap(),
+        base_sha256: Patch::hash_base(b"{}"),
+        content: String::new(),
+    };
+    let admitted = |path: &RelPath| allowed.iter().any(|allowed| allowed == path.as_str());
+    assert!(check_write_set(&[patch("vercel.json")], admitted).is_ok());
     assert_eq!(
-        write_set_violations(&["vercel.json".into(), "package.json".into()], &allowed),
-        vec!["package.json".to_string()]
+        check_write_set(&[patch("vercel.json"), patch("package.json")], admitted).unwrap_err(),
+        "package.json: template reaches outside the fixer's write set"
     );
     assert_eq!(
-        write_set_violations(
-            &[".github/workflows/deploy.yml".into()],
-            &[".github/workflows/deploy.yml".into()]
-        ),
-        vec![".github/workflows/deploy.yml".to_string()]
-    );
-}
-
-#[test]
-fn names_the_branch_and_the_pull_request() {
-    let job = claimed(&"0".repeat(40));
-    assert_eq!(branch_name(&job), "sitecmd/x-content-type-options-012345");
-    let (title, body) = pull_request_text(&job, &manifest(&"0".repeat(40)));
-    assert_eq!(title, "Add the X-Content-Type-Options header");
-    assert!(body.contains(CHECK_ID), "{body}");
-    assert!(body.contains("job_0123456789abcdef"), "{body}");
-}
-
-#[test]
-fn applies_the_artifact_patch_and_commits_as_the_bot() {
-    let (repo_dir, head) =
-        init_test_repo(&[("vercel.json", "{\n  \"cleanUrls\": true\n}\n")]).unwrap();
-    // Produce a patch the way the fix job does, then reset the tree.
-    let fixer = crate::core::fix_templates::fixer_for(CHECK_ID).unwrap();
-    let target = crate::core::fix_templates::hosts::detect(repo_dir.path()).remove(0);
-    let patch = fixer
-        .plan(
-            &crate::core::fix_templates::Finding {
-                check_id: fixer.check_id().into(),
-                identity: "/".into(),
-            },
-            &target,
-            repo_dir.path(),
-        )
-        .unwrap()
-        .unwrap();
-    crate::core::fix_templates::apply(&[patch], repo_dir.path()).unwrap();
-    repo::stage(repo_dir.path(), &["vercel.json".into()]).unwrap();
-    let diff = repo::staged_patch(repo_dir.path()).unwrap();
-    crate::core::git::run_git_command(
-        repo_dir.path(),
-        &["reset", "--hard", "-q"],
-        crate::constants::AUTOFIX_GIT_TIMEOUT,
-        None,
-    )
-    .unwrap();
-    let patch_dir = tempfile::tempdir().unwrap();
-    let patch_path = patch_dir.path().join("patch.diff");
-    std::fs::write(&patch_path, &diff).unwrap();
-
-    let changed = repo::patch_paths(repo_dir.path(), &patch_path).unwrap();
-    assert_eq!(changed, vec!["vercel.json".to_string()]);
-    repo::apply_patch(repo_dir.path(), &patch_path).unwrap();
-    let committed = repo::commit(
-        repo_dir.path(),
-        &changed,
-        COMMITTER_NAME,
-        COMMITTER_EMAIL,
-        "Add the X-Content-Type-Options header",
-    )
-    .unwrap();
-    assert_ne!(committed, head);
-    assert!(std::fs::read_to_string(repo_dir.path().join("vercel.json"))
-        .unwrap()
-        .contains("nosniff"));
-    let author = crate::core::git::run_git_command(
-        repo_dir.path(),
-        &["log", "-1", "--format=%an <%ae>"],
-        crate::constants::AUTOFIX_GIT_TIMEOUT,
-        None,
-    )
-    .unwrap();
-    assert_eq!(
-        author.stdout.trim(),
-        "sitecmd-loop[bot] <1+sitecmd-loop[bot]@users.noreply.github.com>"
+        check_write_set(&[patch(".github/workflows/deploy.yml")], |_| true).unwrap_err(),
+        ".github/workflows/deploy.yml: template reaches outside the fixer's write set"
     );
 }
 
@@ -344,54 +322,6 @@ async fn reports_patch_rejected_when_the_manifest_names_another_job() {
 }
 
 #[tokio::test]
-async fn refuses_a_patch_that_renames_a_file_into_the_write_set() {
-    let (repo_dir, head) = init_test_repo(&[
-        ("vercel.json", "{}\n"),
-        (".github/workflows/deploy.yml", "name: deploy\n"),
-    ])
-    .unwrap();
-    let workspace = tempfile::tempdir().unwrap();
-    let artifact_dir = workspace.path().join("artifact");
-    // `git apply --numstat` reports a rename's destination and nothing else,
-    // so the write-set gate would see only `vercel.json`, which it allows,
-    // while the workflow left the tree unseen.
-    assert!(write_set_violations(
-        &["vercel.json".into()],
-        &allowed_write_set(&claimed(&head), repo_dir.path())
-    )
-    .is_empty());
-    let renaming = "diff --git a/.github/workflows/deploy.yml b/vercel.json\nsimilarity index 100%\nrename from .github/workflows/deploy.yml\nrename to vercel.json\n";
-
-    let (outcome, requests) =
-        publish_this_patch(repo_dir.path(), &artifact_dir, &head, renaming).await;
-
-    let (code, summary) = outcome.expect("the command to report rather than fail");
-    assert_eq!(code, 1);
-    assert!(summary.contains("renames or copies a file"), "{summary}");
-    assert_eq!(requests.len(), 2, "{requests:?}");
-    assert!(
-        requests[1].contains(r#""outcome_code":"patch_rejected""#),
-        "{}",
-        requests[1]
-    );
-    // The patch reader is what refuses it, before git ever reads the diff.
-    assert!(
-        repo::patch_paths(repo_dir.path(), &artifact_dir.join("patch.diff"))
-            .unwrap_err()
-            .contains("renames or copies a file")
-    );
-    assert!(
-        repo_dir
-            .path()
-            .join(".github/workflows/deploy.yml")
-            .is_file(),
-        "the workflow must still be there"
-    );
-    assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
-    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
-}
-
-#[tokio::test]
 async fn reports_patch_rejected_for_a_patch_with_no_hunks() {
     let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
     let workspace = tempfile::tempdir().unwrap();
@@ -407,7 +337,10 @@ async fn reports_patch_rejected_for_a_patch_with_no_hunks() {
 
     let (code, summary) = outcome.expect("a malformed patch is reported, never an exit 2");
     assert_eq!(code, 1);
-    assert!(summary.contains("git apply --numstat failed"), "{summary}");
+    assert!(
+        summary.contains("source-bearing patches are not accepted"),
+        "{summary}"
+    );
     assert_eq!(requests.len(), 2, "{requests:?}");
     assert!(
         requests[1].contains(r#""outcome_code":"patch_rejected""#),
@@ -435,7 +368,7 @@ fn only_the_outcome_the_path_published_is_promoted() {
     let outcomes = |published: &str| -> Vec<String> {
         finding_reports(&mixed, published)
             .into_iter()
-            .map(|f| f.outcome)
+            .map(|f| f.outcome.to_string())
             .collect()
     };
     // The patch path opens no issue, and the brief path opens no pull request.
@@ -466,13 +399,25 @@ async fn reports_patch_rejected_when_the_artifact_carries_both_halves() {
             identity: "f".repeat(64),
             locations: vec![BriefArtifactLocation {
                 end_line: 3,
-                excerpt: "x".into(),
                 path: "app/route.ts".into(),
                 start_line: 3,
             }],
         }],
         job_id: "job_0123456789abcdef".into(),
     });
+    both.findings.push(ManifestFinding {
+        check_id: "code_scan.open-redirect".into(),
+        identity: "f".repeat(64),
+        outcome: Some("issue_opened".into()),
+    });
+    let mut claim: serde_json::Value = serde_json::from_str(&claim_body(&head)).unwrap();
+    claim["findings"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "category": "security", "check_id": "code_scan.open-redirect",
+            "class": "agent-easy", "identity": "f".repeat(64)
+        }));
     write_artifact(
         &artifact_dir,
         &both,
@@ -480,7 +425,7 @@ async fn reports_patch_rejected_when_the_artifact_carries_both_halves() {
     )
     .unwrap();
     let (origin, captured) = respond_in_sequence(vec![
-        (claim_body(&head), "200 OK"),
+        (claim.to_string(), "200 OK"),
         (RESULT_RECEIPT.to_string(), "200 OK"),
     ])
     .await;
@@ -530,70 +475,6 @@ fn the_post_apply_audit_is_baselined_against_the_checkout() {
         vec!["new.json".to_string()]
     );
     assert!(repo::undeclared_paths(&renamed, &renamed, &[]).is_empty());
-}
-
-#[test]
-fn the_patch_reader_refuses_a_legacy_rename_and_a_symbolic_link() {
-    let (repo_dir, _head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
-    let patches = tempfile::tempdir().unwrap();
-    let legacy = patches.path().join("legacy.diff");
-    std::fs::write(
-        &legacy,
-        "diff --git a/vercel.json b/vercel.json\nsimilarity index 100%\nrename old .github/workflows/deploy.yml\nrename new vercel.json\n",
-    )
-    .unwrap();
-    assert!(
-        repo::patch_paths(repo_dir.path(), &legacy)
-            .unwrap_err()
-            .contains("renames or copies a file"),
-        "the legacy rename headers must be refused too"
-    );
-    let symlink = patches.path().join("symlink.diff");
-    std::fs::write(
-        &symlink,
-        "diff --git a/config b/config\nnew file mode 120000\nindex 0000000..1111111\n--- /dev/null\n+++ b/config\n@@ -0,0 +1 @@\n+/etc/passwd\n",
-    )
-    .unwrap();
-    assert!(repo::patch_paths(repo_dir.path(), &symlink)
-        .unwrap_err()
-        .contains("symbolic link"));
-}
-
-#[tokio::test]
-async fn refuses_a_header_that_names_two_different_paths() {
-    let (repo_dir, head) = init_test_repo(&[
-        ("vercel.json", "{}\n"),
-        (".github/workflows/deploy.yml", "name: deploy\n"),
-    ])
-    .unwrap();
-    let workspace = tempfile::tempdir().unwrap();
-    let artifact_dir = workspace.path().join("artifact");
-    // No rename line at all: the header alone deletes the workflow and
-    // rewrites the destination, and `git apply --numstat` would report only
-    // the destination the write set allows.
-    let mismatched = "diff --git a/.github/workflows/deploy.yml b/vercel.json\nindex 1111111..2222222 100644\n--- a/.github/workflows/deploy.yml\n+++ b/vercel.json\n@@ -1 +1 @@\n-name: deploy\n+{}\n";
-
-    let (outcome, requests) =
-        publish_this_patch(repo_dir.path(), &artifact_dir, &head, mismatched).await;
-
-    let (code, summary) = outcome.expect("the command to report rather than fail");
-    assert_eq!(code, 1);
-    assert!(summary.contains("two paths in one header"), "{summary}");
-    assert_eq!(requests.len(), 2, "{requests:?}");
-    assert!(
-        requests[1].contains(r#""outcome_code":"patch_rejected""#),
-        "{}",
-        requests[1]
-    );
-    assert!(
-        repo_dir
-            .path()
-            .join(".github/workflows/deploy.yml")
-            .is_file(),
-        "the workflow must still be there"
-    );
-    assert_eq!(repo::head_sha(repo_dir.path()).unwrap(), head);
-    assert!(repo::changed_paths(repo_dir.path()).unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -702,7 +583,7 @@ async fn refuses_a_patch_that_edits_a_workflow_in_place() {
     let (code, summary) = outcome.expect("the command to report rather than fail");
     assert_eq!(code, 1);
     assert!(
-        summary.contains("patch reaches outside the fixer's write set"),
+        summary.contains("source-bearing patches are not accepted"),
         "{summary}"
     );
     // The reason crosses back to SiteCMD, so the path itself stays hidden.
@@ -738,23 +619,28 @@ fn the_unshallow_fetch_names_the_remote_it_pushes_to() {
     );
 }
 
-/// The patch the fix job would leave for the header finding, made the same
+/// The patch the fix job would leave for the fixture finding, made the same
 /// way and then reset, so the checkout is still at its base.
-fn header_patch(root: &std::path::Path) -> String {
-    let fixer = crate::core::fix_templates::fixer_for(CHECK_ID).unwrap();
-    let target = crate::core::fix_templates::hosts::detect(root).remove(0);
-    let patch = fixer
-        .plan(
-            &crate::core::fix_templates::Finding {
-                check_id: fixer.check_id().into(),
-                identity: "/".into(),
-            },
-            &target,
-            root,
-        )
-        .unwrap()
+fn fixture_patch(root: &std::path::Path) -> String {
+    let project = list_project(root).unwrap();
+    let catalog = template_plan::catalog().unwrap();
+    let fixer = catalog
+        .iter()
+        .find(|fixer| fixer.check_id == "standin.rule")
         .unwrap();
-    crate::core::fix_templates::apply(&[patch], root).unwrap();
+    let target = sitecmd_protocol::engine_abi::FixTarget {
+        check_id: "standin.rule".into(),
+        identity: "/".into(),
+    };
+    let template_plan::TemplateFix::Patches(patches) =
+        template_plan::plan_finding(&project, target, fixer).unwrap()
+    else {
+        panic!("stand-in fixer did not offer a patch");
+    };
+    write_patches(project.wire(), root, patches, |path| {
+        path.as_str() == "vercel.json"
+    })
+    .unwrap();
     repo::stage(root, &["vercel.json".into()]).unwrap();
     let diff = repo::staged_patch(root).unwrap();
     crate::core::git::run_git_command(
@@ -769,13 +655,14 @@ fn header_patch(root: &std::path::Path) -> String {
 
 #[tokio::test]
 async fn an_inactive_account_opens_nothing_and_exits_zero() {
+    // An inactive publish claim can touch the checkout or request another endpoint.
     let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let artifact_dir = workspace.path().join("artifact");
     write_artifact(
         &artifact_dir,
-        &manifest(&head),
-        &header_patch(repo_dir.path()),
+        &fixture_manifest(&head),
+        &fixture_patch(repo_dir.path()),
     )
     .unwrap();
     let (origin, captured) = respond_in_sequence(vec![(
@@ -828,17 +715,21 @@ async fn a_suspended_subscription_still_fails_the_publish_claim() {
 
 #[tokio::test]
 async fn a_publish_token_refused_as_inactive_pushes_nothing_and_exits_zero() {
+    // A refused publish token can still cause a push or submit a result.
     let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let artifact_dir = workspace.path().join("artifact");
     write_artifact(
         &artifact_dir,
-        &manifest(&head),
-        &header_patch(repo_dir.path()),
+        &fixture_manifest(&head),
+        &fixture_patch(repo_dir.path()),
     )
     .unwrap();
     let (origin, captured) = respond_in_sequence(vec![
-        (claim_body(&head), "200 OK"),
+        (
+            claim_body(&head).replace(CHECK_ID, "standin.rule"),
+            "200 OK",
+        ),
         (ACCOUNT_INACTIVE_PROBLEM.to_string(), "403 Forbidden"),
     ])
     .await;
@@ -868,18 +759,19 @@ async fn a_publish_token_refused_as_inactive_pushes_nothing_and_exits_zero() {
 
 #[tokio::test]
 async fn an_issue_token_refused_as_inactive_opens_no_issue_and_exits_zero() {
+    // A refused issue token can still open an issue or submit a result.
     let route = "export async function GET(request: Request) {\n  const { searchParams } = new URL(request.url);\n  const returnTo = searchParams.get(\"returnTo\") ?? \"/\";\n  return Response.redirect(new URL(returnTo, request.url), 302);\n}\n";
     let (repo_dir, head) = init_test_repo(&[
         ("package.json", "{\"name\":\"loop\"}"),
-        ("app/api/signin/route.ts", route),
+        ("app/api/signin/fixture-findings.txt", route),
     ])
     .unwrap();
-    let key = sitecmd_engine::sync::ProjectFingerprintKey::from_bytes([7_u8; 32]);
-    let identity = key.location_hash("open-redirect", "app/api/signin/route.ts");
+    let key = sitecmd_protocol::sync::ProjectFingerprintKey::from_bytes([7_u8; 32]);
+    let identity = key.location_hash("standin.rule", "app/api/signin/fixture-findings.txt");
     let located = crate::cli::autofix::brief::locate_findings(
         repo_dir.path(),
         &key,
-        &[("code_scan.open-redirect".into(), identity.clone())],
+        &[("code_scan.standin.rule".into(), identity.clone())],
     )
     .unwrap();
     let mut brief_manifest = manifest(&head);
@@ -889,7 +781,7 @@ async fn an_issue_token_refused_as_inactive_opens_no_issue_and_exits_zero() {
         &located,
     ));
     brief_manifest.findings = vec![ManifestFinding {
-        check_id: "code_scan.open-redirect".into(),
+        check_id: "code_scan.standin.rule".into(),
         identity: identity.clone(),
         outcome: Some("issue_opened".into()),
     }];
@@ -900,7 +792,7 @@ async fn an_issue_token_refused_as_inactive_opens_no_issue_and_exits_zero() {
     let mut claim: serde_json::Value = serde_json::from_str(&claim_body(&head)).unwrap();
     claim["findings"] = serde_json::json!([{
         "category": "security",
-        "check_id": "code_scan.open-redirect",
+        "check_id": "code_scan.standin.rule",
         "class": "agent-easy",
         "fallback_class": null,
         "identity": identity,
@@ -966,5 +858,62 @@ async fn a_result_refused_as_inactive_keeps_the_jobs_own_summary() {
     assert_eq!(
         request_line(&requests[1]),
         "POST /v1/fix-jobs/job_0123456789abcdef/result HTTP/1.1"
+    );
+}
+
+#[test]
+fn names_the_branch_and_pull_request_from_a_module_template() {
+    // Publishing can use fallback text even when the module supplies template metadata.
+    let job = fixture_claimed(&"0".repeat(40));
+    let catalog = template_plan::catalog().unwrap();
+    assert_eq!(branch_name(&job, &catalog), "sitecmd/rule-012345");
+    let (title, body) = pull_request_text(&job, &fixture_manifest(&"0".repeat(40)), &catalog);
+    assert_eq!(title, "Sample finding");
+    assert!(body.contains("standin.rule"), "{body}");
+    assert!(body.contains("job_0123456789abcdef"), "{body}");
+}
+
+#[test]
+fn commits_a_regenerated_module_patch_as_the_claimed_bot() {
+    // Publishing can commit artifact content or use the checkout owner as the author.
+    let (repo_dir, head) =
+        init_test_repo(&[("vercel.json", "{\n  \"cleanUrls\": true\n}\n")]).unwrap();
+    let project = list_project(repo_dir.path()).unwrap();
+    let catalog = template_plan::catalog().unwrap();
+    let claimed = fixture_claimed(&head);
+    let manifest = fixture_manifest(&head);
+    let mut handed = HandedLines::default();
+    let patches =
+        template_plan::regenerate(&project, &claimed, &manifest, &catalog, &mut handed).unwrap();
+    let (title, body) = pull_request_text(&claimed, &manifest, &catalog);
+    let brief =
+        check_publish_brief(project.wire(), Brief { title, body }, &handed, &patches).unwrap();
+    write_patches(project.wire(), repo_dir.path(), patches, |path| {
+        path.as_str() == "vercel.json"
+    })
+    .unwrap();
+    let changed = vec!["vercel.json".to_string()];
+    let committed = repo::commit(
+        repo_dir.path(),
+        &changed,
+        COMMITTER_NAME,
+        COMMITTER_EMAIL,
+        &brief.as_brief().title,
+    )
+    .unwrap();
+    assert_ne!(committed, head);
+    assert!(std::fs::read_to_string(repo_dir.path().join("vercel.json"))
+        .unwrap()
+        .contains("\"example\":true"));
+    let author = crate::core::git::run_git_command(
+        repo_dir.path(),
+        &["log", "-1", "--format=%an <%ae>%n%s"],
+        crate::constants::AUTOFIX_GIT_TIMEOUT,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        author.stdout.trim(),
+        "sitecmd-loop[bot] <1+sitecmd-loop[bot]@users.noreply.github.com>\nSample finding"
     );
 }

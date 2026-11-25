@@ -9,7 +9,7 @@ use crate::connected_service::test_double::{
 use crate::connected_service::{
     ClaimedFinding, ClaimedJob, ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE,
 };
-use sitecmd_engine::sync::ProjectFingerprintKey;
+use sitecmd_protocol::sync::ProjectFingerprintKey;
 
 const CLAIM: &str = r#"{"job_id":"job_0123456789abcdef","attempt":1,"purpose":"execute","job_token":"sitecmd_job_execute_00000000000000000000000000000000","expires_at":"2026-09-20T10:30:00.000Z","base_sha":"0123456789abcdef0123456789abcdef01234567","site_url":"https://loop.example.com","repository":"example-org/example-site","default_branch":"main","agent":"claude","findings":[{"check_id":"security.headers.x_content_type_options","identity":"/","class":"template","category":"security","fallback_class":null}]}"#;
 
@@ -27,7 +27,7 @@ fn claimed(base_sha: &str, findings: Vec<ClaimedFinding>) -> ClaimedJob {
         job_id: "job_0123456789abcdef".into(),
         job_token: "sitecmd_job_execute_00000000000000000000000000000000".into(),
         opt_in_fixers: vec![],
-        previous_failure: None,
+
         purpose: "execute".into(),
         repository: "example-org/example-site".into(),
         site_url: "https://loop.example.com".into(),
@@ -44,45 +44,18 @@ fn header_finding() -> ClaimedFinding {
     }
 }
 
-const ROUTE: &str = "export async function GET(request: Request) {\n  const { searchParams } = new URL(request.url);\n  const returnTo = searchParams.get(\"returnTo\") ?? \"/\";\n  return Response.redirect(new URL(returnTo, request.url), 302);\n}\n";
-
-#[test]
-fn a_template_finding_becomes_a_staged_patch_for_the_publish_job() {
-    let (repo, head) = init_test_repo(&[
-        ("vercel.json", "{\n  \"cleanUrls\": true\n}\n"),
-        ("package.json", "{\"name\":\"loop\"}"),
-    ])
-    .unwrap();
-    let execution = execute_fix_job(
-        &claimed(&head, vec![header_finding()]),
-        repo.path(),
-        None,
-        &mut Vec::new(),
-    )
-    .unwrap();
-    assert!(execution.publish);
-    assert!(execution.result.is_none());
-    assert!(
-        execution.patch.contains("+++ b/vercel.json"),
-        "{}",
-        execution.patch
-    );
-    assert!(execution.patch.contains("nosniff"));
-    assert_eq!(
-        execution.manifest.write_set,
-        vec!["vercel.json".to_string()]
-    );
-    assert_eq!(
-        execution.manifest.findings[0].outcome.as_deref(),
-        Some("applied")
-    );
-    assert_eq!(execution.manifest.outcome_code, None);
-    assert_eq!(execution.manifest.base_sha, head);
+fn fixture_finding() -> ClaimedFinding {
+    ClaimedFinding {
+        check_id: "standin.rule".into(),
+        ..header_finding()
+    }
 }
 
 #[cfg(unix)]
 #[test]
 fn a_failing_build_reports_build_failed_and_publishes_nothing() {
+    // A failed build can leave the publish job a patch or a finding outcome.
+    // Bug I1: build failures discard the customer-owned Actions log.
     let (repo, head) = init_test_repo(&[
         ("vercel.json", "{}\n"),
         (
@@ -93,7 +66,7 @@ fn a_failing_build_reports_build_failed_and_publishes_nothing() {
     .unwrap();
     let mut log = Vec::new();
     let execution = execute_fix_job(
-        &claimed(&head, vec![header_finding()]),
+        &claimed(&head, vec![fixture_finding()]),
         repo.path(),
         None,
         &mut log,
@@ -103,10 +76,10 @@ fn a_failing_build_reports_build_failed_and_publishes_nothing() {
     let result = execution.result.expect("a result to report");
     assert_eq!(result.outcome_code, "build_failed");
     assert_eq!(
-        result.summary,
+        execution.summary,
         "Build failed at build with exit status 1; see the Actions log"
     );
-    assert!(!result.summary.contains("refused"));
+    assert!(!execution.summary.contains("refused"));
     assert!(result.findings.is_empty());
     assert!(String::from_utf8_lossy(&log).contains("refused"));
     assert_eq!(
@@ -132,16 +105,17 @@ fn a_checkout_not_at_the_base_sha_is_stale() {
 
 #[test]
 fn an_agent_finding_becomes_a_brief_with_its_location() {
+    // An agent finding can lose its verified location when staged for publishing.
     let (repo, head) = init_test_repo(&[
         ("package.json", "{\"name\":\"loop\"}"),
-        ("app/api/signin/route.ts", ROUTE),
+        ("app/api/signin/fixture-findings.txt", "synthetic finding\n"),
     ])
     .unwrap();
     let key = ProjectFingerprintKey::from_bytes([7_u8; 32]);
-    let identity = key.location_hash("open-redirect", "app/api/signin/route.ts");
+    let identity = key.location_hash("standin.rule", "app/api/signin/fixture-findings.txt");
     let finding = ClaimedFinding {
         category: "security".into(),
-        check_id: "code_scan.open-redirect".into(),
+        check_id: "code_scan.standin.rule".into(),
         class: "agent-easy".into(),
         fallback_class: None,
         identity,
@@ -158,7 +132,7 @@ fn an_agent_finding_becomes_a_brief_with_its_location() {
     let brief = execution.manifest.brief.expect("brief");
     assert_eq!(
         brief.findings[0].locations[0].path,
-        "app/api/signin/route.ts"
+        "app/api/signin/fixture-findings.txt"
     );
     assert_eq!(
         execution.manifest.findings[0].outcome.as_deref(),
@@ -257,12 +231,8 @@ async fn the_command_claims_then_reports_missing_secrets() {
         requests[1]
     );
     assert!(requests[1].contains(r#""findings":[]"#), "{}", requests[1]);
-    assert!(
-        requests[1].contains(MISSING_SECRETS_SUMMARY),
-        "{}",
-        requests[1]
-    );
-    // The posted summary is fixed, so it names nothing the repository chose.
+    assert!(!requests[1].contains("summary"), "{}", requests[1]);
+    // The outcome carries no diagnostic text from the repository.
     assert!(
         !requests[1].contains("SITECMD_TEST_RUN_JOB_MISSING_EXPORT"),
         "{}",
@@ -416,6 +386,7 @@ async fn a_result_refused_as_inactive_keeps_the_missing_secret_reason() {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_result_refused_as_inactive_keeps_the_build_failure() {
+    // Bug: A slow build lets the test listener close before the result request.
     let (repo, head) = init_test_repo(&[
         ("vercel.json", "{}\n"),
         (
@@ -437,20 +408,22 @@ async fn a_result_refused_as_inactive_keeps_the_build_failure() {
     std::env::set_var("SITECMD_TEST_RUN_JOB_BUILD_EXPORT", export);
     std::env::set_var("SITECMD_TEST_RUN_JOB_BUILD_PASSPHRASE", passphrase);
     let claim = CLAIM.replace("0123456789abcdef0123456789abcdef01234567", &head);
-    let (origin, captured) = respond_in_sequence(vec![
+    let claim = claim.replace("security.headers.x_content_type_options", "standin.rule");
+    let responses = vec![
         (claim, "200 OK"),
         (ACCOUNT_INACTIVE_PROBLEM.to_string(), "403 Forbidden"),
-    ])
-    .await;
-    let args = RunJobArgs {
-        export: ExportSource::Env("SITECMD_TEST_RUN_JOB_BUILD_EXPORT".into()),
-        passphrase_env: "SITECMD_TEST_RUN_JOB_BUILD_PASSPHRASE".into(),
-        ..job_args(origin, workspace.path(), repo.path())
-    };
-
-    let (code, summary) = run_with_witness(&args, "witness-token", true)
-        .await
-        .expect("an inactive account is not a failure");
+    ];
+    let (outcome, requests) =
+        crate::connected_service::test_double::respond_during(responses, async |origin| {
+            let args = RunJobArgs {
+                export: ExportSource::Env("SITECMD_TEST_RUN_JOB_BUILD_EXPORT".into()),
+                passphrase_env: "SITECMD_TEST_RUN_JOB_BUILD_PASSPHRASE".into(),
+                ..job_args(origin, workspace.path(), repo.path())
+            };
+            run_with_witness(&args, "witness-token", true).await
+        })
+        .await;
+    let (code, summary) = outcome.expect("an inactive account is not a failure");
 
     assert_eq!(code, 0);
     assert!(
@@ -463,11 +436,45 @@ async fn a_result_refused_as_inactive_keeps_the_build_failure() {
         std::fs::read_to_string(workspace.path().join("outputs.txt")).expect("outputs"),
         "publish=false\n"
     );
-    let requests = captured.await.expect("capture");
     assert_eq!(requests.len(), 2, "{requests:?}");
     assert!(
         requests[1].contains(r#""outcome_code":"build_failed""#),
         "{}",
         requests[1]
     );
+}
+
+#[test]
+fn stages_a_module_template_patch_with_its_manifest() {
+    // A successful template execution can omit the patch or its publication metadata.
+    let (repo, head) = init_test_repo(&[
+        ("vercel.json", "{\n  \"cleanUrls\": true\n}\n"),
+        ("package.json", "{\"name\":\"loop\"}"),
+    ])
+    .unwrap();
+    let execution = execute_fix_job(
+        &claimed(&head, vec![fixture_finding()]),
+        repo.path(),
+        None,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert!(execution.publish);
+    assert!(execution.result.is_none());
+    assert!(
+        execution.patch.contains("+++ b/vercel.json"),
+        "{}",
+        execution.patch
+    );
+    assert!(execution.patch.contains("\"example\":true"));
+    assert_eq!(
+        execution.manifest.write_set,
+        vec!["vercel.json".to_string()]
+    );
+    assert_eq!(
+        execution.manifest.findings[0].outcome.as_deref(),
+        Some("applied")
+    );
+    assert_eq!(execution.manifest.outcome_code, None);
+    assert_eq!(execution.manifest.base_sha, head);
 }

@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { publicationHygieneFailures } from "./lib/publication-hygiene-rules.mjs";
+import { toolingEntries } from "./lib/tooling-entries.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -34,7 +35,10 @@ const files = paths.map((relativePath) => ({
   size: fs.statSync(path.join(ROOT, relativePath)).size,
 }));
 const read = (relativePath) => fs.readFileSync(path.join(ROOT, relativePath), "utf8");
-const failures = publicationHygieneFailures(files, read);
+const additionalRootFiles = paths.includes(".github/ci-job-visibility.json")
+  ? await toolingEntries(ROOT, "publicationRootFiles")
+  : [];
+const failures = publicationHygieneFailures(files, read, { additionalRootFiles });
 
 if (failures.length > 0) {
   process.stderr.write("Publication hygiene failed:\n");

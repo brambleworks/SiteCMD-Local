@@ -1,20 +1,23 @@
 use super::*;
 use tempfile::TempDir;
 
+pub(super) fn run_audit(args: &AuditArgs) -> Result<AuditOutcome, String> {
+    let outcome = run_with_interrupt(args, &crate::cli::engine::Interrupt::new())?;
+    if let Some(path) = &args.output {
+        write_report(path, &outcome.rendered)?;
+    }
+    Ok(outcome)
+}
+
 fn fixture_token() -> String {
     ["sk", "_live_", "abcdefghijklmnopqrstu"].concat()
 }
 
-fn vulnerable_project() -> TempDir {
+fn report_project() -> TempDir {
     let project = TempDir::new().expect("temp project");
     std::fs::create_dir_all(project.path().join("src")).expect("source directory");
     std::fs::write(
-        project.path().join("package.json"),
-        r#"{ "name": "sitecmd-audit-fixture" }"#,
-    )
-    .expect("project manifest");
-    std::fs::write(
-        project.path().join("src/keys.js"),
+        project.path().join("src/fixture-findings.txt"),
         format!("const key = \"{}\";\n", fixture_token()),
     )
     .expect("source fixture");
@@ -70,7 +73,7 @@ fn mysql_inspection_fails_with_an_explicit_unsupported_engine_error() {
         baseline: None,
     };
 
-    let error = run(&args).expect_err("unsupported database inspection must fail closed");
+    let error = run_audit(&args).expect_err("unsupported database inspection must fail closed");
 
     assert!(error.contains("DATABASE_URL from .env.local"), "{error}");
     assert!(
@@ -90,18 +93,19 @@ fn rejects_missing_paths_and_unknown_formats() {
 }
 
 #[test]
-fn runs_the_real_code_scan_and_applies_the_threshold() {
-    let project = vulnerable_project();
+fn applies_the_threshold_to_the_module_finding() {
+    // A failing finding can be rendered without failing the requested threshold.
+    let project = report_project();
     let args = AuditArgs {
         project_path: project.path().to_path_buf(),
         format: CodeScanReportFormat::Json,
-        fail_on: Some(Severity::High),
+        fail_on: Some(Severity::Low),
         output: None,
         inspect_local_databases: false,
         baseline: None,
     };
 
-    let outcome = run(&args).expect("audit completes");
+    let outcome = run_audit(&args).expect("audit completes");
     let report: serde_json::Value =
         serde_json::from_str(&outcome.rendered).expect("valid report json");
     assert!(outcome.threshold_failed);
@@ -111,134 +115,15 @@ fn runs_the_real_code_scan_and_applies_the_threshold() {
 }
 
 #[test]
-fn project_config_suppresses_an_exact_rule_and_path_without_hiding_it() {
-    let project = vulnerable_project();
-    let sitecmd_dir = project.path().join(".sitecmd");
-    std::fs::create_dir_all(&sitecmd_dir).expect("sitecmd config directory");
-    std::fs::write(
-        sitecmd_dir.join("config.json"),
-        r#"{
-  "version": 1,
-  "url": "https://example.com",
-  "name": "suppression fixture",
-  "code_scan": {
-    "suppressions": [
-      {
-        "match": {
-          "rule": "code_scan.hardcoded-secret",
-          "path": "src/keys.js"
-        },
-        "reason": "The credential-shaped value is an inert scanner fixture."
-      }
-    ]
-  }
-}"#,
-    )
-    .expect("suppression config");
-    let args = AuditArgs {
-        project_path: project.path().to_path_buf(),
-        format: CodeScanReportFormat::Json,
-        fail_on: Some(Severity::High),
-        output: None,
-        inspect_local_databases: false,
-        baseline: None,
-    };
-
-    let outcome = run(&args).expect("audit completes");
-    let report: serde_json::Value =
-        serde_json::from_str(&outcome.rendered).expect("valid report json");
-
-    assert!(!outcome.threshold_failed);
-    assert_eq!(report["issueCount"], 0);
-    assert_eq!(report["ignoredCount"], 1);
-    assert_eq!(report["staleSuppressionCount"], 0);
-    assert_eq!(report["issues"], serde_json::json!([]));
-    assert_eq!(
-        report["ignoredFindings"][0]["checkId"],
-        "code_scan.hardcoded-secret"
-    );
-    assert!(report["ignoredFindings"][0]["fingerprint"]
-        .as_str()
-        .is_some_and(|value| value.starts_with("sha256:")));
-}
-
-#[test]
-fn sitecmd_web_instructional_examples_require_explicit_suppressions() {
-    let project = TempDir::new().expect("temp project");
-    let guide_path = "apps/sitecmd-catalog/content/guides/code/security.ts";
-    let guide = project.path().join(guide_path);
-    std::fs::create_dir_all(guide.parent().expect("guide parent")).expect("guide directory");
-    std::fs::write(
-        project.path().join("package.json"),
-        r#"{ "name": "sitecmd-web-acceptance" }"#,
-    )
-    .expect("project manifest");
-    std::fs::write(
-        &guide,
-        r#"export const guidance = [
-  "Remove rejectUnauthorized: false from production clients.",
-  "Replace cors({ origin: true, credentials: true }) with an exact allowlist.",
-];"#,
-    )
-    .expect("instructional guide");
-    let args = AuditArgs {
-        project_path: project.path().to_path_buf(),
-        format: CodeScanReportFormat::Json,
-        fail_on: Some(Severity::High),
-        output: None,
-        inspect_local_databases: false,
-        baseline: None,
-    };
-
-    let unsuppressed = run(&args).expect("unsuppressed audit completes");
-    assert!(unsuppressed.threshold_failed);
-
-    let sitecmd_dir = project.path().join(".sitecmd");
-    std::fs::create_dir_all(&sitecmd_dir).expect("sitecmd config directory");
-    std::fs::write(
-        sitecmd_dir.join("config.json"),
-        format!(
-            r#"{{
-  "version": 1,
-  "url": "https://sitecmd.com",
-  "name": "SiteCMD Web acceptance",
-  "code_scan": {{
-    "suppressions": [
-      {{
-        "match": {{
-          "rule": "code_scan.tls-verification-disabled",
-          "path": "{guide_path}"
-        }},
-        "reason": "The catalog names this insecure setting so users can remove it; the text is not executable."
-      }},
-      {{
-        "match": {{
-          "rule": "code_scan.cors-origin-reflection",
-          "path": "{guide_path}"
-        }},
-        "reason": "The catalog names this insecure setting so users can replace it; the text is not executable."
-      }}
-    ]
-  }}
-}}"#
-        ),
-    )
-    .expect("suppression config");
-
-    let outcome = run(&args).expect("suppressed audit completes");
-    let report: serde_json::Value =
-        serde_json::from_str(&outcome.rendered).expect("valid report json");
-    assert!(!outcome.threshold_failed);
-    assert_eq!(report["issueCount"], 0);
-    assert_eq!(report["ignoredCount"], 2);
-    assert_eq!(report["staleSuppressionCount"], 0);
-    assert_eq!(report["ignoredFindings"].as_array().map(Vec::len), Some(2));
-}
-
-#[test]
 fn redacts_detected_credentials_from_every_report_format() {
+    // A module can include credential-shaped evidence in a report.
     let raw_token = fixture_token();
-    let project = vulnerable_project();
+    let project = report_project();
+    std::fs::rename(
+        project.path().join("src/fixture-findings.txt"),
+        project.path().join("src/fixture-evidence.txt"),
+    )
+    .unwrap();
 
     for format in [
         CodeScanReportFormat::Summary,
@@ -257,7 +142,7 @@ fn redacts_detected_credentials_from_every_report_format() {
             baseline: None,
         };
 
-        let outcome = run(&args).expect("audit completes");
+        let outcome = run_audit(&args).expect("audit completes");
         assert!(
             !outcome.rendered.contains(&raw_token),
             "{format:?} output exposed the detected credential"
@@ -267,7 +152,7 @@ fn redacts_detected_credentials_from_every_report_format() {
 
 #[test]
 fn writes_the_requested_report_file() {
-    let project = vulnerable_project();
+    let project = report_project();
     let output = project.path().join("reports/sitecmd-review.md");
     let args = AuditArgs {
         project_path: project.path().to_path_buf(),
@@ -278,7 +163,7 @@ fn writes_the_requested_report_file() {
         baseline: None,
     };
 
-    let outcome = run(&args).expect("audit completes");
+    let outcome = run_audit(&args).expect("audit completes");
     assert_eq!(
         std::fs::read_to_string(output).expect("report file"),
         outcome.rendered
@@ -287,24 +172,26 @@ fn writes_the_requested_report_file() {
 
 #[test]
 fn baseline_from_a_previous_json_report_keeps_old_findings_from_failing() {
-    let project = vulnerable_project();
-    let first = run(&AuditArgs {
+    // An acknowledged finding can keep failing the threshold on later scans.
+    let project = report_project();
+    let first = run_audit(&AuditArgs {
         project_path: project.path().to_path_buf(),
         format: CodeScanReportFormat::Json,
-        fail_on: Some(Severity::High),
+        fail_on: Some(Severity::Low),
         output: None,
         inspect_local_databases: false,
         baseline: None,
     })
     .expect("first audit");
     assert!(first.threshold_failed);
-    let baseline_path = project.path().join("sitecmd-baseline.json");
+    let baselines = TempDir::new().unwrap();
+    let baseline_path = baselines.path().join("sitecmd-baseline.json");
     std::fs::write(&baseline_path, &first.rendered).expect("baseline file");
 
-    let second = run(&AuditArgs {
+    let second = run_audit(&AuditArgs {
         project_path: project.path().to_path_buf(),
         format: CodeScanReportFormat::Json,
-        fail_on: Some(Severity::High),
+        fail_on: Some(Severity::Low),
         output: None,
         inspect_local_databases: false,
         baseline: Some(baseline_path),
@@ -320,77 +207,10 @@ fn baseline_from_a_previous_json_report_keeps_old_findings_from_failing() {
 }
 
 #[test]
-fn sarif_output_lists_rules_results_locations_and_fingerprints() {
-    let project = vulnerable_project();
-    let outcome = run(&AuditArgs {
-        project_path: project.path().to_path_buf(),
-        format: CodeScanReportFormat::Sarif,
-        fail_on: None,
-        output: None,
-        inspect_local_databases: false,
-        baseline: None,
-    })
-    .expect("sarif audit");
-    let sarif: serde_json::Value = serde_json::from_str(&outcome.rendered).expect("json");
-    assert_eq!(sarif["version"], "2.1.0");
-    let run = &sarif["runs"][0];
-    assert_eq!(run["tool"]["driver"]["name"], "SiteCMD Code Scan");
-    let rule = &run["tool"]["driver"]["rules"][0];
-    assert_eq!(rule["id"], "code_scan.hardcoded-secret");
-    let result = &run["results"][0];
-    assert_eq!(result["ruleId"], "code_scan.hardcoded-secret");
-    assert_eq!(result["level"], "error");
-    assert_eq!(
-        result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
-        "src/keys.js"
-    );
-    assert_eq!(
-        result["locations"][0]["physicalLocation"]["region"]["startLine"],
-        1
-    );
-    assert!(result["partialFingerprints"]["sitecmd/v1"]
-        .as_str()
-        .is_some_and(|value| value.starts_with("sha256:")));
-    assert_eq!(result["baselineState"], "new");
-    assert!(
-        !outcome.rendered.contains(&fixture_token()),
-        "SARIF must not leak the credential"
-    );
-}
-
-#[test]
-fn sarif_carries_suppressed_findings_as_suppressed_results() {
-    let project = vulnerable_project();
-    let sitecmd_dir = project.path().join(".sitecmd");
-    std::fs::create_dir_all(&sitecmd_dir).expect("config dir");
-    std::fs::write(
-        sitecmd_dir.join("config.json"),
-        r#"{"version":1,"url":"https://example.com","name":"s","code_scan":{"suppressions":[{"match":{"rule":"code_scan.hardcoded-secret","path":"src/keys.js"},"reason":"Inert fixture."}]}}"#,
-    )
-    .expect("config");
-    let outcome = run(&AuditArgs {
-        project_path: project.path().to_path_buf(),
-        format: CodeScanReportFormat::Sarif,
-        fail_on: Some(Severity::High),
-        output: None,
-        inspect_local_databases: false,
-        baseline: None,
-    })
-    .expect("sarif audit");
-    let sarif: serde_json::Value = serde_json::from_str(&outcome.rendered).expect("json");
-    assert!(!outcome.threshold_failed);
-    let results = sarif["runs"][0]["results"].as_array().expect("results");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["suppressions"][0]["kind"], "external");
-    assert_eq!(
-        results[0]["suppressions"][0]["justification"],
-        "Inert fixture."
-    );
-}
-
-#[test]
 fn the_json_report_omits_the_generating_machines_checkout_path() {
-    let project = vulnerable_project();
+    // An active or suppressed finding can expose the machine path in a committed baseline,
+    // or show a domain or emit category beside the rule's one category.
+    let project = report_project();
     let project_dir = project.path().to_string_lossy().into_owned();
     let args = AuditArgs {
         project_path: project.path().to_path_buf(),
@@ -401,15 +221,20 @@ fn the_json_report_omits_the_generating_machines_checkout_path() {
         baseline: None,
     };
 
-    let active = run(&args).expect("audit completes");
+    let active = run_audit(&args).expect("audit completes");
     let report: serde_json::Value =
         serde_json::from_str(&active.rendered).expect("valid report json");
-    assert_eq!(report["issues"][0]["relativePath"], "src/keys.js");
+    assert_eq!(
+        report["issues"][0]["relativePath"],
+        "src/fixture-findings.txt"
+    );
     assert!(
         report["issues"][0].get("absolutePath").is_none(),
         "{}",
         active.rendered
     );
+    assert_eq!(report["issues"][0]["category"], "reliability");
+    assert!(report["issues"][0].get("domain").is_none());
     assert!(
         !active.rendered.contains(&project_dir),
         "a committed baseline would publish {project_dir}"
@@ -427,8 +252,8 @@ fn the_json_report_omits_the_generating_machines_checkout_path() {
     "suppressions": [
       {
         "match": {
-          "rule": "code_scan.hardcoded-secret",
-          "path": "src/keys.js"
+          "rule": "code_scan.standin.rule",
+          "path": "src/fixture-findings.txt"
         },
         "reason": "The credential-shaped value is an inert scanner fixture."
       }
@@ -438,7 +263,7 @@ fn the_json_report_omits_the_generating_machines_checkout_path() {
     )
     .expect("suppression config");
 
-    let suppressed = run(&args).expect("suppressed audit completes");
+    let suppressed = run_audit(&args).expect("suppressed audit completes");
     let suppressed_report: serde_json::Value =
         serde_json::from_str(&suppressed.rendered).expect("valid report json");
     assert_eq!(suppressed_report["ignoredCount"], 1);
@@ -449,8 +274,86 @@ fn the_json_report_omits_the_generating_machines_checkout_path() {
         "{}",
         suppressed.rendered
     );
+    assert_eq!(
+        suppressed_report["ignoredFindings"][0]["category"],
+        "reliability"
+    );
+    assert!(suppressed_report["ignoredFindings"][0]
+        .get("domain")
+        .is_none());
     assert!(
         !suppressed.rendered.contains(&project_dir),
         "a committed baseline would publish {project_dir}"
+    );
+}
+
+#[test]
+fn standin_sarif_owns_rule_metadata_locations_and_fingerprints() {
+    // SARIF can omit the module rule, fingerprint, or location needed by code hosting.
+    let project = report_project();
+    let outcome = run_audit(&AuditArgs {
+        project_path: project.path().to_path_buf(),
+        format: CodeScanReportFormat::Sarif,
+        fail_on: None,
+        output: None,
+        inspect_local_databases: false,
+        baseline: None,
+    })
+    .expect("sarif audit");
+    let sarif: serde_json::Value = serde_json::from_str(&outcome.rendered).expect("json");
+    assert_eq!(sarif["version"], "2.1.0");
+    let run = &sarif["runs"][0];
+    assert_eq!(run["tool"]["driver"]["name"], "SiteCMD Code Scan");
+    let rule = &run["tool"]["driver"]["rules"][0];
+    assert_eq!(rule["id"], "code_scan.standin.rule");
+    let result = &run["results"][0];
+    assert_eq!(result["ruleId"], "code_scan.standin.rule");
+    assert_eq!(result["level"], "note");
+    assert_eq!(
+        result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
+        "src/fixture-findings.txt"
+    );
+    assert_eq!(
+        result["locations"][0]["physicalLocation"]["region"]["startLine"],
+        1
+    );
+    assert!(result["partialFingerprints"]["sitecmd/v3"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("sitecmd/v3:sha256:")));
+    assert_eq!(result["baselineState"], "new");
+    assert!(
+        !outcome.rendered.contains(&fixture_token()),
+        "SARIF must not leak the credential"
+    );
+}
+
+#[test]
+fn standin_sarif_keeps_suppressed_results() {
+    // SARIF can silently discard suppressed results or mark them actionable.
+    let project = report_project();
+    let sitecmd_dir = project.path().join(".sitecmd");
+    std::fs::create_dir_all(&sitecmd_dir).expect("config dir");
+    std::fs::write(
+        sitecmd_dir.join("config.json"),
+        r#"{"version":1,"url":"https://example.com","name":"s","code_scan":{"suppressions":[{"match":{"rule":"code_scan.standin.rule","path":"src/fixture-findings.txt"},"reason":"Inert fixture."}]}}"#,
+    )
+    .expect("config");
+    let outcome = run_audit(&AuditArgs {
+        project_path: project.path().to_path_buf(),
+        format: CodeScanReportFormat::Sarif,
+        fail_on: Some(Severity::Low),
+        output: None,
+        inspect_local_databases: false,
+        baseline: None,
+    })
+    .expect("sarif audit");
+    let sarif: serde_json::Value = serde_json::from_str(&outcome.rendered).expect("json");
+    assert!(!outcome.threshold_failed);
+    let results = sarif["runs"][0]["results"].as_array().expect("results");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["suppressions"][0]["kind"], "external");
+    assert_eq!(
+        results[0]["suppressions"][0]["justification"],
+        "Configured suppression."
     );
 }

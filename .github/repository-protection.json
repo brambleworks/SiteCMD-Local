@@ -1,36 +1,83 @@
 {
-  "repository": "brambleworks/SiteCMD-Local",
-  "privateVulnerabilityReporting": true,
-  "securityAndAnalysis": {
-    "secret_scanning": "enabled",
-    "secret_scanning_push_protection": "enabled"
-  },
-  "branchRuleset": {
-    "name": "protect-main",
-    "target": "branch",
-    "refNameInclude": ["refs/heads/main"],
-    "refNameExclude": [],
-    "ruleTypes": [
-      "deletion",
-      "non_fast_forward",
-      "required_linear_history",
-      "required_signatures",
-      "pull_request",
-      "required_status_checks"
-    ],
-    "requiredStatusChecks": [
-      "Repository guardrails",
-      "Audit repository code",
-      "Scan repo for secrets",
-      "Analyze javascript-typescript",
-      "Analyze rust"
-    ]
-  },
-  "tagRuleset": {
-    "name": "protect-release-tags",
-    "target": "tag",
-    "refNameInclude": ["refs/tags/v*"],
-    "refNameExclude": [],
-    "ruleTypes": ["deletion", "non_fast_forward", "update"]
+  "publicRepository": "brambleworks/SiteCMD-Local",
+  "repositories": {
+    "brambleworks/SiteCMD-Local": {
+      "privateVulnerabilityReporting": true,
+      "securityAndAnalysis": {
+        "secret_scanning": "enabled",
+        "secret_scanning_push_protection": "enabled"
+      },
+      "branchRuleset": {
+        "name": "protect-main",
+        "target": "branch",
+        "refNameInclude": ["refs/heads/main"],
+        "refNameExclude": [],
+        "ruleTypes": [
+          "deletion",
+          "non_fast_forward",
+          "required_linear_history",
+          "required_signatures",
+          "pull_request",
+          "required_status_checks",
+          "merge_queue"
+        ],
+        "requiredStatusChecks": [{ "context": "CI", "integration_id": 15368 }],
+        "pullRequest": {
+          "allowed_merge_methods": ["squash"],
+          "required_approving_review_count": 0,
+          "required_review_thread_resolution": true
+        },
+        "mergeQueue": {
+          "merge_method": "SQUASH",
+          "grouping_strategy": "ALLGREEN",
+          "max_entries_to_build": 5,
+          "min_entries_to_merge": 1,
+          "max_entries_to_merge": 5,
+          "min_entries_to_merge_wait_minutes": 0,
+          "check_response_timeout_minutes": 60
+        }
+      },
+      "tagRuleset": {
+        "name": "protect-release-tags",
+        "target": "tag",
+        "refNameInclude": ["refs/tags/v*"],
+        "refNameExclude": [],
+        "ruleTypes": ["deletion", "non_fast_forward", "update"]
+      },
+      "mergeMethods": ["squash"]
+    },
+    "brambleworks/SiteCMD-Engine": {
+      "mergeMethods": ["squash"],
+      "branchRuleset": {
+        "name": "protect-main",
+        "target": "branch",
+        "refNameInclude": ["refs/heads/main"],
+        "refNameExclude": [],
+        "ruleTypes": [
+          "deletion",
+          "non_fast_forward",
+          "required_linear_history",
+          "required_signatures",
+          "pull_request",
+          "required_status_checks",
+          "merge_queue"
+        ],
+        "requiredStatusChecks": [{ "context": "CI", "integration_id": 15368 }],
+        "pullRequest": {
+          "allowed_merge_methods": ["squash"],
+          "required_approving_review_count": 0,
+          "required_review_thread_resolution": true
+        },
+        "mergeQueue": {
+          "merge_method": "SQUASH",
+          "grouping_strategy": "ALLGREEN",
+          "max_entries_to_build": 5,
+          "min_entries_to_merge": 1,
+          "max_entries_to_merge": 5,
+          "min_entries_to_merge_wait_minutes": 0,
+          "check_response_timeout_minutes": 60
+        }
+      }
+    }
   }
 }

@@ -3,26 +3,7 @@
 
 use std::path::Path;
 
-use super::artifact::MAX_PATCH_BYTES;
 use crate::core::git::{run_git_command, GitRun, HttpsTransport};
-
-/// The diff headers that move a file instead of editing it in place. A
-/// template fixer never emits one. `rename old` and `rename new` are the
-/// legacy spelling git still parses, so a patch cannot reach the tree by
-/// writing its move that way instead.
-const MOVE_HEADERS: &[&str] = &[
-    "rename from ",
-    "rename to ",
-    "rename old ",
-    "rename new ",
-    "copy from ",
-    "copy to ",
-];
-
-/// The file modes that make a patch write a symbolic link. A template fix
-/// writes text into a host's configuration file and never a link out of the
-/// tree.
-const SYMLINK_MODES: &[&str] = &["new file mode 120000", "new mode 120000"];
 
 fn expect_ok(run: GitRun, what: &str) -> Result<GitRun, String> {
     if run.ok() {
@@ -110,94 +91,6 @@ pub fn unshallow(root: &Path, remote_url: &str, transport: &HttpsTransport) -> R
         "git fetch --unshallow",
     )
     .map(|_| ())
-}
-
-pub fn apply_patch(root: &Path, patch_path: &Path) -> Result<(), String> {
-    let patch = patch_path.to_string_lossy().to_string();
-    expect_ok(
-        run_git_command(
-            root,
-            &["apply", "--check", "--", &patch],
-            crate::constants::AUTOFIX_GIT_TIMEOUT,
-            None,
-        )?,
-        "git apply --check",
-    )?;
-    expect_ok(
-        run_git_command(
-            root,
-            &["apply", "--", &patch],
-            crate::constants::AUTOFIX_GIT_TIMEOUT,
-            None,
-        )?,
-        "git apply",
-    )
-    .map(|_| ())
-}
-
-/// A `diff --git` header names one file twice, `a/<path> b/<path>`. Two
-/// different names in one header delete the first and rewrite the second with
-/// no rename line to give it away, so anything this cannot read as one path
-/// named twice, including the quoted form git writes for an unusual name, is
-/// refused.
-fn names_one_path(header: &str) -> bool {
-    header
-        .strip_prefix("a/")
-        .and_then(|rest| rest.split_once(" b/"))
-        .is_some_and(|(old, new)| old == new)
-}
-
-/// A patch that does anything but edit files in place is refused before git
-/// ever reads it. `git apply --numstat` prints a rename's destination and
-/// nothing else, so a rename out of `.github/workflows/` would show the
-/// publish job only the harmless-looking destination while the source left
-/// the tree; a mismatched header does the same with no rename line at all;
-/// and a symbolic link is not a fix a template writes.
-fn refuse_unsupported_patch(patch_path: &Path) -> Result<(), String> {
-    let metadata = std::fs::metadata(patch_path)
-        .map_err(|error| format!("patch could not be read: {error}"))?;
-    if !metadata.is_file() || metadata.len() > MAX_PATCH_BYTES {
-        return Err("patch is not a bounded regular file".into());
-    }
-    let patch = std::fs::read_to_string(patch_path)
-        .map_err(|error| format!("patch could not be read: {error}"))?;
-    // Each reason is looked for across the whole patch before the next, so a
-    // move is named a move even though its header also names two paths.
-    let lines = || patch.lines().map(str::trim_end);
-    if lines().any(|line| MOVE_HEADERS.iter().any(|header| line.starts_with(header))) {
-        return Err("patch renames or copies a file, which a template fix never does".into());
-    }
-    if lines().any(|line| SYMLINK_MODES.iter().any(|mode| line.starts_with(mode))) {
-        return Err("patch creates a symbolic link, which a template fix never does".into());
-    }
-    if lines().any(|line| {
-        line.strip_prefix("diff --git ")
-            .is_some_and(|header| !names_one_path(header))
-    }) {
-        return Err("patch names two paths in one header, which a template fix never does".into());
-    }
-    Ok(())
-}
-
-/// The paths a patch touches, from `git apply --numstat`, which reads the
-/// diff and runs nothing.
-pub fn patch_paths(root: &Path, patch_path: &Path) -> Result<Vec<String>, String> {
-    refuse_unsupported_patch(patch_path)?;
-    let patch = patch_path.to_string_lossy().to_string();
-    let run = expect_ok(
-        run_git_command(
-            root,
-            &["apply", "--numstat", "--", &patch],
-            crate::constants::AUTOFIX_GIT_TIMEOUT,
-            None,
-        )?,
-        "git apply --numstat",
-    )?;
-    Ok(run
-        .stdout
-        .lines()
-        .filter_map(|line| line.split('\t').nth(2).map(str::to_string))
-        .collect())
 }
 
 /// Every path the working tree shows as changed, tracked or not, so the
@@ -295,7 +188,7 @@ pub fn push_branch(
     .map(|_| ())
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn init_test_repo(files: &[(&str, &str)]) -> Result<(tempfile::TempDir, String), String> {
     let temp = tempfile::tempdir().map_err(|error| error.to_string())?;
     for (name, content) in files {

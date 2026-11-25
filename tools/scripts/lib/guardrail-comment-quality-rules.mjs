@@ -24,7 +24,6 @@ const PRIVATE_TOOLING = [
 ];
 
 const TARGETS = [
-  ["apps/desktop/src", (f) => /\.(?:ts|tsx|css)$/.test(f)],
   ["apps/desktop/src-tauri/src", (f) => f.endsWith(".rs")],
   ["apps/desktop/src-tauri/crates", (f) => f.endsWith(".rs")],
 ];
@@ -158,7 +157,7 @@ export function commentQualityFailures(read, listFiles) {
           for (const [pattern, label] of PRIVATE_TOOLING) {
             if (pattern.test(segments[k])) {
               failures.push(
-                `${file}:${physicalLine} - comment cites ${label}, a maintainer-only tool absent from this repository; point at the in-repo reference instead (apps/desktop/DESIGN.md, src/styles/COMPONENT_GUIDE.md). Line: ${raw.trim()}`,
+                `${file}:${physicalLine} - comment cites ${label}, a maintainer-only tool absent from this repository; point at the in-repo reference instead (the codebase, src/styles/COMPONENT_GUIDE.md). Line: ${raw.trim()}`,
               );
             }
           }

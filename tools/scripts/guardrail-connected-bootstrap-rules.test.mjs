@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { connectedBootstrapFailures } from "./lib/guardrail-connected-bootstrap-rules.mjs";
 
 const BOOTSTRAP = "apps/desktop/src-tauri/src/db/connected_bootstrap.rs";
-const LIFECYCLE = "apps/desktop/src-tauri/src/db/issue_states.rs";
 const REGISTRY = "apps/desktop/src-tauri/src/db/mod.rs";
 const OTHER = "apps/desktop/src-tauri/src/background/sync.rs";
 const OTHER_TESTS = "apps/desktop/src-tauri/src/db/connected_bootstrap_tests.rs";
@@ -21,17 +20,8 @@ function sources() {
 }
 
 pub enum OccurrenceLocation {
-    Page { url: String },
     File { rule: String, path: String },
     Whole,
-}
-
-fn evidence_source_of(projection_source: &str) -> Option<ScanEvidenceSource> {
-    match projection_source {
-        "web_scan" | "site_scan" => Some(ScanEvidenceSource::WebScan),
-        "code_scan" => Some(ScanEvidenceSource::CodeScan),
-        _ => None,
-    }
 }
 
 fn state_from_row(check_id: &str, status: IssueStatus) -> Result<BootstrapState, DbError> {
@@ -54,7 +44,7 @@ fn read_projection(conn: &Connection) -> Result<(), DbError> {
     let mut statement = conn.prepare(
         "SELECT check_id, source, MIN(first_seen_at)
          FROM work_items
-         WHERE project_id = ?1 AND env_url = ?2 AND resolved_at IS NULL
+         WHERE project_id = ?1 AND env_url = ?2 AND resolved_at IS NULL AND source = 'code_scan'
          GROUP BY check_id, source",
     )?;
     Ok(())
@@ -77,6 +67,7 @@ fn last_known_occurrences(conn: &Connection) -> Result<(), DbError> {
              FROM scan_findings finding
              JOIN scan_runs run ON run.id = finding.run_id
              WHERE run.status = 'complete'
+               AND run.source = 'code_scan'
                AND finding.verdict IN ('fail', 'warn')
          ),
          newest AS (
@@ -92,17 +83,21 @@ fn last_known_occurrences(conn: &Connection) -> Result<(), DbError> {
          JOIN scan_findings finding ON finding.run_id = run.id
          WHERE newest.recency = 1
            AND run.status = 'complete'
+           AND run.source = 'code_scan'
            AND finding.verdict IN ('fail', 'warn')",
     )?;
     Ok(())
 }
 
 fn latest_evidence(conn: &Connection) -> Result<Option<SourceEvidence>, DbError> {
+    let execution = conn.prepare("SELECT id FROM scan_runs WHERE source = 'code_scan'")?;
+    let runs = conn.prepare("SELECT id FROM scan_runs WHERE source = 'code_scan'")?;
     let mut statement = conn.prepare(
         "SELECT finding.canonical_check_id
          FROM scan_findings finding
          JOIN scan_runs run ON run.id = finding.run_id
          WHERE run.status = 'complete'
+           AND run.source = 'code_scan'
            AND finding.verdict IN ('fail', 'warn')",
     )?;
     Ok(None)
@@ -123,13 +118,6 @@ impl Database {
             Ok(BootstrapSet { groups, evidence })
         })?
     }
-}`,
-    [LIFECYCLE]: `pub enum IssueLifecycle {
-    Active,
-    Snoozed { until: i64 },
-    Ignored,
-    Blocked { reason: Option<String> },
-    Verified { by: VerifiedBy },
 }`,
     [REGISTRY]: `mod connected_bootstrap;
 pub use connected_bootstrap::{BootstrapGroup, BootstrapSet, BootstrapState};`,
@@ -203,7 +191,7 @@ describe("the group set", () => {
   it("fails when the projection read stops filtering to open rows", () => {
     expect(
       failures((files) => {
-        files[BOOTSTRAP] = files[BOOTSTRAP].replace("AND resolved_at IS NULL\n", "\n");
+        files[BOOTSTRAP] = files[BOOTSTRAP].replace(" AND resolved_at IS NULL", "");
       }),
     ).toContain("open work_items projection");
   });
@@ -216,7 +204,7 @@ describe("the group set", () => {
           "FROM work_item_states",
         );
       }),
-    ).toContain("every lifecycle row");
+    ).toContain("read lifecycle overrides");
   });
 
   it("fails when the derivation also writes", () => {
@@ -265,17 +253,6 @@ describe("the state vocabulary", () => {
 ${files[BOOTSTRAP]}`;
       }),
     ).toContain("exactly one place");
-  });
-
-  it("fails when the write vocabulary gains a way to declare a regression", () => {
-    expect(
-      failures((files) => {
-        files[LIFECYCLE] = files[LIFECYCLE].replace(
-          "    Verified { by: VerifiedBy },",
-          "    Verified { by: VerifiedBy },\n    Regressed,",
-        );
-      }),
-    ).toContain("no Regressed constructor");
   });
 
   it("fails when a dismissal with no deadline is repaired instead of refused", () => {
@@ -327,6 +304,17 @@ describe("occurrence identity", () => {
     ).toContain("line number into an occurrence identity");
   });
 
+  it("fails when the line-counting field moves into an occurrence type", () => {
+    expect(
+      failures((files) => {
+        files[BOOTSTRAP] = files[BOOTSTRAP].replace(
+          "    File { rule: String, path: String },",
+          "    File {\n        rule: String,\n        path: String,\n        line: Option<u32>,\n    },",
+        );
+      }),
+    ).toContain("line number into an occurrence identity");
+  });
+
   it("fails when a code location is keyed by something other than rule and path", () => {
     expect(
       failures((files) => {
@@ -338,11 +326,21 @@ describe("occurrence identity", () => {
     ).toContain("producer rule and the repository-relative path");
   });
 
+  it("fails when a local finding id reaches an occurrence identity", () => {
+    // A covert channel from module to network
+    expect(
+      failures((files) => {
+        files[BOOTSTRAP] += "\npub struct OccurrenceIdentity {\n    finding_id: String,\n}";
+      }),
+    ).toContain("local finding IDs belong only in instance counting");
+  });
+
   it("fails when a passing check becomes an occurrence", () => {
     expect(
       failures((files) => {
         files[BOOTSTRAP] = files[BOOTSTRAP].replace(
           `         WHERE run.status = 'complete'
+           AND run.source = 'code_scan'
            AND finding.verdict IN ('fail', 'warn')",
     )?;
     Ok(None)`,
@@ -373,15 +371,16 @@ describe("occurrence identity", () => {
     ).toContain("newest EXECUTION");
   });
 
-  it("fails when cross-page evidence becomes a third producer", () => {
+  it("fails when legacy web evidence enters the local projection", () => {
+    // A desktop-era web finding can be submitted from the local database.
     expect(
       failures((files) => {
         files[BOOTSTRAP] = files[BOOTSTRAP].replace(
-          `"web_scan" | "site_scan" => Some(ScanEvidenceSource::WebScan),`,
-          `"web_scan" => Some(ScanEvidenceSource::WebScan),`,
+          "AND resolved_at IS NULL AND source = 'code_scan'",
+          "AND resolved_at IS NULL",
         );
       }),
-    ).toContain("fold site_scan back");
+    ).toContain("must derive local evidence and groups from code scans only");
   });
 });
 

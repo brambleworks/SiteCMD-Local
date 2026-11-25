@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const BUDGET_FILE_PATTERNS = [
   /^tools\/scripts\/check-repo-guardrails\.mjs$/,
@@ -20,10 +21,10 @@ function bypassTokenStatus(message) {
   if (!BYPASS_TOKEN_RE.test(message)) {
     return { ok: false, reason: "no_token" };
   }
-  const candidates = message
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => BYPASS_TOKEN_RE.test(line));
+  // GitHub hard-wraps squash commit bodies, so a token can span lines.
+  const candidates = [...message.matchAll(new RegExp(BYPASS_TOKEN_RE.source, "gm"))].map(
+    ([token]) => token.replace(/\s+/g, " "),
+  );
 
   for (const line of candidates) {
     if (BYPASS_PLACEHOLDER_RE.test(line)) continue;
@@ -35,21 +36,18 @@ function bypassTokenStatus(message) {
   return { ok: false, reason: "placeholder_only" };
 }
 
-function isBudgetFile(filePath) {
-  const normalized = filePath.replace(/\\/g, "/");
-  return BUDGET_FILE_PATTERNS.some((re) => re.test(normalized));
-}
-
 function extractThresholds(source) {
   const thresholds = new Map();
   const lines = source.split("\n");
 
+  const code = lines.map((rawLine) => rawLine.replace(/\/\/.*$/, "")).join("\n");
+  // A path long enough for the formatter to wrap spreads its pair over lines.
+  for (const match of code.matchAll(/\[\s*"([^"]+)"\s*,\s*(\d+)\s*,?\s*\]/g)) {
+    thresholds.set(match[1], Number(match[2]));
+  }
+
   for (const rawLine of lines) {
     const line = rawLine.replace(/\/\/.*$/, "");
-
-    for (const match of line.matchAll(/\[\s*"([^"]+)"\s*,\s*(\d+)\s*\]/g)) {
-      thresholds.set(match[1], Number(match[2]));
-    }
 
     for (const match of line.matchAll(/file:\s*"([^"]+)"[^}]*maxLines:\s*(\d+)/g)) {
       thresholds.set(match[1], Number(match[2]));
@@ -121,10 +119,24 @@ function readFromStaged(relativePath) {
   }
 }
 
-function diffThresholds(oldMap, newMap) {
+// A file git records as renamed keeps its threshold under the new path, so the
+// moved key is compared with the value its old path held.
+function renamedPaths(range) {
+  const args = range
+    ? ["diff", "-M", "--name-status", "--diff-filter=R", `${range.base}..${range.head}`]
+    : ["diff", "--cached", "-M", "--name-status", "--diff-filter=R"];
+  const renames = new Map();
+  for (const line of execFileSync("git", args, { encoding: "utf8" }).split("\n")) {
+    const [status, from, to] = line.split("\t");
+    if (status?.startsWith("R") && from && to) renames.set(to, from);
+  }
+  return renames;
+}
+
+function diffThresholds(oldMap, newMap, renames = new Map()) {
   const violations = [];
   for (const [key, newValue] of newMap) {
-    const oldValue = oldMap.get(key);
+    const oldValue = oldMap.get(key) ?? oldMap.get(renames.get(key));
     if (oldValue === undefined) {
       violations.push({ key, kind: "new", oldValue: null, newValue });
     } else if (newValue > oldValue) {
@@ -174,17 +186,20 @@ function commitMessage(rangeTip) {
   }
 }
 
-function checkFile(relativePath, source, baseRev) {
-  const oldSource = readFromRevision(baseRev, relativePath);
-  const oldMap = extractThresholds(oldSource);
+function checkFile(relativePath, source, baseRev, renames, baselineFiles) {
+  const oldSource = readFromRevision(baseRev, renames.get(relativePath) ?? relativePath);
+  const oldMap = new Map([
+    ...baselineFiles.flatMap((file) => [...extractThresholds(readFromRevision(baseRev, file))]),
+    ...extractThresholds(oldSource),
+  ]);
   const newMap = extractThresholds(source);
-  return diffThresholds(oldMap, newMap);
+  return diffThresholds(oldMap, newMap, renames);
 }
 
-function parseArgs(argv) {
+function parseArgs(argv, isBudgetFile) {
   const args = argv.slice(2);
   if (args.length === 0 || args[0] === "--staged") {
-    const staged = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=AM"], {
+    const staged = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=AMR"], {
       encoding: "utf8",
     })
       .split("\n")
@@ -197,24 +212,45 @@ function parseArgs(argv) {
       console.error("--range requires a revision range argument (e.g., HEAD~1..HEAD)");
       process.exit(2);
     }
+    const [, , option, messageFile, extra] = args;
+    if (
+      option !== undefined &&
+      (option !== "--message-file" || !messageFile || extra !== undefined)
+    ) {
+      console.error("--range accepts only an optional --message-file <path>");
+      process.exit(2);
+    }
     const [base, head] = range.split("..");
     if (!base || !head) {
       console.error("--range expects A..B format (e.g., HEAD~1..HEAD)");
       process.exit(2);
     }
-    const changed = execFileSync("git", ["diff", "--name-only", "--diff-filter=AM", range], {
+    const changed = execFileSync("git", ["diff", "--name-only", "--diff-filter=AMR", range], {
       encoding: "utf8",
     })
       .split("\n")
       .filter(Boolean);
-    return { files: changed.filter(isBudgetFile), mode: "range", range: { base, head } };
+    return {
+      files: changed.filter(isBudgetFile),
+      mode: "range",
+      range: { base, head },
+      messageFile,
+    };
   }
   return { files: args.filter(isBudgetFile), mode: "files" };
 }
 
-function main() {
-  const parsed = parseArgs(process.argv);
-  const { files, mode, range } = parsed;
+export function runBudgetRatchet({ patterns = BUDGET_FILE_PATTERNS, baselines = new Map() } = {}) {
+  const isBudgetFile = (file) => {
+    const normalized = file.replace(/\\/g, "/");
+    return patterns.some((pattern) => pattern.test(normalized));
+  };
+  const parsed = parseArgs(process.argv, isBudgetFile);
+  const { mode, range } = parsed;
+  const renames = mode === "files" ? new Map() : renamedPaths(range);
+  // A budget file moved to a path outside the patterns is still checked.
+  const movedBudgets = [...renames].filter(([, from]) => isBudgetFile(from)).map(([to]) => to);
+  const files = [...new Set([...parsed.files, ...movedBudgets])];
   if (files.length === 0) return;
 
   const baseRev = range ? range.base : "HEAD";
@@ -230,7 +266,7 @@ function main() {
       source = fs.readFileSync(file, "utf8");
     }
     if (source == null) continue;
-    const violations = checkFile(file, source, baseRev);
+    const violations = checkFile(file, source, baseRev, renames, baselines.get(file) ?? []);
     for (const v of violations) {
       allViolations.push({ file, ...v });
     }
@@ -238,7 +274,9 @@ function main() {
 
   if (allViolations.length === 0) return;
 
-  const message = commitMessage(range);
+  const message = parsed.messageFile
+    ? fs.readFileSync(parsed.messageFile, "utf8")
+    : commitMessage(range);
   const status = bypassTokenStatus(message);
   if (status.ok) {
     console.warn(
@@ -276,4 +314,6 @@ function describeViolation(v, log) {
   }
 }
 
-main();
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  runBudgetRatchet();
+}

@@ -121,12 +121,6 @@ fn could_not_start(
     }
 }
 
-/// The build check with its step log going to the fix job's stdout, which is
-/// the workflow log a maintainer reads after a failure.
-pub fn run_build_check(root: &Path) -> Result<BuildOutcome, String> {
-    run_build_check_with_output(root, &mut std::io::stdout().lock())
-}
-
 /// Each step's command line and captured output reach `out` as the step
 /// finishes; the same text accumulates in the returned outcome.
 pub fn run_build_check_with_output(

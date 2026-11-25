@@ -43,7 +43,13 @@ fn a_problem_without_detail_keeps_its_code() {
     )
     .expect_err("failure");
     assert_eq!(error.code, "stale_revision");
-    assert_eq!(error.stale_groups("security.csp").len(), 1);
+    assert_eq!(
+        error.details.unwrap()["stale_groups"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 const STALE_PROBLEM: &[u8] = br#"{"type":"about:blank","title":"Conflict","status":409,"detail":"The lifecycle state changed after revision 41.","code":"stale_revision","request_id":"req_0123456789abcdef","stale_groups":[{"check":"security.csp","current_state":"active","current_state_revision":43}]}"#;
@@ -58,8 +64,13 @@ fn problem_details_parse_with_their_members_as_details() {
         "The lifecycle state changed after revision 41."
     );
     assert_eq!(error.request_id.as_deref(), Some("req_0123456789abcdef"));
-    assert!(error.is_stale_revision());
-    assert_eq!(error.stale_groups("security.csp").len(), 1);
+    assert_eq!(
+        error.details.unwrap()["stale_groups"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 #[test]
@@ -108,9 +119,9 @@ fn an_inactive_account_is_read_from_the_problem_code() {
     assert!(!is_account_inactive(&bare));
 }
 
-const NOTICE: &str = "SiteCMD Connect says this account is inactive, so nothing was sent. Renew it from the SiteCMD dashboard to resume.";
-const RESULT_NOTICE: &str = "SiteCMD Connect says this account is inactive, so this result was not recorded. Renew it from the SiteCMD dashboard to resume.";
-const GATE_NOTICE: &str = "SiteCMD Connect says this account is inactive, so the gate graded nothing. Renew it from the SiteCMD dashboard to resume.";
+const NOTICE: &str = "SiteCMD says this account is inactive, so nothing was sent. Renew it from the dashboard to resume.";
+const RESULT_NOTICE: &str = "SiteCMD says this account is inactive, so this result was not recorded. Renew it from the dashboard to resume.";
+const GATE_NOTICE: &str = "SiteCMD says this account is inactive, so the gate graded nothing. Renew it from the dashboard to resume.";
 
 #[test]
 fn the_inactive_notices_are_verbatim_and_name_no_origin() {
@@ -169,7 +180,12 @@ async fn a_refusal_carries_the_seconds_its_retry_after_names() {
         .url(&["v1", "sites", "s", "sync", "ci"])
         .expect("url");
     let error = client
-        .request::<Value>(Method::POST, url, Some("key-1"), Some("{}".into()))
+        .request::<Value>(
+            Method::POST,
+            url,
+            Some(&"a".repeat(64).parse().unwrap()),
+            Some(&request_body::EmptyRequest {}),
+        )
         .await
         .expect_err("refused");
     assert_eq!(error.code, "request_in_progress");
@@ -177,7 +193,11 @@ async fn a_refusal_carries_the_seconds_its_retry_after_names() {
 }
 
 #[test]
-fn a_retry_after_names_a_wait_only_in_whole_seconds() {
+fn retry_after_accepts_seconds_and_http_dates() {
+    // Bug: HTTP-date Retry-After values are ignored or do not use the supplied clock.
+    let now = "2026-10-21T07:27:40.500Z"
+        .parse::<jiff::Timestamp>()
+        .unwrap();
     let refused = |value: Option<&str>| {
         let mut headers = reqwest::header::HeaderMap::new();
         if let Some(value) = value {
@@ -190,12 +210,17 @@ fn a_retry_after_names_a_wait_only_in_whole_seconds() {
             StatusCode::CONFLICT,
             &headers,
             IN_PROGRESS_PROBLEM.as_bytes(),
+            Some(now),
         )
     };
     assert_eq!(refused(Some(" 7 ")).retry_after, Some(7));
     assert_eq!(
         refused(Some("Wed, 21 Oct 2026 07:28:00 GMT")).retry_after,
-        None
+        Some(20)
+    );
+    assert_eq!(
+        refused(Some("Wed, 21 Oct 2026 07:27:39 GMT")).retry_after,
+        Some(0)
     );
     assert_eq!(refused(Some("-1")).retry_after, None);
     let bare = refused(None);
@@ -209,103 +234,16 @@ async fn a_request_with_a_body_is_sent_as_json() {
     let client = ConnectedServiceClient::for_test_origin(&origin, Some("t")).expect("client");
     let url = client.url(&["v1", "account"]).expect("url");
     let _: Value = client
-        .request(Method::POST, url, None, Some("{}".into()))
+        .request(
+            Method::POST,
+            url,
+            None,
+            Some(&request_body::EmptyRequest {}),
+        )
         .await
         .expect("answered");
     let request = captured.await.expect("capture").to_ascii_lowercase();
     assert!(request.contains("\r\ncontent-type: application/json\r\n"));
-}
-
-#[test]
-fn stale_revision_details_support_batch_and_single_shapes() {
-    let batch = ConnectedServiceError {
-        status: 409,
-        code: "stale_revision".into(),
-        message: "changed".into(),
-        request_id: None,
-        details: Some(Box::new(serde_json::json!({
-            "stale_groups": [{
-                "check": "security.csp",
-                "current_state": "active",
-                "current_state_revision": 43
-            }]
-        }))),
-        retry_after: None,
-    };
-    assert_eq!(
-        batch.stale_groups("ignored"),
-        vec![StaleGroup {
-            check: "security.csp".into(),
-            state: "active".into(),
-            revision: 43,
-        }]
-    );
-    let single = ConnectedServiceError {
-        details: Some(Box::new(serde_json::json!({
-            "current_state": "dismissed",
-            "current_state_revision": 9
-        }))),
-        ..batch
-    };
-    assert_eq!(single.stale_groups("seo.title")[0].check, "seo.title");
-}
-
-#[test]
-fn site_creation_carries_the_version_1_key_commitment() {
-    let body = serde_json::to_value(CreateSiteRequest {
-        alias: None,
-        fingerprint_key_commitment:
-            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0",
-        url: "https://example.com",
-    })
-    .expect("encodes");
-    assert_eq!(
-        body.get("fingerprint_key_commitment")
-            .and_then(Value::as_str),
-        Some("9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0"),
-    );
-    assert!(body.get("alias").is_none());
-}
-
-#[test]
-fn site_state_keeps_scope_and_allowance_standing_from_the_service() {
-    let state: ConnectedSiteState = serde_json::from_value(serde_json::json!({
-        "event_sequence": 8,
-        "ordering_authority": {
-            "authority_id": "github:1296269:authority",
-            "current_deployment_id": "run-41",
-            "epoch": 3,
-            "kind": "publish_attestation",
-            "publish_sequence": 7
-        },
-        "phase": "connected",
-        "scope_effective_route_count": 12,
-        "scope_over_plan": true,
-        "scope_over_plan_grace_expires_at": "2026-08-20T00:00:00.000Z",
-        "scope_overflow_count": 2,
-        "scope_route_cap": 10,
-        "site_allowance_over_plan": true,
-        "site_allowance_over_plan_grace_expires_at": "2026-08-21T00:00:00.000Z",
-        "state_revision": 4
-    }))
-    .expect("state");
-
-    assert!(state.scope_over_plan);
-    assert_eq!(state.scope_effective_route_count, 12);
-    assert_eq!(state.scope_overflow_count, 2);
-    assert_eq!(state.scope_route_cap, 10);
-    assert!(state.site_allowance_over_plan);
-    assert_eq!(
-        state
-            .ordering_authority
-            .as_ref()
-            .map(|authority| authority.authority_id.as_str()),
-        Some("github:1296269:authority")
-    );
-    assert_eq!(
-        state.site_allowance_over_plan_grace_expires_at.as_deref(),
-        Some("2026-08-21T00:00:00.000Z")
-    );
 }
 
 #[test]
@@ -371,4 +309,25 @@ fn bearer_is_redacted_and_insecure_remote_origins_are_rejected() {
         false,
     )
     .is_err());
+}
+
+#[test]
+fn login_endpoint_spellings_share_canonical_https_identity() {
+    // Bug: equivalent host spellings can fork credentials or malformed endpoints can pass validation.
+    for (input, expected) in [
+        ("HTTPS://EXAMPLE.COM:443", Some("https://example.com")),
+        ("https:", None),
+        ("https://example.com/#fragment", None),
+        (
+            "https://münich.example",
+            Some("https://xn--mnich-kva.example"),
+        ),
+        ("https://example.com.", Some("https://example.com")),
+    ] {
+        let result = ConnectedServiceClient::for_endpoint(input, None, false);
+        match expected {
+            Some(origin) => assert_eq!(result.unwrap().origin(), origin),
+            None => assert!(result.is_err()),
+        }
+    }
 }

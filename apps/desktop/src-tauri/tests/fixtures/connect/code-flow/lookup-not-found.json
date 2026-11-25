@@ -1,0 +1,14 @@
+{
+  "status": 404,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": {
+    "type": "about:blank",
+    "title": "Not Found",
+    "status": 404,
+    "detail": "No code SiteCMD is waiting for matches that one.",
+    "code": "code_not_found",
+    "request_id": "REQUESTIDFIXTURE"
+  }
+}

@@ -1,6 +1,6 @@
 //! Point-impact and fix-applicability classification for CLI output.
 
-use crate::checks::{CheckResult, CheckStatus, ScanCategory, Severity};
+use crate::core::scan_types::{actionable, CheckResult};
 
 /// Where a fix needs to happen - narrows the actionable surface for each issue.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,51 +33,16 @@ impl Applicability {
     }
 }
 
-/// A `CheckResult` annotated with its rank, estimated score impact, and
+/// A `CheckResult` annotated with its rank and
 /// applicability classification.
 pub struct RankedIssue<'a> {
     pub issue: &'a CheckResult,
     /// 1-indexed rank (1 = highest impact).
     pub rank: usize,
-    /// Estimated score points the overall score is losing due to this issue.
-    pub estimated_points: u32,
+    /// Position among actionable findings before sorting.
+    pub actionable_index: usize,
     /// Where the fix needs to happen.
     pub applicability: Applicability,
-}
-
-/// Estimate how many overall score points this issue is costing the site.
-///
-/// Formula: `penalty × status_multiplier × category_weight`, rounded to the
-/// nearest integer. Failing checks always return at least 1 point.
-pub fn estimate_points(severity: &Severity, category: &ScanCategory, status: &CheckStatus) -> u32 {
-    let penalty: f64 = match severity {
-        Severity::Critical => 25.0,
-        Severity::High => 12.0,
-        Severity::Medium => 5.0,
-        Severity::Low => 1.5,
-    };
-
-    let status_multiplier: f64 = match status {
-        CheckStatus::Fail => 1.0,
-        CheckStatus::Warn => 0.5,
-        _ => return 0,
-    };
-
-    let category_weight: f64 = match category {
-        ScanCategory::Security => 0.25,
-        ScanCategory::Performance => 0.25,
-        ScanCategory::Seo => 0.15,
-        ScanCategory::Accessibility => 0.15,
-        ScanCategory::Compliance => 0.10,
-        ScanCategory::Polish => 0.10,
-        ScanCategory::Config => 0.05,
-    };
-
-    let raw = penalty * status_multiplier * category_weight;
-    let rounded = raw.round() as u32;
-
-    // Failing/warning checks always contribute at least 1 point.
-    rounded.max(1)
 }
 
 /// Frameworks that support file-based security header configuration.
@@ -144,7 +109,7 @@ pub fn classify_applicability(
         return Applicability::Content;
     }
 
-    if check_id.starts_with("accessibility.") || check_id.starts_with("accessibility.") {
+    if check_id.starts_with("accessibility.") {
         return Applicability::Code;
     }
 
@@ -175,31 +140,24 @@ pub fn classify_applicability(
     Applicability::Code
 }
 
-/// Ranks failing and warning issues by estimated score impact.
+/// Rank by severity and verdict, preserving scan order for ties.
 pub fn rank_issues<'a>(
     issues: &'a [CheckResult],
     detected_stack: Option<&serde_json::Value>,
 ) -> Vec<RankedIssue<'a>> {
-    let mut ranked: Vec<(usize, u32, u8, &CheckResult)> = issues
-        .iter()
-        .filter(|r| matches!(r.status, CheckStatus::Fail | CheckStatus::Warn))
-        .map(|r| {
-            let pts = estimate_points(&r.severity, &r.category, &r.status);
-            let sord = r.severity.sort_rank();
-            (0, pts, sord, r)
-        })
+    let mut ranked: Vec<_> = actionable(issues)
+        .filter_map(|issue| Some((issue.status.fix_priority(issue.severity)?, issue)))
+        .enumerate()
         .collect();
-
-    // Sort by points descending, then severity ascending (Critical = 0 → highest)
-    ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.2.cmp(&b.2)));
+    ranked.sort_by_key(|(_, (priority, _))| *priority);
 
     ranked
         .into_iter()
         .enumerate()
-        .map(|(i, (_, pts, _, r))| RankedIssue {
+        .map(|(i, (actionable_index, (_, r)))| RankedIssue {
             issue: r,
             rank: i + 1,
-            estimated_points: pts,
+            actionable_index,
             applicability: classify_applicability(&r.check_id, detected_stack),
         })
         .collect()
@@ -208,17 +166,13 @@ pub fn rank_issues<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checks::{CheckResult, CheckStatus, ScanCategory, Severity};
+    use crate::core::scan_types::{CheckResult, CheckStatus, Severity};
 
-    fn make_result(
-        check_id: &str,
-        category: ScanCategory,
-        severity: Severity,
-        status: CheckStatus,
-    ) -> CheckResult {
+    fn make_result(check_id: &str, severity: Severity, status: CheckStatus) -> CheckResult {
         CheckResult {
+            covered: false,
             check_id: check_id.to_string(),
-            category,
+            category: None,
             title: check_id.to_string(),
             description: String::new(),
             status,
@@ -226,52 +180,28 @@ mod tests {
             fix_prompt: None,
             manual_fix: None,
             raw_data: None,
-            confidence: crate::checks::IssueConfidence::High,
+            confidence: crate::core::scan_types::IssueConfidence::High,
             confidence_reason: None,
+            skip_reason: None,
             why_it_matters: None,
         }
     }
 
     #[test]
-    fn critical_security_has_highest_impact() {
-        let pts = estimate_points(
-            &Severity::Critical,
-            &ScanCategory::Security,
-            &CheckStatus::Fail,
+    fn a_critical_outranks_a_high_whatever_its_category() {
+        // A critical finding ranks below a high one because of its category.
+        let issues = [
+            make_result(
+                "config.placeholder_content",
+                Severity::Critical,
+                CheckStatus::Fail,
+            ),
+            make_result("security.csp", Severity::High, CheckStatus::Fail),
+        ];
+        assert_eq!(
+            rank_issues(&issues, None)[0].issue.check_id,
+            "config.placeholder_content"
         );
-        // 25.0 * 1.0 * 0.25 = 6.25 → rounds to 6
-        assert!(pts >= 6, "expected >= 6, got {}", pts);
-    }
-
-    #[test]
-    fn low_polish_has_lowest_impact() {
-        let pts = estimate_points(&Severity::Low, &ScanCategory::Polish, &CheckStatus::Fail);
-        // 1.5 * 1.0 * 0.10 = 0.15 → rounds to 0 → clamped to 1
-        assert!(pts <= 2, "expected <= 2, got {}", pts);
-    }
-
-    #[test]
-    fn warn_status_halves_impact() {
-        let fail_pts =
-            estimate_points(&Severity::High, &ScanCategory::Security, &CheckStatus::Fail);
-        let warn_pts =
-            estimate_points(&Severity::High, &ScanCategory::Security, &CheckStatus::Warn);
-        assert!(
-            warn_pts <= fail_pts,
-            "warn ({}) should be <= fail ({})",
-            warn_pts,
-            fail_pts
-        );
-    }
-
-    #[test]
-    fn pass_has_zero_impact() {
-        let pts = estimate_points(
-            &Severity::Critical,
-            &ScanCategory::Security,
-            &CheckStatus::Pass,
-        );
-        assert_eq!(pts, 0);
     }
 
     #[test]
@@ -301,26 +231,15 @@ mod tests {
     }
 
     #[test]
-    fn rank_issues_sorted_by_impact() {
+    fn rank_issues_sorted_by_severity() {
         let issues = vec![
-            make_result(
-                "performance.ttfb",
-                ScanCategory::Performance,
-                Severity::Low,
-                CheckStatus::Fail,
-            ),
+            make_result("performance.ttfb", Severity::Low, CheckStatus::Fail),
             make_result(
                 "security.missing_csp",
-                ScanCategory::Security,
                 Severity::Critical,
                 CheckStatus::Fail,
             ),
-            make_result(
-                "seo.meta_description",
-                ScanCategory::Seo,
-                Severity::Medium,
-                CheckStatus::Warn,
-            ),
+            make_result("seo.meta_description", Severity::Medium, CheckStatus::Warn),
         ];
 
         let ranked = rank_issues(&issues, None);
@@ -332,7 +251,5 @@ mod tests {
         // Low performance (ttfb) should be lowest
         assert_eq!(ranked[2].issue.check_id, "performance.ttfb");
         assert_eq!(ranked[2].rank, 3);
-        assert!(ranked[0].estimated_points >= ranked[1].estimated_points);
-        assert!(ranked[1].estimated_points >= ranked[2].estimated_points);
     }
 }

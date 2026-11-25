@@ -1,16 +1,10 @@
-//! Git integration - reads commit history by shelling out to `git log`.
-//!
-//! Used for deploy tracking: detects new commits since last scan.
-
-use serde::{Deserialize, Serialize};
+//! Hardened Git commands for project files and checkout provenance.
+use std::collections::HashSet;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-use ts_rs::TS;
-
-use crate::db::{EventSeverity, EventSource, EventType, SiteEvent};
 
 // allow-inline-duration: git-command wall-clock timeout is private to
 // this module and has no constants.rs equivalent.
@@ -73,7 +67,7 @@ const GIT_FIXED_ENV: &[(&str, &str)] = &[
 /// The one place git is spawned. Both runners over it, `run_git` and
 /// `run_git_command`, go through here, which a source-scanning test in
 /// `lib_tests.rs` enforces.
-fn hardened_git_command(dir: &Path, args: &[&str]) -> Command {
+fn hardened_git_command(dir: &Path, args: &[impl AsRef<std::ffi::OsStr>]) -> Command {
     let mut command = Command::new("git");
     command.env_clear();
     for key in GIT_INHERITED_ENV {
@@ -88,196 +82,42 @@ fn hardened_git_command(dir: &Path, args: &[&str]) -> Command {
     command
 }
 
-/// A git commit from the project's log
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "ipc-bindings.ts")]
-pub struct GitCommit {
-    pub hash: String,
-    pub short_hash: String,
-    pub message: String,
-    pub author: String,
-    pub date: String,          // ISO 8601
-    pub relative_date: String, // "2 hours ago"
-}
-
-/// Git status for a project directory
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "ipc-bindings.ts")]
-pub struct GitStatus {
-    pub is_git_repo: bool,
-    pub branch: Option<String>,
-    pub commits: Vec<GitCommit>,
-    pub total_commits: u32,
-    pub has_uncommitted: bool,
-}
-
-/// Build the shared deploy-event shape from a git commit.
-pub fn commit_to_deploy_event(commit: &GitCommit, project_id: i64) -> SiteEvent {
-    SiteEvent {
-        id: 0,
-        project_id,
-        event_type: EventType::Deploy,
-        severity: EventSeverity::Info,
-        // Git author dates (%aI) are RFC 3339 with the author's local offset;
-        // epoch ms normalizes them.
-        occurred_at_ms: crate::db::timestamp_text_to_ms(&commit.date)
-            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis()),
-        title: commit
-            .message
-            .lines()
-            .next()
-            .unwrap_or(&commit.message)
-            .to_string(),
-        summary: format!("{} - {}", commit.short_hash, commit.author),
-        detail: Some(
-            serde_json::json!({
-                "hash": commit.hash,
-                "short_hash": commit.short_hash,
-                "author": commit.author,
-                "message": commit.message,
-            })
-            .to_string(),
-        ),
-        source: EventSource::Git,
-        source_id: Some(commit.hash.clone()),
-        metadata: None,
-        // Git deploy events do not map to a specific check_id.
-        affected_check_ids: None,
+/// Indexed paths among the candidates, or none when tracking cannot be established.
+pub(crate) fn tracked_files(dir: &Path, paths: &[&str]) -> HashSet<String> {
+    if paths.is_empty() {
+        return HashSet::new();
     }
-}
-
-/// `git log --format=...%x1f...` emits ASCII Unit Separator (`\x1f`) between
-/// fields. `\x1f` is forbidden in well-formed commit messages, so it's safe
-/// even when messages contain `|`, tabs, or other prose punctuation. Returns
-/// None for malformed lines.
-const FIELD_SEPARATOR: char = '\x1f';
-
-fn parse_log_line(line: &str) -> Option<GitCommit> {
-    let parts: Vec<&str> = line.splitn(6, FIELD_SEPARATOR).collect();
-    if parts.len() < 6 {
-        return None;
-    }
-    Some(GitCommit {
-        hash: parts[0].to_string(),
-        short_hash: parts[1].to_string(),
-        message: parts[2].to_string(),
-        author: parts[3].to_string(),
-        date: parts[4].to_string(),
-        relative_date: parts[5].to_string(),
-    })
-}
-
-/// Parse multi-line `git log` output into commits, dropping blank/malformed lines.
-fn parse_log_output(output: &str) -> Vec<GitCommit> {
-    output
-        .lines()
-        .filter(|l| !l.is_empty())
-        .filter_map(parse_log_line)
+    let mut args = vec!["--literal-pathspecs", "ls-files", "--cached", "-z", "--"];
+    args.extend_from_slice(paths);
+    run_git(dir, &args)
+        .unwrap_or_default()
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(str::to_owned)
         .collect()
 }
 
-/// Read git log from a project directory
-#[tracing::instrument(skip(project_path), fields(project_path_len = project_path.len(), limit))]
-pub fn get_git_status(project_path: &str, limit: u32) -> GitStatus {
-    let dir = Path::new(project_path);
-    let limit = limit.clamp(1, 200);
-
-    if !dir.join(".git").exists() && !has_git_dir(dir) {
-        return GitStatus {
-            is_git_repo: false,
-            branch: None,
-            commits: Vec::new(),
-            total_commits: 0,
-            has_uncommitted: false,
-        };
+pub(super) fn tracked_native_files(dir: &Path, paths: &[&std::ffi::OsStr]) -> HashSet<Vec<u8>> {
+    if paths.is_empty() {
+        return HashSet::new();
     }
-
-    let branch = run_git(dir, &["rev-parse", "--abbrev-ref", "HEAD"]).map(|s| s.trim().to_string());
-
-    let has_uncommitted = run_git(dir, &["status", "--porcelain"])
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
-
-    // Use ASCII Unit Separator (\x1f) instead of `|` so commit messages
-    // that contain `|` don't break field parsing.
-    let log_format = "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI%x1f%ar";
-    let log_output = run_git(
-        dir,
-        &["log", log_format, &format!("-{}", limit), "--no-merges"],
-    );
-
-    let commits = log_output
-        .as_deref()
-        .map(parse_log_output)
-        .unwrap_or_default();
-
-    let total_commits = run_git(dir, &["rev-list", "--count", "HEAD"])
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(commits.len() as u32);
-
-    GitStatus {
-        is_git_repo: true,
-        branch,
-        commits,
-        total_commits,
-        has_uncommitted,
-    }
-}
-
-/// Get commits since a specific date (for detecting new deploys)
-#[tracing::instrument(skip(project_path), fields(project_path_len = project_path.len(), since = %since))]
-pub fn get_commits_since(project_path: &str, since: &str) -> Vec<GitCommit> {
-    let dir = Path::new(project_path);
-    // Use ASCII Unit Separator (\x1f) instead of `|` so commit messages
-    // that contain `|` don't break field parsing.
-    let log_format = "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI%x1f%ar";
-    let since_arg = format!("--since={}", since);
-
-    let output = run_git(dir, &["log", log_format, &since_arg, "--no-merges"]);
-    output.as_deref().map(parse_log_output).unwrap_or_default()
-}
-
-/// Return commits in the inclusive window, newest first, plus the uncapped count.
-/// The list is whole-or-empty and capped at 200; failures return an empty list.
-#[tracing::instrument(skip(project_path), fields(project_path_len = project_path.len(), since = %since, until = %until))]
-pub fn get_commits_between(project_path: &str, since: &str, until: &str) -> (Vec<GitCommit>, u32) {
-    let dir = Path::new(project_path);
-    let log_format = "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI%x1f%ar";
-    let since_arg = format!("--since={}", since);
-    let until_arg = format!("--until={}", until);
-
-    let output = run_git(
-        dir,
-        &[
-            "log",
-            log_format,
-            &since_arg,
-            &until_arg,
-            "--no-merges",
-            "-n",
-            "200",
-        ],
-    );
-    let commits = output.as_deref().map(parse_log_output).unwrap_or_default();
-    let total = run_git(
-        dir,
-        &[
-            "rev-list",
-            "--count",
-            "--no-merges",
-            &since_arg,
-            &until_arg,
-            "HEAD",
-        ],
-    )
-    .and_then(|s| s.trim().parse::<u32>().ok())
-    .unwrap_or(commits.len() as u32);
-    (commits, total)
+    let mut args = ["--literal-pathspecs", "ls-files", "--cached", "-z", "--"]
+        .map(std::ffi::OsStr::new)
+        .to_vec();
+    args.extend_from_slice(paths);
+    run_git_bytes(dir, &args)
+        .unwrap_or_default()
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .map(<[u8]>::to_vec)
+        .collect()
 }
 
 fn run_git(dir: &Path, args: &[&str]) -> Option<String> {
+    String::from_utf8(run_git_bytes(dir, args)?).ok()
+}
+
+fn run_git_bytes(dir: &Path, args: &[impl AsRef<std::ffi::OsStr>]) -> Option<Vec<u8>> {
     let mut child = hardened_git_command(dir, args)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -337,7 +177,7 @@ fn run_git(dir: &Path, args: &[&str]) -> Option<String> {
     if exceeded_limit {
         return None;
     }
-    String::from_utf8(stdout).ok()
+    Some(stdout)
 }
 
 /// A git invocation whose status and both streams the caller reads, for the
@@ -467,14 +307,7 @@ pub(crate) fn run_git_command(
     })
 }
 
-fn has_git_dir(dir: &Path) -> bool {
-    // Check if we're inside a git repo (even if.git is in a parent)
-    run_git(dir, &["rev-parse", "--git-dir"]).is_some()
-}
-
-/// The exact checkout a file walk would observe, without applying the commit
-/// history view's `--no-merges` filter. Merge commits are ordinary checkout
-/// heads and must remain eligible for exact deployment provenance.
+/// Capture the current checkout, including merge heads, and whether it is clean.
 pub fn checkout_head_and_clean(project_path: &str) -> Option<(String, bool)> {
     let dir = Path::new(project_path);
     let head = run_git(dir, &["rev-parse", "HEAD"])?;
@@ -489,31 +322,6 @@ pub fn checkout_head_and_clean(project_path: &str) -> Option<(String, bool)> {
     }
     let status = run_git(dir, &["status", "--porcelain"])?;
     Some((head.to_string(), status.trim().is_empty()))
-}
-
-/// Get recent commits (convenience wrapper for backfill)
-#[tracing::instrument(skip(project_path), fields(project_path_len = project_path.len(), limit))]
-pub fn get_recent_commits(project_path: &str, limit: u32) -> Vec<GitCommit> {
-    get_git_status(project_path, limit).commits
-}
-
-/// Async entry points for runtime callers. `run_git` polls its child with a
-/// sleep loop that must never run on a runtime worker, so these move the
-/// sync helpers to the blocking pool and surface a failed blocking task as an
-/// error instead of an empty result.
-pub async fn get_git_status_async(project_path: String, limit: u32) -> Result<GitStatus, String> {
-    tokio::task::spawn_blocking(move || get_git_status(&project_path, limit))
-        .await
-        .map_err(|error| format!("Git status task failed: {error}"))
-}
-
-pub async fn get_commits_since_async(
-    project_path: String,
-    since: String,
-) -> Result<Vec<GitCommit>, String> {
-    tokio::task::spawn_blocking(move || get_commits_since(&project_path, &since))
-        .await
-        .map_err(|error| format!("Git commits task failed: {error}"))
 }
 
 #[cfg(test)]

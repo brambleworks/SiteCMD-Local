@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CRATE_DIR = path.join(ROOT, "apps", "desktop", "src-tauri");
 const CLI_MANIFEST = path.join(CRATE_DIR, "crates", "cli", "Cargo.toml");
+const STANDIN = process.argv.includes("--standin");
 const CONFIGURED_BINARY = process.env.SITECMD_CLI_BINARY?.trim();
 const BINARY = CONFIGURED_BINARY
   ? path.resolve(ROOT, CONFIGURED_BINARY)
@@ -37,7 +38,7 @@ const HELP_SNAPSHOTS = [
   {
     label: "sitecmd --help",
     args: ["--help"],
-    sha256: "4fcd6f959c2bc92d9f24770ae235d8be0ff6c5eeea0a59bc56d86546c542066d",
+    sha256: "bb9f1ed6fa9f7c85162acc84fa1277998b693e53cb30f8ed7b4453a448a854aa",
   },
   {
     label: "sitecmd init --help",
@@ -47,42 +48,42 @@ const HELP_SNAPSHOTS = [
   {
     label: "sitecmd audit --help",
     args: ["audit", "--help"],
-    sha256: "be89a099872b81eeb251b53c0440b2268d9fdc91f95b2370716b95fa1b2e715d",
+    sha256: "387c35b47923bf97152e4627e99df90acd367b43f580455435e0b9855d1a635d",
   },
   {
     label: "sitecmd rules --help",
     args: ["rules", "--help"],
-    sha256: "06a08eebc684af64ec4c5c6ddf53779eca04fd371748a9f6cab5af93413a2aa3",
+    sha256: "184413a44026ee308df3eeb2113668174c255770a6c000e6e403ca89799c74d4",
   },
   {
     label: "sitecmd autofix --help",
     args: ["autofix", "--help"],
-    sha256: "8044affcd81042d91f442901662bec44265e014f13d1e4f22197eb87c062dd5a",
+    sha256: "41a34d9c94db4cf6118c4c805c6723cc782616af8c7cacaa876726d5fc72dc8f",
   },
   {
     label: "sitecmd scan --help",
     args: ["scan", "--help"],
-    sha256: "1cf31800e10e57346e43209b888e2327f3721df00c2cb304fb669a357f636d3d",
+    sha256: "a19e4b0f7826407d069ec07b89d7853863a722b0bfff3352fe00ad52e6b37f96",
   },
   {
     label: "sitecmd fix --help",
     args: ["fix", "--help"],
-    sha256: "0ef2ead0b23f4d9e21b951acd9cec3586c2a8ba2fbaf6229c010c846c183c5da",
+    sha256: "24324b3960893df981e671699dbe787511a9f2bbb15438c9030b780362e567b7",
   },
   {
     label: "sitecmd watch --help",
     args: ["watch", "--help"],
-    sha256: "c53e4aeb071a84840ba3e675097d777a32a2faba585b02a63e692e9c407f418a",
+    sha256: "4665ec6eb98ec5c3556674d3b89fe37be9f93201d057f6b7dc9b6ebdf9d48195",
   },
   {
     label: "sitecmd check --help",
     args: ["check", "--help"],
-    sha256: "b2613d4835a6aa02b8c7733f863cbf8a436ba988fa6a0272688e7672cf8206a6",
+    sha256: "beb20ffdbdac677ba6d34c0ccc31fe0907ce9eb4ad2105b8704f5932a3f34cc8",
   },
   {
     label: "sitecmd connected --help",
     args: ["connected", "--help"],
-    sha256: "bf53e146d6c78f1890ce0bb5873e88aedaab9e78b7e276fde6927b5b9dc12dca",
+    sha256: "140c077f6a5c75593d856f4a9be7d34258f2df5e7f94fcd20a94d63a50fdd6c2",
   },
   {
     label: "sitecmd deploy --help",
@@ -92,7 +93,7 @@ const HELP_SNAPSHOTS = [
   {
     label: "sitecmd gate --help",
     args: ["gate", "--help"],
-    sha256: "1515c077c2f826a53f2978372d7ada30902ee26c851b5d841345ba818eec8c50",
+    sha256: "ac527858d4047e7209c08a71665737849c80321f11e132a7e390354ec8cb415e",
   },
 ];
 
@@ -124,7 +125,9 @@ function checkVersion() {
   const result = spawnSync(BINARY, ["--version"], { encoding: "utf8", timeout: 30_000 });
   if (result.status !== 0) fail(`--version exited ${result.status}: ${result.stderr}`);
   const actual = result.stdout.trim();
-  if (actual !== `sitecmd ${expected}`) {
+  const pinned = `sitecmd ${expected}`;
+  const allowUnpinned = process.env.SITECMD_ENGINE_UNPINNED === "1";
+  if (actual !== pinned && !(allowUnpinned && actual === `${pinned}+unpinned`)) {
     fail(`--version printed "${actual}", expected "sitecmd ${expected}"`);
   }
   console.log(`cli-smoke: --version ok (${actual})`);
@@ -156,9 +159,15 @@ function checkHelp() {
 
 function checkParserGuards() {
   const invalidCases = [
-    { args: ["scan", "--categories", "security,typo"], message: "Unknown Web Scan category" },
+    { args: ["scan", "--categories", "security,typo"], message: "Unknown category: typo" },
+    { args: ["scan", "--type", "security"], message: "Unknown option: --type" },
+    {
+      args: ["scan", "--diff", "--categories", "security"],
+      message: "--diff cannot be combined with --categories",
+    },
     { args: ["scan", "--fail-under", "101"], message: "between 0 and 100" },
-    { args: ["scan", "--cwv"], message: "browser-enabled source build" },
+    { args: ["scan", "--cwv"], message: "Unknown option: --cwv" },
+    { args: ["scan", "--no-browser"], message: "Unknown option: --no-browser" },
   ];
   for (const { args, message } of invalidCases) {
     const result = spawnSync(BINARY, args, { encoding: "utf8", timeout: 30_000 });
@@ -166,7 +175,7 @@ function checkParserGuards() {
       fail(`${args.join(" ")} did not fail closed with the expected usage error`);
     }
   }
-  console.log("cli-smoke: parser guardrails ok (categories, scores, browser flags)");
+  console.log("cli-smoke: parser guardrails ok (categories, scores, retired flags)");
 }
 
 function serveFixture() {
@@ -243,19 +252,30 @@ function checkAudit() {
     if (!Array.isArray(parsed.issues) || parsed.issues.length === 0) {
       fail("audit JSON has no findings for the vulnerable fixture");
     }
-    if (!parsed.issues.some((issue) => issue.id?.startsWith("hardcoded-secret:"))) {
+    if (STANDIN) {
+      const ids = parsed.issues.map((issue) => issue.id).sort();
+      if (
+        JSON.stringify(ids) !==
+        JSON.stringify(["standin.rule:package.json:0", "standin.rule:src/keys.js:0"])
+      ) {
+        fail("audit JSON did not contain one stand-in finding per fixture file");
+      }
+    } else if (!parsed.issues.some((issue) => issue.id?.startsWith("hardcoded-secret:"))) {
       fail("audit JSON did not contain the expected hardcoded-secret finding");
     }
     if (result.stdout.includes(FIXTURE_TOKEN)) {
       fail("audit JSON exposed the detected credential");
     }
 
-    const threshold = spawnSync(BINARY, ["audit", fixture, "--fail-on", "high"], {
+    const severity = STANDIN ? "low" : "high";
+    const threshold = spawnSync(BINARY, ["audit", fixture, "--fail-on", severity], {
       encoding: "utf8",
       timeout: 180_000,
     });
     if (threshold.status !== 1) {
-      fail(`audit --fail-on high exited ${threshold.status}, expected 1: ${threshold.stderr}`);
+      fail(
+        `audit --fail-on ${severity} exited ${threshold.status}, expected 1: ${threshold.stderr}`,
+      );
     }
     console.log(`cli-smoke: audit ok (${parsed.issues.length} findings, threshold exit 1)`);
   } finally {

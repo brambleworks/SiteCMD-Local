@@ -88,6 +88,10 @@ static MIGRATIONS: &[(u32, &str)] = &[
         30,
         include_str!("migrations/030_agent_request_occurrence_targets.sql"),
     ),
+    (
+        31,
+        include_str!("migrations/031_not_applicable_verdicts.sql"),
+    ),
 ];
 
 pub(crate) const UNIFIED_SCAN_CUTOVER_VERSION: u32 = 13;
@@ -235,7 +239,7 @@ fn apply_pending(
 
 #[cfg(test)]
 #[path = "migrations_tests.rs"]
-mod tests;
+pub(super) mod tests;
 
 #[cfg(test)]
 #[path = "migrations_011_tests.rs"]
@@ -248,3 +252,7 @@ mod canonical_scan_history_tests;
 #[cfg(test)]
 #[path = "migrations_013_tests.rs"]
 mod unified_scan_cutover_tests;
+
+#[cfg(test)]
+#[path = "migrations_031_tests.rs"]
+mod not_applicable_verdict_tests;

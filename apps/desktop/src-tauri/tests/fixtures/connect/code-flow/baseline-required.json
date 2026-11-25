@@ -1,0 +1,14 @@
+{
+  "status": 409,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": {
+    "type": "about:blank",
+    "title": "Conflict",
+    "status": 409,
+    "detail": "Send the baseline before asking for the secrets token.",
+    "code": "baseline_required",
+    "request_id": "REQUESTIDFIXTURE"
+  }
+}

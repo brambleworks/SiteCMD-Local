@@ -4,8 +4,18 @@
 useDefault = true
 
 # Allow the reserved `test-fixture-` prefix used by synthetic key-shaped values.
-[allowlist]
+[[allowlists]]
 description = "Synthetic test fixtures"
 regexes = [
     '''test-fixture-[a-z0-9-]+''',
 ]
+
+# The generated Cargo.lock names the crypto_secretbox crate (crypto_box's sealing
+# dependency); the generic key rule reads "secret" in the name and takes the next
+# dependency's name as a key. Only matches naming that crate, only in Cargo.lock.
+[[allowlists]]
+description = "The crypto_secretbox crate name in Cargo.lock"
+condition = "AND"
+paths = ['''(^|/)Cargo\.lock$''']
+regexTarget = "match"
+regexes = ['''^crypto_secretbox",''']

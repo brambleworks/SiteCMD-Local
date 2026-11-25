@@ -199,3 +199,47 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+SiteCMD Engine Module License
+
+1. What it covers. The compiled SiteCMD engine module (local-engine.wasm)
+   that ships inside SiteCMD CLI releases and on SiteCMD's releases host,
+   in every version SiteCMD publishes under this license. It doesn't cover
+   the SiteCMD CLI's source, which is under the Apache License 2.0, or any
+   engine version SiteCMD published under the Apache License 2.0, which
+   stays under that license.
+
+2. What you may do. Use the module free of charge to run SiteCMD's checks
+   through the SiteCMD CLI or a build of the CLI's source; copy it as part of
+   installing, building or testing the CLI; and redistribute it unmodified
+   inside the CLI's release packages or inside a fork of the CLI that
+   carries this license with it.
+
+3. What you may inspect. You may read the module's imports and exports, run
+   it under any WebAssembly tool, and observe what it does with what it's
+   given, to check SiteCMD's privacy claims. Nothing in this license limits
+   that.
+
+4. What you may not do. Modify the module; decompile, disassemble or
+   otherwise reverse engineer it to recover its checks, rules or fix text,
+   except where applicable law allows it despite this term; use the module,
+   or checks recovered from it, to build or train another check engine, rule
+   set or scanner; or remove this license or SiteCMD's notices.
+
+5. Your results. The findings, reports and fixes the module produces for you
+   are yours.
+
+6. Third-party components. Parts of the module come from third-party crates
+   under their own licenses, listed in local-engine.wasm.LICENSES.txt.
+
+7. No warranty, limited liability. SiteCMD provides the module "as is",
+   without warranties or conditions of any kind, express or implied,
+   including any warranty of title, non-infringement, merchantability or
+   fitness for a particular purpose. You're responsible for deciding whether
+   using it suits you. Unless applicable law requires it or SiteCMD agreed in
+   writing, SiteCMD isn't liable to you for any damages, including direct,
+   indirect, special, incidental or consequential damages, arising from this
+   license or from using or being unable to use the module, even if SiteCMD
+   was told such damages were possible.
+
+8. Ending. Breaking these terms ends your rights under them.

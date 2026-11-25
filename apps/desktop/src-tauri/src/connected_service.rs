@@ -1,14 +1,19 @@
 //! Bounded authenticated HTTP contract for the connected service.
 
-use reqwest::header::{HeaderValue, AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE};
 use reqwest::{Method, StatusCode};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
-use sitecmd_engine::sync::{ClientGroupState, DesktopSubmission, DismissalPolicy};
+use sitecmd_protocol::sync::wire::{Digest, Identifier, SeverityThreshold};
+use zeroize::Zeroizing;
 
 pub(crate) mod autofix_jobs;
 pub(crate) mod deployment_ordering;
 mod problem;
+mod request_body;
+mod request_url;
+pub(crate) use request_body::{EmptyRequest, WireRequest, NO_BODY};
+use request_url::RequestUrl;
 #[cfg(test)]
 pub(crate) mod test_double;
 
@@ -16,104 +21,18 @@ pub(crate) use problem::local_error;
 use problem::parse_response;
 
 pub use autofix_jobs::{
-    ClaimedFinding, ClaimedJob, Committer, FindingOutcomeReport, OperationToken, PullRequestReport,
-    ResultReceipt, ResultReport,
+    ClaimedFinding, ClaimedJob, FindingOutcomeReport, PullRequestReport, ResultReport,
 };
-pub use deployment_ordering::{
-    CiDeploymentHead, ConnectedCurrentDeployment, ConnectedOrderingAuthority,
-};
+pub use deployment_ordering::CiDeploymentHead;
 
 const CONNECTED_ENDPOINT: Option<&str> = option_env!("SITECMD_CONNECTED_ENDPOINT");
 const MAX_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
 
-pub fn is_configured() -> bool {
-    CONNECTED_ENDPOINT.is_some()
-}
+#[cfg(any(test, feature = "test-support"))]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// The stored scan scope, as state reports it. `None` on the state means no
-/// scope has ever been PUT, which the bootstrap path reads as its cue to set
-/// the initial one.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct ConnectedScope {
-    pub scope_revision: i64,
-    #[serde(default)]
-    pub routes: Vec<String>,
-    #[serde(default)]
-    pub check_families: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct ConnectedSiteState {
-    pub phase: String,
-    #[serde(default)]
-    pub state_revision: i64,
-    #[serde(default)]
-    pub event_sequence: i64,
-    #[serde(default)]
-    pub current_deployment: Option<ConnectedCurrentDeployment>,
-    #[serde(default)]
-    pub ordering_authority: Option<ConnectedOrderingAuthority>,
-    #[serde(default)]
-    pub scope: Option<ConnectedScope>,
-    #[serde(default)]
-    pub scope_effective_route_count: i64,
-    #[serde(default)]
-    pub scope_route_cap: i64,
-    #[serde(default)]
-    pub scope_over_plan: bool,
-    #[serde(default)]
-    pub scope_over_plan_grace_expires_at: Option<String>,
-    #[serde(default)]
-    pub scope_overflow_count: i64,
-    #[serde(default)]
-    pub site_allowance_over_plan: bool,
-    #[serde(default)]
-    pub site_allowance_over_plan_grace_expires_at: Option<String>,
-    /// Present only while the site is still waiting for its proof, which is
-    /// what lets a desktop that was closed mid-setup show the customer the
-    /// string they were told to publish.
-    #[serde(default)]
-    pub verification: Option<SiteChallenge>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct ConnectedGroupState {
-    pub check: String,
-    pub state: String,
-    pub state_revision: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct ConnectedGroupPage {
-    #[serde(default, alias = "groups")]
-    pub items: Vec<ConnectedGroupState>,
-    #[serde(default)]
-    pub next_cursor: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct SyncReceipt {
-    #[serde(default)]
-    pub event_sequence: i64,
-    #[serde(default)]
-    pub state_revision: i64,
-    #[serde(default)]
-    pub status: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct MutationReceipt {
-    #[serde(default)]
-    pub event_sequence: i64,
-    pub state_revision: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StaleGroup {
-    pub check: String,
-    pub state: String,
-    pub revision: i64,
-}
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) static CLIENT_CONSTRUCTION_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConnectedServiceError {
@@ -127,46 +46,6 @@ pub struct ConnectedServiceError {
     /// The seconds a refusal's `Retry-After` header names, such as the lease
     /// left on a `request_in_progress` key.
     pub retry_after: Option<u64>,
-}
-
-impl ConnectedServiceError {
-    pub fn is_stale_revision(&self) -> bool {
-        self.status == StatusCode::CONFLICT.as_u16() && self.code == "stale_revision"
-    }
-
-    /// Read all stale groups from either the batch form or the single-entry
-    /// shorthand. The service contract allows a batch to report more than one
-    /// conflict; callers sending one entry still accept both shapes.
-    pub fn stale_groups(&self, fallback_check: &str) -> Vec<StaleGroup> {
-        let Some(details) = self.details.as_ref() else {
-            return Vec::new();
-        };
-        if let Some(groups) = details.get("stale_groups").and_then(Value::as_array) {
-            return groups
-                .iter()
-                .filter_map(|group| {
-                    Some(StaleGroup {
-                        check: group.get("check")?.as_str()?.to_string(),
-                        state: group.get("current_state")?.as_str()?.to_string(),
-                        revision: group.get("current_state_revision")?.as_i64()?,
-                    })
-                })
-                .collect();
-        }
-        match (
-            details.get("current_state").and_then(Value::as_str),
-            details
-                .get("current_state_revision")
-                .and_then(Value::as_i64),
-        ) {
-            (Some(state), Some(revision)) => vec![StaleGroup {
-                check: fallback_check.to_string(),
-                state: state.to_string(),
-                revision,
-            }],
-            _ => Vec::new(),
-        }
-    }
 }
 
 impl std::fmt::Display for ConnectedServiceError {
@@ -187,16 +66,16 @@ impl std::error::Error for ConnectedServiceError {}
 
 /// What a CI command answers when Connect says the account is inactive. It
 /// names no origin, so a self-hosted Connect's users read the same sentence.
-pub(crate) const ACCOUNT_INACTIVE_NOTICE: &str = "SiteCMD Connect says this account is inactive, so nothing was sent. Renew it from the SiteCMD dashboard to resume.";
+pub(crate) const ACCOUNT_INACTIVE_NOTICE: &str = "SiteCMD says this account is inactive, so nothing was sent. Renew it from the dashboard to resume.";
 
 /// The same answer at a door whose request carried the person's data or that
 /// followed a step that changed state, where something was sent.
-pub(crate) const ACCOUNT_INACTIVE_RESULT_NOTICE: &str = "SiteCMD Connect says this account is inactive, so this result was not recorded. Renew it from the SiteCMD dashboard to resume.";
+pub(crate) const ACCOUNT_INACTIVE_RESULT_NOTICE: &str = "SiteCMD says this account is inactive, so this result was not recorded. Renew it from the dashboard to resume.";
 
 /// The gate's answer. The gate records nothing even for an active account,
 /// so its sentence names what did not happen, as the gate action's summary
 /// does.
-pub(crate) const ACCOUNT_INACTIVE_GATE_NOTICE: &str = "SiteCMD Connect says this account is inactive, so the gate graded nothing. Renew it from the SiteCMD dashboard to resume.";
+pub(crate) const ACCOUNT_INACTIVE_GATE_NOTICE: &str = "SiteCMD says this account is inactive, so the gate graded nothing. Renew it from the dashboard to resume.";
 
 /// Connect answers every machine door of a read-only account with
 /// `account_inactive`. A CI command stops on it with a notice and exit 0, so
@@ -221,130 +100,20 @@ pub(crate) fn inactive_output(earlier: &str, notice: &str, github_actions: bool)
     lines.join("\n")
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct GroupMutationEntry {
-    pub check: String,
-    pub based_on_revision: i64,
-    pub state: ClientGroupState,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dismissal: Option<DismissalPolicy>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct GroupMutationBatch<'a> {
-    entries: &'a [GroupMutationEntry],
-}
-
-#[derive(Debug, Serialize)]
-struct CreateSiteRequest<'a> {
-    url: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    alias: Option<&'a str>,
-    fingerprint_key_commitment: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct VerifyRequest<'a> {
-    method: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct ScopePutRequest<'a> {
-    based_on_scope_revision: i64,
-    routes: &'a [String],
-    check_families: &'a [String],
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct ScopeReceipt {
-    pub scope_revision: i64,
-    #[serde(default)]
-    pub event_sequence: i64,
-}
-
-#[derive(Debug, Serialize)]
-struct MintCiTokenRequest<'a> {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    repository: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    repository_id: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    workflow_ref: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    r#ref: Option<&'a str>,
-}
-
-/// Where a customer publishes the challenge, in the form they will copy.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct DnsChallenge {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub record_type: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct WellKnownChallenge {
-    pub path: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct SiteChallenge {
-    pub challenge: String,
-    pub dns: DnsChallenge,
-    pub well_known: WellKnownChallenge,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct CreatedSite {
-    pub id: String,
-    pub phase: String,
-    pub url: String,
-    pub verification: SiteChallenge,
-}
-
-/// The service's answer to an erasure request: a job the caller can name and
-/// the bearer that can read its receipt after everything else is gone.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct ErasureStarted {
-    pub job_id: String,
-    pub status_token: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct SiteVerification {
-    pub phase: String,
-    pub verified: bool,
-}
-
-/// The one moment a CI secret is readable. It is hashed before the service
-/// stores it, so this response is not a copy of something recoverable.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct MintedCiToken {
-    pub id: String,
-    pub token: String,
-    #[serde(default)]
-    pub repository: Option<String>,
-    #[serde(default)]
-    pub repository_id: Option<String>,
-    pub site: String,
-}
-
 /// Repository policy, sent with the request because it lives in the
 /// repository. A threshold stored server-side is a setting that silently
 /// governs a repository nobody looking at the repository can see.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GatePolicy {
-    pub severity_threshold: String,
+    pub severity_threshold: SeverityThreshold,
     pub strict_detector_changes: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct GateRequest {
     pub schema_version: u16,
-    pub site_id: String,
-    pub snapshot: sitecmd_engine::sync::CodeSnapshot,
+    pub site_id: Identifier,
+    pub snapshot: sitecmd_protocol::sync::CodeSnapshot,
     pub policy: GatePolicy,
 }
 
@@ -402,8 +171,46 @@ impl std::fmt::Debug for ConnectedServiceClient {
     }
 }
 
+struct WireResponse {
+    status: StatusCode,
+    bytes: Zeroizing<Vec<u8>>,
+    headers: HeaderMap,
+}
+
+impl WireResponse {
+    fn check_status(
+        &self,
+        now: impl FnOnce() -> Option<jiff::Timestamp>,
+    ) -> Result<(), ConnectedServiceError> {
+        if self.status.is_success() {
+            Ok(())
+        } else {
+            Err(problem::refusal(
+                self.status,
+                &self.headers,
+                &self.bytes,
+                now(),
+            ))
+        }
+    }
+
+    fn parse<T: DeserializeOwned>(&self) -> Result<T, ConnectedServiceError> {
+        self.parse_at(|| Some(jiff::Timestamp::now()))
+    }
+
+    fn parse_at<T: DeserializeOwned>(
+        &self,
+        now: impl FnOnce() -> Option<jiff::Timestamp>,
+    ) -> Result<T, ConnectedServiceError> {
+        self.check_status(now)?;
+        parse_response(self.status, &self.bytes)
+    }
+}
+
 impl ConnectedServiceClient {
     pub fn configured(token: &str) -> Result<Self, String> {
+        #[cfg(any(test, feature = "test-support"))]
+        CLIENT_CONSTRUCTION_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
         let endpoint = CONNECTED_ENDPOINT.ok_or_else(|| {
             "no connected-service endpoint is configured in this build".to_string()
         })?;
@@ -433,11 +240,14 @@ impl ConnectedServiceClient {
         token: Option<&str>,
         allow_http_loopback: bool,
     ) -> Result<Self, String> {
+        #[cfg(any(test, feature = "test-support"))]
+        CLIENT_CONSTRUCTION_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
         if token.is_some_and(|token| token.trim().is_empty()) {
             return Err("a connected-service token cannot be empty".into());
         }
         let mut base_url = url::Url::parse(endpoint.trim())
             .map_err(|error| format!("connected-service endpoint is invalid: {error}"))?;
+        normalize_origin_host(&mut base_url)?;
         let allowed_scheme = base_url.scheme() == "https"
             || crate::core::localhost::loopback_endpoint_allowed(allow_http_loopback, &base_url);
         if !allowed_scheme
@@ -453,10 +263,10 @@ impl ConnectedServiceClient {
         base_url.set_path("/");
         let authorization = match token {
             Some(token) => {
-                let mut authorization =
-                    HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| {
-                        "connected-service token is not a valid header value".to_string()
-                    })?;
+                let bearer = Zeroizing::new(format!("Bearer {token}"));
+                let mut authorization = HeaderValue::from_str(&bearer).map_err(|_| {
+                    "connected-service token is not a valid header value".to_string()
+                })?;
                 authorization.set_sensitive(true);
                 Some(authorization)
             }
@@ -470,7 +280,15 @@ impl ConnectedServiceClient {
         })
     }
 
-    pub(crate) fn url(&self, segments: &[&str]) -> Result<url::Url, ConnectedServiceError> {
+    pub(crate) fn url(&self, segments: &[&str]) -> Result<RequestUrl, ConnectedServiceError> {
+        for segment in segments {
+            Identifier::try_from(*segment).map_err(|_| {
+                local_error(
+                    "invalid_identifier",
+                    "invalid connected request path identifier",
+                )
+            })?;
+        }
         let mut url = self.base_url.clone();
         url.path_segments_mut()
             .map_err(|_| {
@@ -480,7 +298,7 @@ impl ConnectedServiceClient {
                 )
             })?
             .extend(segments);
-        Ok(url)
+        Ok(RequestUrl(url))
     }
 
     pub(crate) fn origin(&self) -> String {
@@ -490,39 +308,85 @@ impl ConnectedServiceClient {
     pub(crate) async fn request<T: DeserializeOwned>(
         &self,
         method: Method,
-        url: url::Url,
-        idempotency_key: Option<&str>,
-        body: Option<String>,
+        url: RequestUrl,
+        idempotency_key: Option<&Digest>,
+        body: Option<&impl WireRequest>,
     ) -> Result<T, ConnectedServiceError> {
-        let (status, bytes) = self.send(method, url, idempotency_key, body, None).await?;
-        parse_response(status, &bytes)
+        self.send(method, url, idempotency_key, body, None, |_| {})
+            .await?
+            .parse()
+    }
+
+    pub(crate) async fn request_at<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        url: RequestUrl,
+        idempotency_key: Option<&Digest>,
+        now: impl FnOnce() -> jiff::Timestamp,
+    ) -> Result<T, ConnectedServiceError> {
+        self.send(method, url, idempotency_key, NO_BODY, None, |_| {})
+            .await?
+            .parse_at(|| Some(now()))
+    }
+
+    /// Observe the server date even if the GET is refused or the body cannot be read.
+    pub(crate) async fn get_with_date<T: DeserializeOwned>(
+        &self,
+        url: RequestUrl,
+        observe: impl FnOnce(Option<jiff::Timestamp>),
+    ) -> Result<T, ConnectedServiceError> {
+        let mut date = None;
+        self.send(Method::GET, url, None, NO_BODY, None, |headers| {
+            date = problem::response_date(headers);
+            observe(date);
+        })
+        .await?
+        .parse_at(|| date)
     }
 
     pub(crate) async fn request_with_github_oidc<T: DeserializeOwned>(
         &self,
         method: Method,
-        url: url::Url,
-        idempotency_key: Option<&str>,
-        body: Option<String>,
+        url: RequestUrl,
+        idempotency_key: Option<&Digest>,
+        body: Option<&impl WireRequest>,
         github_oidc_token: Option<&str>,
     ) -> Result<T, ConnectedServiceError> {
-        let (status, bytes) = self
-            .send(method, url, idempotency_key, body, github_oidc_token)
-            .await?;
-        parse_response(status, &bytes)
+        self.send(
+            method,
+            url,
+            idempotency_key,
+            body,
+            github_oidc_token,
+            |_| {},
+        )
+        .await?
+        .parse()
     }
 
-    /// One wire exchange: the transport concerns and a refusal's problem
-    /// details, leaving a success's body unparsed for the routes that answer
-    /// `204` and give a parser nothing to read.
+    /// One exchange for the routes that answer `204` and give a parser
+    /// nothing to read: success is success, anything else is a refusal.
+    pub(crate) async fn no_content(
+        &self,
+        method: Method,
+        url: RequestUrl,
+    ) -> Result<(), ConnectedServiceError> {
+        self.send(method, url, None, NO_BODY, None, |_| {})
+            .await?
+            .check_status(|| Some(jiff::Timestamp::now()))
+    }
+
+    /// One bounded wire exchange with the configured origin.
     async fn send(
         &self,
         method: Method,
-        url: url::Url,
-        idempotency_key: Option<&str>,
-        body: Option<String>,
+        url: RequestUrl,
+        idempotency_key: Option<&Digest>,
+        body: Option<&impl WireRequest>,
         github_oidc_token: Option<&str>,
-    ) -> Result<(StatusCode, Vec<u8>), ConnectedServiceError> {
+        observe_headers: impl FnOnce(&HeaderMap),
+    ) -> Result<WireResponse, ConnectedServiceError> {
+        let url = url.0;
         #[cfg(test)]
         let url_policy =
             if self.allow_http_loopback && crate::core::localhost::is_strict_localhost(&url) {
@@ -539,7 +403,7 @@ impl ConnectedServiceClient {
             })?;
         let is_local = crate::core::localhost::is_strict_localhost(&url);
         let mut request = if is_local {
-            crate::http_client::localhost_client()
+            crate::http_client::credentialed_loopback_client()
         } else {
             crate::http_client::credentialed_service_client()
         }
@@ -549,7 +413,7 @@ impl ConnectedServiceClient {
             request = request.header(AUTHORIZATION, authorization.clone());
         }
         if let Some(idempotency_key) = idempotency_key {
-            request = request.header("Idempotency-Key", idempotency_key);
+            request = request.header("Idempotency-Key", idempotency_key.as_str());
         }
         if let Some(token) = github_oidc_token {
             let mut token = HeaderValue::from_str(token).map_err(|_| {
@@ -562,7 +426,15 @@ impl ConnectedServiceClient {
             request = request.header("X-GitHub-OIDC-Token", token);
         }
         if let Some(body) = body {
-            request = request.header(CONTENT_TYPE, "application/json").body(body);
+            let encoded = request_body::encode(body).map_err(|error| {
+                local_error(
+                    "serialization_failed",
+                    &format!("connected request could not be encoded: {error}"),
+                )
+            })?;
+            request = request
+                .header(CONTENT_TYPE, "application/json")
+                .body(encoded);
         }
         let response = request.send().await.map_err(|_| {
             local_error(
@@ -571,213 +443,50 @@ impl ConnectedServiceClient {
             )
         })?;
         let status = response.status();
+        observe_headers(response.headers());
         let headers = response.headers().clone();
-        let bytes = crate::http_client::read_body_limited(
-            response,
-            MAX_RESPONSE_BYTES,
-            crate::constants::API_TIMEOUT_SHORT,
-        )
-        .await
-        .map_err(|_| {
-            local_error(
-                "response_failed",
-                "the connected service response could not be read",
+        let bytes = Zeroizing::new(
+            crate::http_client::read_body_limited(
+                response,
+                MAX_RESPONSE_BYTES,
+                crate::constants::API_TIMEOUT_SHORT,
             )
-        })?;
-        if !status.is_success() {
-            return Err(problem::refusal(status, &headers, &bytes));
-        }
-        Ok((status, bytes))
-    }
-
-    /// One exchange for the routes that answer `204` and give a parser
-    /// nothing to read: success is success, anything else is a refusal.
-    pub(crate) async fn no_content(
-        &self,
-        method: Method,
-        url: url::Url,
-    ) -> Result<(), ConnectedServiceError> {
-        self.send(method, url, None, None, None).await.map(|_| ())
-    }
-
-    /// Idempotently disconnect a site while retaining its state window.
-    pub async fn delete_site(&self, site_id: &str) -> Result<(), ConnectedServiceError> {
-        let url = self.url(&["v1", "sites", site_id])?;
-        self.no_content(Method::DELETE, url).await
-    }
-
-    /// Permanently erase a site and return its one-time receipt token.
-    pub async fn erase_site(&self, site_id: &str) -> Result<ErasureStarted, ConnectedServiceError> {
-        let url = self.url(&["v1", "sites", site_id, "erase"])?;
-        self.request(Method::POST, url, None, Some("{}".to_string()))
             .await
-    }
-
-    /// Create a pending site and its verification challenge.
-    /// The fingerprint commitment is required at creation so the first code
-    /// submission cannot establish a conflicting key.
-    pub async fn create_site(
-        &self,
-        url: &str,
-        alias: Option<&str>,
-        fingerprint_key_commitment: &str,
-    ) -> Result<CreatedSite, ConnectedServiceError> {
-        let body = serde_json::to_string(&CreateSiteRequest {
-            alias,
-            fingerprint_key_commitment,
-            url,
+            .map_err(|_| {
+                local_error(
+                    "response_failed",
+                    "the connected service response could not be read",
+                )
+            })?,
+        );
+        Ok(WireResponse {
+            status,
+            bytes,
+            headers,
         })
-        .map_err(|_| {
-            local_error(
-                "serialization_failed",
-                "connected site request could not be encoded",
-            )
-        })?;
-        let url = self.url(&["v1", "sites"])?;
-        self.request(Method::POST, url, None, Some(body)).await
     }
 
-    /// Ask the service to verify the published ownership challenge.
-    pub async fn verify_site(
-        &self,
-        site_id: &str,
-        method: &str,
-    ) -> Result<SiteVerification, ConnectedServiceError> {
-        let body = serde_json::to_string(&VerifyRequest { method }).map_err(|_| {
-            local_error(
-                "serialization_failed",
-                "connected verification request could not be encoded",
-            )
-        })?;
-        let url = self.url(&["v1", "sites", site_id, "verify"])?;
-        self.request(Method::POST, url, None, Some(body)).await
-    }
-
-    /// Mint a CI credential for one site. The secret in the response is the
-    /// only copy that will ever exist.
-    pub async fn mint_ci_token(
-        &self,
-        site_id: &str,
-        repository: Option<&str>,
-        repository_id: Option<&str>,
-        workflow_ref: Option<&str>,
-        git_ref: Option<&str>,
-    ) -> Result<MintedCiToken, ConnectedServiceError> {
-        let body = serde_json::to_string(&MintCiTokenRequest {
-            repository,
-            repository_id,
-            workflow_ref,
-            r#ref: git_ref,
-        })
-        .map_err(|_| {
-            local_error(
-                "serialization_failed",
-                "connected token request could not be encoded",
-            )
-        })?;
-        let url = self.url(&["v1", "sites", site_id, "tokens"])?;
-        self.request(Method::POST, url, None, Some(body)).await
-    }
-
-    /// Ask for a verdict on a candidate branch. Nothing is persisted.
     pub async fn gate(
         &self,
         site_id: &str,
         request: &GateRequest,
     ) -> Result<GateVerdict, ConnectedServiceError> {
-        let body = serde_json::to_string_pretty(request).map_err(|_| {
-            local_error(
-                "serialization_failed",
-                "connected gate request could not be encoded",
-            )
-        })?;
         let url = self.url(&["v1", "sites", site_id, "gate"])?;
-        self.request(Method::POST, url, None, Some(body)).await
-    }
-
-    pub async fn state(&self, site_id: &str) -> Result<ConnectedSiteState, ConnectedServiceError> {
-        let url = self.url(&["v1", "sites", site_id, "state"])?;
-        self.request(Method::GET, url, None, None).await
-    }
-
-    /// Replace scope under an optimistic revision guard.
-    /// Callers decide whether `stale_revision` satisfies bootstrap intent.
-    pub async fn put_scope(
-        &self,
-        site_id: &str,
-        based_on_scope_revision: i64,
-        routes: &[String],
-        check_families: &[String],
-    ) -> Result<ScopeReceipt, ConnectedServiceError> {
-        let body = serde_json::to_string(&ScopePutRequest {
-            based_on_scope_revision,
-            check_families,
-            routes,
-        })
-        .map_err(|_| {
-            local_error(
-                "serialization_failed",
-                "connected scope request could not be encoded",
-            )
-        })?;
-        let url = self.url(&["v1", "sites", site_id, "scope"])?;
-        self.request(Method::PUT, url, None, Some(body)).await
-    }
-
-    pub async fn groups(
-        &self,
-        site_id: &str,
-        cursor: Option<&str>,
-    ) -> Result<ConnectedGroupPage, ConnectedServiceError> {
-        let mut url = self.url(&["v1", "sites", site_id, "groups"])?;
-        {
-            let mut query = url.query_pairs_mut();
-            query.append_pair("limit", "500");
-            if let Some(cursor) = cursor {
-                query.append_pair("cursor", cursor);
-            }
-        }
-        self.request(Method::GET, url, None, None).await
-    }
-
-    pub async fn sync_desktop(
-        &self,
-        site_id: &str,
-        idempotency_key: &str,
-        submission: &DesktopSubmission,
-    ) -> Result<SyncReceipt, ConnectedServiceError> {
-        let exact_body = submission.render_for_inspection().map_err(|_| {
-            local_error(
-                "serialization_failed",
-                "connected submission could not be encoded",
-            )
-        })?;
-        let url = self.url(&["v1", "sites", site_id, "sync", "desktop"])?;
-        self.request(Method::POST, url, Some(idempotency_key), Some(exact_body))
-            .await
-    }
-
-    pub async fn mutate_group(
-        &self,
-        site_id: &str,
-        idempotency_key: &str,
-        mutation: &GroupMutationEntry,
-    ) -> Result<MutationReceipt, ConnectedServiceError> {
-        let body = serde_json::to_string_pretty(&GroupMutationBatch {
-            entries: std::slice::from_ref(mutation),
-        })
-        .map_err(|_| {
-            local_error(
-                "serialization_failed",
-                "connected mutation could not be encoded",
-            )
-        })?;
-        let url = self.url(&["v1", "sites", site_id, "mutations"])?;
-        self.request(Method::POST, url, Some(idempotency_key), Some(body))
-            .await
+        self.request(Method::POST, url, None, Some(request)).await
     }
 }
 
 #[cfg(test)]
 #[path = "connected_service_tests.rs"]
 mod tests;
+
+pub(crate) fn normalize_origin_host(url: &mut url::Url) -> Result<(), String> {
+    if let Some(url::Host::Domain(host)) = url.host() {
+        if let Some(host) = host.strip_suffix('.') {
+            let host = host.to_owned();
+            url.set_host(Some(&host))
+                .map_err(|_| "connected-service endpoint host is invalid")?;
+        }
+    }
+    Ok(())
+}

@@ -15,7 +15,7 @@ fn self_signed_exception_is_limited_to_strict_loopback_names() {
         rustls_platform_verifier::Verifier::new(Arc::new(rustls::crypto::ring::default_provider()))
             .unwrap(),
     );
-    let certificate = CertificateDer::from(include_bytes!("fixtures/cert.der").as_slice());
+    let certificate = CertificateDer::from(include_bytes!("testdata/cert.der").as_slice());
     for (name, allowed) in [
         ("localhost", true),
         ("LOCALHOST.", true),
@@ -47,10 +47,10 @@ async fn tls_server() -> (std::net::SocketAddr, tokio::task::JoinHandle<bool>) {
     .with_no_client_auth()
     .with_single_cert(
         vec![CertificateDer::from(
-            include_bytes!("fixtures/cert.der").to_vec(),
+            include_bytes!("testdata/cert.der").to_vec(),
         )],
         PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
-            include_bytes!("fixtures/key.der").to_vec(),
+            include_bytes!("testdata/key.der").to_vec(),
         )),
     )
     .unwrap();
@@ -80,7 +80,7 @@ fn local_scan_client(address: std::net::SocketAddr) -> reqwest::Client {
     let _ = rustls::crypto::ring::default_provider().install_default();
     configure(reqwest::Client::builder())
         .resolve("public.example", address)
-        .timeout(crate::constants::CHECK_PROBE_TIMEOUT)
+        .timeout(crate::constants::API_TIMEOUT_SHORT)
         .build()
         .unwrap()
 }
@@ -139,7 +139,7 @@ async fn loopback_certificate_exceptions_ignore_proxy_routing() {
     });
     let client =
         configure(reqwest::Client::builder().proxy(reqwest::Proxy::all(proxy_url).unwrap()))
-            .timeout(crate::constants::CHECK_PROBE_TIMEOUT)
+            .timeout(crate::constants::API_TIMEOUT_SHORT)
             .build()
             .unwrap();
     let response = client.get(format!("https://{address}/")).send().await;

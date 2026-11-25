@@ -1,4 +1,4 @@
-const RUST_SRC_DIR = "apps/desktop/src-tauri/src";
+const RUST_SRC_DIRS = ["apps/desktop/src-tauri/src"];
 
 // Find real instrument attributes, including multiline and stacked attributes.
 function instrumentedFnNames(source) {
@@ -59,9 +59,12 @@ function displayDebugFmtBodies(source) {
   return bodies;
 }
 
-export function displayImplLogReentrancyFailures(read, listFiles) {
+export function displayImplLogReentrancyFailures(read, listFiles, extraRoots = []) {
   const failures = [];
-  for (const file of listFiles(RUST_SRC_DIR, (name) => name.endsWith(".rs"))) {
+  const files = [...RUST_SRC_DIRS, ...extraRoots].flatMap((dir) =>
+    listFiles(dir, (name) => name.endsWith(".rs")),
+  );
+  for (const file of files) {
     const source = read(file);
     if (!source.includes("#[tracing::instrument") || !/fmt::(?:Display|Debug)\s+for/.test(source)) {
       continue;

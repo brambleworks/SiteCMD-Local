@@ -7,24 +7,13 @@ for legal_file in LICENSE NOTICE THIRD_PARTY_NOTICES THIRD_PARTY_DEPENDENCIES.js
   test -s "cli-check/$legal_file"
 done
 if [ "$TARGET" = "darwin-universal" ]; then
-  codesign --verify --strict cli-check/sitecmd
+  codesign --verify --strict cli-check/sitecmd --all-architectures
   # Apple's check for non-app code consults online notarization tickets.
   codesign -vvvv -R="notarized" --check-notarization cli-check/sitecmd
-  filename=$(jq -r '.filename' "$dir/fragment.json")
-  dmg_name=$(jq -r '.dmg_name' "$dir/fragment.json")
-  mkdir app-check
-  tar -C app-check -xzf "$dir/$filename"
-  app=$(find app-check -maxdepth 1 -type d -name '*.app' -print -quit)
-  test -n "$app"
-  codesign --verify --deep --strict "$app"
-  spctl -a -vv -t exec "$app"
-  codesign --verify --strict "$dir/$dmg_name"
-  xcrun stapler validate "$dir/$dmg_name"
+  expected_team=$(jq -er '.signer_identity | strings | select(length > 0)' "$dir/fragment.json")
   cli_team=$(codesign -dv --verbose=4 cli-check/sitecmd 2>&1 | \
     awk -F= '/^TeamIdentifier=/{print $2}')
-  app_team=$(codesign -dv --verbose=4 "$app" 2>&1 | \
-    awk -F= '/^TeamIdentifier=/{print $2}')
   test -n "$cli_team"
-  test "$cli_team" = "$app_team"
+  test "$cli_team" = "$expected_team"
 fi
 test "$(cli-check/sitecmd --version)" = "sitecmd $EXPECTED_VERSION"

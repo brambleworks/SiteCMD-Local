@@ -1,0 +1,109 @@
+{
+  "connect_commit": "2d63611bcc620b6bf2faea49cf6909fbc221e1a1",
+  "files": [
+    {
+      "file": "baseline-applied.json",
+      "sha256": "2756c021f80f95e38b58dcc44af3b9701c5af5fad3d4f9b3d93aac77744bf099"
+    },
+    {
+      "file": "baseline-bootstrapped.json",
+      "sha256": "3dd1bf97a2862319bf0f9e24d0ba4e5f9e350136c00f98c54f2fa4acfdb374a2"
+    },
+    {
+      "file": "baseline-recorded.json",
+      "sha256": "18ee57e4bd88f9ba745e9c59d6f6b6a156c633cad0691e9e16780f08027a866a"
+    },
+    {
+      "file": "baseline-required.json",
+      "sha256": "ca41ac917030eb3cf297e5cbff4ad8b89f4ebcc486e8226c2b7bad7571af7344"
+    },
+    {
+      "file": "connect.json",
+      "sha256": "5e85cb61b44ddb64cb0771f4237f6c5dbca4bf7886ea9fd7ec3f861ba61b6eae"
+    },
+    {
+      "file": "connection-spent.json",
+      "sha256": "91a77341e7109629c2e6dfceba337493215015dedc997b8d29d1f82189ebe985"
+    },
+    {
+      "file": "denied.json",
+      "sha256": "df3f8c96b9a89354e42622e005ed0001528f1416749f4d0346b5d0cc9797a709"
+    },
+    {
+      "file": "expired.json",
+      "sha256": "f5165dd43219ac2d7f350aa7d687133acf5c13cbbc9dd6569d9998ad02e58b57"
+    },
+    {
+      "file": "issued.json",
+      "sha256": "3bc2a6dc5af2099770e707bb13281c6cd9ec9ff5fc893a315194e130822003b4"
+    },
+    {
+      "file": "key-commitment-mismatch.json",
+      "sha256": "115d11ce8c5329e0be9955ca3cbf9195ed35fd59bc6ed7b7d986b00d679d877d"
+    },
+    {
+      "file": "login.json",
+      "sha256": "491585eaadba15bcf095e6387dc80dd767158332b975ea77ba39a8a05f58507b"
+    },
+    {
+      "file": "lookup-not-found.json",
+      "sha256": "c1718e082b786b6b808686c4b4ac4eb38ec74e25cc06304560f586775aebf288"
+    },
+    {
+      "file": "lookup-rate-limited.json",
+      "sha256": "62c5cf82298e7e073b3dbd53fc2502fcae03fd7371e00ae7eb09859e269ed5cb"
+    },
+    {
+      "file": "pending.json",
+      "sha256": "70f9a92f013a21af50362770fe1e83b3675b229e824409058d03ab1aee5a3cff"
+    },
+    {
+      "file": "secrets-installation-suspended.json",
+      "sha256": "fd01bc8d60a9b5bed45ec03152ad9361cb2a4e47d417df8643723f5eaa5085b2"
+    },
+    {
+      "file": "secrets-not-repository-admin.json",
+      "sha256": "0475c178a09ef3466d92dc941a990f0290daf9cc18c1818f5bb7025c8eb60c6f"
+    },
+    {
+      "file": "secrets-provisioned-installed.json",
+      "sha256": "7a7e7305257f5205590fbe36569425a5fcb04930dbd124153a0c4e7ebb69f367"
+    },
+    {
+      "file": "secrets-provisioned-setup-pr-closed.json",
+      "sha256": "d57a1d8b56498adda0da7fee3514d53e8e11906b5998888059ea652b8b88a910"
+    },
+    {
+      "file": "secrets-provisioned.json",
+      "sha256": "c4ac46e4fe6e1b117487cb22b1d228089b3cd5c692440200f28725ea78ccef8e"
+    },
+    {
+      "file": "secrets-setup-ci-token.json",
+      "sha256": "b236ad5a059f192b21bb2487f2805f55abfff646eee8b45a1caeb38def7fcea8"
+    },
+    {
+      "file": "secrets-setup-setup-pull-request.json",
+      "sha256": "9e46fa40737994bc782645292ba94817f6b8ac2248bd3758313784eda099a17f"
+    },
+    {
+      "file": "secrets-setup-unlinking.json",
+      "sha256": "8abf1273906b5776b03358c72aad5ed0c863bb504d7bb16ccb89acd6d90a755d"
+    },
+    {
+      "file": "secrets-token.json",
+      "sha256": "7005b4613e58767289d726b46f7c77c494396165dcdbe4a3084d69dd0316ec0f"
+    },
+    {
+      "file": "secrets-unavailable.json",
+      "sha256": "11cb312e3c947080e929b78d87bb7dd93bd82ac79976d6ff6751a9bd278205e8"
+    },
+    {
+      "file": "slow-down.json",
+      "sha256": "f754fe134b8d9214e49620ab922b69c568612fe3b78607f1c4296fdea02394a6"
+    },
+    {
+      "file": "token-limit.json",
+      "sha256": "08c6176339b924890a07e95f6769a4ac201268ee1290a2cc27b7c7f6e0f35b11"
+    }
+  ]
+}

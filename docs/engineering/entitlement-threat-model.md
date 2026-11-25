@@ -197,12 +197,15 @@ so each is a target.
 - **Reconciliation.** A periodic sweep repairs missed deliveries, because a
   webhook that never arrives is silent.
 
-## What a lapsed subscription does not do
+## Subscription lapse
 
-Cancellation stops future pack downloads. It does not delete the last
-downloaded pack, disable the open client, or remove any local data. The terms
-promise this and the client enforces it structurally: nothing in
-`catalog::store` deletes an active pack.
+The [Terms of Service](https://sitecmd.com/terms) say cancellation takes effect
+at the end of the free trial or the paid period and SiteCMD stops watching
+your sites when the subscription ends.
+
+The CLI runs Code Scan and local site checks through the embedded module
+without checking subscription status. For public-site scans, it calls the
+hosted scanner, where the service enforces entitlement.
 
 ## Logging and retention
 

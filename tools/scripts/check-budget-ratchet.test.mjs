@@ -75,6 +75,29 @@ describe("check-budget-ratchet", () => {
     fs.rmSync(repo, { recursive: true, force: true });
   });
 
+  it("uses the PR message file instead of commit messages for a range", () => {
+    const budget = "tools/scripts/lib/guardrail-script-budgets.mjs";
+    write(repo, budget, SAMPLE_BUDGET_FILE.replace("1800", "1801"));
+    commit(repo, "Raise budget");
+    write(repo, "pr-message", "Raise budget\n\n[budget-raised: Cover new cases (#123)]\n");
+    const result = runScript(repo, ["--range", "HEAD~1..HEAD", "--message-file", "pr-message"]);
+    expect(result.status, result.stderr).toBe(0);
+
+    git(
+      repo,
+      "commit",
+      "--amend",
+      "-m",
+      "Raise budget",
+      "-m",
+      "[budget-raised: Local marker (#123)]",
+    );
+    write(repo, "pr-message", "Raise budget\n");
+    expect(
+      runScript(repo, ["--range", "HEAD~1..HEAD", "--message-file", "pr-message"]).status,
+    ).toBe(1);
+  });
+
   it("passes when staged budget file has no threshold changes", () => {
     write(
       repo,
@@ -201,6 +224,29 @@ describe("check-budget-ratchet", () => {
     expect(result.stderr).toMatch(/authorized via \[budget-raised:\]/);
   });
 
+  it.each([
+    ["(#42)]", 0, /authorized via \[budget-raised:\]/],
+    ["]", 1, /tracked issue or PR/],
+  ])("reads a token that GitHub wrapped across lines, ending %s", (end, status, stderr) => {
+    // GitHub hard-wraps squash commit bodies near 72 columns (Connect merge queue run 45496595113).
+    write(
+      repo,
+      "tools/scripts/lib/guardrail-script-budgets.mjs",
+      SAMPLE_BUDGET_FILE.replace(
+        '"tools/scripts/lib/guardrail-rust-rules.mjs", 120',
+        '"tools/scripts/lib/guardrail-rust-rules.mjs", 220',
+      ),
+    );
+    stageOnly(repo, "tools/scripts/lib/guardrail-script-budgets.mjs");
+    setCommitMessage(
+      repo,
+      `Raise the rules budget (#42)\n\n[budget-raised: needed to land the new ratchet helpers; split\ndeferred ${end}\n`,
+    );
+    const result = runScript(repo);
+    expect(result.status).toBe(status);
+    expect(result.stderr).toMatch(stderr);
+  });
+
   it("REJECTS a bypass token that lacks an issue or PR reference", () => {
     write(
       repo,
@@ -236,6 +282,103 @@ describe("check-budget-ratchet", () => {
     );
     const result = runScript(repo);
     expect(result.status).toBe(0);
+  });
+
+  // Bug: a renamed budget file was never checked, so a rename could carry a raise.
+  it.each([
+    ["tools/scripts/lib/guardrail-script-budgets-moved.mjs", 120, 0],
+    ["tools/scripts/lib/guardrail-script-budgets-moved.mjs", 121, 1],
+    ["tools/scripts/script-budgets.mjs", 121, 1],
+  ])("checks the budget file renamed to %s with value %i", (target, value, status) => {
+    git(repo, "mv", "tools/scripts/lib/guardrail-script-budgets.mjs", target);
+    write(
+      repo,
+      target,
+      SAMPLE_BUDGET_FILE.replace(
+        '["tools/scripts/lib/guardrail-rust-rules.mjs", 120],',
+        `["tools/scripts/lib/guardrail-rust-rules.mjs", ${value}],`,
+      ),
+    );
+    stageOnly(repo, target);
+    setCommitMessage(repo, "wip\n");
+    const result = runScript(repo);
+    expect(result.status, result.stderr).toBe(status);
+    if (status) expect(result.stderr).toMatch(/guardrail-rust-rules\.mjs" raised 120 -> 121/);
+  });
+
+  // Bug: a commit range paired no renames, so CI read a moved file's budget as new.
+  it.each([
+    [120, 0],
+    [121, 1],
+  ])("pairs a renamed file's threshold %i across a commit range", (value, status) => {
+    write(repo, "tools/scripts/lib/guardrail-rust-rules.mjs", "export const rules = [];\n");
+    commit(repo, "add the budgeted file");
+    git(
+      repo,
+      "mv",
+      "tools/scripts/lib/guardrail-rust-rules.mjs",
+      "tools/scripts/lib/guardrail-rust-moved.mjs",
+    );
+    write(
+      repo,
+      "tools/scripts/lib/guardrail-script-budgets.mjs",
+      SAMPLE_BUDGET_FILE.replace(
+        '["tools/scripts/lib/guardrail-rust-rules.mjs", 120],',
+        `["tools/scripts/lib/guardrail-rust-moved.mjs", ${value}],`,
+      ),
+    );
+    commit(repo, "move the budgeted file");
+    const result = runScript(repo, ["--range", "HEAD~1..HEAD"]);
+    expect(result.status, result.stderr).toBe(status);
+  });
+
+  // Bug: a pair the formatter wrapped across lines was invisible, so raising it passed.
+  it("FAILS when a wrapped threshold entry is raised", () => {
+    const wrapped = SAMPLE_BUDGET_FILE.replace(
+      '["tools/scripts/lib/guardrail-rust-rules.mjs", 120],',
+      '[\n    "tools/scripts/lib/guardrail-rust-rules.mjs",\n    120,\n  ],',
+    );
+    write(repo, "tools/scripts/lib/guardrail-script-budgets.mjs", wrapped);
+    commit(repo, "wrap the entry");
+    write(
+      repo,
+      "tools/scripts/lib/guardrail-script-budgets.mjs",
+      wrapped.replace("    120,", "    121,"),
+    );
+    stageOnly(repo, "tools/scripts/lib/guardrail-script-budgets.mjs");
+    setCommitMessage(repo, "wip\n");
+    const result = runScript(repo);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/guardrail-rust-rules\.mjs" raised 120 -> 121/);
+  });
+
+  // Bug: moving a file renamed its threshold key, and the ratchet read the unchanged value as a new raise.
+  it.each([
+    [120, 0],
+    [119, 0],
+    [121, 1],
+  ])("compares a renamed file's threshold %i with its old path's value", (value, status) => {
+    write(repo, "tools/scripts/lib/guardrail-rust-rules.mjs", "export const rules = [];\n");
+    commit(repo, "add the budgeted file");
+    git(
+      repo,
+      "mv",
+      "tools/scripts/lib/guardrail-rust-rules.mjs",
+      "tools/scripts/lib/guardrail-rust-moved.mjs",
+    );
+    write(
+      repo,
+      "tools/scripts/lib/guardrail-script-budgets.mjs",
+      SAMPLE_BUDGET_FILE.replace(
+        '["tools/scripts/lib/guardrail-rust-rules.mjs", 120],',
+        `["tools/scripts/lib/guardrail-rust-moved.mjs", ${value}],`,
+      ),
+    );
+    stageOnly(repo, "tools/scripts/lib/guardrail-script-budgets.mjs");
+    setCommitMessage(repo, "wip\n");
+    const result = runScript(repo);
+    expect(result.status, result.stderr).toBe(status);
+    if (status) expect(result.stderr).toMatch(/guardrail-rust-moved\.mjs" raised 120 -> 121/);
   });
 
   it("ignores staged files that aren't budget files", () => {

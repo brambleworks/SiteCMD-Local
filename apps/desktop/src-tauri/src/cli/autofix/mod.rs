@@ -5,13 +5,16 @@ pub mod apply;
 pub mod artifact;
 pub mod brief;
 pub mod brief_publish;
+pub mod exit_check;
 pub mod github_api;
 pub mod locate;
 pub mod publish_job;
-pub mod redact;
 pub mod repo;
 pub mod run_job;
 pub mod secrets;
+pub(crate) mod template_plan;
+#[cfg(feature = "test-support")]
+pub(crate) mod test_support;
 
 pub const HELP: &str = concat!(
     "SiteCMD autofix - Apply template fixes, or run a Connect fix job\n\n",
@@ -53,7 +56,7 @@ pub const HELP: &str = concat!(
     "  --check <SLUG>         Only findings for this rule, such as open-redirect\n",
     "  --path <PATH>          Checkout root (default: working directory)\n\n",
     "Exit codes:\n",
-    "  0  Completed, or SiteCMD Connect said the account is inactive\n",
+    "  0  Completed, or SiteCMD said the account is inactive\n",
     "  1  A job reported a failure outcome\n",
     "  2  Usage or operational error\n\n",
     "Examples:\n",

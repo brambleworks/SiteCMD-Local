@@ -7,6 +7,29 @@ import {
   rules,
 } from "./guardrail-test-support.mjs";
 
+it.each(["headless_chrome", "hickory-resolver"])(
+  "cli_manifests_carry_no_browser_or_dns_client (%s)",
+  (dependency) => {
+    // Bug: The runtime manifest can reintroduce a native scanner dependency.
+    expectGuardrailFailure(
+      rules.cliSurfaceFailures,
+      (root) => {
+        const file = "apps/desktop/src-tauri/crates/runtime/Cargo.toml";
+        writeFixtureFile(
+          root,
+          file,
+          mustMutate(
+            readFixtureFile(root, file),
+            "[dependencies]",
+            `[dependencies]\n${dependency} = "1"`,
+          ),
+        );
+      },
+      `must not depend on ${dependency}`,
+    );
+  },
+);
+
 describe("CLI documentation parity", () => {
   it("fails when a dispatched command has no CLI reference entry", () => {
     expectGuardrailFailure(

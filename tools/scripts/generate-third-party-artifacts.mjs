@@ -2,33 +2,29 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  realpathSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const WORKSPACE = "apps/desktop/src-tauri";
+const CLI_MANIFEST = "crates/cli/Cargo.toml";
 const INVENTORY_PATH = path.join(ROOT, "THIRD_PARTY_DEPENDENCIES.json");
 const LICENSES_PATH = path.join(ROOT, "THIRD_PARTY_LICENSES.txt");
+const ENGINE_LICENSES = "engine/local-engine.wasm.LICENSES.txt";
 const MAX_COMMAND_OUTPUT = 128 * 1024 * 1024;
 const LICENSE_FILE_STEMS = ["license", "licence", "copying", "notice"];
 
-function runJson(command, args) {
+function run(command, args) {
   const result = spawnSync(command, args, {
-    cwd: ROOT,
+    cwd: path.join(ROOT, WORKSPACE),
     encoding: "utf8",
     maxBuffer: MAX_COMMAND_OUTPUT,
   });
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed:\n${result.stderr || result.stdout}`);
   }
-  return JSON.parse(result.stdout);
+  return result.stdout;
 }
 
 function normalizeText(value) {
@@ -38,12 +34,6 @@ function normalizeText(value) {
       .replace(/[\t ]+$/gm, "")
       .trimEnd() + "\n"
   );
-}
-
-function repositoryUrl(pkg) {
-  if (typeof pkg.repository === "string") return pkg.repository;
-  if (typeof pkg.repository?.url === "string") return pkg.repository.url;
-  return typeof pkg.homepage === "string" ? pkg.homepage : null;
 }
 
 function isLicenseFileName(name) {
@@ -69,124 +59,71 @@ function candidateLicenseFiles(directory, explicitPath) {
   return [...candidates];
 }
 
-function inferLicenseExpression(licensePaths) {
-  for (const licensePath of licensePaths) {
-    const text = readFileSync(licensePath, "utf8");
-    if (
-      /^MIT License\s/m.test(text) &&
-      text.includes("Permission is hereby granted, free of charge") &&
-      text.includes('THE SOFTWARE IS PROVIDED "AS IS"')
-    ) {
-      return "MIT";
-    }
-  }
-  return null;
-}
-
-function resolveInstalledPackage(fromDirectory, name) {
-  let directory = fromDirectory;
-  while (true) {
-    const manifest = path.join(directory, "node_modules", ...name.split("/"), "package.json");
-    if (existsSync(manifest)) return realpathSync(path.dirname(manifest));
-    const parent = path.dirname(directory);
-    if (parent === directory) return null;
-    directory = parent;
-  }
-}
-
-function collectNodePackages(manifestRelativePath, scope, packageRecords) {
-  const rootDirectory = path.dirname(path.join(ROOT, manifestRelativePath));
-  const rootManifest = JSON.parse(readFileSync(path.join(ROOT, manifestRelativePath), "utf8"));
-  const visitedPaths = new Set();
-
-  const visit = (fromDirectory, dependencies = {}) => {
-    for (const name of Object.keys(dependencies)) {
-      const packageDirectory = resolveInstalledPackage(fromDirectory, name);
-      if (!packageDirectory || visitedPaths.has(packageDirectory)) continue;
-      visitedPaths.add(packageDirectory);
-      const manifest = JSON.parse(
-        readFileSync(path.join(packageDirectory, "package.json"), "utf8"),
-      );
-      const key = `npm:${manifest.name}@${manifest.version}`;
-      let record = packageRecords.get(key);
-      if (!record) {
-        const licensePaths = candidateLicenseFiles(packageDirectory, manifest.licenseFile);
-        record = {
-          ecosystem: "npm",
-          name: manifest.name,
-          version: manifest.version,
-          license: manifest.license ?? inferLicenseExpression(licensePaths),
-          repository: repositoryUrl(manifest),
-          source: "npm",
-          scopes: new Set(),
-          licensePaths,
-        };
-        packageRecords.set(key, record);
-      }
-      record.scopes.add(scope);
-      visit(packageDirectory, { ...manifest.dependencies, ...manifest.optionalDependencies });
-    }
-  };
-  visit(rootDirectory, { ...rootManifest.dependencies, ...rootManifest.optionalDependencies });
-}
-
 function collectRustPackages(manifestRelativePath, scope, packageRecords) {
-  const metadata = runJson("cargo", [
-    "metadata",
+  const manifest = ["--manifest-path", manifestRelativePath];
+  const tree = run("cargo", [
+    "tree",
     "--locked",
-    "--format-version",
-    "1",
-    "--manifest-path",
-    manifestRelativePath,
+    "--target",
+    "all",
+    "--edges",
+    "normal,build",
+    "--prefix",
+    "none",
+    "--format",
+    "{p}",
+    "--color",
+    "never",
+    ...manifest,
   ]);
-  const packages = new Map(metadata.packages.map((pkg) => [pkg.id, pkg]));
-  const nodes = new Map(metadata.resolve.nodes.map((node) => [node.id, node]));
-  const queue = [metadata.resolve.root];
-  const visited = new Set();
+  const active = new Set(
+    [...tree.matchAll(/^(\S+) v(\S+)/gm)].map(([, name, version]) => `${name}@${version}`),
+  );
+  const { packages } = JSON.parse(
+    run("cargo", ["metadata", "--locked", "--format-version", "1", ...manifest]),
+  );
 
-  while (queue.length > 0) {
-    const id = queue.shift();
-    if (!id || visited.has(id)) continue;
-    visited.add(id);
-    const pkg = packages.get(id);
-    const node = nodes.get(id);
-    if (!pkg || !node) continue;
-
-    if (pkg.source) {
-      const directory = path.dirname(pkg.manifest_path);
-      const key = `cargo:${pkg.name}@${pkg.version}:${pkg.source}`;
-      let record = packageRecords.get(key);
-      if (!record) {
-        record = {
-          ecosystem: "cargo",
-          name: pkg.name,
-          version: pkg.version,
-          license: pkg.license ?? null,
-          repository: pkg.repository ?? null,
-          source: pkg.source,
-          scopes: new Set(),
-          licensePaths: candidateLicenseFiles(directory, pkg.license_file),
-        };
-        packageRecords.set(key, record);
-      }
-      record.scopes.add(scope);
+  for (const pkg of packages) {
+    const nameVersion = `${pkg.name}@${pkg.version}`;
+    if (!pkg.source || !active.has(nameVersion)) continue;
+    const key = `cargo:${nameVersion}:${pkg.source}`;
+    let record = packageRecords.get(key);
+    if (!record) {
+      record = {
+        ecosystem: "cargo",
+        name: pkg.name,
+        version: pkg.version,
+        license: pkg.license ?? null,
+        repository: pkg.repository ?? null,
+        source: pkg.source,
+        scopes: new Set(),
+        licensePaths: candidateLicenseFiles(path.dirname(pkg.manifest_path), pkg.license_file),
+      };
+      packageRecords.set(key, record);
     }
-
-    for (const dependency of node.deps) {
-      const isProduction =
-        dependency.dep_kinds.length === 0 ||
-        dependency.dep_kinds.some((kind) => kind.kind !== "dev");
-      if (isProduction) queue.push(dependency.pkg);
-    }
+    record.scopes.add(scope);
   }
+}
+
+function embeddedEngineLicenses() {
+  const sidecar = path.join(ROOT, ENGINE_LICENSES);
+  if (!existsSync(sidecar)) {
+    if (existsSync(path.join(ROOT, "engine.lock"))) {
+      throw new Error(
+        `engine.lock requires ${ENGINE_LICENSES}. Restore the signed license sidecar for the pinned engine.`,
+      );
+    }
+    return [];
+  }
+  const text = readFileSync(sidecar, "utf8");
+  if (!text.trim()) throw new Error(`${ENGINE_LICENSES} is empty.`);
+  return ["", "Embedded engine module licenses", "", text.trimEnd()];
 }
 
 function buildArtifacts() {
+  const engineSections = embeddedEngineLicenses();
   const packageRecords = new Map();
-  collectNodePackages("apps/desktop/package.json", "desktop-javascript", packageRecords);
-  collectNodePackages("apps/mcp-server/package.json", "bundled-mcp", packageRecords);
-  collectRustPackages("apps/desktop/src-tauri/Cargo.toml", "desktop-rust", packageRecords);
-  collectRustPackages("apps/desktop/src-tauri/crates/cli/Cargo.toml", "cli-rust", packageRecords);
+  collectRustPackages(CLI_MANIFEST, "cli-rust", packageRecords);
 
   const licenseTexts = new Map();
   const packages = [...packageRecords.values()]
@@ -226,12 +163,9 @@ function buildArtifacts() {
     {
       schemaVersion: 1,
       generatedFrom: [
-        "pnpm-lock.yaml",
-        "apps/desktop/package.json",
-        "apps/mcp-server/package.json",
-        "apps/desktop/src-tauri/Cargo.lock",
-        "apps/desktop/src-tauri/Cargo.toml",
-        "apps/desktop/src-tauri/crates/cli/Cargo.toml",
+        `${WORKSPACE}/Cargo.lock`,
+        `${WORKSPACE}/Cargo.toml`,
+        `${WORKSPACE}/${CLI_MANIFEST}`,
       ],
       packages,
     },
@@ -259,6 +193,7 @@ function buildArtifacts() {
     "A package without an upstream license file remains identified by its declared expression.",
     "",
     ...sections,
+    ...engineSections,
     "",
   ].join("\n");
   return { inventory, licenses };

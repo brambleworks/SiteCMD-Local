@@ -1,12 +1,14 @@
 version: 2
 
-# Group weekly GitHub Action updates; other ecosystems use dependency-audit.yml.
+# Group weekly GitHub Action updates. CI and weekly-advisories.yml audit dependencies.
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns:

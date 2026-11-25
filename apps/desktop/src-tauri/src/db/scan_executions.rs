@@ -1,16 +1,14 @@
 //! Durable top-level scan intent, idempotent admission, and canonical child runs.
 
-use rusqlite::{named_params, Connection, OptionalExtension, Row};
+use rusqlite::{named_params, OptionalExtension, Row};
 
 use crate::core::scan_execution::{
-    NewScanExecution, ScanAdmissionError, ScanAdmissionOutcome, ScanComponent, ScanComponentStatus,
-    ScanExecutionRecord, ScanExecutionStatus, ScanExecutionSummary, ScanRunSummary,
+    NewScanExecution, ScanAdmissionError, ScanAdmissionOutcome, ScanComponentStatus,
+    ScanExecutionRecord, ScanExecutionStatus,
 };
 
-// Imported from `helpers` directly, like every other db module. The `db::`
-// re-export is gated behind the `desktop` feature, and this module builds for
-// the CLI target too.
-use super::helpers::{normalize_env_url, parse_optional_enum_required, parse_required_enum};
+// Imported from `helpers` directly, like every other db module.
+use super::helpers::{parse_optional_enum_required, parse_required_enum};
 use super::{Database, DbError};
 
 const EXECUTION_COLUMNS: &str = "
@@ -86,50 +84,6 @@ fn execution_from_row(row: &Row<'_>) -> rusqlite::Result<ScanExecutionRecord> {
         )?,
         code_detail: row.get("code_detail")?,
     })
-}
-
-fn load_execution_run_summaries(
-    conn: &Connection,
-    execution_id: i64,
-) -> Result<Vec<ScanRunSummary>, DbError> {
-    let mut statement = conn.prepare(
-        "SELECT id, parent_run_id, source, run_kind, status, timestamp_text,
-                raw_score, duration_ms, issues_total, issues_critical,
-                issues_high, issues_medium, issues_low, diagnostics_json
-         FROM scan_runs
-         WHERE execution_id = ?1
-         ORDER BY CASE run_kind
-             WHEN 'multi_parent' THEN 0 WHEN 'single' THEN 1
-             WHEN 'page' THEN 2 ELSE 3 END,
-             started_at, id",
-    )?;
-    let rows = statement.query_map([execution_id], |row| {
-        let diagnostics_json: String = row.get(13)?;
-        let diagnostics = serde_json::from_str(&diagnostics_json).map_err(|error| {
-            rusqlite::Error::FromSqlConversionFailure(
-                13,
-                rusqlite::types::Type::Text,
-                Box::new(error),
-            )
-        })?;
-        Ok(ScanRunSummary {
-            id: row.get(0)?,
-            parent_run_id: row.get(1)?,
-            source: parse_required_enum(2, "scan_runs.source", &row.get::<_, String>(2)?)?,
-            run_kind: parse_required_enum(3, "scan_runs.run_kind", &row.get::<_, String>(3)?)?,
-            status: parse_required_enum(4, "scan_runs.status", &row.get::<_, String>(4)?)?,
-            timestamp: row.get(5)?,
-            raw_score: row.get(6)?,
-            duration_ms: super::from_row::row_u64(row, 7)?,
-            issues_total: row.get(8)?,
-            issues_critical: row.get(9)?,
-            issues_high: row.get(10)?,
-            issues_medium: row.get(11)?,
-            issues_low: row.get(12)?,
-            diagnostics,
-        })
-    })?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
 }
 
 fn validate_new_execution(request: &NewScanExecution) -> Result<(), ScanAdmissionError> {
@@ -215,7 +169,6 @@ impl Database {
                         .map_err(|error| ScanAdmissionError::Storage(error.to_string()))?;
                     return Ok(ScanAdmissionOutcome {
                         execution: existing,
-                        reused: true,
                     });
                 }
 
@@ -274,51 +227,37 @@ impl Database {
                     .map_err(|error| ScanAdmissionError::Storage(error.to_string()))?;
                 tx.commit()
                     .map_err(|error| ScanAdmissionError::Storage(error.to_string()))?;
-                Ok(ScanAdmissionOutcome {
-                    execution,
-                    reused: false,
-                })
+                Ok(ScanAdmissionOutcome { execution })
             },
         )
         .map_err(|error| ScanAdmissionError::Storage(error.to_string()))?
     }
 
-    #[tracing::instrument(skip(self), fields(execution_id, component = ?component))]
-    pub fn start_scan_execution_component(
-        &self,
-        execution_id: i64,
-        component: ScanComponent,
-    ) -> Result<(), DbError> {
-        let status_column = match component {
-            ScanComponent::Web => "web_status",
-            ScanComponent::Code => "code_status",
-        };
+    #[tracing::instrument(skip(self), fields(execution_id))]
+    pub fn start_scan_execution_component(&self, execution_id: i64) -> Result<(), DbError> {
         self.execute(move |conn| {
             let changed = conn.execute(
-                &format!(
-                    "UPDATE scan_executions
+                "UPDATE scan_executions
                      SET status = 'running',
-                         {status_column} = 'running'
+                         code_status = 'running'
                      WHERE id = :execution_id
-                       AND {status_column} = 'planned'
-                       AND status IN ('planned', 'running')"
-                ),
+                       AND code_status = 'planned'
+                       AND status IN ('planned', 'running')",
                 named_params! { ":execution_id": execution_id },
             )?;
             if changed == 0 {
                 return Err(DbError::Other(format!(
-                    "execution {execution_id} component {component:?} is not planned"
+                    "execution {execution_id} component Code is not planned"
                 )));
             }
             Ok(())
         })?
     }
 
-    #[tracing::instrument(skip(self, detail), fields(execution_id, component = ?component, component_status = ?component_status))]
+    #[tracing::instrument(skip(self, detail), fields(execution_id, component_status = ?component_status))]
     pub fn finish_scan_execution_component(
         &self,
         execution_id: i64,
-        component: ScanComponent,
         component_status: ScanComponentStatus,
         detail: Option<String>,
         completed_at: i64,
@@ -328,20 +267,14 @@ impl Database {
                 "finish_scan_execution_component requires a settled status".into(),
             ));
         }
-        let (status_column, detail_column) = match component {
-            ScanComponent::Web => ("web_status", "web_detail"),
-            ScanComponent::Code => ("code_status", "code_detail"),
-        };
         self.execute_mut(move |conn| {
             let tx = conn.transaction()?;
             let changed = tx.execute(
-                &format!(
-                    "UPDATE scan_executions
-                     SET {status_column} = :component_status,
-                         {detail_column} = :detail
+                "UPDATE scan_executions
+                     SET code_status = :component_status,
+                         code_detail = :detail
                      WHERE id = :execution_id
-                       AND status IN ('planned', 'running')"
-                ),
+                       AND status IN ('planned', 'running')",
                 named_params! {
                     ":component_status": component_status.as_str(),
                     ":detail": detail,
@@ -429,304 +362,6 @@ impl Database {
             )?;
             tx.commit()?;
             Ok(execution)
-        })?
-    }
-
-    /// Fail a fully planned execution before any collector starts. Reused or
-    /// already-running executions are untouched.
-    #[tracing::instrument(skip(self, detail), fields(execution_id))]
-    pub fn release_scan_execution_before_start(
-        &self,
-        execution_id: i64,
-        detail: String,
-        completed_at: i64,
-    ) -> Result<(), DbError> {
-        self.execute(move |conn| {
-            let changed = conn.execute(
-                "UPDATE scan_executions
-                 SET status = 'failed',
-                     completed_at = :completed_at,
-                     failure_summary = :detail,
-                     web_status = CASE WHEN web_status = 'planned' THEN 'failed' ELSE web_status END,
-                     code_status = CASE WHEN code_status = 'planned' THEN 'failed' ELSE code_status END
-                 WHERE id = :execution_id AND status = 'planned'",
-                named_params! {
-                    ":completed_at": completed_at,
-                    ":detail": detail,
-                    ":execution_id": execution_id,
-                },
-            )?;
-            if changed == 0 {
-                return Err(DbError::Other(format!(
-                    "execution {execution_id} is not eligible for reservation release"
-                )));
-            }
-            Ok(())
-        })?
-    }
-
-    /// Cancel a fully planned execution before collection starts. This is
-    /// distinct from a failure: history shows the user's cancellation.
-    #[tracing::instrument(skip(self, detail), fields(execution_id))]
-    pub fn cancel_scan_execution_before_start(
-        &self,
-        execution_id: i64,
-        detail: String,
-        completed_at: i64,
-    ) -> Result<ScanExecutionRecord, DbError> {
-        self.execute_mut(move |conn| {
-            let tx = conn.transaction()?;
-            let changed = tx.execute(
-                "UPDATE scan_executions
-                 SET status = 'cancelled',
-                     completed_at = :completed_at,
-                     failure_summary = :detail,
-                     web_status = CASE
-                         WHEN web_status = 'planned' THEN 'cancelled'
-                         ELSE web_status
-                     END,
-                     code_status = CASE
-                         WHEN code_status = 'planned' THEN 'cancelled'
-                         ELSE code_status
-                     END
-                 WHERE id = :execution_id AND status = 'planned'",
-                named_params! {
-                    ":completed_at": completed_at,
-                    ":detail": detail,
-                    ":execution_id": execution_id,
-                },
-            )?;
-            if changed == 0 {
-                return Err(DbError::Other(format!(
-                    "execution {execution_id} is not eligible for pre-start cancellation"
-                )));
-            }
-            let execution = tx.query_row(
-                &format!(
-                    "SELECT {EXECUTION_COLUMNS}
-                     FROM scan_executions
-                     WHERE id = :execution_id"
-                ),
-                named_params! { ":execution_id": execution_id },
-                execution_from_row,
-            )?;
-            tx.commit()?;
-            Ok(execution)
-        })?
-    }
-
-    #[tracing::instrument(skip(self), fields(execution_id))]
-    pub fn get_scan_execution(
-        &self,
-        execution_id: i64,
-    ) -> Result<Option<ScanExecutionRecord>, DbError> {
-        self.execute(move |conn| {
-            conn.query_row(
-                &format!(
-                    "SELECT {EXECUTION_COLUMNS}
-                     FROM scan_executions
-                     WHERE id = :execution_id"
-                ),
-                named_params! { ":execution_id": execution_id },
-                execution_from_row,
-            )
-            .optional()
-            .map_err(DbError::from)
-        })?
-    }
-
-    #[tracing::instrument(skip(self), fields(project_id, environment_scope_key = ?environment_scope_key, run_kind = ?run_kind, limit))]
-    pub fn get_scan_execution_history(
-        &self,
-        project_id: Option<i64>,
-        environment_scope_key: Option<String>,
-        run_kind: Option<crate::core::normalized_scan::ScanRunKind>,
-        limit: u32,
-    ) -> Result<Vec<ScanExecutionSummary>, DbError> {
-        self.execute(move |conn| {
-            let mut statement = conn.prepare(
-                "SELECT
-                    execution.id,
-                    execution.project_id,
-                    execution.environment_id,
-                    execution.environment_url,
-                    execution.requested_mode,
-                    execution.web_focus,
-                    execution.trigger,
-                    execution.status,
-                    execution.started_at,
-                    execution.completed_at,
-                    score.overall,
-                    score.critical_count,
-                    score.high_count,
-                    score.medium_count,
-                    score.low_count,
-                    execution.web_status,
-                    execution.web_detail,
-                    execution.code_status,
-                    execution.code_detail,
-                    (
-                        SELECT run.id
-                        FROM scan_runs AS run
-                        WHERE run.execution_id = execution.id
-                          AND run.source = 'web_scan'
-                          AND run.run_kind = 'single'
-                        ORDER BY run.id DESC
-                        LIMIT 1
-                    ) AS web_scan_id,
-                    (
-                        SELECT run.id
-                        FROM scan_runs AS run
-                        WHERE run.execution_id = execution.id
-                          AND run.source = 'web_scan'
-                          AND run.run_kind = 'multi_parent'
-                        ORDER BY run.id DESC
-                        LIMIT 1
-                    ) AS web_session_id,
-                    (
-                        SELECT COUNT(*)
-                        FROM scan_runs AS page_run
-                        WHERE page_run.execution_id = execution.id
-                          AND page_run.source = 'web_scan'
-                          AND page_run.run_kind = 'page'
-                    ) AS web_page_count,
-                    (
-                        SELECT run.id
-                        FROM scan_runs AS run
-                        WHERE run.execution_id = execution.id
-                          AND run.source = 'code_scan'
-                          AND run.run_kind = 'code'
-                        ORDER BY run.id DESC
-                        LIMIT 1
-                    ) AS code_scan_id
-                 FROM scan_executions AS execution
-                 LEFT JOIN score_snapshots AS score ON score.id = execution.score_snapshot_id
-                 WHERE execution.admission_class <> 'bounded_verification'
-                   AND (:project_id IS NULL OR execution.project_id = :project_id)
-                   AND (
-                       :environment_scope_key IS NULL
-                       OR execution.environment_scope_key = :environment_scope_key
-                   )
-                   AND (
-                       :run_kind IS NULL
-                       OR EXISTS (
-                           SELECT 1 FROM scan_runs AS matching_run
-                           WHERE matching_run.execution_id = execution.id
-                             AND matching_run.run_kind = :run_kind
-                       )
-                   )
-                 ORDER BY execution.started_at DESC, execution.id DESC
-                 LIMIT :limit",
-            )?;
-            let rows = statement.query_map(
-                named_params! {
-                    ":project_id": project_id,
-                    ":environment_scope_key": environment_scope_key,
-                    ":run_kind": run_kind.map(|kind| kind.as_str()),
-                    ":limit": limit,
-                },
-                |row| {
-                    let execution_id: i64 = row.get(0)?;
-                    let runs =
-                        load_execution_run_summaries(conn, execution_id).map_err(|error| {
-                            rusqlite::Error::FromSqlConversionFailure(
-                                0,
-                                rusqlite::types::Type::Integer,
-                                Box::new(std::io::Error::other(error.to_string())),
-                            )
-                        })?;
-                    Ok(ScanExecutionSummary {
-                        id: execution_id,
-                        project_id: row.get(1)?,
-                        environment_id: row.get(2)?,
-                        environment_url: row.get(3)?,
-                        requested_mode: parse_required_enum(
-                            4,
-                            "scan_executions.requested_mode",
-                            &row.get::<_, String>(4)?,
-                        )?,
-                        web_focus: parse_optional_enum_required(
-                            5,
-                            "scan_executions.web_focus",
-                            row.get::<_, Option<String>>(5)?,
-                        )?,
-                        trigger: parse_required_enum(
-                            6,
-                            "scan_executions.trigger",
-                            &row.get::<_, String>(6)?,
-                        )?,
-                        status: parse_required_enum(
-                            7,
-                            "scan_executions.status",
-                            &row.get::<_, String>(7)?,
-                        )?,
-                        started_at: row.get(8)?,
-                        completed_at: row.get(9)?,
-                        score: row.get(10)?,
-                        critical_count: row.get(11)?,
-                        high_count: row.get(12)?,
-                        medium_count: row.get(13)?,
-                        low_count: row.get(14)?,
-                        web_status: parse_optional_enum_required(
-                            15,
-                            "scan_executions.web_status",
-                            row.get::<_, Option<String>>(15)?,
-                        )?,
-                        web_detail: row.get(16)?,
-                        code_status: parse_optional_enum_required(
-                            17,
-                            "scan_executions.code_status",
-                            row.get::<_, Option<String>>(17)?,
-                        )?,
-                        code_detail: row.get(18)?,
-                        web_scan_id: row.get(19)?,
-                        web_session_id: row.get(20)?,
-                        web_page_count: row.get(21)?,
-                        code_scan_id: row.get(22)?,
-                        runs,
-                    })
-                },
-            )?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
-        })?
-    }
-
-    #[tracing::instrument(skip(self, environment_url), fields(execution_id, project_id))]
-    pub fn link_scan_execution_score_snapshot(
-        &self,
-        execution_id: i64,
-        project_id: i64,
-        environment_url: Option<&str>,
-    ) -> Result<ScanExecutionRecord, DbError> {
-        let environment_scope_key = normalize_env_url(environment_url);
-        self.execute(move |conn| {
-            conn.execute(
-                "UPDATE scan_executions
-                 SET score_snapshot_id = (
-                     SELECT id
-                     FROM score_snapshots
-                     WHERE project_id = :project_id
-                       AND environment_url = :environment_scope_key
-                     ORDER BY id DESC
-                     LIMIT 1
-                 )
-                 WHERE id = :execution_id",
-                named_params! {
-                    ":execution_id": execution_id,
-                    ":project_id": project_id,
-                    ":environment_scope_key": environment_scope_key,
-                },
-            )?;
-            conn.query_row(
-                &format!(
-                    "SELECT {EXECUTION_COLUMNS}
-                     FROM scan_executions
-                     WHERE id = :execution_id"
-                ),
-                named_params! { ":execution_id": execution_id },
-                execution_from_row,
-            )
-            .map_err(DbError::from)
         })?
     }
 }
