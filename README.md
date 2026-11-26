@@ -209,12 +209,16 @@ The checkout wrapper forwards CLI commands, including `scan`, `--help`, and
 
 ## Rust workspace
 
-Run the complete Rust workspace from its directory so rustup applies the pinned
+The Rust tests embed the stand-in engine module. Build it from the repository
+root, then run the workspace from its directory so rustup applies the pinned
 toolchain:
 
 ```bash
+fnm exec --using="$(cat .nvmrc)" node tools/scripts/build-standin.mjs
 cd apps/desktop/src-tauri
-cargo test --workspace
+export SITECMD_ENGINE_WASM="$PWD/target/standin/sitecmd_engine_standin.wasm"
+export SITECMD_ENGINE_UNPINNED=1
+cargo test --locked --workspace
 ```
 
 ## Code Scan audit
@@ -236,7 +240,9 @@ pnpm sitecmd -- audit . --inspect-local-databases
   never application table rows. SQLite targets must be inside the audited
   project; every PostgreSQL host must resolve to loopback or a local Unix
   socket. Remote targets are rejected.
-- The public repository runs Code Scan on pull requests.
+- This repository's CI does not run Code Scan on its own source. The merge
+  queue smoke tests run `sitecmd audit` on a small fixture with the stand-in
+  engine module.
 
 Live provider-format secrets are graded Critical in code only when the file is
 in git's index. Untracked and ignored files retain their existing grade. When

@@ -74,7 +74,12 @@ export function repoGuardrailIo(root) {
   const listFiles = (dir, predicate, files = []) => {
     if (!exists(dir)) return files;
     for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
-      if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "target")
+      if (
+        entry.name === ".git" ||
+        entry.name === "node_modules" ||
+        entry.name === "dist" ||
+        entry.name === "target"
+      )
         continue;
       const relativePath = path.join(dir, entry.name);
       if (entry.isDirectory()) {

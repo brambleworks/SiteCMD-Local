@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { bypassTokenStatus, changeMessage } from "./lib/change-message.mjs";
 
 const BUDGET_FILE_PATTERNS = [
   /^tools\/scripts\/check-repo-guardrails\.mjs$/,
@@ -12,29 +12,6 @@ const BUDGET_FILE_PATTERNS = [
   // test module, not a tools/scripts/*.mjs file; cover it explicitly.
   /^apps\/desktop\/src-tauri\/src\/lib_tests\.rs$/,
 ];
-
-const BYPASS_TOKEN_RE = /^\[budget-raised:[^\]]+\]/m;
-const BYPASS_PLACEHOLDER_RE = /^\[budget-raised:\s*(?:<[^>]+>|TODO|todo|reason here)\s*\]/m;
-const BYPASS_ISSUE_REFERENCE_RE = /(?:#|\b(?:GH|PR|gh|pr)-)\d+/;
-
-function bypassTokenStatus(message) {
-  if (!BYPASS_TOKEN_RE.test(message)) {
-    return { ok: false, reason: "no_token" };
-  }
-  // GitHub hard-wraps squash commit bodies, so a token can span lines.
-  const candidates = [...message.matchAll(new RegExp(BYPASS_TOKEN_RE.source, "gm"))].map(
-    ([token]) => token.replace(/\s+/g, " "),
-  );
-
-  for (const line of candidates) {
-    if (BYPASS_PLACEHOLDER_RE.test(line)) continue;
-    if (!BYPASS_ISSUE_REFERENCE_RE.test(line)) {
-      return { ok: false, reason: "missing_issue_reference", line };
-    }
-    return { ok: true };
-  }
-  return { ok: false, reason: "placeholder_only" };
-}
 
 function extractThresholds(source) {
   const thresholds = new Map();
@@ -146,46 +123,6 @@ function diffThresholds(oldMap, newMap, renames = new Map()) {
   return violations;
 }
 
-function commitEditMessagePath() {
-  // `.git` is a file (a gitlink), not a directory, in a linked worktree, so a
-  // hardcoded `.git/COMMIT_EDITMSG` join silently misses the real file there
-  // and this falls back to the previous commit's message instead of the
-  // pending one. Ask git, which resolves the per-worktree path correctly.
-  try {
-    return execFileSync("git", ["rev-parse", "--git-path", "COMMIT_EDITMSG"], {
-      encoding: "utf8",
-    }).trim();
-  } catch {
-    return path.join(".git", "COMMIT_EDITMSG");
-  }
-}
-
-function commitMessage(rangeTip) {
-  // Accept a bypass marker from any commit in the checked range.
-  if (rangeTip) {
-    try {
-      return execFileSync("git", ["log", "--pretty=%B", `${rangeTip.base}..${rangeTip.head}`], {
-        encoding: "utf8",
-      });
-    } catch {
-      return "";
-    }
-  }
-  const messageFile = commitEditMessagePath();
-  if (fs.existsSync(messageFile)) {
-    try {
-      return fs.readFileSync(messageFile, "utf8");
-    } catch {
-      // Fall back to the latest commit message.
-    }
-  }
-  try {
-    return execFileSync("git", ["log", "-1", "--pretty=%B"], { encoding: "utf8" });
-  } catch {
-    return "";
-  }
-}
-
 function checkFile(relativePath, source, baseRev, renames, baselineFiles) {
   const oldSource = readFromRevision(baseRev, renames.get(relativePath) ?? relativePath);
   const oldMap = new Map([
@@ -274,10 +211,10 @@ export function runBudgetRatchet({ patterns = BUDGET_FILE_PATTERNS, baselines = 
 
   if (allViolations.length === 0) return;
 
-  const message = parsed.messageFile
-    ? fs.readFileSync(parsed.messageFile, "utf8")
-    : commitMessage(range);
-  const status = bypassTokenStatus(message);
+  const status = bypassTokenStatus(
+    changeMessage({ ...range, messageFile: parsed.messageFile }),
+    "budget-raised",
+  );
   if (status.ok) {
     console.warn(
       `check-budget-ratchet: ${allViolations.length} budget change(s) authorized via [budget-raised:] token in commit message. Logged for audit:`,

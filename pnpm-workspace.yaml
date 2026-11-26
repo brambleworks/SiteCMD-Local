@@ -7,11 +7,10 @@ minimumReleaseAge: 1440
 engineStrict: true
 
 # No `overrides:` block. The two that used to live here - a ws dedup floor and
-# a sharp floor for GHSA-f88m-g3jw-g9cj - never applied to anything. Neither
-# package appears in this workspace's resolved graph at any point in the
-# repository history, and the dependents their comments named (ink, miniflare)
-# belong to SiteCMD-Web, not here. Both floors therefore had nothing to
-# rewrite: dead config that still read like protection.
+# a sharp floor for GHSA-f88m-g3jw-g9cj - never applied to anything: neither
+# package, nor the dependents their comments named (ink, miniflare), appears in
+# this workspace's resolved graph in pnpm-lock.yaml. Both floors therefore had
+# nothing to rewrite: dead config that still read like protection.
 # guardrail-supply-chain-rules.mjs now fails an override whose dependency is
 # absent from the installed graph, so this cannot silently come back.
 #

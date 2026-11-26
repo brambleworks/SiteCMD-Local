@@ -1,7 +1,8 @@
 # AGENTS.md
 
-Canonical repository guidance for maintainers and coding agents. Read the
-Rust workspace guide before editing that surface.
+Canonical repository guidance for maintainers and coding agents. This is the public repository
+for the open `sitecmd` CLI. Read this file, then the guide for the area you edit; the index below
+lists every guide.
 
 ## Product contract
 
@@ -14,45 +15,72 @@ Rust workspace guide before editing that surface.
 - Product surfaces show one SiteCMD Score. Source-specific scores are
   historical engine data.
 
-The CLI ships as `sitecmd` and runs Web Scan and the full Code Scan audit.
+The CLI ships as `sitecmd` and runs Web Scan and the full Code Scan audit. SiteCMD's checks run
+in the sandboxed engine module, which is not in this repository; the CLI embeds the module that
+`engine.lock` pins.
 
 ## Repository map
 
-- `apps/desktop/src-tauri/`: CLI, runtime, protocol, and engine Cargo workspace.
+- `apps/desktop/src-tauri/`: the Cargo workspace for the CLI, runtime, protocol, and engine host.
 - `docs/`: maintained engineering, product, QA, and operations truth.
 - `packaging/npm/`: the @sitecmd/cli npm distribution skeleton. Binaries and
   real versions are stamped in only by the release workflow's publish-npm job;
   the checked-in packages stay on the 0.0.0-dev placeholder
-  (guardrail-npm-cli-rules.mjs pins the shape).
-- `tools/`: repository guardrails and release tooling.
+  (`tools/scripts/lib/guardrail-npm-cli-rules.mjs` pins the shape).
+- `tools/scripts/`: repository guardrails, publication checks, and release tooling.
+- `.github/`: the CI workflows, the setup and gate Actions, release scripts, and repository
+  settings contracts.
+- `engine.lock`: the engine module's version, URL, and SHA-256. `pnpm engine:fetch` downloads
+  the module into `engine/`.
+- `install.sh`: the standalone installer that sitecmd.com/install.sh serves.
 
-The marketing site and connected-service workers live in the private
-SiteCMD-Web repository. This repository does not import them.
+The engine module's source, the marketing site, and the connected-service workers live outside
+this repository. This repository does not import them.
 
 Every surface asserting what's free, paid, or transmitted must appear in the
-maintained-surface matrix.
+maintained-surface matrix, `docs/engineering/connected-service/maintained-surfaces.md`.
 Public documents must not link to private records.
 
 Generated plans, review transcripts, design exports, browser captures, and
 session artifacts are not committed. Promote durable conclusions into a
 maintained document.
 
+## Guides
+
+Each guide has a `CLAUDE.md` beside it that contains only `@AGENTS.md`. When a change touches a
+file that a guide lists under Guide triggers, review that guide in the same change.
+
+| Area                             | Guide                                                 |
+| -------------------------------- | ----------------------------------------------------- |
+| Rust workspace                   | `apps/desktop/src-tauri/AGENTS.md`                    |
+| CLI binary                       | `apps/desktop/src-tauri/crates/cli/AGENTS.md`         |
+| Engine host and stand-in module  | `apps/desktop/src-tauri/crates/engine-host/AGENTS.md` |
+| Protocol                         | `apps/desktop/src-tauri/crates/protocol/AGENTS.md`    |
+| Runtime                          | `apps/desktop/src-tauri/src/AGENTS.md`                |
+| Runtime commands                 | `apps/desktop/src-tauri/src/cli/AGENTS.md`            |
+| Code Scan host and scan core     | `apps/desktop/src-tauri/src/core/AGENTS.md`           |
+| Local database                   | `apps/desktop/src-tauri/src/db/AGENTS.md`             |
+| Repository tooling               | `tools/scripts/AGENTS.md`                             |
+| Documentation                    | `docs/AGENTS.md`                                      |
+| CI, Actions, and release scripts | `.github/AGENTS.md`                                   |
+| npm distribution                 | `packaging/npm/AGENTS.md`                             |
+
 ## Commands
 
-Run commands from the repository root.
+Run commands from the repository root, on the Node version in `.nvmrc`.
 
 ```bash
 pnpm install
 
 pnpm test
-pnpm guardrails:repo:test
-(cd apps/desktop/src-tauri && cargo test --workspace)
-
 pnpm lint
 pnpm format
 pnpm guardrails:repo
 pnpm knip
 ```
+
+`pnpm test` runs the guardrail tests (`pnpm guardrails:repo:test`). The Rust tests need the
+stand-in module; `apps/desktop/src-tauri/AGENTS.md` has the commands.
 
 GitHub CI is required for merge. Run `pnpm verify:push` for optional local
 verification.
@@ -67,11 +95,13 @@ hook or guardrail without explicit permission.
 
 ### Data and scoring
 
-- SQLite runs on its dedicated worker thread. Database closures are `move`, and
-  no mutex is held across `.await`.
-- SQL values use `rusqlite::params!` or named parameters, never interpolation.
-- Session queries must not filter `session_id IS NULL`.
-- Validate outbound targets through `network_policy::validate_url`.
+- SQLite runs on its dedicated worker thread (convention, not checked), and database closures
+  must be `Send + 'static`, which the compiler enforces. No mutex guard is held across `.await`:
+  Clippy's default `await_holding_lock`, under CI's `-D warnings`.
+- SQL values use `rusqlite::params!` or named parameters, never interpolation (convention, not
+  checked).
+- Session queries must not filter `session_id IS NULL` (convention, not checked).
+- Validate outbound targets through `network_policy::validate_url` (convention, not checked).
 
 ### Shared sources
 
@@ -81,26 +111,35 @@ Use the existing authority instead of copying logic:
 - outbound URL policy: `network_policy::validate_url`;
 - sensitive-operation logging: `audit_log::record`;
 - Code Scan path validation: `core::project_listing::list_project`;
-- backend timeouts and tuning: `constants.rs`.
+- backend timeouts and tuning: `apps/desktop/src-tauri/src/constants.rs`;
+- severity and category vocabulary: `apps/desktop/src-tauri/crates/protocol/src/vocab.rs`.
 
-Guardrails reject common copies, including severity maps, score thresholds, ad-hoc HTTP clients, and inline
-duration literals. Split code before raising a line budget. A legitimate budget
-increase requires the documented `[budget-raised: reason]` commit trailer.
+Guardrails reject common copies, including ad-hoc HTTP clients and inline duration literals,
+and pin the canonical severity and category helpers. Split code before raising a line budget. A
+legitimate budget increase requires a `[budget-raised: <reason> (#123)]` line in the commit
+message that names a tracked issue or pull request; `tools/scripts/check-budget-ratchet.mjs`
+enforces it.
 
 ## Code and comment style
 
 - Prefer clear names and structure over comments. Comments explain a
-  non-obvious reason, invariant, or external contract.
+  non-obvious reason, invariant, or external contract (convention, not checked).
 - Keep implementation comments to one concise sentence when possible. Design
-  history and incident narratives belong in maintained docs or Git history.
+  history and incident narratives belong in maintained docs or Git history
+  (convention, not checked).
+- Comments carry no filler phrases such as "basically" or "note that":
+  `tools/scripts/lib/guardrail-comment-quality-rules.mjs`.
 - Rust uses `//!` for module docs, `///` for item contracts, and `//` for local
   implementation notes. TypeScript uses `/** */` for exported API docs and `//`
-  for implementation notes.
+  for implementation notes (convention, not checked).
 - Do not add decorative rulers, commented-out code, audit labels, dated
-  postmortems, or references to superseded implementations.
-- Tests communicate scenarios through names and assertions, not comment essays.
+  postmortems, or references to superseded implementations (convention, not
+  checked).
+- Tests communicate scenarios through names and assertions, not comment essays
+  (convention, not checked).
 - Do not introduce U+2014 em dashes anywhere in code, comments, strings, or
-  Markdown.
+  Markdown. `tools/scripts/lib/guardrail-em-dash-rules.mjs` checks the guides,
+  docs, tooling scripts, and Rust source.
 
 ## Process
 
@@ -118,25 +157,28 @@ increase requires the documented `[budget-raised: reason]` commit trailer.
 
 ### Delivery
 
-1. Branch names use `<type>/<short-kebab-case-description>` with one of
+1. Branch names use a type prefix and a short kebab-case description separated by a slash, with one of
    `feature`, `bugfix`, `hotfix`, `release`, or `docs`. Add a ticket after the
-   prefix when applicable.
+   prefix when applicable (convention, not checked).
 2. Commit subjects use a capitalized imperative verb and specific object. Keep
    them to 10 words and 60 characters. Do not use Conventional Commit, scope,
    ticket, or colon prefixes. Keep any body short and limited to non-obvious
-   reasoning.
+   reasoning. `tools/scripts/check-commit-message.mjs` enforces this in the
+   commit-msg hook, and `tools/scripts/pr-title.mjs` checks pull request titles.
 3. Never push, change visibility, create or close issues or pull requests, or
    post externally without explicit permission.
 4. Dependency overrides are a last resort. Prefer updating the parent
    dependency. Every override needs an advisory or `non-security:` rationale and
    a `# reviewed: YYYY-MM-DD` line. Avoid exact pins unless explicitly marked
-   `pinned-exact:` and justified.
+   `pinned-exact:` and justified. `tools/scripts/lib/guardrail-supply-chain-rules.mjs`
+   enforces the rationale, review date, and exact-pin marker.
 
-Open public pull requests against `main` in `brambleworks/SiteCMD-Local`.
+Open public pull requests against `main` in brambleworks/SiteCMD-Local.
 GitHub runs the required checks on the pull request.
 
-## Build constraints
+## Guide triggers
 
-- `whoami` v2 returns `Result<String, Error>`.
-- RustCrypto `hmac` and `sha2` version changes require an explicit decision and
-  re-verification of the OpenSSL webhook reference vectors.
+- `package.json`
+- `pnpm-workspace.yaml`
+- `lefthook.yml`
+- `engine.lock`

@@ -14,6 +14,7 @@ const PRIVATE_RECORD_DEFERRAL = /commercial (?:terms )?spec|RFC's economics sect
 // hand-built nonce allocator, AES-GCM envelope, or body-only HMAC they replaced.
 const RETIRED_CONNECT_CRYPTO =
   /MAX_ENCRYPTIONS_PER_KID|allocator reservation|\{envelope_version, algorithm, kid, nonce, ciphertext\}|existing `sha256=` lowercase-hex HMAC contract|desktop's exact\s+format|adopts this wire format verbatim/;
+const RETIRED_CONNECT_LICENSING = /\b(?:licen[cs]e[\s_-]+key|catalog[\s_-]+token)s?\b/i;
 const DEPLOY_HOST_NAMES = "(?:vercel|netlify)";
 const RETIRED_DEPLOY_TERMS =
   "(?:doors?|hooks?|webhooks?|connections?|credentials?|oauth|callbacks?|promotions?|publish[ -]events?|authority|ordering)";
@@ -115,6 +116,11 @@ export function connectedSpecFailures(file, source) {
   if (provider) {
     failures.push(
       `${file} specifies a retired Connect provider contract ("${provider[0]}"); deploy intake uses the generic signed door and publish-attestation ordering.`,
+    );
+  }
+  if (RETIRED_CONNECT_LICENSING.test(source)) {
+    failures.push(
+      `${file} specifies a retired Connect licensing contract; entitlement comes from subscriptions and direct clients authenticate with scoped tokens.`,
     );
   }
   return failures;

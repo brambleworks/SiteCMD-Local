@@ -1,94 +1,114 @@
-# AGENTS.md
+# Rust workspace
 
-Rust workspace guidance for SiteCMD. Read the root guide for product and
-repository rules. This workspace contains the CLI, native runtime, portable
-engine, WASM wrappers, protocol types, and fuzz harness.
+The Cargo workspace for the open `sitecmd` CLI: the binary, its runtime, the wire protocol, and
+the host that runs the sandboxed engine module. Each crate has its own guide; read it before
+editing that crate.
 
-## Commands
+## Code map
+
+- `Cargo.toml`: the members (`crates/protocol`, `crates/engine-host`, `crates/engine-host/standin`,
+  `crates/runtime`, `crates/cli`) and the build profiles, including `wasm-release` for Wasm builds.
+- `Cargo.lock`: the locked graph. CI fetches, builds, and tests with `--locked`.
+- `rust-toolchain.toml`: the pinned toolchain, its components, and the release and Wasm targets.
+- `deny.toml`: cargo-deny policy for advisories, licenses, bans, and sources.
+- `clippy.toml`: Clippy thresholds.
+- `build_config.rs`: included by the runtime build script. It bakes `SITECMD_CONNECTED_ENDPOINT`
+  from the environment, or from a .env file at the repository root when one exists.
+- `crates/cli/`: the `sitecmd_cli` binary. Guide: `crates/cli/AGENTS.md`.
+- `crates/runtime/`: the manifest and build script of `sitecmd-runtime`, whose source is `src/`.
+  Guide: `src/AGENTS.md`.
+- `crates/engine-host/`: loads and runs the engine module; `crates/engine-host/standin/` is the
+  synthetic module used in tests. Guide: `crates/engine-host/AGENTS.md`.
+- `crates/protocol/`: wire types shared by the CLI, the engine module, and the connected service.
+  Guide: `crates/protocol/AGENTS.md`.
+- `src/`: the runtime source, with guides in `src/cli/AGENTS.md`, `src/core/AGENTS.md`, and
+  `src/db/AGENTS.md`.
+- `tests/fixtures/`: shared fixtures: connection code-flow checkouts, fix-template checkouts, sync
+  cases, and the wire identifier corpus in `tests/fixtures/parity/wire_identifiers.json`.
+
+## Entry points
+
+- `crates/cli/src/main.rs`: `fn main` of the `sitecmd_cli` binary.
+- `crates/engine-host/build.rs`: reads, pins, precompiles, and embeds the engine module.
+- `crates/runtime/build.rs`: runs `build_config.rs`.
+- `/tools/scripts/sitecmd.mjs`: `pnpm sitecmd -- <args>` builds and runs the CLI from a checkout.
+
+## How it works
+
+1. `crates/engine-host/build.rs` reads the module named by `SITECMD_ENGINE_WASM`, or the one
+   `pnpm engine:fetch` writes under `/engine/`. Unless `SITECMD_ENGINE_UNPINNED=1`, it refuses a
+   module whose SHA-256 differs from `/engine.lock`. It precompiles the module with Wasmtime for
+   the build target and embeds both the original and the compiled bytes.
+2. `crates/cli` parses arguments and calls command functions in `sitecmd_runtime::cli`. Those use
+   `src/core/` for Code Scan, `src/db/` for the local store, and `src/connected_service.rs` for the
+   connected service.
+3. The engine module owns check verdicts, coverage, and scoring. Callers supply evaluation time
+   and typed facts. The module has no clock, filesystem, network, or environment access; it sees
+   only what the host hands it.
+
+Code Scan runs per-file analysis on up to eight module instances, defaulting to the available
+parallelism clamped to 1 through 8. Set `SITECMD_ENGINE_WORKERS` to an unsigned decimal integer
+for benchmarking or CI. The host clamps valid values to 1 through 8 and refuses invalid values.
+
+## Invariants
+
+- Open crates depend only on each other and on crates.io, and only the engine host depends on
+  Wasmtime, with default features off: `/tools/scripts/lib/guardrail-engine-host-rules.mjs`, run
+  by `pnpm audit:deps:rust-policy`.
+- `wasmtime-wasi` and `wasi-common` stay banned in `deny.toml`; the fixture in
+  `/tools/scripts/testdata/deny-wasi/` proves the ban rejects them
+  (`/tools/scripts/audit/check-rust-dependency-policy.mjs`).
+- No engine source path or engine crate name enters the tree:
+  `/tools/scripts/lib/publication-history-rules.mjs`, run by the public tree check.
+- The CLI and runtime versions match each other and `Cargo.lock`, and every member declares
+  `rust-version = "1.95.0"`: `/tools/scripts/lib/guardrail-version-sync-rules.mjs`. Bump versions
+  with `pnpm release <version>`.
+- The toolchain pin stays explicit: `/tools/scripts/audit/check-rust-toolchain.mjs`.
+- Rust files stay within line budgets (`/tools/scripts/lib/guardrail-rust-loc-rules.mjs`), and
+  bare `.expect()` and inline `Duration::from_*` stay within their ratchets
+  (`/tools/scripts/lib/guardrail-rust-ratchets.mjs`). Split code instead of raising a budget.
+- Code under `crates/` takes time from its caller, never an ambient clock:
+  `/tools/scripts/lib/guardrail-ambient-clock-rules.mjs`, which scans only `crates/`. The runtime
+  reads the clock through `src/time.rs` (convention, not checked).
+
+## Testing
+
+Build the stand-in from the repository root, then run the workspace from this folder so rustup
+applies the pinned toolchain:
 
 ```bash
-cargo test
-cargo test -- test_name
-cargo test --workspace
-cargo clippy --workspace
-cargo build
-pnpm guardrails:repo
-```
-
-Use `--workspace` when verifying changes across crates.
-
-Build the stand-in from the repository root before running the public workspace tests.
-
-```bash
-fnm exec --using=26.13.1 node tools/scripts/build-standin.mjs
+fnm exec --using="$(cat .nvmrc)" node tools/scripts/build-standin.mjs
 cd apps/desktop/src-tauri
 export SITECMD_ENGINE_WASM="$PWD/target/standin/sitecmd_engine_standin.wasm"
 export SITECMD_ENGINE_UNPINNED=1
-cargo test --workspace
+cargo test --locked --workspace
+cargo clippy --locked --all-targets --workspace -- -D warnings
+cargo fmt --check --all
 ```
 
-The host also accepts `engine/local-engine.wasm` at the repository root as the
-default module path. Local builds use `SITECMD_ENGINE_UNPINNED=1` until
-`engine.lock` is available.
+Add `-p <package>` for one crate and `-- <test_name>` for one test. CI also runs doctests with
+`cargo test --locked --doc --workspace` and checks the workspace on Rust 1.95.0.
 
-Code Scan runs per-file analysis on up to eight module instances, defaulting
-to the available parallelism clamped to 1 through 8. Set
-`SITECMD_ENGINE_WORKERS` to an unsigned decimal integer for benchmarking or
-CI. The host clamps valid values to 1 through 8 and refuses invalid values.
+## Boundaries
 
-## Database
+- The engine module comes from the engine release that `/engine.lock` pins by version, URL, and
+  SHA-256. `pnpm engine:fetch` downloads and verifies it; release builds embed it. Tests use the
+  stand-in module instead, which is why the commands above set `SITECMD_ENGINE_UNPINNED=1`.
+- The ABI between this workspace and the module is `crates/protocol/src/engine_abi/`.
+- The connected service implements the other side of the wire types in `crates/protocol/src/sync/`,
+  specified in `/docs/engineering/connected-service/connected-protocol-spec.md`.
+- The release workflow, which is not in this tree, builds `sitecmd-cli` for the targets in
+  `rust-toolchain.toml`; `/packaging/npm/` and `/install.sh` distribute the result.
 
-SQLite runs on a dedicated worker thread. All access goes through
-`Database::execute` or `Database::execute_mut` with a `move` closure. Never hold
-a mutex, connection, or database borrow across `.await`.
+## Guide triggers
 
-Domain methods belong in `db/{domain}.rs` as `impl Database` blocks. Keep
-`db/mod.rs` focused on the worker, open path, and shared types.
-
-- Bind SQL values with `params!` or `named_params!`; never interpolate values.
-- Keep row decoding next to the queries that use it.
-- Multi-step dependent writes use one `execute_mut` transaction.
-- Schema changes use numbered SQL files in `db/migrations/`.
-- Migrations and their version records commit atomically.
-- Supply integer epoch milliseconds from Rust. Do not add SQL wall-clock
-  defaults.
-- Session-aware queries must not filter `session_id IS NULL`.
-
-## Checks and the portable engine
-
-The engine module owns check verdicts, coverage, and scoring. Callers supply
-evaluation time and typed facts. The module has no clock, filesystem, network,
-or environment access.
-
-Async transport uses typed probe plans. The hosted adapter classifies timeout,
-body-cap, redirect, and transport outcomes. External-corpus checks use an
-explicit answered or unavailable shape. TLS uses `TlsFacts` and separate
-expiry, hostname, chain, and protocol check ids.
-
-Sitemap discovery and sitemap checks share the sitemap-document parser and
-candidate policy. Redirect checks share the redirect walker. Never fork their
-state machines in a runtime adapter.
-
-## Scans and scoring
-
-Web Scan modes select check categories. Multi-page analysis produces
-session-scoped findings with explicit pass or skipped outcomes so coverage can
-prove execution. Raw Web Scan category scores are historical diagnostics.
-
-Issue payloads carry `IssueConfidence` or intentionally inherit the documented
-default. New producers should supply a reason when confidence is not obvious.
-
-Connection exports include the fingerprint key. Installation tokens belong in
-the credential store. The CLI dry run renders a payload without allocating a
-sequence or sending it.
-
-## Network and credentials
-
-- Use the existing shared client for the transport. The local lane uses
-  `http_client::for_local_scan` with checked addresses. Do not construct ad-hoc
-  reqwest clients without a reviewed, guardrail-marked transport requirement.
-- Validate scan targets, redirects, callbacks, webhooks, and sitemap fetches
-  through `network_policy::validate_url` with the correct policy.
-- Local database inspection stays inside the audited project for SQLite and
-  uses local transports for PostgreSQL.
-- Log prefixes, domains, and hostnames. Keep raw secrets and PII out of logs.
+- `Cargo.toml`
+- `Cargo.lock`
+- `rust-toolchain.toml`
+- `deny.toml`
+- `clippy.toml`
+- `build_config.rs`
+- `crates/*/Cargo.toml`
+- `crates/*/build.rs`
+- `crates/engine-host/standin/Cargo.toml`
+- `tests/fixtures/parity/wire_identifiers.json`

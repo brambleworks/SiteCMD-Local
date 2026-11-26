@@ -51,13 +51,16 @@ pnpm sitecmd -- audit . --format json
 - `pnpm verify:push` - optional local verification. Run after committing to check commit and Rust toolchain policy.
 - Lefthook runs the relevant subset on `pre-commit` and checks history sent to public remotes on `pre-push`.
 
-Run direct Rust checks from the native workspace so rustup selects its pinned toolchain:
+The Rust tests embed the stand-in engine module. Build it from the repository root, then run the Rust checks from the native workspace so rustup selects its pinned toolchain:
 
 ```bash
+fnm exec --using="$(cat .nvmrc)" node tools/scripts/build-standin.mjs
 cd apps/desktop/src-tauri
+export SITECMD_ENGINE_WASM="$PWD/target/standin/sitecmd_engine_standin.wasm"
+export SITECMD_ENGINE_UNPINNED=1
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace
 ```
 
 ## Branch + commit conventions
@@ -76,11 +79,11 @@ cargo test --workspace
 - Repository tooling: ESLint, Vitest, and Knip.
 - Rust: cargo fmt, clippy `-D warnings`, cargo test. Coverage snapshots are available on demand.
 - Repository guardrails: `pnpm guardrails:repo`, which is where most conventions in this file are actually enforced.
-- Release pipeline: builds CLI archives for macOS, Linux, and Windows; publishes to R2; gated on the knip export budget and repository guardrails.
+- Releases: the release workflow is not in this repository. It publishes signed CLI archives to releases.sitecmd.com, GitHub Releases, and npm; see [Releasing the CLI](docs/operations/releasing.md).
 
 ## Architecture rules (the ones that bite if forgotten)
 
-- All HTTP through `http_client::for_url(...)` - never `reqwest::Client::new()`. CI guardrail enforces this in `src/checks` and `src/core`.
+- All HTTP goes through the shared clients in `apps/desktop/src-tauri/src/http_client.rs`, never `reqwest::Client::new()`. `tools/scripts/audit/forbid-adhoc-rust-patterns.sh` enforces this in `src/cli` and `src/core`.
 - DB access through `db.execute(move |conn| ...)`. Never hold a Mutex across `.await`.
 - The complete local workbench has no feature gate. Subscription tiers remain
   visible for connected-service and catalog entitlement, which the service
@@ -88,8 +91,7 @@ cargo test --workspace
 
 ## Where to find more
 
-- `AGENTS.md` (root) - full architecture overview (the `CLAUDE.md` files are thin compatibility pointers to these).
-- `apps/desktop/src-tauri/AGENTS.md` - Rust workspace guidance.
+- `AGENTS.md` (root) - repository guidance, with an index of every area guide. Each `CLAUDE.md` contains only `@AGENTS.md`, which imports the guide beside it.
 - `docs/README.md` - maintained engineering, product, QA, and operations documentation.
 
 See [GOVERNANCE.md](GOVERNANCE.md) for decision-making and maintainer responsibilities.

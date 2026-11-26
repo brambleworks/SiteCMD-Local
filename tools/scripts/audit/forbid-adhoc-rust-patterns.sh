@@ -12,8 +12,9 @@ for dir in "$SRC/cli" "$SRC/core" "$SRC/db"; do
   fi
 done
 
+# Only Rust sources count; the guides beside them quote these patterns.
 # HTTP in these modules must use the shared http_client.
-violations=$(grep -rnE "reqwest::Client::(new|builder)|reqwest::ClientBuilder::new|(^|[^A-Za-z0-9_:])Client::(new|builder)\(|(^|[^A-Za-z0-9_:])ClientBuilder::new\(" \
+violations=$(grep -rnE --include='*.rs' "reqwest::Client::(new|builder)|reqwest::ClientBuilder::new|(^|[^A-Za-z0-9_:])Client::(new|builder)\(|(^|[^A-Za-z0-9_:])ClientBuilder::new\(" \
   "$SRC/cli" "$SRC/core" 2>/dev/null | grep -v "allow-ad-hoc-client" || true)
 if [ -n "$violations" ]; then
   echo "Direct reqwest::Client construction is forbidden -- use the shared http_client:"
@@ -23,8 +24,7 @@ fi
 
 # Production command errors must be sanitized; the DB layer keeps typed errors.
 error_violations=""
-for f in $(grep -rln "map_err(|e| e\.to_string())" "$SRC/cli" "$SRC/db" 2>/dev/null \
-  | grep -vE '(_tests\.rs|/tests\.rs|/test_helpers\.rs)$'); do
+while IFS= read -r f; do
   # Ignore inline test modules by tracking their brace depth.
   offending=$(awk '
     {
@@ -48,7 +48,8 @@ for f in $(grep -rln "map_err(|e| e\.to_string())" "$SRC/cli" "$SRC/db" 2>/dev/n
   if [ -n "$offending" ]; then
     error_violations="${error_violations}${offending}\n"
   fi
-done
+done < <(grep -rln --include='*.rs' "map_err(|e| e\.to_string())" "$SRC/cli" "$SRC/db" 2>/dev/null \
+  | grep -vE '(_tests\.rs|/tests\.rs|/test_helpers\.rs)$')
 if [ -n "$error_violations" ]; then
   echo "Raw '.map_err(|e| e.to_string())' is forbidden in commands (use sanitize_error) and in the db layer (return DbError via ?):"
   printf "%b" "$error_violations"
