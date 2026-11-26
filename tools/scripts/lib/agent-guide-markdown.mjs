@@ -27,6 +27,16 @@ export function guideTriggers(prose) {
   );
 }
 
+// Repeats until nothing changes, so removing one tag cannot leave another behind.
+function withoutTags(text) {
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/<[^>]+>/g, "");
+  } while (text !== previous);
+  return text;
+}
+
 export function markdownAnchors(source, markdown) {
   const anchors = new Set();
   const prose = markdown ? markdownParts(source).prose : source;
@@ -41,10 +51,9 @@ export function markdownAnchors(source, markdown) {
     const atx = /^ {0,3}#{1,6}[ \t]+(.+)$/.exec(line);
     const setext = /^ {0,3}(?:=+|-+)[ \t]*$/.test(lines[index + 1] ?? "");
     if (!atx && (!setext || !line.trim())) continue;
-    const slug = (atx?.[1] ?? line)
-      .replace(/[ \t]+#+[ \t]*$/, "")
-      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-      .replace(/<[^>]+>/g, "")
+    const slug = withoutTags(
+      (atx?.[1] ?? line).replace(/[ \t]+#+[ \t]*$/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1"),
+    )
       .replace(/(?:\*\*|__)(.+?)(?:\*\*|__)/g, "$1")
       .trim()
       .toLowerCase()
