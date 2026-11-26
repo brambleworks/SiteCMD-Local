@@ -143,7 +143,7 @@ jobs:
       - name: Check bans across all workspace features
         working-directory: apps/desktop/src-tauri
         run: cargo deny --all-features --workspace check bans
-      - name: Check budget ratchet
+      - name: Check budget ratchet and guide triggers
         env:
           BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.merge_group.head_sha || github.event.pull_request.head.sha || github.sha }}
@@ -151,16 +151,22 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           message_args=()
+          guide_message_args=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             BASE_SHA=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
-            message_file=$(mktemp)
-            trap 'rm -f "$message_file"' EXIT
-            printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > "$message_file"
-            message_args=(--message-file "$message_file")
+            message_dir=$(mktemp -d)
+            trap 'rm -f "$message_dir/budget" "$message_dir/guide"; rmdir "$message_dir"' EXIT
+            printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > "$message_dir/budget"
+            printf '%s\n' "$PR_BODY" > "$message_dir/guide"
+            message_args=(--message-file "$message_dir/budget")
+            guide_message_args=(--message-file "$message_dir/guide")
           elif [ -z "$BASE_SHA" ]; then
             BASE_SHA=$(git merge-base origin/main "$HEAD_SHA")
           fi
           node tools/scripts/check-budget-ratchet.mjs --range "${BASE_SHA}..${HEAD_SHA}" "${message_args[@]}"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] || [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+            node tools/scripts/audit/check-agents-md.mjs --range "${BASE_SHA}..${HEAD_SHA}" "${guide_message_args[@]}"
+          fi
 
   pr-title:
     name: PR title and body

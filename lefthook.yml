@@ -35,6 +35,8 @@ commit-msg:
       # Budget raises require `[budget-raised: <reason>]` in the commit message;
       # CI repeats the check over the merge range.
       run: node tools/scripts/check-budget-ratchet.mjs --staged
+    guide-triggers:
+      run: node tools/scripts/audit/check-agents-md.mjs --staged --message-file "{1}"
 pre-push:
   commands:
     public-tree:

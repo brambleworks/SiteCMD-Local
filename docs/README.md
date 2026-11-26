@@ -6,10 +6,10 @@ Use `docs/` only for information that should be treated as current project truth
 
 ## Sections
 
-- `engineering/` - architecture, tooling, naming conventions, and the connected-service implementation specifications (protocol and state, alert delivery, maintained surfaces). The business strategy records those specifications fulfill (the publication decision, the connected-service architecture, the commercial terms, and the paid intelligence architecture) are maintained privately in the SiteCMD-Web repository and are named here in plain text only.
+- `engineering/` - architecture, tooling, naming conventions, and the connected-service implementation specifications (protocol and state, alert delivery, maintained surfaces). The business strategy records those specifications fulfill (the publication decision, the connected-service architecture, the commercial terms, and the paid intelligence architecture) are maintained privately outside this repository and are named here in plain text only.
 - `operations/` - release and launch-smoke runbooks
-- `product/` - product behavior and scanner accuracy
-- `qa/` - scanner input and fuzz verification
+- `product/` - the scanner accuracy log
+- `qa/` - how to run the native workspace tests
 
 ## High-Signal Entry Points
 

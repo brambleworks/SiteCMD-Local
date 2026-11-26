@@ -8,5 +8,8 @@ The credentialed publication logic remains inline in the workflow. Its job does
 not check out repository code, so publishing cannot execute a script from the
 source tree.
 
-Run `pnpm exec vitest run tools/scripts/release-workflow-scripts.test.mjs` to
-check workflow wiring and Bash syntax.
+To test the payload, build, and verification scripts, run:
+
+```bash
+pnpm exec vitest run tools/scripts/release-payload-scripts.test.mjs tools/scripts/release-cli-notarization.test.mjs
+```

@@ -5,7 +5,7 @@ import path from "node:path";
 export const OVERLAY_DELETED = Symbol("overlay-deleted");
 
 // Mirror directories ignored by the real runner.
-const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "target"]);
+const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "target"]);
 
 // Per-root caches use relative paths and remain valid for read-only test runs.
 const treeCaches = new Map();

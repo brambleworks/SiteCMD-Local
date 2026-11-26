@@ -48,6 +48,14 @@ describe("publicFaceFailures", () => {
     expect(run()).toBe("");
   });
 
+  it("rejects a restored licensing credential in an implementation spec", () => {
+    expect(
+      run((files) => {
+        files[PROTOCOL_SPEC] += "\nStore the license key and catalog\ntoken in the keychain.\n";
+      }),
+    ).toContain("specifies a retired Connect licensing contract");
+  });
+
   it("catches a spec that returns to the nonce allocator envelope", () => {
     expect(
       run((files) => {

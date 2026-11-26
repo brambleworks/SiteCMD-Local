@@ -11,6 +11,8 @@ import {
 } from "./guardrail-test-support.mjs";
 
 const {
+  OVERLAY_DELETED,
+  agentGuidanceFailures,
   emDashFailures,
 
   releaseWorkflowSafetyFailures,
@@ -212,6 +214,37 @@ describe.concurrent(
         "uses an em-dash (U+2014)",
       );
     });
+
+    it("requires the guide listed for the CI configuration", () => {
+      expectGuardrailFailure(
+        agentGuidanceFailures,
+        (fixtureRoot) => fixtureRoot.set(".github/AGENTS.md", OVERLAY_DELETED),
+        ".github/AGENTS.md",
+      );
+    });
+
+    it("requires an exact Claude import, including in a new dot folder", () => {
+      expectGuardrailFailure(
+        agentGuidanceFailures,
+        (fixtureRoot) => {
+          writeFixtureFile(fixtureRoot, ".example/AGENTS.md", "# Example\n");
+          writeFixtureFile(fixtureRoot, ".example/CLAUDE.md", "Read @AGENTS.md first.\n");
+        },
+        ".example/CLAUDE.md must be exactly @AGENTS.md followed by a newline",
+      );
+    });
+
+    it.each(["tools/scripts", ".github", "packaging/npm"])(
+      "fails when the %s guide reintroduces an em-dash",
+      (dir) => {
+        const file = `${dir}/AGENTS.md`;
+        expectGuardrailFailure(
+          emDashFailures,
+          (fixtureRoot) => writeFixtureFile(fixtureRoot, file, "# Example\n\nA \u2014 B\n"),
+          `${file}:3 - uses an em-dash (U+2014)`,
+        );
+      },
+    );
 
     it("fails when a maintained doc reintroduces an em-dash", () => {
       // The em-dash guardrail can overlook maintained Markdown under docs/.

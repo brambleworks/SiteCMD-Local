@@ -1,138 +1,93 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
+import { posix as path } from "node:path";
 import { fileURLToPath } from "node:url";
+import { guideTriggers, markdownParts } from "../lib/agent-guide-markdown.mjs";
+import { guidePath, referenceFailures } from "../lib/agent-guide-references.mjs";
+import { bypassTokenStatus, changeMessage } from "../lib/change-message.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-
-function read(p) {
-  return fs.readFileSync(p, "utf8");
+function git(...args) {
+  return execFileSync("git", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
 }
-function exists(p) {
-  try {
-    fs.accessSync(p);
-    return true;
-  } catch {
-    return false;
+
+function paths(output) {
+  return [...new Set(output.split("\0").filter(Boolean))].sort();
+}
+
+function isGuide(file) {
+  return path.basename(file) === "AGENTS.md";
+}
+
+function checkReferences() {
+  const guides = paths(git("ls-files", "-z", "--cached", "--others", "--exclude-standard"))
+    .filter(isGuide)
+    .filter((file) => fs.existsSync(file));
+  const failures = guides.flatMap((guide) =>
+    referenceFailures(guide, fs.readFileSync(guide, "utf8")),
+  );
+  if (failures.length) {
+    console.error(`AGENTS.md staleness check failed:\n  ${failures.join("\n  ")}`);
+    return 1;
   }
+  console.log(`AGENTS.md staleness check passed (${guides.length} files).`);
+  return 0;
 }
 
-function findAgentsMd(dir, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (e.name === "node_modules" || e.name === "target" || e.name === "dist") continue;
-    if (e.name.startsWith(".")) continue;
-    const abs = path.join(dir, e.name);
-    if (e.isDirectory()) findAgentsMd(abs, out);
-    else if (e.isFile() && e.name === "AGENTS.md") out.push(abs);
+function checkTriggers({ base, head, messageFile }) {
+  const diff = base ? [`${base}..${head}`] : ["--cached"];
+  const changed = paths(git("diff", "--no-renames", "--name-only", "-z", ...diff, "--"));
+  const files = head
+    ? git("ls-tree", "-r", "--name-only", "-z", head)
+    : git("ls-files", "-z", "--cached");
+  const unchangedGuides = paths(files).filter((file) => isGuide(file) && !changed.includes(file));
+  const violations = [];
+  for (const guide of unchangedGuides) {
+    const { prose } = markdownParts(git("show", `${head ?? ""}:${guide}`));
+    const globs = (guideTriggers(prose) ?? []).map((trigger) => guidePath(guide, trigger));
+    const matches = changed.filter((file) => globs.some((glob) => path.matchesGlob(file, glob)));
+    if (matches.length) violations.push(`  ${guide}: ${matches.join(", ")}`);
   }
-  return out;
-}
-
-const PATH_EXTENSIONS = new Set([
-  "rs",
-  "ts",
-  "tsx",
-  "js",
-  "mjs",
-  "cjs",
-  "json",
-  "jsonc",
-  "toml",
-  "yaml",
-  "yml",
-  "astro",
-  "html",
-  "css",
-  "scss",
-  "md",
-  "sh",
-  "sql",
-]);
-function extractPaths(content) {
-  const re = /`([A-Za-z][A-Za-z0-9_./@-]*?\.(?:[a-z]{2,5}))`/g;
-  const set = new Set();
-  for (const m of content.matchAll(re)) {
-    const candidate = m[1];
-    if (!candidate.includes("/")) continue;
-    const ext = candidate.split(".").pop().toLowerCase();
-    if (!PATH_EXTENSIONS.has(ext)) continue;
-    if (candidate.includes("*") || candidate.includes("{")) continue;
-    if (candidate.startsWith("//") || candidate.startsWith("http")) continue;
-    if (candidate.startsWith("dist/") || candidate.includes("/dist/")) continue;
-    set.add(candidate);
+  if (violations.length === 0) {
+    console.log("Guide trigger check passed.");
+    return 0;
   }
-  return [...set];
-}
 
-function extractPnpmScripts(content) {
-  // Only backticked commands are documentation references.
-  const re = /`pnpm\s+([a-z][a-z0-9:-]*)\b/g;
-  const set = new Set();
-  for (const m of content.matchAll(re)) {
-    const name = m[1];
-    if (name === "install" || name === "exec" || name === "run") continue;
-    set.add(name);
+  const status = bypassTokenStatus(changeMessage({ base, head, messageFile }), "guide-unchanged");
+  if (status.ok) {
+    console.warn("Guide trigger check authorized via [guide-unchanged:]:");
+    console.warn(violations.join("\n"));
+    return 0;
   }
-  return [...set];
-}
-
-function loadAllScripts() {
-  const scripts = new Set();
-  function addFrom(packageJsonPath) {
-    if (!exists(packageJsonPath)) return;
-    try {
-      const pkg = JSON.parse(read(packageJsonPath));
-      for (const name of Object.keys(pkg.scripts || {})) scripts.add(name);
-    } catch {
-      // Ignore malformed package manifests; other checks report them.
-    }
+  console.error(
+    "Guide trigger check failed. Update each guide below or add [guide-unchanged: <reason> (#123)].",
+  );
+  if (status.reason === "missing_issue_reference") {
+    console.error(
+      `The [guide-unchanged:] token must reference a tracked issue or PR. Found: ${status.line}`,
+    );
   }
-  addFrom(path.join(ROOT, "package.json"));
-  const appsDir = path.join(ROOT, "apps");
-  if (exists(appsDir)) {
-    for (const entry of fs.readdirSync(appsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      addFrom(path.join(appsDir, entry.name, "package.json"));
-    }
+  console.error(violations.join("\n"));
+  return 1;
+}
+
+function main(args) {
+  if (args.length === 0) return checkReferences();
+  const mode = args.shift();
+  const revisions = mode === "--range" ? args.shift()?.split("..") : [];
+  const [base, head] = revisions ?? [];
+  const [messageOption, messageFile] = args;
+  if (
+    !(mode === "--staged" || (mode === "--range" && revisions?.length === 2 && base && head)) ||
+    (args.length !== 0 && (args.length !== 2 || messageOption !== "--message-file" || !messageFile))
+  ) {
+    console.error(
+      "Usage: check-agents-md.mjs [--range BASE..HEAD | --staged] [--message-file PATH]",
+    );
+    return 2;
   }
-  return scripts;
+  return checkTriggers({ base, head, messageFile });
 }
 
-function resolveRelative(agentsAbs, candidate) {
-  // Resolve repository-root paths before guidance-relative paths.
-  const repoAbs = path.join(ROOT, candidate);
-  if (exists(repoAbs)) return repoAbs;
-  const dir = path.dirname(agentsAbs);
-  const localAbs = path.join(dir, candidate);
-  if (exists(localAbs)) return localAbs;
-  const tauriSrcAbs = path.join(ROOT, "apps/desktop/src-tauri/src", candidate);
-  if (exists(tauriSrcAbs)) return tauriSrcAbs;
-  return null;
-}
-
-const allScripts = loadAllScripts();
-const agentsFiles = findAgentsMd(ROOT);
-const failures = [];
-
-for (const agentsAbs of agentsFiles) {
-  const content = read(agentsAbs);
-  const rel = path.relative(ROOT, agentsAbs);
-
-  for (const candidate of extractPaths(content)) {
-    if (!resolveRelative(agentsAbs, candidate)) {
-      failures.push(`${rel}: references missing path \`${candidate}\``);
-    }
-  }
-  for (const script of extractPnpmScripts(content)) {
-    if (!allScripts.has(script)) {
-      failures.push(`${rel}: references missing pnpm script \`${script}\``);
-    }
-  }
-}
-
-if (failures.length > 0) {
-  process.stderr.write("AGENTS.md staleness check failed:\n");
-  for (const f of failures) process.stderr.write(`  ${f}\n`);
-  process.exit(1);
-}
-process.stdout.write(`AGENTS.md staleness check passed (${agentsFiles.length} files).\n`);
+process.chdir(fileURLToPath(new URL("../../..", import.meta.url)));
+process.exitCode = main(process.argv.slice(2));

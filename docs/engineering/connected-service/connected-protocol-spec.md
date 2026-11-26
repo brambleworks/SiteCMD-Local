@@ -39,9 +39,8 @@ commercial terms (set outside this specification); the rewrite of the governing 
 (maintained-surface matrix).
 
 Normative artifacts: this document is the semantics authority. The exact
-wire shapes are defined in `apps/sitecmd-connect/openapi.yaml` in the
-separate SiteCMD-Connect repository and kept in agreement by contract tests; prose and
-schema disagreeing is a build failure, not a judgment call.
+wire shapes are defined in the connected service's OpenAPI document.
+Contract tests keep that document in sync with the route declarations.
 
 ## Resource model
 
@@ -365,10 +364,9 @@ is the record's identity epoch, and epoch migration mirrors key rotation:
 
 - **Owner:** the project. The shipped desktop generates the key locally:
   32 random bytes, never derived from anything.
-- **Storage:** the OS keychain, through the existing app-secrets layer
-  (`apps/desktop/src-tauri/src/keyring/app_secrets.rs`), alongside the
-  license key and catalog token. Never in SQLite, never in config files
-  inside the repository, never in the payload.
+- **Storage:** the desktop stores the key in the OS keychain. The CLI
+  reads it from an encrypted connection export. The key stays out of
+  SQLite, repository configuration files, and submission payloads.
 - **The server never holds it.** Nothing in the protocol transmits the key
   or anything derived from it except the HMAC outputs and a one-way key
   commitment (below). This is what makes the keyed-hash privacy claim
@@ -1793,13 +1791,10 @@ code snapshot populates the inventory.
 
 The connected-service surface includes hosted triggers, deployment ordering,
 alert delivery, reports, reconnect, key rotation, retention, and erasure.
-Their wire shapes are frozen in the OpenAPI document named below.
+Their wire shapes are frozen in the connected service's OpenAPI document.
 
-The OpenAPI document this spec obligates exists now, at
-`apps/sitecmd-connect/openapi.yaml` in the separate SiteCMD-Connect repository. It
-freezes only shapes with an implementation behind them; its header
-names the absent surfaces so a path that answers 404 is a bug and a
-capability it does not describe is one the service does not have.
+The OpenAPI document covers implemented wire shapes. A documented route
+must exist, and undocumented capabilities are outside the public wire contract.
 
 ### HTTP conventions
 
@@ -3010,12 +3005,10 @@ Connect stores its accounts, membership, subscriptions, sites, findings,
 alerts, delivery attempts, reports, and fix jobs in Postgres through the
 `HYPERDRIVE` binding. Hyperdrive query caching is disabled so reads after
 writes reflect current credentials and state. Each invocation opens a
-postgres.js client through `src/db/client.ts`; SQL values are bound
-parameters. Submission writes commit in one Postgres transaction, with a
-claim that rolls back the transaction if it loses its guard.
+postgres.js client and binds SQL values as parameters. Submission writes
+commit in one Postgres transaction. A failed claim rolls back the transaction.
 
-The schema is the SQL files under
-`apps/sitecmd-connect/postgres/migrations` in the SiteCMD-Connect repository.
+The connected service's SQL migrations define the schema.
 The migrations use Postgres types, constraints, indexes, and cascading
 foreign keys. The deployment runs `pnpm run db:migrate` before
 `wrangler deploy`. node-pg-migrate applies each file once, in name order,

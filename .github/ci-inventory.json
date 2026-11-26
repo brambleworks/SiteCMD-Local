@@ -205,6 +205,13 @@
     "was": "tooling-quality.yml"
   },
   {
+    "check": "guide-triggers",
+    "command": "node tools/scripts/audit/check-agents-md.mjs --range \"${BASE_SHA}..${HEAD_SHA}\" \"${guide_message_args[@]}\"",
+    "job": "static",
+    "stages": ["pr", "queue"],
+    "was": "introduced in ci.yml"
+  },
+  {
     "check": "pr-title",
     "command": "node tools/scripts/pr-title.mjs --title=\"$PR_TITLE\" --body-file \"$body_file\" --author \"$PR_AUTHOR\"",
     "job": "pr-title",

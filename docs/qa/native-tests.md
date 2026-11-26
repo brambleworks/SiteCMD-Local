@@ -5,7 +5,7 @@ against the stand-in module. Build it from the repository root before running
 the tests.
 
 ```bash
-fnm exec --using=26.13.1 node tools/scripts/build-standin.mjs
+fnm exec --using="$(cat .nvmrc)" node tools/scripts/build-standin.mjs
 cd apps/desktop/src-tauri
 export SITECMD_ENGINE_WASM="$PWD/target/standin/sitecmd_engine_standin.wasm"
 export SITECMD_ENGINE_UNPINNED=1

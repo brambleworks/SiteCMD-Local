@@ -9,6 +9,9 @@ const EXPLICIT_GUIDES = ["README.md", "CONTRIBUTING.md", "AGENTS.md", "CLAUDE.md
 export function emDashFailures(read, exists, listFiles, scriptDirectories = ["tools/scripts"]) {
   const failures = lazyPluralFailures(read, exists, listFiles);
   const scanned = new Set(EXPLICIT_GUIDES);
+  for (const file of listFiles(".", (f) => /(?:^|\/)AGENTS\.md$/.test(f))) {
+    scanned.add(file);
+  }
   // All tracked docs are maintained public documentation.
   for (const file of listFiles("docs", (f) => f.endsWith(".md"))) {
     scanned.add(file);
