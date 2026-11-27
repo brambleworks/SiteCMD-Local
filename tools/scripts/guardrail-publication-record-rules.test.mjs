@@ -67,7 +67,11 @@ The source-publication decision record, maintained privately, owns the boundary.
 
 Use [private vulnerability reporting](https://github.com/brambleworks/SiteCMD-Local/security/advisories/new), or email security@sitecmd.com with the key at [.github/security-contact-key.asc](.github/security-contact-key.asc).
 
-The connected service is in scope: its API, hosted scanner, and delivery paths.
+Reports about the connected service follow [the disclosure page](https://sitecmd.com/docs/security-disclosure).
+
+In scope:
+
+- The \`sitecmd\` CLI and its release infrastructure.
 
 Boundaries live at [trust](https://sitecmd.com/trust) and [privacy](https://sitecmd.com/privacy).
 `,
@@ -304,15 +308,49 @@ describe("workspace filters", () => {
 });
 
 describe("the security policy", () => {
-  it("fails when the connected service is not in scope", () => {
+  it("fails when connected-service reports are not sent to the site's disclosure page", () => {
     expect(
       failures((files) => {
         files["SECURITY.md"] = files["SECURITY.md"].replace(
-          "The connected service is in scope: its API, hosted scanner, and delivery paths.",
-          "The desktop app is in scope.",
+          "(https://sitecmd.com/docs/security-disclosure)",
+          "(https://sitecmd.com/contact)",
         );
       }),
-    ).toContain("connected service is in scope");
+    ).toContain(
+      "must send connected-service reports to https://sitecmd.com/docs/security-disclosure",
+    );
+  });
+
+  it.each([
+    ["the desktop app", "- The desktop app."],
+    ["the MCP server", "- The MCP server."],
+  ])("fails when the scope lists %s", (what, item) => {
+    expect(
+      failures((files) => {
+        files["SECURITY.md"] = files["SECURITY.md"].replace(
+          "- The `sitecmd` CLI and its release infrastructure.\n",
+          `- The \`sitecmd\` CLI and its release infrastructure.\n${item}\n`,
+        );
+      }),
+    ).toContain(`SECURITY.md lists ${what} in scope`);
+  });
+
+  // The policy's scope and hosted routing before the desktop app retired.
+  it("fails on the policy that still covered the desktop app, the MCP server and the connected service", () => {
+    const result = failures((files) => {
+      files["SECURITY.md"] = files["SECURITY.md"]
+        .replace(
+          "Reports about the connected service follow [the disclosure page](https://sitecmd.com/docs/security-disclosure).",
+          "In scope, in the connected service:\n\n- The connected API, the hosted scanner, the deploy-webhook receivers, alert delivery, and hosted report links.",
+        )
+        .replace(
+          "In scope:\n\n- The `sitecmd` CLI and its release infrastructure.",
+          "In scope, on the machine:\n\n- The desktop app, the CLI, the MCP server, and the GitHub Action.",
+        );
+    });
+    expect(result).toContain("must send connected-service reports");
+    expect(result).toContain("SECURITY.md lists the desktop app in scope");
+    expect(result).toContain("SECURITY.md lists the MCP server in scope");
   });
 
   it("fails when it does not point at the trust pages", () => {
