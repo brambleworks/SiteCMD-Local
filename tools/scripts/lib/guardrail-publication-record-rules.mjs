@@ -5,6 +5,23 @@ const CONTRIBUTING = "CONTRIBUTING.md";
 const SECURITY = "SECURITY.md";
 const CONNECTED_SPEC_DIRECTORY = "docs/engineering/connected-service";
 const SECURITY_CONTACT_KEY = ".github/security-contact-key.asc";
+const HOSTED_DISCLOSURE = "https://sitecmd.com/docs/security-disclosure";
+const RETIRED_SCOPE = [
+  ["the desktop app", /\bdesktop app\b/i],
+  ["the MCP server", /\bMCP server\b/i],
+];
+
+/** The list items under each "In scope" line of the security policy. */
+function inScopeItems(text) {
+  const items = [];
+  let listing = false;
+  for (const line of text.split("\n")) {
+    if (/^In scope\b/.test(line)) listing = true;
+    else if (listing && line.startsWith("- ")) items.push(line);
+    else if (line.trim() !== "") listing = false;
+  }
+  return items;
+}
 
 const RETIRED_LOCAL_CONTRACT =
   /Tier::has_feature|Feature::IssueRichDetail|detailsUnlocked|locked on this tier|unlock details|unlock this finding|Code Scan (?:requires (?:Core or Pro|a paid license)|is a paid Core feature)|paid features are off|Cached features are still active|features will downgrade to Free/i;
@@ -256,10 +273,20 @@ export function publicationRecordFailures(
 
   if (exists(SECURITY)) {
     const security = read(SECURITY);
-    if (!/connected service/i.test(security)) {
+    // The hosted service, its scanner and its MCP server are covered by the
+    // site's disclosure page, so this policy sends those reports there.
+    if (!/connected service/i.test(security) || !security.includes(`(${HOSTED_DISCLOSURE})`)) {
       failures.push(
-        `${SECURITY} must state that the connected service is in scope: its API, hosted scanner, and delivery paths are where a report has nowhere else to go.`,
+        `${SECURITY} must send connected-service reports to ${HOSTED_DISCLOSURE}, the policy that covers the hosted service; this repository's scope is the CLI and its release infrastructure.`,
       );
+    }
+    const scope = inScopeItems(security).join("\n");
+    for (const [what, pattern] of RETIRED_SCOPE) {
+      if (pattern.test(scope)) {
+        failures.push(
+          `${SECURITY} lists ${what} in scope. The desktop app is retired and the MCP server is part of the hosted service, so neither belongs to this repository's policy.`,
+        );
+      }
     }
     for (const page of ["https://sitecmd.com/trust", "https://sitecmd.com/privacy"]) {
       if (!security.includes(page)) {
