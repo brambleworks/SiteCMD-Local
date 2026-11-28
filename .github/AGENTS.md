@@ -40,7 +40,7 @@ the settings contracts that tooling checks against the live repository.
   run only on pull requests. The CLI builds and smoke tests, guardrail tests, Rust tests and
   Clippy, doctests, and the 1.95 MSRV check run only in the merge queue and on manual dispatch.
 - `workflows/module-pin.yml` runs on same-repository pull requests and pushes to `main` that
-  change `engine.lock`. It is a non-required check.
+  change `/engine.lock`. It is a non-required check.
 - `workflows/release.yml` runs on pushes of signed version tags from the protected default branch.
   See `/docs/operations/releasing.md` for environment setup, approval, and recovery.
 - Users call the Actions from their own workflows with
