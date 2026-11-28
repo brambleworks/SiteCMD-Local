@@ -603,18 +603,30 @@ it("requires the inventory command to run in the associated job", () => {
 });
 
 it("rejects secret references in an open job, including an aliased step", () => {
-  const checkout = / {6}- uses: actions\/checkout@[^\n]+\n(?: {8,}[^\n]*\n)*/;
-  const source = read(ci).replace(
-    checkout,
-    (step) =>
-      step.replace("      - uses:", "      - &checkout\n        uses:") +
+  // The first checkout step in the text: its uses line and the more deeply
+  // indented lines under it. Read by lines, since a nested-quantifier regex
+  // fails the repository's regex audit.
+  const checkout = (text) => {
+    const lines = text.split("\n");
+    const start = lines.findIndex((line) => line.startsWith("      - uses: actions/checkout@"));
+    if (start === -1) throw new Error("no checkout step");
+    let end = start + 1;
+    while (end < lines.length && lines[end].startsWith("        ")) end += 1;
+    return `${lines.slice(start, end).join("\n")}\n`;
+  };
+  const workflow = read(ci);
+  const step = checkout(workflow);
+  const source = workflow.replace(
+    step,
+    step.replace("      - uses:", "      - &checkout\n        uses:") +
       "        env:\n          TEST_TOKEN: ${{ secrets.TEST_TOKEN }}\n",
   );
   const prTitle = source.indexOf("\n  pr-title:\n");
   const prJob = source.slice(prTitle);
-  expect(prJob).toMatch(checkout);
   expect(
-    fixture({ [ci]: source.slice(0, prTitle) + prJob.replace(checkout, "      - *checkout\n") }),
+    fixture({
+      [ci]: source.slice(0, prTitle) + prJob.replace(checkout(prJob), "      - *checkout\n"),
+    }),
   ).toContain("Open CI job pr-title must not reference secrets or engine paths.");
 });
 
