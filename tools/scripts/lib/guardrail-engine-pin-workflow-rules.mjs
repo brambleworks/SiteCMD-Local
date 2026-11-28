@@ -1,3 +1,4 @@
+import { conditionOf } from "./ci-step-pins.mjs";
 import { unconditionalWorkflowStep } from "./guardrail-text-utils.mjs";
 import { RUNNER_IMAGES } from "./guardrail-workflow-pins.mjs";
 import {
@@ -5,6 +6,7 @@ import {
   readJobs,
   runCommand,
   scalar,
+  sequence,
   workflowFields,
   workflowJobSteps,
   workflowSteps,
@@ -22,9 +24,13 @@ const runners = {
   "engine-pin-windows": RUNNER_IMAGES.windows,
 };
 
-function rustCachePrefix(steps) {
+function rustCacheInputs(steps) {
   const cache = steps.find((step) => scalar(step.get("uses"))?.startsWith("Swatinem/rust-cache@"));
-  return scalar(children(cache?.get("with")).get("prefix-key"));
+  return children(cache?.get("with"));
+}
+
+function rustCachePrefix(steps) {
+  return scalar(rustCacheInputs(steps).get("prefix-key"));
 }
 
 export function enginePinWorkflowFailures(source) {
@@ -65,11 +71,6 @@ export function enginePinWorkflowFailures(source) {
       failures.push(`ci.yml job ${id} must verify the embedded pin on every runner.`);
     }
   }
-  const armSmoke = jobs.get("cli-linux-arm64");
-  const armRunner = linuxReleaseRunners["linux-aarch64"];
-  if (scalar(armSmoke?.get("runs-on")) !== armRunner) {
-    failures.push(`ci.yml job cli-linux-arm64 must run on ${armRunner}.`);
-  }
   return failures;
 }
 
@@ -77,6 +78,72 @@ function includeRowsForRunner(job) {
   if (scalar(job?.get("runs-on")) !== "${{ matrix.os }}") return [];
   const matrix = children(children(job.get("strategy")).get("matrix"));
   return matrix.size === 1 ? workflowSteps(matrix.get("include")) : [];
+}
+
+export function publicEnginePinWorkflowFailures(fields, events, jobs, steps) {
+  const failures = [];
+  const push = events.get("push");
+  if (
+    events.size !== 2 ||
+    events.get("pull_request")?.size !== 0 ||
+    push?.size !== 2 ||
+    sequence(push.get("branches")).join(",") !== "main" ||
+    sequence(push.get("paths")).join(",") !== "engine.lock"
+  ) {
+    failures.push("module-pin.yml must run on pull requests and engine.lock pushes to main.");
+  }
+
+  const job = jobs.get("verify-pin") ?? new Map();
+  const jobSteps = steps.get("verify-pin") ?? [];
+  const sameRepository = "github.event.pull_request.head.repo.full_name == github.repository";
+  if (
+    jobs.size !== 1 ||
+    conditionOf(job) !==
+      `github.repository == 'brambleworks/SiteCMD-Local' && (github.event_name == 'push' || ${sameRepository})`
+  ) {
+    failures.push("module-pin.yml must skip fork pull requests and run only in SiteCMD-Local.");
+  }
+  const permissions = children(fields.get("permissions"));
+  if (
+    job.has("permissions") ||
+    permissions.size !== 1 ||
+    scalar(permissions.get("contents")) !== "read"
+  ) {
+    failures.push("module-pin.yml must grant only contents: read.");
+  }
+
+  const rows = includeRowsForRunner(job);
+  const targetRunners = Object.values(runners);
+  const cache = rustCacheInputs(jobSteps);
+  if (
+    rows.length !== targetRunners.length ||
+    !targetRunners.every((runner) =>
+      rows.some(
+        (row) =>
+          scalar(row.get("os")) === runner && scalar(row.get("prefix")) === `engine-pin-${runner}`,
+      ),
+    ) ||
+    scalar(cache.get("prefix-key")) !== "${{ matrix.prefix }}" ||
+    scalar(cache.get("shared-key")) !== "engine-pin" ||
+    scalar(cache.get("workspaces")) !== "apps/desktop/src-tauri -> target"
+  ) {
+    failures.push("module-pin.yml must restore the warm-engine-pin caches on all four runners.");
+  }
+
+  const commands = jobSteps
+    .filter((step) => !step.has("if") && !step.has("continue-on-error"))
+    .flatMap((step) => (runCommand(step) ?? "").split("\n"));
+  const fetch = commands.indexOf("pnpm engine:fetch");
+  const build = commands.indexOf(
+    "cargo build --release --locked --manifest-path crates/cli/Cargo.toml",
+  );
+  const verify = commands.indexOf('node tools/scripts/verify-engine-pin.mjs "$binary"');
+  if (job.has("continue-on-error") || fetch === -1 || build <= fetch || verify <= build) {
+    failures.push(
+      "module-pin.yml must fetch the pinned engine, build the CLI, and verify the embedded pin in order.",
+    );
+  }
+  return failures;
 }
 
 export function releaseRunnerBaselineFailures(read, { releaseWorkflow = true } = {}) {
@@ -91,6 +158,12 @@ export function releaseRunnerBaselineFailures(read, { releaseWorkflow = true } =
         failures.push(`release.yml job ${id} target ${target} must run on ${runner}.`);
       }
     }
+  }
+
+  const armSmoke = workflowJobs("ci.yml").get("cli-linux-arm64");
+  const armRunner = linuxReleaseRunners["linux-aarch64"];
+  if (scalar(armSmoke?.get("runs-on")) !== armRunner) {
+    failures.push(`ci.yml job cli-linux-arm64 must run on ${armRunner}.`);
   }
 
   const cacheJobs = workflowJobs("cache.yml");

@@ -2,6 +2,7 @@ import {
   CI_WORKFLOW,
   DEPENDENCY_AUDIT,
   ENGINE_PIN_ONLY,
+  ENGINE_PIN_WORKFLOW,
   PR_ONLY,
   PUBLIC_TREE_PR,
   PUBLIC_TREE_SKIP,
@@ -28,6 +29,8 @@ import {
   conditionOf,
 } from "./ci-step-pins.mjs";
 import { sharedRustCacheFailures, sharedRustCaches } from "./guardrail-rust-cache-env.mjs";
+import { publicEnginePinWorkflowFailures } from "./guardrail-engine-pin-workflow-rules.mjs";
+import { nextestProfileFailures } from "./guardrail-nextest-profile-rules.mjs";
 import { ENGINE_CRATES, ENGINE_PATHS } from "./publication-history-rules.mjs";
 
 const WORKFLOWS = ".github/workflows";
@@ -232,9 +235,15 @@ export function ciWorkflowFailures(read, listFiles, { exported = false } = {}) {
   const rustCaches = [];
   const files = listFiles(WORKFLOWS, (file) => /\.ya?ml$/.test(file));
   if (!files.includes(CI_WORKFLOW)) return ["Missing .github/workflows/ci.yml."];
+  if (exported && !files.includes(`${WORKFLOWS}/release.yml`)) {
+    failures.push("Missing .github/workflows/release.yml.");
+  }
+  if (exported && !files.includes(ENGINE_PIN_WORKFLOW)) {
+    failures.push(`Missing ${ENGINE_PIN_WORKFLOW}.`);
+  }
 
   const { releasePush, dispatchOnly } = exported
-    ? { releasePush: ["release.yml"], dispatchOnly: ["manual.yml"] }
+    ? { releasePush: ["release.yml", "module-pin.yml"], dispatchOnly: ["manual.yml"] }
     : JSON.parse(read(POLICY));
   const allowedPush = new Set(["cache.yml", ...releasePush]);
   for (const file of files) {
@@ -249,6 +258,7 @@ export function ciWorkflowFailures(read, listFiles, { exported = false } = {}) {
       checkToolPins(file, steps, failures);
       checkGuardrailTestSetup(file, steps, failures);
       checkActionPins(file, jobs, steps, failures);
+      if (name !== "release.yml") failures.push(...nextestProfileFailures(read, name, steps));
       if (file === CI_WORKFLOW) {
         checkLockedCargoFetch(steps, JSON.parse(read("package.json")).scripts ?? {}, failures);
         checkCiJobs(jobs, steps, source, read, failures, exported);
@@ -268,6 +278,16 @@ export function ciWorkflowFailures(read, listFiles, { exported = false } = {}) {
         }
         if (events.has("pull_request_target"))
           failures.push("ci.yml must not use pull_request_target.");
+      } else if (exported && file === ENGINE_PIN_WORKFLOW) {
+        failures.push(...publicEnginePinWorkflowFailures(fields, events, jobs, steps));
+        if (
+          referencesPrivateCode(source) ||
+          /\b(?:SITECMD_ENGINE_(?:TOKEN|WASM|UNPINNED)|GH_TOKEN|GITHUB_TOKEN)\b/.test(source)
+        ) {
+          failures.push(
+            "module-pin.yml must use the public module without credentials or engine overrides.",
+          );
+        }
       } else {
         for (const event of ["pull_request", "pull_request_target", "merge_group"]) {
           if (events.has(event)) {

@@ -1,6 +1,7 @@
 import { scalar } from "./guardrail-workflow-yaml.mjs";
 
 export const CI_WORKFLOW = ".github/workflows/ci.yml";
+export const ENGINE_PIN_WORKFLOW = ".github/workflows/module-pin.yml";
 export const QUEUE_OR_DISPATCH =
   "github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'";
 export const PR_ONLY = "github.event_name == 'pull_request'";

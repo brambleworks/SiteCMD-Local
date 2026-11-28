@@ -1,0 +1,14 @@
+# Docs: https://nexte.st/docs/configuration/
+
+[profile.default]
+retries = 0
+failure-output = "immediate-final"
+
+[profile.ci]
+# Absorb one transient runner failure without hiding persistent failures.
+retries = 1
+failure-output = "immediate-final"
+# Report all failures in one CI run.
+fail-fast = false
+status-level = "all"
+final-status-level = "fail"

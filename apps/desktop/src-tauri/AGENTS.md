@@ -92,13 +92,13 @@ Add `-p <package>` for one crate and `-- <test_name>` for one test. CI also runs
 ## Boundaries
 
 - The engine module comes from the engine release that `/engine.lock` pins by version, URL, and
-  SHA-256. `pnpm engine:fetch` downloads and verifies it; release builds embed it. Tests use the
-  stand-in module instead, which is why the commands above set `SITECMD_ENGINE_UNPINNED=1`.
+  SHA-256. `pnpm engine:fetch` downloads and verifies it; release builds embed it. CI uses the
+  stand-in module. Release preflight tests both modules.
 - The ABI between this workspace and the module is `crates/protocol/src/engine_abi/`.
 - The connected service implements the other side of the wire types in `crates/protocol/src/sync/`,
   specified in `/docs/engineering/connected-service/connected-protocol-spec.md`.
-- The release workflow, which is not in this tree, builds `sitecmd-cli` for the targets in
-  `rust-toolchain.toml`; `/packaging/npm/` and `/install.sh` distribute the result.
+- `/.github/workflows/release.yml` builds `sitecmd-cli` for macOS universal, Linux x86_64,
+  Linux arm64, and Windows x86_64. `/packaging/npm/` and `/install.sh` distribute the result.
 
 ## Guide triggers
 

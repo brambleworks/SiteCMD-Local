@@ -8,16 +8,19 @@ the settings contracts that tooling checks against the live repository.
 
 - `workflows/ci.yml`: the `CI` workflow. Its final `CI` job is the one required check; it passes
   only when every other job passed or was allowed to skip.
-- `workflows/cache.yml`: warms the Rust and pnpm caches on `main` when lockfiles or toolchains
-  change.
+- `workflows/cache.yml`: warms the Rust and pnpm caches, including those used by the engine pin
+  check, on `main` when dependency lockfiles or toolchains change.
+- `workflows/module-pin.yml`: builds the CLI with the public engine module, verifies its embedded
+  pin, and reports the module load time on all four runner platforms.
 - `workflows/manual.yml`: an on-demand Rust coverage report.
 - `workflows/weekly-advisories.yml`: the weekly dependency advisory audit.
+- `workflows/release.yml`: verifies signed release tags, builds and signs the CLI, checks the
+  embedded engine pin, and publishes the verified payload.
 - `actions/setup-sitecmd/`: installs an exact CLI release after verifying its updater-key
   signature (`actions/setup-sitecmd/install.sh`, `actions/setup-sitecmd/updater-public-key.pub`).
 - `actions/sitecmd-gate/`: fails a pull request on code findings that are new against the
   connected baseline, by running `sitecmd gate`.
 - `scripts/release/`: the build, signing, and verification steps the release workflow calls.
-  That workflow is not in this tree.
 - `scripts/install-minisign.sh`, `scripts/report-advisory-failure.sh`: CI helpers.
 - `updater-signer/` and `updater-verifier/`: the pinned updater signer package and the secretless
   verifier crate used in releases.
@@ -36,6 +39,10 @@ the settings contracts that tooling checks against the live repository.
   job runs when dependencies change or on manual dispatch. The PR title and public tree jobs
   run only on pull requests. The CLI builds and smoke tests, guardrail tests, Rust tests and
   Clippy, doctests, and the 1.95 MSRV check run only in the merge queue and on manual dispatch.
+- `workflows/module-pin.yml` runs on same-repository pull requests and pushes to `main` that
+  change `engine.lock`. It is a non-required check.
+- `workflows/release.yml` runs on pushes of signed version tags from the protected default branch.
+  See `/docs/operations/releasing.md` for environment setup, approval, and recovery.
 - Users call the Actions from their own workflows with
   `uses: brambleworks/SiteCMD-Local/.github/actions/<name>@<full-release-commit-sha>`.
   Each Action's README shows the usage.
@@ -49,12 +56,17 @@ commit's copy of the history guard over the pull request's commits. The gate Act
 CLI with `actions/setup-sitecmd/install.sh`, writes the connection export to an owner-only
 runner file, and runs `sitecmd gate` with the inputs as environment variables.
 
+Release preflight and platform builds fetch the module pinned by `/engine.lock` with
+`pnpm engine:fetch`. Each platform verifier checks the signed archive and embedded pin before
+the checkout-free publisher uploads to R2, advances the release manifest with GitHub OIDC,
+and creates the GitHub Release. The `publish-npm` job uses npm trusted publishing.
+
 ## Invariants
 
 - Every third-party action is pinned to a commit SHA with an exact version comment (vX.Y.Z), and Rust is
   installed with rustup: `/tools/scripts/lib/ci-step-pins.mjs`.
 - Runner labels are literal and versioned, never `-latest`: `/tools/scripts/lib/guardrail-workflow-pins.mjs`.
-- Every check in `ci-inventory.json` names a real job, once:
+- Every CI check in `ci-inventory.json` names a real job, once:
   `/tools/scripts/lib/ci-inventory-rules.mjs`.
 - Workflow permissions, triggers, and step rules: `/tools/scripts/lib/guardrail-workflow-rules.mjs`
   and `/tools/scripts/lib/guardrail-ci-workflow-rules.mjs`; syntax: `pnpm workflows:check`;
@@ -89,7 +101,7 @@ pnpm exec vitest run tools/scripts/actions-inputs.test.mjs tools/scripts/release
   `actions/setup-sitecmd/updater-public-key.pub`, the same key `/install.sh` uses.
 - The gate Action calls the connected service through `sitecmd gate`, using the connection
   export and CI token that `sitecmd connect` writes to the user's repository secrets.
-- The release workflow, outside this tree, calls `scripts/release/` and publishes
+- The release workflow calls `scripts/release/` and publishes
   `/packaging/npm/` through npm trusted publishing.
 - `/tools/scripts/` holds every script these workflows run.
 

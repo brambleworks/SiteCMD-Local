@@ -28,7 +28,6 @@ const config: KnipConfig = {
         "tools/scripts/audit/rust-function-lengths.mjs",
         // The workflow extracts this entry point from a commit before running it.
         "tools/scripts/run-public-tree-check.mjs",
-        "tools/scripts/verify-engine-pin.mjs",
         ...extensions.flatMap((x) => x.knipEntry),
         // Shared queue verdict entry point reserved for future release wiring.
         "tools/scripts/ci-verdict.mjs",
