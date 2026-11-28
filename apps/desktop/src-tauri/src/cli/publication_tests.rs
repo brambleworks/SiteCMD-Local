@@ -153,7 +153,7 @@ fn collect_autofix_outputs(
     }))
     .unwrap();
     let mut handed = exit_check::HandedLines::default();
-    let verified = brief_publish::verify_brief(root, &brief, &mut handed).unwrap();
+    let verified = brief_publish::verify_brief(root, &brief, &key, &mut handed).unwrap();
     assert_eq!(verified.len(), 1);
     outputs.push((
         "verified finding".into(),

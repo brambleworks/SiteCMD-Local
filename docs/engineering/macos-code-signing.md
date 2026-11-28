@@ -1,121 +1,128 @@
-# macOS Code Signing and Notarization (Developer ID)
+# macOS CLI Signing and Notarization
 
-How SiteCMD Developer-ID-signs and notarizes the macOS app in CI. Distribution is
-direct through the in-app updater and R2, not the Mac App Store.
+The macOS leg of `build` compiles `sitecmd` for Apple silicon and Intel, combines
+the binaries, runs `--version` without signing credentials, and uploads
+`built-cli-darwin-universal` with the legal files. The macOS leg of
+`sign-platforms` waits for maintainer approval in the `release-signing` environment
+and runs on a separate runner. It checks the digest GitHub recorded at upload
+before signing the downloaded binary. [Release workflow](../../.github/workflows/release.yml)
 
-## Summary
+## Prepare the Apple credentials
 
-The release workflow (`.github/workflows/release.yml`) builds one universal
-macOS `.app`, signs it with a **Developer ID Application** certificate under the
-hardened runtime, and notarizes it with `notarytool` during `tauri build`. The
-certificate is imported into an ephemeral keychain; notarization uses an App
-Store Connect API key. Configuration lives in the protected `release-signing`
-environment, and no Apple private key is committed.
+1. Generate a private key and a certificate signing request on a Mac you
+   control. Run these commands with OpenSSL 3 in a private directory.
 
-Official releases fail closed when any required Apple value is missing. Local
-development builds may remain unsigned, but the release workflow never ships an
-unsigned or unnotarized macOS artifact.
+   ```bash
+   umask 077
+   openssl req -new -newkey rsa:2048 -keyout developer-id.key \
+     -out developer-id.certSigningRequest
+   ```
 
-## GitHub secrets
+2. As the Apple Developer Account Holder, request a **Developer ID Application**
+   certificate under **Certificates, Identifiers & Profiles**. Choose the G2
+   intermediate if prompted, upload the request, and download the certificate
+   as `developer-id.cer`. [Apple Developer ID certificates](https://developer.apple.com/help/account/certificates/create-developer-id-certificates)
+3. Download the **Developer ID G2** intermediate as `developer-id-g2.cer`.
+   Convert both certificates to PEM and export the signing identity as a
+   password-protected PKCS#12 file that the runner can import. [Apple certificate authority](https://www.apple.com/certificateauthority/)
 
-Repository > Settings > Secrets and variables > Actions.
+   ```bash
+   openssl x509 -inform DER -in developer-id.cer -out developer-id.pem
+   openssl x509 -inform DER -in developer-id-g2.cer -out developer-id-g2.pem
+   openssl pkcs12 -export -legacy -inkey developer-id.key -in developer-id.pem \
+     -certfile developer-id-g2.pem -out developer-id.p12
+   ```
 
-| Secret                       | Value                                                            |
-| ---------------------------- | ---------------------------------------------------------------- |
-| `APPLE_CERTIFICATE`          | base64 of the Developer ID `.p12` (leaf + key + G2 intermediate) |
-| `APPLE_CERTIFICATE_PASSWORD` | password protecting that `.p12`                                  |
-| `APPLE_SIGNING_IDENTITY`     | `Developer ID Application: Brambleworks LLC (6ACNUQR5PK)`        |
-| `APPLE_TEAM_ID`              | `6ACNUQR5PK`                                                     |
-| `KEYCHAIN_PASSWORD`          | ephemeral CI keychain password                                   |
-| `APPLE_API_ISSUER`           | App Store Connect API issuer id                                  |
-| `APPLE_API_KEY_ID`           | App Store Connect API key id                                     |
-| `APPLE_API_KEY_P8`           | base64 of the App Store Connect `.p8`                            |
+4. In App Store Connect, go to **Users and Access > Integrations > App Store
+   Connect API > Team Keys** and look up the role of the key currently used for
+   releases. As the Account Holder or an Admin, create a Team key with the same
+   role. Record the issuer ID and key ID, and download the `.p8` file. Apple
+   offers the private key download once.
+   [App Store Connect API keys](https://developer.apple.com/documentation/AppStoreConnectAPI/creating-api-keys-for-app-store-connect-api)
 
-## How the certificate was created
+Keep private keys and backups in encrypted, access-controlled storage. In
+GitHub, go to **Settings > Environments > release-signing** and add these
+environment secrets. Encode the `.p12` and `.p8` files as base64 on one line.
 
-Apple restricts Developer ID certificate creation to the **Account Holder** - the
-App Store Connect API returns `403 "This operation can only be performed by the
-Account Holder"`, even for an Admin key. So the cert is created by CSR upload:
+| Secret                       | Value                                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `APPLE_CERTIFICATE`          | Base64 of `developer-id.p12`                                                              |
+| `APPLE_CERTIFICATE_PASSWORD` | PKCS#12 export password                                                                   |
+| `APPLE_SIGNING_IDENTITY`     | Full signing identity, in the form `Developer ID Application: <organization> (<team ID>)` |
+| `APPLE_TEAM_ID`              | Apple Developer team ID from that identity                                                |
+| `KEYCHAIN_PASSWORD`          | Password for the runner's temporary signing keychain                                      |
+| `APPLE_API_ISSUER`           | App Store Connect team API issuer ID                                                      |
+| `APPLE_API_KEY_ID`           | App Store Connect team API key ID                                                         |
+| `APPLE_API_KEY_P8`           | Base64 of the downloaded App Store Connect private key                                    |
 
-1. Generate an RSA 2048 key + CSR locally (`openssl req -new -newkey rsa:2048`).
-2. The Account Holder uploads the CSR at
-   developer.apple.com > Certificates > **Developer ID Application** (G2 Sub-CA)
-   and downloads the `.cer`.
-3. Assemble the `.p12` from the `.cer` + the private key + the Developer ID G2
-   intermediate:
-   `openssl pkcs12 -export -legacy -inkey key.pem -in leaf.pem -certfile intermediate.pem`.
-   The **`-legacy` flag is required** - macOS `security import` cannot read the
-   AES-256 encryption that OpenSSL 3 uses by default.
+## Sign and notarize in CI
 
-Keep any local backup outside the repository in encrypted, access-controlled
-storage. The workflow receives only the protected environment copies.
+**Verify Apple notarization credentials** runs `xcrun notarytool history` with
+the team API key. The signing script then imports the Developer ID identity
+into a temporary keychain, signs the downloaded `sitecmd` with hardened runtime
+and a secure timestamp, and checks its team ID.
 
-## How it works in CI
+The script submits a ZIP containing that signed binary to Apple with
+`xcrun notarytool submit --wait`. Once Apple returns `Accepted`, the job
+packages the same executable as `sitecmd-cli_<version>_darwin-universal.tar.gz`
+with its legal files. The signing runner never executes the downloaded binary.
+[Signing script](../../.github/scripts/release/sign-cli.sh)
 
-- The macOS build legs decode `APPLE_CERTIFICATE` into a temporary keychain
-  (`security create-keychain` / `import` / `set-key-partition-list`), decode the
-  `.p8`, and export `APPLE_SIGNING_IDENTITY` + the `APPLE_API_*` notarization env.
-- `tauri build` then codesigns the `.app` with hardened runtime and a secure
-  timestamp, notarizes it via `notarytool`, and staples the ticket. The shipped
-  `.app.tar.gz` updater bundle contains the notarized, stapled app.
-- The certificate and notarization secrets are matrix-scoped to the `darwin` legs
-  only, so they never enter the Windows / Linux runners.
-- Tauri's notarization env vars: `APPLE_API_ISSUER` (issuer id), `APPLE_API_KEY`
-  (the **Key ID**), `APPLE_API_KEY_PATH` (path to the decoded `.p8`).
+## Verify the release
 
-This Developer ID signature is independent of the minisign updater signature
-(`TAURI_SIGNING_PRIVATE_KEY`): the former is what macOS / Gatekeeper trust on
-launch, the latter is what the in-app updater verifies.
-
-## Troubleshooting
-
-### `403. A required agreement is missing or has expired`
-
-```
-failed to bundle project: failed codesign application: failed to notarize app:
-Error: HTTP status code: 403. A required agreement is missing or has expired.
-```
-
-Apple published a new Developer Program agreement (or an existing one lapsed), and
-nothing notarizes until the **Account Holder** accepts it. This is account state,
-not a build problem: the compile succeeds and the Developer ID signature succeeds.
-Only the notarization request is rejected, at the very end of the job.
-
-Fix: sign in to <https://developer.apple.com/account> as the Account Holder and
-accept the pending agreement (also check App Store Connect > Business >
-Agreements). Then re-run only the failed leg:
+On macOS, extract `sitecmd` from the release archive and run the signature
+and online notarization checks. The released executable uses Apple's online
+notarization ticket.
 
 ```bash
-gh run rerun <run-id> --failed
+codesign --verify --strict ./sitecmd --all-architectures
+codesign -vvvv -R="notarized" --check-notarization ./sitecmd
+codesign -dv --verbose=4 ./sitecmd
 ```
 
-Completed Windows and Linux legs retain their workflow artifacts, so a
-`--failed` re-run rebuilds only the failed macOS job and its downstream release
-jobs. Nothing reaches R2 until secretless verification succeeds. No re-tag is
-needed because the tag and commit are unchanged.
+Check that `TeamIdentifier` matches `APPLE_TEAM_ID`. The release verifier also
+runs `sitecmd --version` and checks the result against the release version.
 
-Because Tauri only contacts the notary service **after** the roughly 20 minute
-universal compile, release.yml runs a `Verify Apple notarization credentials` step
-_before_ the build: one authenticated `xcrun notarytool history` call that surfaces
-this 403 (and wrong `APPLE_API_KEY_ID` / `APPLE_API_ISSUER` / `APPLE_API_KEY_P8`
-values) in seconds, rather than after a macOS job billed at the 10x multiplier.
+## Troubleshoot and rotate credentials
 
-## Verifying a signed build
+- If the notarization probe returns `403` with a missing or expired agreement,
+  have the Account Holder accept the pending agreement in the Apple Developer
+  account or App Store Connect. For other authentication failures, check that
+  the issuer ID, key ID, and private key belong to the same active team key.
+- For a rejected submission, download the `cli-notarization-darwin-universal`
+  artifact and inspect `submission.json`, `submission-id.txt`, and
+  `notary-log.json` when present. GitHub Actions keeps these notarization logs
+  for 14 days.
+- Re-run the failed signing job while its build artifact is available if the
+  fix is in the Apple account or a secret. If the signing script or binary
+  needs a fix, release a new version with a new tag. The job checks out the
+  tagged commit.
+- Before the Developer ID certificate expires, create a replacement identity
+  and update `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD` together.
+  Update `APPLE_SIGNING_IDENTITY` and `APPLE_TEAM_ID` if the replacement
+  changes those values. Let the old certificate expire. The timestamped
+  `sitecmd` binaries already signed with it keep working after expiration.
+  Revoke the certificate only if its private key leaks. Revocation prevents
+  every shipped `sitecmd` signed with that certificate from launching.
+  Check the certificate's expiration date with OpenSSL.
+  [Apple Developer ID certificates](https://developer.apple.com/help/account/certificates/create-developer-id-certificates)
 
-Download the macOS `.app.tar.gz`, extract, and on a Mac:
+  ```bash
+  openssl x509 -in developer-id.pem -noout -enddate
+  ```
 
-```bash
-codesign -dv --verbose=4 SiteCMD.app    # Authority: Developer ID Application: Brambleworks LLC
-spctl -a -vvv -t exec SiteCMD.app       # accepted; source=Notarized Developer ID
-xcrun stapler validate SiteCMD.app      # "The validate action worked!"
-```
+- To rotate the App Store Connect key, create a replacement Team key with the
+  same role. On macOS, check the new private key and its IDs with
+  `notarytool` before updating GitHub.
 
-## Rotation and expiry
+  ```bash
+  xcrun notarytool history --key AuthKey_KEY_ID.p8 \
+    --key-id KEY_ID --issuer ISSUER_ID
+  ```
 
-- **Certificate** expires **2027-02-01** (unusually short for Developer ID, which
-  is normally 5 years; timestamped signatures already shipped stay valid past
-  expiry). To renew, repeat the CSR-upload flow, rebuild the `.p12`, and update
-  `APPLE_CERTIFICATE` + `APPLE_CERTIFICATE_PASSWORD`.
-- **API key**: regenerate in App Store Connect, then update `APPLE_API_KEY_ID` +
-  `APPLE_API_KEY_P8`. The `.p8` is download-once, so retain an encrypted backup
-  outside the repository.
+  After the check succeeds, update `APPLE_API_KEY_ID` and `APPLE_API_KEY_P8`
+  together. Update `APPLE_API_ISSUER` if the issuer changes, then revoke the
+  old App Store Connect key.
+
+See the [release runbook](../operations/releasing.md) for approval and artifact
+retention deadlines.

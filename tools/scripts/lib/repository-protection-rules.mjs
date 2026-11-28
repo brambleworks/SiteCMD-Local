@@ -1,3 +1,5 @@
+import { readReleaseEnvironments, releaseEnvironmentFailures } from "./repository-environments.mjs";
+
 // Static half: every required check must come from a workflow that runs on
 // every pull request, or GitHub waits forever on the pull requests its path,
 // branch, or event filter skips. Live half: the settings SECURITY.md and the
@@ -130,6 +132,7 @@ export function readLiveRepositoryProtection(contract, gh) {
       (method) => repository[`allow_${method}_merge`] === true,
     ),
     rulesets,
+    environments: readReleaseEnvironments(prefix, contract.releaseEnvironments, gh),
   };
 }
 
@@ -239,6 +242,7 @@ export function liveRepositoryProtectionFailures(contract, live) {
       }
     }
   }
+  failures.push(...releaseEnvironmentFailures(contract.releaseEnvironments, live.environments));
   return failures;
 }
 

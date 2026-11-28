@@ -1,3 +1,5 @@
+import { orderedBefore } from "./guardrail-text-utils.mjs";
+
 export function codeScanSecurityFailures(read) {
   const failures = [];
   const issueTypes = read("apps/desktop/src-tauri/crates/protocol/src/code_scan.rs");
@@ -22,13 +24,16 @@ export function codeScanSecurityFailures(read) {
   }
   if (!(
     databaseTargets.includes("bound_local_sqlite_path") &&
-    databaseTargets.includes("canonicalize_local_sqlite_path") &&
-    databaseDiscovery.includes("canonicalize_local_sqlite_path(&path") &&
+    databaseTargets.includes("project_root.canonicalize()") &&
+    databaseTargets.includes("candidate.canonicalize()") &&
+    databaseTargets.includes("candidate.starts_with(root)") &&
+    databaseDiscovery.includes("resolve_local_sqlite_path(value, root, Some(env_file))?") &&
+    databaseTargets.includes("dot_root_rejects_unlisted_sqlite") &&
     databaseTargets.includes("security_regression_rejects_absolute_sqlite_paths_outside_project") &&
     databaseTargets.includes("security_regression_rejects_sqlite_symlinks_that_escape_project")
   )) {
     failures.push(
-      "Code Scan local SQLite inspection must stay bounded to the linked project/env directory and reject symlink escapes.",
+      "Code Scan local SQLite inspection must stay bounded to the linked project directory and reject symlink escapes.",
     );
   }
   if (!(
@@ -37,13 +42,15 @@ export function codeScanSecurityFailures(read) {
     sessionHost.includes("ReadBudget::new(CODE_SCAN_MAX_TEXT_BYTES, AUDIT_MAX_FILE_BYTES)") &&
     listing.includes("list_project_with_limits(root, MAX_PROJECT_FILES, MAX_PROJECT_DEPTH)") &&
     listing.includes("if depth > self.max_depth") &&
-    listing.includes("if self.files.len() >= self.max_files") &&
+    listing.includes("if self.visited_entries >= self.max_files") &&
+    orderedBefore(listing, "self.visited_entries += 1;", "entry.file_type()") &&
+    scopeTests.includes("fn traversal_budget_counts_directories_and_skipped_entries()") &&
     constants.includes("pub const CODE_SCAN_MAX_TEXT_BYTES: u64 = 64_000_000;") &&
     scopeTests.includes("fn project_listing_rejects_a_second_file_over_its_budget()") &&
     sessionTests.includes("fn host_text_budget_is_shared_across_rounds()")
   )) {
     failures.push(
-      "Code Scan filesystem collection must keep file-count, total-byte, and depth budgets with regression tests.",
+      "Code Scan filesystem collection must keep directory-entry, total-byte, and depth budgets with regression tests.",
     );
   }
   if (!(

@@ -60,9 +60,7 @@ pub(super) fn checkout(path: Option<&Path>) -> Result<(PathBuf, String), String>
         .map_err(|_| NO_CHECKOUT)?;
     let root = git(&directory, &["rev-parse", "--show-toplevel"]).ok_or(NO_CHECKOUT)?;
     let root = std::fs::canonicalize(root).map_err(|_| NO_CHECKOUT)?;
-    let head = crate::core::git::checkout_head_and_clean(&root.to_string_lossy())
-        .ok_or(NO_CHECKOUT)?
-        .0;
+    let head = crate::core::git::checkout_head(&root).ok_or(NO_CHECKOUT)?;
     Ok((root, head))
 }
 

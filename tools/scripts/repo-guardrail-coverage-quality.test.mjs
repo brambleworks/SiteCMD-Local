@@ -5,6 +5,7 @@ import {
   guardrailFailuresFor,
   mustMutate,
   readFixtureFile,
+  realRead,
   writeFixtureFile,
   rules,
 } from "./guardrail-test-support.mjs";
@@ -564,3 +565,46 @@ describe.concurrent(
     });
   },
 );
+
+it("rejects a CI group shared by forks in the exported repository", () => {
+  expectGuardrailFailure(
+    ciCostSafetyFailures,
+    (overlay) => {
+      const file = ".github/workflows/ci.yml";
+      overlay.set(
+        file,
+        mustMutate(realRead(file), "github.event.pull_request.number", "github.head_ref"),
+      );
+    },
+    "ci.yml must isolate concurrency by event and pull request number or run ID.",
+  );
+});
+
+it("rejects a traversal budget whose counter never increments", () => {
+  expectGuardrailFailure(
+    codeScanSecurityFailures,
+    (overlay) => {
+      const file = "apps/desktop/src-tauri/src/core/project_listing.rs";
+      overlay.set(file, mustMutate(realRead(file), "self.visited_entries += 1;", ""));
+    },
+    "Code Scan filesystem collection must keep directory-entry",
+  );
+});
+
+it.each([
+  ['std::fs::read_to_string(".sitecmd/last-scan.json")', "a literal cache path"],
+  [
+    'let path = sitecmd_dir.join(".gitignore"); std::fs::write(path, "")',
+    "an aliased artifact path",
+  ],
+  ['std::fs::read(sitecmd_dir.join("issues.json"))', "a byte read"],
+])("rejects unbounded .sitecmd access through %s (%s)", (access) => {
+  expectGuardrailFailure(
+    repoGuardrailFailures,
+    (overlay) => {
+      const file = "apps/desktop/src-tauri/src/cli/fix.rs";
+      overlay.set(file, `${access};\n${realRead(file)}`);
+    },
+    "must use the shared bounded readers and atomic writer for .sitecmd artifacts",
+  );
+});

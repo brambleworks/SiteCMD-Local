@@ -167,6 +167,71 @@ fn hardened_command_neutralizes_config_and_rebuilds_the_environment() {
 }
 
 #[test]
+fn checkout_with_a_configured_filter_never_requests_status() {
+    let repo = make_repo("configured-filter");
+    assert!(run_git(
+        &repo,
+        &["config", "--local", "filter.fixture.required", "true"]
+    )
+    .is_some());
+    fs::write(repo.join(".gitattributes"), "fixture.txt filter=fixture\n").unwrap();
+    fs::write(repo.join("fixture.txt"), "changed fixture content").unwrap();
+
+    let status_marker = repo.join("status-called");
+    let clean = worktree_is_clean(&repo, |dir, args| {
+        if args.contains(&"status") {
+            fs::write(&status_marker, "").unwrap();
+            return Some(String::new());
+        }
+        run_git(dir, args)
+    });
+    assert!(!clean);
+    assert!(!status_marker.exists());
+}
+
+#[test]
+fn a_clean_checkout_with_a_submodule_stays_clean() {
+    let repo = make_repo("parent");
+    let submodule = make_repo("submodule");
+    let run = |args: &[&str]| {
+        assert!(run_git(&repo, args).is_some(), "git {args:?}");
+    };
+    run(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        submodule.to_str().unwrap(),
+        "theme",
+    ]);
+    run(&["commit", "-m", "Add the theme"]);
+
+    assert!(checkout_head_and_clean(&repo.to_string_lossy()).unwrap().1);
+    fs::write(repo.join("theme/untracked.txt"), "local theme work").unwrap();
+    assert!(checkout_head_and_clean(&repo.to_string_lossy()).unwrap().1);
+
+    // A commit inside the submodule moves the commit the parent records, which must read dirty.
+    let theme = repo.join("theme");
+    assert!(run_git(&theme, &["add", "untracked.txt"]).is_some());
+    assert!(run_git(
+        &theme,
+        &[
+            "-c",
+            "user.name=SiteCMD Test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "Move the theme",
+        ],
+    )
+    .is_some());
+    assert!(!checkout_head_and_clean(&repo.to_string_lossy()).unwrap().1);
+}
+
+#[test]
 fn checkout_provenance_names_a_merge_head() {
     let path = make_repo("merge-head");
     let run = |args: &[&str]| {

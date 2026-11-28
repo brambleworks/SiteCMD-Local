@@ -208,11 +208,8 @@ fn strict_verdict(scan: &ScanResult, baseline: Option<&HashSet<String>>, thresho
 fn read_baseline_failing_ids(
     sitecmd_dir: &std::path::Path,
 ) -> Result<Option<HashSet<String>>, String> {
-    let path = sitecmd_dir.join("last-scan.json");
-    let contents = match std::fs::read_to_string(&path) {
-        Ok(contents) => contents,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("Cannot read {}: {e}", path.display())),
+    let Some(contents) = super::read_last_scan(sitecmd_dir)? else {
+        return Ok(None);
     };
     if let Ok(artifact) = serde_json::from_str::<super::hosted::report::Artifact>(&contents) {
         return Ok(Some(
@@ -240,18 +237,19 @@ async fn load_or_rescan(
     sitecmd_dir: &std::path::Path,
     target: lane::Target,
 ) -> Result<ScanResult, String> {
-    let last_scan_path = sitecmd_dir.join("last-scan.json");
-
-    if super::hosted::report::read_artifact(sitecmd_dir).is_ok() {
-        return run_fresh_scan(target).await;
-    }
-    if let Ok(contents) = std::fs::read_to_string(&last_scan_path) {
+    if let Some(contents) = super::read_last_scan(sitecmd_dir)? {
+        if serde_json::from_str::<super::hosted::report::Artifact>(&contents).is_ok() {
+            return run_fresh_scan(target).await;
+        }
         match serde_json::from_str::<ScanResult>(&contents) {
             Ok(cached) => {
-                if is_fresh(&cached.timestamp) {
+                if is_fresh(&cached.timestamp)
+                    && url::Url::parse(&cached.url)
+                        .is_ok_and(|url| url.origin() == target.url.origin())
+                {
                     return Ok(cached);
                 }
-                eprintln!("Scan data is stale. Running fresh scan...");
+                eprintln!("Scan data is stale or belongs to another origin. Running fresh scan...");
             }
             Err(e) => {
                 eprintln!(
@@ -274,8 +272,8 @@ async fn load_or_rescan(
 fn is_fresh(timestamp: &str) -> bool {
     match UtcTimestamp::parse_from_rfc3339(timestamp) {
         Ok(scanned_at) => {
-            let age = now_utc().duration_since(scanned_at);
-            age < SignedDuration::from_hours(24)
+            let now = now_utc();
+            scanned_at <= now && now.duration_since(scanned_at) < SignedDuration::from_hours(24)
         }
         Err(_) => false,
     }
@@ -442,6 +440,78 @@ mod tests {
     fn strict_verdict_still_enforces_the_score_threshold() {
         let s = scan(50, vec![]);
         assert_eq!(strict_verdict(&s, Some(&ids(&[])), 80), 1);
+    }
+
+    #[test]
+    fn future_scan_timestamp_is_stale() {
+        assert!(!is_fresh("2099-01-01T00:00:00Z"));
+    }
+
+    #[tokio::test]
+    async fn fresh_scan_cache_is_reused_for_the_requested_url_and_same_origin_redirect() {
+        let dir = tempfile::tempdir().unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        drop(listener);
+        for path in ["", "en/"] {
+            let mut cached = scan(91, vec![]);
+            cached.url = format!("{url}{path}");
+            cached.timestamp = now_utc().to_rfc3339();
+            std::fs::write(
+                dir.path().join("last-scan.json"),
+                serde_json::to_vec(&cached).unwrap(),
+            )
+            .unwrap();
+
+            let target = lane::Target::resolve(&url, None).await.unwrap();
+            let reused = load_or_rescan(dir.path(), target).await.unwrap();
+            assert_eq!(reused.url, cached.url);
+            assert_eq!(reused.timestamp, cached.timestamp);
+            assert_eq!(reused.overall_score, 91);
+        }
+    }
+
+    #[tokio::test]
+    async fn cache_for_a_different_url_requires_a_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let target = lane::Target::resolve(&url, None).await.unwrap();
+        let mut cached = scan(100, vec![]);
+        cached.timestamp = now_utc().to_rfc3339();
+        std::fs::write(
+            dir.path().join("last-scan.json"),
+            serde_json::to_vec(&cached).unwrap(),
+        )
+        .unwrap();
+        drop(listener);
+        assert!(load_or_rescan(dir.path(), target).await.is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cached_check_propagates_a_baseline_refusal() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("fixture.json");
+        std::fs::write(&file, serde_json::to_vec(&scan(90, vec![])).unwrap()).unwrap();
+        std::os::unix::fs::symlink(file, dir.path().join("last-scan.json")).unwrap();
+
+        let target = lane::Target::resolve("http://127.0.0.1:1", None)
+            .await
+            .unwrap();
+        let error = load_or_rescan(dir.path(), target).await.unwrap_err();
+        assert!(error.contains("refused unsafe"), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn strict_baseline_refuses_a_link_to_a_regular_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("fixture.json");
+        std::fs::write(&target, serde_json::to_vec(&scan(90, vec![])).unwrap()).unwrap();
+        std::os::unix::fs::symlink(target, dir.path().join("last-scan.json")).unwrap();
+        let error = read_baseline_failing_ids(dir.path()).unwrap_err();
+        assert!(error.contains("refused unsafe"), "{error}");
     }
 
     #[test]

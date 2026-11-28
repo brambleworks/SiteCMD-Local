@@ -2291,7 +2291,12 @@ with the version comment `v7`.
 The released Action commit must be a 40-character hex SHA named in
 `PUBLISH_WORKFLOW_SHAS`, with a `vMAJOR.MINOR.PATCH` version. The publish job
 calls the reusable workflow at that same pinned commit and runs only when
-the autofix job outputs `publish = true`.
+the autofix job outputs `publish = true`. The caller passes `SITECMD_CONNECTION_EXPORT`
+and `SITECMD_CONNECTION_PASSPHRASE` as secrets to the reusable workflow,
+which exposes them only to the `publish-job` step. The CLI decrypts the
+export for issue briefs to verify the freshly audited file against the
+claimed location hash before asking for an issue token. Rejections report
+structured outcomes to Connect and keep diagnostics in the Actions log.
 
 Site lifecycle (signed in through the dashboard):
 

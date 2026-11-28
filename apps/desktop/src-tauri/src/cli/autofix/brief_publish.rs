@@ -7,12 +7,14 @@ use std::path::{Component, Path};
 
 use sitecmd_protocol::identity::code_producer_rule_id;
 use sitecmd_protocol::stack::DetectedStack;
+use sitecmd_protocol::sync::ProjectFingerprintKey;
 
 use super::artifact::{BriefArtifact, Manifest};
 use super::brief::code_slug;
 use super::exit_check::{CheckedBrief, HandedLines};
 use super::github_api::GitHubApi;
-use super::publish_job::PublishOutcome;
+use super::publish_job::{PublishJobArgs, PublishOutcome};
+use super::secrets::site_fingerprint_key;
 use crate::cli::ConnectStop;
 use crate::connected_service::{
     ClaimedJob, ConnectedServiceClient, FindingOutcomeReport, ResultReport,
@@ -75,6 +77,7 @@ fn at(finding: usize, location: usize) -> String {
 pub fn verify_brief(
     root: &Path,
     brief: &BriefArtifact,
+    key: &ProjectFingerprintKey,
     handed: &mut HandedLines,
 ) -> Result<Vec<VerifiedFinding>, BriefRejected> {
     let report =
@@ -128,6 +131,11 @@ pub fn verify_brief(
                         "{at}: the reported line does not match the brief's line"
                     ))
                 })?;
+            if key.location_hash(slug, &issue.relative_path).as_str() != finding.identity {
+                return Err(rejected(format!(
+                    "{at}: the location does not match the claimed identity"
+                )));
+            }
             verified.push(VerifiedFinding {
                 check_id: finding.check_id.clone(),
                 identity: finding.identity.clone(),
@@ -226,6 +234,7 @@ pub fn render_issue(
 /// checkout does not confirm is a reported refusal, not a failure that would
 /// leave the job waiting.
 pub(super) async fn publish_brief(
+    args: &PublishJobArgs,
     root: &Path,
     claimed: &ClaimedJob,
     manifest: &Manifest,
@@ -245,8 +254,18 @@ pub(super) async fn publish_brief(
             token_revoked: revoked,
         },
     };
+    let key = match site_fingerprint_key(&args.export, &args.passphrase_env) {
+        Ok(key) => key,
+        Err(error) => {
+            let remedy = "Pass SITECMD_CONNECTION_EXPORT and SITECMD_CONNECTION_PASSPHRASE to the publish workflow.";
+            return Ok((
+                1,
+                declined("brief_rejected", format!("{error}. {remedy}"), true),
+            ));
+        }
+    };
     let mut handed = HandedLines::default();
-    let verified = match verify_brief(root, brief, &mut handed) {
+    let verified = match verify_brief(root, brief, &key, &mut handed) {
         Ok(verified) => verified,
         Err(rejected) => return Ok((1, declined("brief_rejected", rejected.reason, true))),
     };
@@ -310,9 +329,12 @@ mod tests {
     use crate::cli::autofix::brief::locate_findings;
     use crate::cli::autofix::repo::init_test_repo;
     use crate::connected_service::{ClaimedFinding, ClaimedJob};
-    use sitecmd_protocol::sync::ProjectFingerprintKey;
 
     const SOURCE: &str = "Fixture checkout line that must not enter a published issue.";
+
+    fn fixture_key() -> ProjectFingerprintKey {
+        ProjectFingerprintKey::from_bytes([7_u8; 32])
+    }
 
     fn fixture() -> (tempfile::TempDir, BriefArtifact, String) {
         let (repo, head) = init_test_repo(&[
@@ -323,7 +345,7 @@ mod tests {
             ),
         ])
         .unwrap();
-        let key = ProjectFingerprintKey::from_bytes([7_u8; 32]);
+        let key = fixture_key();
         let identity = key.location_hash("standin.rule", "app/api/signin/fixture-findings.txt");
         let matches = locate_findings(
             repo.path(),
@@ -333,6 +355,29 @@ mod tests {
         .unwrap();
         let brief = crate::cli::autofix::brief::brief_artifact("job_0123456789abcdef", 1, &matches);
         (repo, brief, head)
+    }
+
+    #[test]
+    fn brief_refuses_a_different_file_for_the_claimed_identity() {
+        let (repo, mut brief, _) = fixture();
+        let other = "app/api/other/fixture-findings.txt";
+        std::fs::create_dir_all(repo.path().join("app/api/other")).unwrap();
+        std::fs::write(repo.path().join(other), format!("\n{SOURCE}\n")).unwrap();
+        brief.findings[0].locations[0].path = other.into();
+
+        let refusal = verify_brief(
+            repo.path(),
+            &brief,
+            &fixture_key(),
+            &mut HandedLines::default(),
+        )
+        .unwrap_err();
+        assert!(
+            refusal
+                .reason
+                .contains("does not match the claimed identity"),
+            "{refusal:?}"
+        );
     }
 
     fn claimed(base: &str, identity: &str) -> ClaimedJob {
@@ -364,7 +409,7 @@ mod tests {
         // A rendered issue can disclose the source line or point to the wrong location.
         let (repo, brief, head) = fixture();
         let mut handed = HandedLines::default();
-        let verified = verify_brief(repo.path(), &brief, &mut handed).unwrap();
+        let verified = verify_brief(repo.path(), &brief, &fixture_key(), &mut handed).unwrap();
         assert_eq!(verified.len(), 1);
         let line = verified[0].issue.line.unwrap();
         let (Brief { title, body }, target) = render_issue(
@@ -428,7 +473,13 @@ mod tests {
         // A brief can refer to a rule absent from the fresh audit.
         let (repo, mut brief, _) = fixture();
         brief.findings[0].check_id = "code_scan.unknown-fixture-rule".into();
-        let rejected = verify_brief(repo.path(), &brief, &mut HandedLines::default()).unwrap_err();
+        let rejected = verify_brief(
+            repo.path(),
+            &brief,
+            &fixture_key(),
+            &mut HandedLines::default(),
+        )
+        .unwrap_err();
         assert!(rejected.reason.contains("finding"), "{}", rejected.reason);
     }
 
@@ -444,7 +495,13 @@ mod tests {
             "\n",
         )
         .unwrap();
-        assert!(verify_brief(repo.path(), &brief, &mut HandedLines::default()).is_err());
+        assert!(verify_brief(
+            repo.path(),
+            &brief,
+            &fixture_key(),
+            &mut HandedLines::default()
+        )
+        .is_err());
     }
 
     #[test]
@@ -452,21 +509,27 @@ mod tests {
         // A brief can point outside the checkout or at an unverified line.
         let (repo, mut brief, _) = fixture();
         brief.findings[0].locations[0].path = "../etc/passwd".into();
-        assert!(
-            verify_brief(repo.path(), &brief, &mut HandedLines::default())
-                .unwrap_err()
-                .reason
-                .contains("outside")
-        );
+        assert!(verify_brief(
+            repo.path(),
+            &brief,
+            &fixture_key(),
+            &mut HandedLines::default()
+        )
+        .unwrap_err()
+        .reason
+        .contains("outside"));
         let (repo2, mut brief2, _) = fixture();
         brief2.findings[0].locations[0].start_line = 1;
         brief2.findings[0].locations[0].end_line = 1;
-        assert!(
-            verify_brief(repo2.path(), &brief2, &mut HandedLines::default())
-                .unwrap_err()
-                .reason
-                .contains("line")
-        );
+        assert!(verify_brief(
+            repo2.path(),
+            &brief2,
+            &fixture_key(),
+            &mut HandedLines::default()
+        )
+        .unwrap_err()
+        .reason
+        .contains("line"));
     }
 
     #[test]
@@ -496,7 +559,7 @@ mod tests {
             ("app/lib/fixture-findings.txt", source),
         ])
         .unwrap();
-        let key = ProjectFingerprintKey::from_bytes([7_u8; 32]);
+        let key = fixture_key();
         let identity = key.location_hash("standin.rule", "app/lib/fixture-findings.txt");
         let matches = locate_findings(
             repo.path(),
@@ -507,7 +570,13 @@ mod tests {
         let brief = crate::cli::autofix::brief::brief_artifact("job_0123456789abcdef", 1, &matches);
         assert_eq!(brief.findings.len(), 1, "{brief:?}");
         assert_eq!(brief.findings[0].locations.len(), 2, "{brief:?}");
-        let verified = verify_brief(repo.path(), &brief, &mut HandedLines::default()).unwrap();
+        let verified = verify_brief(
+            repo.path(),
+            &brief,
+            &fixture_key(),
+            &mut HandedLines::default(),
+        )
+        .unwrap();
         assert_eq!(verified.len(), 2, "{verified:?}");
         // Each verified finding is the one the brief's location at that
         // position selected, so its reported line is inside that range.

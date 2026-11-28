@@ -1,6 +1,6 @@
 use postgres::config::Host as PostgresHost;
 use postgres::Config as PostgresConfig;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use url::Url;
 
@@ -196,63 +196,13 @@ pub fn resolve_local_sqlite_path(
         project_root.join(candidate)
     };
 
-    bound_local_sqlite_path(candidate, project_root, env_file_path)
+    bound_local_sqlite_path(&candidate, project_root)
 }
 
-pub fn canonicalize_local_sqlite_path(
-    path: &Path,
-    project_root: &Path,
-    env_file_path: Option<&Path>,
-) -> Option<PathBuf> {
-    let canonical = path.canonicalize().ok()?;
-    bound_local_sqlite_path(canonical, project_root, env_file_path)
-}
-
-fn bound_local_sqlite_path(
-    candidate: PathBuf,
-    project_root: &Path,
-    env_file_path: Option<&Path>,
-) -> Option<PathBuf> {
-    let candidate = normalize_path_lexically(&candidate);
-    let mut candidate_variants = vec![candidate.clone()];
-    if let Ok(canonical) = candidate.canonicalize() {
-        candidate_variants.push(normalize_path_lexically(&canonical));
-    }
-
-    let mut allowed_roots = vec![normalize_path_lexically(project_root)];
-    if let Ok(canonical) = project_root.canonicalize() {
-        allowed_roots.push(normalize_path_lexically(&canonical));
-    }
-
-    if let Some(env_dir) = env_file_path.and_then(Path::parent) {
-        allowed_roots.push(normalize_path_lexically(env_dir));
-        if let Ok(canonical) = env_dir.canonicalize() {
-            allowed_roots.push(normalize_path_lexically(&canonical));
-        }
-    }
-
-    if candidate_variants
-        .iter()
-        .any(|candidate| allowed_roots.iter().any(|root| candidate.starts_with(root)))
-    {
-        Some(candidate)
-    } else {
-        None
-    }
-}
-
-fn normalize_path_lexically(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                normalized.pop();
-            }
-            other => normalized.push(other.as_os_str()),
-        }
-    }
-    normalized
+fn bound_local_sqlite_path(candidate: &Path, project_root: &Path) -> Option<PathBuf> {
+    let root = project_root.canonicalize().ok()?;
+    let candidate = candidate.canonicalize().ok()?;
+    (candidate != root && candidate.starts_with(root)).then_some(candidate)
 }
 
 fn strip_wrapping_quotes(value: &str) -> &str {
@@ -307,7 +257,7 @@ mod tests {
     use std::path::Path;
 
     use crate::core::database_targets::{
-        canonicalize_local_sqlite_path, resolve_local_sqlite_path, validate_local_database_target,
+        bound_local_sqlite_path, resolve_local_sqlite_path, validate_local_database_target,
         validated_local_postgres_config, LocalDatabaseKind,
     };
     use tempfile::tempdir;
@@ -410,51 +360,76 @@ mod tests {
 
     #[test]
     fn resolves_relative_sqlite_paths_against_env_file() {
+        let dir = tempdir().unwrap();
+        let env_dir = dir.path().join("apps/web");
+        std::fs::create_dir_all(env_dir.join("data")).unwrap();
+        let db = env_dir.join("data/dev.db");
+        std::fs::write(&db, "").unwrap();
         let path = resolve_local_sqlite_path(
             "file:./data/dev.db",
-            Path::new("/repo"),
-            Some(Path::new("/repo/apps/web/.env.local")),
-        )
-        .unwrap();
-        assert_eq!(path, Path::new("/repo/apps/web/data/dev.db"));
+            dir.path(),
+            Some(&env_dir.join(".env.local")),
+        );
+        assert_eq!(path, Some(db.canonicalize().unwrap()));
     }
 
     #[test]
     fn security_regression_rejects_absolute_sqlite_paths_outside_project() {
-        let path = resolve_local_sqlite_path(
-            "file:/Users/example/Library/Application Support/Other/app.db",
-            Path::new("/repo"),
-            Some(Path::new("/repo/apps/web/.env.local")),
-        );
+        let project = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let database = outside.path().join("other.db");
+        std::fs::write(&database, "").unwrap();
 
+        let path = resolve_local_sqlite_path(
+            &format!("file:{}", database.display()),
+            project.path(),
+            Some(&project.path().join(".env.local")),
+        );
         assert!(path.is_none());
     }
 
     #[test]
     fn security_regression_rejects_relative_sqlite_paths_that_escape_project() {
-        let path = resolve_local_sqlite_path(
-            "file:../../../outside.db",
-            Path::new("/repo"),
-            Some(Path::new("/repo/apps/web/.env.local")),
-        );
+        let workspace = tempdir().unwrap();
+        let project = workspace.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::write(workspace.path().join("other.db"), "").unwrap();
 
+        let path = resolve_local_sqlite_path(
+            "file:../other.db",
+            &project,
+            Some(&project.join(".env.local")),
+        );
         assert!(path.is_none());
     }
 
     #[test]
     fn security_regression_rejects_sqlite_symlinks_that_escape_project() {
-        let project = tempdir().expect("project dir");
-        let outside = tempdir().expect("outside dir");
+        let project = tempdir().unwrap();
+        let outside = tempdir().unwrap();
         let outside_db = outside.path().join("outside.db");
-        std::fs::write(&outside_db, "").expect("write outside db");
+        std::fs::write(&outside_db, "").unwrap();
         let linked_db = project.path().join("linked.db");
         #[cfg(unix)]
         std::os::unix::fs::symlink(&outside_db, &linked_db).expect("symlink db");
         #[cfg(windows)]
         std::os::windows::fs::symlink_file(&outside_db, &linked_db).expect("symlink db");
 
-        let path = canonicalize_local_sqlite_path(&linked_db, project.path(), None);
+        let path = bound_local_sqlite_path(&linked_db, project.path());
 
         assert!(path.is_none());
+    }
+    #[test]
+    fn dot_root_rejects_unlisted_sqlite() {
+        let outside = tempdir().unwrap();
+        let database = outside.path().join("other.db");
+        std::fs::write(&database, "").unwrap();
+        let root = Path::new(".");
+        assert!(!database
+            .canonicalize()
+            .unwrap()
+            .starts_with(root.canonicalize().unwrap()));
+
+        assert!(bound_local_sqlite_path(&database, root).is_none());
     }
 }

@@ -69,7 +69,6 @@ pub(crate) async fn respond_in_sequence_with_headers(
 }
 
 /// Keep the listener alive until the flow completes, even between requests.
-#[cfg(unix)]
 pub(crate) async fn respond_during<T>(
     responses: Vec<(String, &'static str)>,
     run: impl AsyncFnOnce(String) -> T,

@@ -59,6 +59,16 @@ it.each([
     [`${prefix}/private-vulnerability-reporting`]: { enabled: true },
   };
   const contract = selectRepositoryProtectionContract(configured, slug);
+  const environments = Object.keys(contract.releaseEnvironments?.requiredReviewers ?? {}).map(
+    (name) => `${prefix}/environments/${name}`,
+  );
+  for (const endpoint of environments) {
+    payloads[endpoint] = liveReleaseEnvironment(endpoint.split("/").at(-1));
+    payloads[`${endpoint}/deployment-branch-policies`] = {
+      total_count: 1,
+      branch_policies: [{ type: "tag", name: "v*" }],
+    };
+  }
   const settings = readLiveRepositoryProtection(contract, (endpoint) => {
     endpoints.push(endpoint);
     return payloads[endpoint];
@@ -68,11 +78,81 @@ it.each([
     `${prefix}/rulesets`,
     `${prefix}/rulesets/14`,
     ...(reportsVulnerabilities ? [`${prefix}/private-vulnerability-reporting`] : []),
+    ...environments.flatMap((endpoint) => [endpoint, `${endpoint}/deployment-branch-policies`]),
   ]);
   expect(settings).toMatchObject({
     mergeMethods: ["squash"],
     rulesets: [{ name: "protect-main" }],
   });
+});
+
+function liveReleaseEnvironment(name) {
+  return {
+    can_admins_bypass: false,
+    protection_rules:
+      name === "release-tag-trust"
+        ? []
+        : [
+            {
+              type: "required_reviewers",
+              reviewers: [{ type: "User", reviewer: { login: "kpiontek" } }],
+            },
+          ],
+    deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+    deploymentPolicies: { total_count: 1, branch_policies: [{ type: "tag", name: "v*" }] },
+  };
+}
+
+it("accepts the exact release environment contract", () => {
+  const contract = selectRepositoryProtectionContract(configured, publicSlug);
+  const environments = Object.fromEntries(
+    Object.keys(contract.releaseEnvironments.requiredReviewers).map((name) => [
+      name,
+      liveReleaseEnvironment(name),
+    ]),
+  );
+  const failures = liveRepositoryProtectionFailures(
+    { releaseEnvironments: contract.releaseEnvironments },
+    {
+      environments,
+      rulesets: [],
+    },
+  );
+  expect(failures).toEqual([]);
+});
+
+it("reports reviewer, admin bypass, and deployment tag drift for each release environment", () => {
+  const contract = selectRepositoryProtectionContract(configured, publicSlug);
+  const names = [
+    "release-tag-trust",
+    "release-updater-signing",
+    "release-publish",
+    "release-signing",
+    "npm-publish",
+  ];
+  const live = {
+    ...liveEngine(),
+    environments: Object.fromEntries(
+      names.map((name) => [
+        name,
+        {
+          can_admins_bypass: true,
+          protection_rules:
+            name === "release-tag-trust"
+              ? liveReleaseEnvironment("release-signing").protection_rules
+              : [],
+          deployment_branch_policy: null,
+          deploymentPolicies: { total_count: 1, branch_policies: [{ type: "branch", name: "v*" }] },
+        },
+      ]),
+    ),
+  };
+  const failures = liveRepositoryProtectionFailures(contract, live);
+  for (const name of names) {
+    for (const field of ["reviewers", "can_admins_bypass", "deployment tag policies"]) {
+      expect(failures).toContainEqual(expect.stringContaining(`"${name}" ${field}`));
+    }
+  }
 });
 
 function liveEngine() {

@@ -1,135 +1,88 @@
-# Windows Code Signing (Azure Artifact Signing)
+# Windows CLI Signing with Azure Artifact Signing
 
-How SiteCMD Authenticode-signs the Windows desktop installer in CI. macOS
-Developer ID signing + notarization is the separate, live path documented in
-`macos-code-signing.md`.
+The Windows leg of `build` compiles `sitecmd.exe`, runs `--version` without
+signing credentials, and uploads `built-cli-windows-x86_64` with the legal files.
+The Windows leg of `sign-platforms` waits for maintainer approval in the
+`release-signing` environment and runs on a separate runner. It checks the
+digest GitHub recorded at upload before signing the downloaded executable. [Release workflow](../../.github/workflows/release.yml)
 
-## Summary
+## Set up Azure Artifact Signing
 
-The release workflow (`.github/workflows/release.yml`) signs the Windows app
-executable and NSIS installer during `tauri build`, using Tauri's
-`bundle.windows.signCommand` driving [`artifact-signing-cli`] against an Azure
-Artifact Signing certificate profile. Authentication uses a Microsoft Entra
-service principal. All configuration lives in GitHub repository settings; no
-Azure identifiers are committed to the repo.
+1. Register the `Microsoft.CodeSigning` resource provider, create an Artifact
+   Signing account in a supported Azure region, and complete public identity
+   validation in the Azure portal. Create a **Public Trust** certificate
+   profile. Record the account name, profile name, and regional endpoint.
+   [Azure Artifact Signing quickstart](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart)
+2. Register a Microsoft Entra application for release signing. Record its
+   tenant ID and application ID. In **Certificates & secrets > Client secrets**,
+   create a client secret and record its value when Entra displays it.
+   [Microsoft Entra app credentials](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials)
+3. Assign the application's service principal the **Artifact Signing
+   Certificate Profile Signer** role on the certificate profile.
+   [Azure Artifact Signing roles](https://learn.microsoft.com/en-us/azure/artifact-signing/tutorial-assign-roles)
 
-Official releases fail closed if any setting below is absent. Local development
-builds may remain unsigned, but the release workflow never publishes an unsigned
-Windows executable or installer.
+## Configure GitHub
 
-> Azure renamed "Trusted Signing" to "Artifact Signing" in 2026. The CLI
-> follows: `artifact-signing-cli` is current; `trusted-signing-cli` is
-> deprecated. Some portal labels and RBAC role names may still read "Trusted
-> Signing".
+In the repository, go to **Settings > Environments > release-signing** and add
+these environment secrets and variables.
 
-## One-time Azure setup
+| Name                  | Kind     | Value                                                          |
+| --------------------- | -------- | -------------------------------------------------------------- |
+| `AZURE_TENANT_ID`     | Secret   | Directory (tenant) ID                                          |
+| `AZURE_CLIENT_ID`     | Secret   | Application (client) ID                                        |
+| `AZURE_CLIENT_SECRET` | Secret   | Entra client secret value                                      |
+| `AZURE_SIGN_ENDPOINT` | Variable | Regional endpoint, such as `https://eus.codesigning.azure.net` |
+| `AZURE_SIGN_ACCOUNT`  | Variable | Artifact Signing account name                                  |
+| `AZURE_SIGN_PROFILE`  | Variable | Public Trust certificate profile name                          |
 
-1. **Account** - Obtain an approved Trusted/Artifact Signing account. Identity
-   validation is normally the longest setup step.
-2. **Certificate profile** - In the account, create a certificate profile of
-   type **Public Trust** (required for public distribution). Note its name.
-3. **Service principal** - In Microsoft Entra ID > App registrations > New
-   registration, create an app for CI. Under Certificates & secrets, create a
-   client secret. Record the **Directory (tenant) ID**, **Application (client)
-   ID**, and the **client secret value** (shown once).
-4. **Role assignment** - On the signing account (Access control / IAM > Add role
-   assignment), grant that service principal the **Trusted Signing Certificate
-   Profile Signer** role (the Artifact Signing equivalent after the rename).
-5. **Endpoint** - From the account overview, note the regional URI, e.g.
-   `https://eus.codesigning.azure.net`.
+## Sign in CI
 
-## GitHub configuration
+The Windows signing runner checks the environment configuration and installs
+the pinned version of [`artifact-signing-cli`]. **Verify Azure signing** signs
+a temporary copy of the downloaded unsigned `sitecmd.exe` to check the Entra
+credential and Public Trust certificate profile. It requires a valid embedded
+Authenticode signature and records the signer subject and the profile's
+durable Extended Key Usage (EKU).
+[Azure certificate profile EKU](https://learn.microsoft.com/en-us/azure/artifact-signing/concept-certificate-management#certificate-profile-eku)
 
-Repository > Settings > Secrets and variables > Actions.
+The signing script Authenticode-signs the downloaded `sitecmd.exe` with the same
+Azure profile. It packages the executable and its legal files as
+`sitecmd-cli_<version>_windows-x86_64.zip` without running the binary.
+[Signing script](../../.github/scripts/release/sign-cli.sh)
 
-**Secrets** (sensitive):
+## Verify the release
 
-| Name                  | Value                   |
-| --------------------- | ----------------------- |
-| `AZURE_TENANT_ID`     | Directory (tenant) ID   |
-| `AZURE_CLIENT_ID`     | Application (client) ID |
-| `AZURE_CLIENT_SECRET` | client secret value     |
-
-**Variables** (non-secret identifiers):
-
-| Name                  | Value                                                |
-| --------------------- | ---------------------------------------------------- |
-| `AZURE_SIGN_ENDPOINT` | region URI, e.g. `https://eus.codesigning.azure.net` |
-| `AZURE_SIGN_ACCOUNT`  | signing account name                                 |
-| `AZURE_SIGN_PROFILE`  | certificate profile name                             |
-
-Set all six. The next `v*` release tag produces a signed Windows installer.
-
-## How it works in CI
-
-- The release gate requires `AZURE_SIGN_ENDPOINT`; the Windows matrix leg then
-  installs the pinned `artifact-signing-cli` with `--locked`.
-- The build step assembles a `bundle.windows.signCommand` overlay and passes it
-  via `tauri build --config`. Tauri then calls the CLI once per artifact (the
-  app `.exe` and the NSIS `-setup.exe`), substituting each file path for `%1`.
-- Tauri runs `signCommand` without a shell and hides the CLI's stderr, so a
-  failed sign only surfaces as the opaque `failed to bundle project 'failed to
-run artifact-signing-cli'` deep into the build. Do NOT try to fix this by
-  wrapping the CLI in `bash` from the signCommand: a bare `bash` on the runner
-  resolves to WSL (no distro), so Tauri reports `failed to run bash` and never
-  reaches the CLI. Instead, a dedicated **Verify Azure signing** step runs the
-  CLI directly in the job's shell (where stdout AND stderr are visible) against
-  a throwaway copy of a system exe, before the long build. A broken
-  credential / role / profile fails there in about a minute with the real Azure
-  error, instead of wasting a ~45-minute build.
-- The service-principal secrets are matrix-scoped to the Windows leg only, so
-  they never enter the macOS/Linux runners (defense-in-depth, mirroring the
-  license-env narrowing from the security audit).
-- Auth is via the standard `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` /
-  `AZURE_CLIENT_SECRET` environment variables read by the CLI's Azure
-  credential.
-
-This Authenticode signature is independent of the minisign updater signature
-(`TAURI_SIGNING_PRIVATE_KEY`): the former is what Windows / SmartScreen trust on
-install, the latter is what the in-app updater verifies.
-
-## Verifying a signed build
-
-Download the `-setup.exe` artifact and, on Windows:
+Extract `sitecmd.exe` from the release ZIP and inspect its Authenticode
+signature on Windows.
 
 ```powershell
-Get-AuthenticodeSignature .\SiteCMD_<version>_x64-setup.exe | Format-List
+Get-AuthenticodeSignature .\sitecmd.exe | Format-List
 ```
 
-Status should be `Valid` with the signer chaining to the Microsoft-managed
-publisher identity. Or: right-click > Properties > Digital Signatures.
+Expect `Status` to be `Valid` and `SignatureType` to be `Authenticode`. The
+verifier requires the code signing EKU, the Public Trust marker, and exactly
+one Azure profile EKU. It matches the signer subject and profile EKU to the
+probe before running `sitecmd --version`. Azure keeps the profile EKU stable
+for the life of the profile, including when certificates renew under a
+different issuing CA.
+[Azure certificate profile EKU](https://learn.microsoft.com/en-us/azure/artifact-signing/concept-certificate-management#certificate-profile-eku)
 
-SmartScreen reputation accrues with download volume even with a valid
-certificate, so early downloads may still show a warning that fades over time.
+## Troubleshoot and rotate credentials
 
-## Troubleshooting: `failed to run artifact-signing-cli`
-
-Tauri reports this when the sign command exits non-zero, with the CLI's real
-error hidden. The **Verify Azure signing** step earlier in the job surfaces that
-error directly (it runs the CLI in the job's own shell before the build); read
-its output first. A sign that fails in under a second (versus ~10s for a
-successful network sign) died at Azure authentication, before submitting
-anything, which points at one of:
-
-- An expired or rotated `AZURE_CLIENT_SECRET`. Entra client secrets have an
-  expiry; rotate as in Notes below.
-- The service principal lost its Trusted Signing role (`Trusted Signing
-Certificate Profile Signer`) on the account, or the certificate profile is no
-  longer in a usable state.
-- A transient Azure outage or throttle at the token or signing endpoint. A plain
-  job re-run distinguishes this from the above two.
-
-The signing config is byte-identical across tags, so when a tag fails to sign
-after a previous tag signed cleanly, the cause is on the Azure side, not in the
-repo.
-
-## Notes
-
-- Cost: ~$9.99/month for the signing account plus a negligible per-signature
-  charge.
-- Rotating the client secret: create a new secret in Entra, update
-  `AZURE_CLIENT_SECRET`, remove the old one. No code change required.
-- The deprecated `trusted-signing-cli` still works but should not be
-  reintroduced; track `artifact-signing-cli` releases for the pinned version.
+- Read **Verify Azure signing** in the Windows `sign-platforms` job for Azure
+  diagnostics. Check the client secret expiration, the service principal's
+  role on the certificate profile, and that the profile is active and belongs
+  to the configured account and region.
+- Azure renews the signing certificate daily, so the owner rotates only the
+  client secret. Before it expires, create a replacement in the same Entra
+  application and update `AZURE_CLIENT_SECRET` in `release-signing`. The signing
+  tool runs only on Windows. Use **Verify Azure signing** on the next release to
+  check the new secret, and keep the old secret valid until that step passes.
+  [Azure certificate management](https://learn.microsoft.com/en-us/azure/artifact-signing/concept-certificate-management)
+- Re-run a failed signing job while its build artifact is available if the fix
+  is in the Azure account or a secret. If the signing script or binary needs a
+  fix, release a new version with a new tag. The job checks out the tagged
+  commit. See the [release runbook](../operations/releasing.md) for approval
+  and artifact retention deadlines.
 
 [`artifact-signing-cli`]: https://crates.io/crates/artifact-signing-cli

@@ -93,7 +93,14 @@ export function ciCostSafetyFailures(read, listFiles, { exported = false } = {})
     `Scheduled workflows must run no more than weekly to stay within the Enterprise Actions budget. Pin a specific day-of-week or day-of-month instead of "* * *". These fire daily-or-more: ${dailyCronWorkflows.join(", ")}.`,
   );
 
-  const { jobs } = readWorkflow(read(CI_WORKFLOW));
+  const ci = read(CI_WORKFLOW);
+  check(
+    /\nconcurrency:\n {2}group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event\.pull_request\.number \|\| github\.run_id \}\}/.test(
+      ci,
+    ),
+    "ci.yml must isolate concurrency by event and pull request number or run ID.",
+  );
+  const { jobs } = readWorkflow(ci);
   check(
     jobs["dependency-audit"]?.steps.some(({ run }) => run === "pnpm run audit:deps:signer"),
     "ci.yml must audit the standalone updater signer when dependencies change.",
@@ -109,9 +116,8 @@ export function ciCostSafetyFailures(read, listFiles, { exported = false } = {})
   );
   check(
     !hasRelease ||
-      (releaseWorkflow.includes("concurrency:") &&
-        releaseWorkflow.includes("cancel-in-progress: true")),
-    "release.yml must keep a concurrency group with cancel-in-progress so a superseded run of the same tag stops billing.",
+      /\nconcurrency:\n {2}group: release\n {2}cancel-in-progress: false\n/.test(releaseWorkflow),
+    "release.yml must queue all tags in one concurrency group without canceling a running release.",
   );
   failures.push(...deployWorkflowHardeningFailures(read, workflowFiles));
 

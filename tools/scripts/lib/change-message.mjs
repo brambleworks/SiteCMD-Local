@@ -1,3 +1,4 @@
+/** Read commit messages and validate tracked-issue overrides for repository checks. */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

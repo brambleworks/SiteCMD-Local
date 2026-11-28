@@ -168,6 +168,13 @@ fn filtered<'a, 'b>(
         .collect()
 }
 
+fn read_scan(sitecmd_dir: &std::path::Path) -> Result<FixScan, String> {
+    let contents = super::read_last_scan(sitecmd_dir)?
+        .ok_or_else(|| "No scan data. Run `sitecmd scan` first.".to_string())?;
+
+    FixScan::parse(&contents)
+}
+
 /// Run the fix subcommand.
 ///
 /// Reads `.sitecmd/last-scan.json`, ranks issues by impact, applies any
@@ -176,11 +183,7 @@ pub async fn run(args: FixArgs) -> Result<(), String> {
     let sitecmd_dir = crate::cli::find_config_dir()
         .ok_or_else(|| "No .sitecmd/ directory found. Run `sitecmd init` first.".to_string())?;
 
-    let last_scan_path = sitecmd_dir.join("last-scan.json");
-    let contents = std::fs::read_to_string(&last_scan_path)
-        .map_err(|_| "No scan data. Run `sitecmd scan` first.".to_string())?;
-
-    let scan = FixScan::parse(&contents)?;
+    let scan = read_scan(&sitecmd_dir)?;
 
     let ranked = scan.issues();
     let (score, url, detected_stack) = scan.context();
@@ -283,6 +286,19 @@ impl FixScanHarness {
 #[cfg(test)]
 mod tests {
     use super::{run, FixArgs};
+
+    #[cfg(unix)]
+    #[test]
+    fn fix_refuses_a_linked_scan_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let fixture = dir.path().join("fixture.json");
+        std::fs::write(&fixture, "{}").unwrap();
+        std::os::unix::fs::symlink(fixture, dir.path().join("last-scan.json")).unwrap();
+        let Err(error) = super::read_scan(dir.path()) else {
+            panic!("accepted a linked scan cache");
+        };
+        assert!(error.contains("refused unsafe"), "{error}");
+    }
 
     #[test]
     fn incompatible_cache_explains_how_to_refresh_it() {

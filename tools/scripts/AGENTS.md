@@ -9,7 +9,8 @@ vitest suites. Maintainers and CI run them; nothing here ships in the CLI.
 - `check-repo-guardrails.mjs`: the guardrail runner behind `pnpm guardrails:repo`. It collects
   every failure from the rule modules and exits non-zero.
 - `lib/guardrail-*.mjs`: the rule modules, one family each. `lib/guardrail-script-budgets.mjs`
-  holds line budgets for these scripts; `lib/guardrail-text-utils.mjs` and
+  holds line budgets for these scripts. `lib/guardrail-sitecmd-artifact-rules.mjs` pins CLI artifact
+  I/O to the shared helpers. `lib/guardrail-text-utils.mjs` and
   `lib/guardrail-workflow-yaml.mjs` hold shared parsers.
 - `*.test.mjs`: vitest suites. `repo-guardrail-*.test.mjs` plant regressions to prove each rule
   fails; `guardrail-test-support.mjs` holds their shared fixture helpers.
@@ -36,9 +37,10 @@ vitest suites. Maintainers and CI run them; nothing here ships in the CLI.
 - `release.mjs`, `tag-release.mjs`, `check-release-bump.mjs`, `check-changelog-notes.mjs`,
   `lib/version-files.mjs`: release preparation, signed tags, and changelog notes.
 - `check-commit-message.mjs`, `check-budget-ratchet.mjs`, `pr-title.mjs`: commit message, budget
-  ratchet, and pull request title checks.
+  ratchet, and pull request title checks. `lib/change-message.mjs` exports the shared
+  commit-message and override reader for Git checks, including consumers of this repository as a submodule.
 - `check-workflows.mjs`, `check-repository-labels.mjs`, `check-repository-protection.mjs`: workflow
-  syntax and the repository settings contracts in `/.github/`.
+  syntax and the repository settings contracts in `/.github/`, including live release environment checks.
 - `generate-third-party-artifacts.mjs`, `audit-regex.mjs`, `audit-rust-deps.mjs`,
   `check-knip-export-budget.mjs`: legal artifacts, regex safety, Rust advisories, and the knip
   export budget.
@@ -84,9 +86,10 @@ pnpm guardrails:repo
 pnpm guardrails:publication
 ```
 
-Some suites need `cargo`, `git` history, or `minisign`; CI installs the pinned minisign with
-`/.github/scripts/install-minisign.sh`. `pnpm guardrails:publication:history` needs the Gitleaks
-CLI.
+Some suites need `cargo`, `git` history, or `minisign`. CI installs the pinned minisign with
+`/.github/scripts/install-minisign.sh`. The Windows signer fixture requires PowerShell in CI.
+Local runs skip that fixture when PowerShell is unavailable. `pnpm guardrails:publication:history`
+needs the Gitleaks CLI.
 
 ## Boundaries
 

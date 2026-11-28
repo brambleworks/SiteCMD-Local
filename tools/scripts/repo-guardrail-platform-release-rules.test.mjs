@@ -505,16 +505,31 @@ describe("release pipeline probe and CRLF rules", () => {
     expect(failures.join("\n")).toContain("extracted macOS CLI");
   });
 
-  it("catches a Windows CLI whose Authenticode signature is no longer verified", () => {
+  it.each([
+    ["Authenticode validation", "    $signature = Get-AuthenticodeSignature -LiteralPath $Path"],
+    ["trusted signature status", '    if ($signature.Status -ne "Valid") {'],
+    ["embedded signature type", '    if ($signature.SignatureType -ne "Authenticode") {'],
+    ["profile EKU", '    return "${subject}:$($profileEku[0])"'],
+  ])("catches a Windows CLI verifier that drops the %s", (_check, line) => {
     const failures = run((file, source) =>
-      file === cliReleaseWorkflow
-        ? source.replace(
-            "          $cliSignature = Get-AuthenticodeSignature $cli",
-            "          # $cliSignature = Get-AuthenticodeSignature $cli",
-          )
+      file.endsWith("/windows-signer-identity.ps1")
+        ? mustMutate(source, line, `    # ${line.trimStart()}`)
         : source,
     );
     expect(failures.join("\n")).toContain("extracted Windows CLI");
+  });
+
+  it("rejects the Azure probe signing a Windows catalog executable instead of the unsigned CLI copy", () => {
+    const failures = run((file, source) =>
+      file === cliReleaseWorkflow
+        ? mustMutate(
+            source,
+            'cp "$RUNNER_TEMP/cli-dist/sitecmd.exe" sign-probe.exe || exit 1',
+            "cp /c/Windows/System32/whoami.exe sign-probe.exe || exit 1",
+          )
+        : source,
+    );
+    expect(failures.join("\n")).toContain("digest-checked unsigned Windows CLI");
   });
 
   it("catches a CLI archive that omits its license materials", () => {

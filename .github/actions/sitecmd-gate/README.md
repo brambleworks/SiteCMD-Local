@@ -54,6 +54,8 @@ step, because the connection export already names the environment being graded
 and a second step would be a second chance to grade the wrong one. The gate
 audits the checkout in front of it, every time.
 
+Add `.sitecmd/config.json` to CODEOWNERS and require code owner review before merging changes.
+
 ## What the gate can and cannot do
 
 It asks one question and gets one answer: which of this checkout's findings are
