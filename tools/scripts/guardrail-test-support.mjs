@@ -157,11 +157,8 @@ const RULE_ARGUMENTS = new Map([
   [emptyTestBodyFailures, (io) => [io.read, io.listFiles]],
   [publicationRecordFailures, (io) => [io.read, io.exists, io.listFiles]],
   [privateStorageSafetyFailures, (io) => [io.read]],
-  [
-    releaseArtifactSafetyFailures,
-    (io) => [io.read, io.exists, io.listFiles, { releaseWorkflow: !exportedTree }],
-  ],
-  [releaseWorkflowSafetyFailures, (io) => [io.read, { releaseWorkflow: !exportedTree }]],
+  [releaseArtifactSafetyFailures, (io) => [io.read, io.exists, io.listFiles]],
+  [releaseWorkflowSafetyFailures, (io) => [io.read]],
   [rustLineBudgetFailures, (io) => [io.read, io.listFiles]],
   [rustRatchetFailures, (io) => [io.read, io.exists, io.listFiles]],
   [rustUnwrapBudgetFailures, (io) => [io.read, io.exists, io.listFiles]],

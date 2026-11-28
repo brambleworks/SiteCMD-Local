@@ -1,4 +1,5 @@
 import { releasePinStepIsComplete } from "./guardrail-engine-pin-workflow-rules.mjs";
+import { releaseNextestProfileFailures } from "./guardrail-nextest-profile-rules.mjs";
 import { orderedBefore, workflowStepIndex } from "./guardrail-text-utils.mjs";
 import { releasePublicationSafetyFailures } from "./guardrail-release-publication-rules.mjs";
 
@@ -77,22 +78,21 @@ export function releasePipelineSafetyFailures(read) {
       orderedBefore(releaseWorkflow, "\n  preflight:\n", "\n  prepare-candidate:\n") &&
       orderedBefore(releaseWorkflow, "\n  prepare-candidate:\n", "\n  build:\n") &&
       preflightJob.includes("pnpm guardrails:repo") &&
-      orderedBefore(
-        preflightJob,
-        "run: node tools/scripts/fetch-engine.mjs",
-        "      - name: Rust tests",
-      ) &&
+      orderedBefore(preflightJob, "run: pnpm engine:fetch", "      - name: Rust tests") &&
       preflightJob.includes("Replay workspace tests with the stand-in") &&
       preflightJob.includes("pnpm run legal:check") &&
       preflightJob.includes("pnpm test") &&
       preflightJob.includes("pnpm run audit:deps:js") &&
       preflightJob.includes("pnpm run audit:deps:signer") &&
       preflightJob.includes("pnpm run audit:deps:rust") &&
-      preflightJob.includes("cargo nextest run --no-fail-fast --workspace --profile ci") &&
-      preflightJob.includes("cargo clippy --no-deps --workspace --all-targets -- -D warnings") &&
+      preflightJob.includes("cargo nextest run --locked --no-fail-fast --workspace --profile ci") &&
+      preflightJob.includes(
+        "cargo clippy --locked --no-deps --workspace --all-targets -- -D warnings",
+      ) &&
       preflightJob.includes("cargo fmt --check --all"),
     "Release workflow must run tests, guardrails, legal-artifact checks, workspace and updater-signer dependency audits, and Rust gates before building signed CLI archives.",
   );
+  failures.push(...releaseNextestProfileFailures(read, releaseWorkflow));
 
   // Re-fetch the annotated tag object before verification; checkout may leave
   // the local tag ref pointing directly at its commit.
@@ -144,7 +144,7 @@ export function releasePipelineSafetyFailures(read) {
     "release.yml must create a source- and workflow-bound immutable candidate, and read versioned changelog notes without exposing the signed-tag signature block.",
   );
 
-  const fetchStep = workflowStepIndex(buildJob, "run: node tools/scripts/fetch-engine.mjs");
+  const fetchStep = workflowStepIndex(buildJob, "run: pnpm engine:fetch");
   check(
     buildJob.includes("name: release-signing") &&
       buildJob.includes("Bind build to the human-reviewed candidate") &&

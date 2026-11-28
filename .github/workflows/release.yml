@@ -1,0 +1,1080 @@
+name: Release
+
+# Signed `v*` tags only. Verify, approve, build, isolate updater signing,
+# verify without secrets, then publish without a checkout.
+# Configuration and recovery: docs/operations/releasing.md
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+# Cancel superseded runs to avoid duplicate platform-build spend.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tag-gate:
+    name: Tag verification
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    # Keep tag trust outside the commit being authenticated.
+    environment: release-tag-trust
+    env:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: credential.helper
+      GIT_CONFIG_VALUE_0: "!gh auth git-credential"
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Enforce strict semver tag pattern
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if ! printf '%s' "$TAG_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Tag '$TAG_NAME' does not match strict semver pattern vMAJOR.MINOR.PATCH[-prerelease]."
+            echo "::error::Release tags must be the only trigger for shipped builds. Retag with the correct format."
+            exit 1
+          fi
+
+      - name: Require annotated tag (not lightweight)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          # Checkout peels the local ref, so ask origin for the annotated tag object.
+          peeled="$(git ls-remote origin "refs/tags/${TAG_NAME}^{}")"
+          if [ -z "$peeled" ]; then
+            echo "::error::Tag '$TAG_NAME' is a lightweight tag (origin advertises no peeled object)."
+            echo "::error::Re-create as a signed tag: git tag -s $TAG_NAME -m '...' && git push --force-with-lease origin $TAG_NAME"
+            exit 1
+          fi
+          echo "Tag '$TAG_NAME' is annotated (origin advertises a peeled object)."
+
+      - name: Require release tag from the protected default branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          if ! git merge-base --is-ancestor "$RELEASE_COMMIT" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::Release commit $RELEASE_COMMIT is not in origin/$DEFAULT_BRANCH."
+            echo "::error::Release tags may point only at commits that landed through the protected default branch."
+            exit 1
+          fi
+
+      - name: Verify signed tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          ALLOWED_SIGNERS: ${{ vars.RELEASE_ALLOWED_SIGNERS }}
+        run: |
+          set -euo pipefail
+          # Trust comes from the protected environment, never the checkout.
+          if [ -z "$ALLOWED_SIGNERS" ]; then
+            echo "::error::RELEASE_ALLOWED_SIGNERS is not set in the release-tag-trust environment."
+            echo "::error::Release tag trust is not configured; see docs/operations/releasing.md."
+            exit 1
+          fi
+          SIGNERS_FILE="$RUNNER_TEMP/allowed-signers"
+          REVIEWED_SIGNERS_FILE="$RUNNER_TEMP/reviewed-allowed-signers"
+          PROTECTED_SIGNERS_FILE="$RUNNER_TEMP/protected-allowed-signers"
+          printf '%s\n' "$ALLOWED_SIGNERS" > "$SIGNERS_FILE"
+
+          normalize_signers() {
+            awk '{
+              sub(/\r$/, "")
+              sub(/[[:space:]]+$/, "")
+              if ($0 !~ /^[[:space:]]*(#|$)/) print
+            }' "$1"
+          }
+
+          normalize_signers .github/allowed-signers > "$REVIEWED_SIGNERS_FILE"
+          normalize_signers "$SIGNERS_FILE" > "$PROTECTED_SIGNERS_FILE"
+          if [ ! -s "$PROTECTED_SIGNERS_FILE" ]; then
+            echo "::error::RELEASE_ALLOWED_SIGNERS contains no signer entries."
+            exit 1
+          fi
+          if ! cmp -s "$REVIEWED_SIGNERS_FILE" "$PROTECTED_SIGNERS_FILE"; then
+            echo "::error::RELEASE_ALLOWED_SIGNERS does not match .github/allowed-signers."
+            echo "::error::Publish the reviewed file to the release-tag-trust environment before tagging."
+            exit 1
+          fi
+
+          # Re-fetch the tag object because checkout leaves a peeled local ref.
+          git fetch --force origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
+          git config --local gpg.ssh.allowedSignersFile "$PROTECTED_SIGNERS_FILE"
+          if ! git verify-tag "$TAG_NAME" 2>&1; then
+            echo "::error::Tag '$TAG_NAME' is not signed by an allowed signer."
+            echo "::error::Re-tag with: git tag -s $TAG_NAME -m '...' && git push --force-with-lease origin $TAG_NAME"
+            exit 1
+          fi
+
+  # Validate the production updater key before platform builds.
+  validate-updater-key:
+    name: Validate updater signing secret
+    needs: tag-gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    environment:
+      name: release-updater-signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/updater-signer
+            .nvmrc
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Provision the integrity-pinned standalone signer
+        working-directory: .github/updater-signer
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Sign a probe byte with the production key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is missing from release-updater-signing."
+            exit 1
+          fi
+          printf 'probe' > "$RUNNER_TEMP/probe.bin"
+          "$GITHUB_WORKSPACE/.github/updater-signer/node_modules/.bin/tauri" \
+            signer sign "$RUNNER_TEMP/probe.bin"
+          test -s "$RUNNER_TEMP/probe.bin.sig"
+
+  # Authenticate the publish OIDC token with an invalid, non-mutating request.
+  validate-publish-key:
+    name: Validate publish credential
+    needs: tag-gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # The releases worker accepts only a GitHub Actions OIDC token for its
+      # audience, minted in release-publish on a v* tag of this repository.
+      id-token: write
+    environment:
+      name: release-publish
+    steps:
+      - name: Probe the releases-admin endpoint without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::GitHub gave this job no OIDC token endpoint; it needs permissions: id-token: write."
+            exit 1
+          fi
+          response=$(curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com") || {
+            echo "::error::Requesting the OIDC token from GitHub failed: ${response}"
+            exit 1
+          }
+          token=$(jq -r '.value // empty' <<<"$response" 2>/dev/null || true)
+          if [ -z "$token" ]; then
+            echo "::error::GitHub's OIDC token service answered without a token."
+            exit 1
+          fi
+          echo "::add-mask::${token}"
+          status=$(curl -sS -o "$RUNNER_TEMP/probe-response.json" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${token}" \
+            -H "Content-Type: application/json" \
+            --data '{}' \
+            https://releases.sitecmd.com/api/releases-admin)
+          if [ "$status" != "400" ]; then
+            echo "::error::Probe expected 400 (authenticated, body rejected) but got $status: $(cat "$RUNNER_TEMP/probe-response.json")"
+            echo "::error::401 means the releases worker refused this job's OIDC token. It accepts only release.yml in brambleworks/SiteCMD-Local, in the release-publish environment on a v* tag, for audience https://releases.sitecmd.com; fix whichever side moved, then re-run the failed jobs."
+            exit 1
+          fi
+
+  preflight:
+    name: Release preflight
+    needs: tag-gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Remove unused toolchains before the Rust debug target fills the runner.
+      - name: Free runner disk
+        run: |
+          df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install the pinned Rust toolchain
+        shell: bash
+        working-directory: apps/desktop/src-tauri
+        run: |
+          rustc --version
+          rustup default "$(rustup show active-toolchain | cut -d ' ' -f 1)"
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-nextest@0.9.133
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-audit@0.22.1
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Repository guardrails
+        run: pnpm guardrails:repo
+
+      - name: Fetch guardrail test dependencies
+        working-directory: apps/desktop/src-tauri
+        run: cargo fetch --locked
+
+      - name: Fetch the pinned engine
+        run: pnpm engine:fetch
+
+      - name: Third-party artifact freshness
+        run: pnpm run legal:check
+
+      # Run fast advisory checks before expensive test and build work.
+      - name: JavaScript dependency audit
+        run: pnpm run audit:deps:js
+
+      - name: Updater signer dependency audit
+        run: pnpm run audit:deps:signer
+
+      - name: Rust dependency audit
+        env:
+          SITECMD_RUST_AUDIT_FETCH: "1"
+        run: pnpm run audit:deps:rust
+
+      - name: Knip unused-export budget
+        run: pnpm run knip:exports-budget
+
+      - name: Install pinned minisign
+        run: bash .github/scripts/install-minisign.sh
+
+      - name: Repository guardrail tests
+        run: pnpm test
+
+      - name: Rust tests
+        working-directory: apps/desktop/src-tauri
+        run: cargo nextest run --locked --no-fail-fast --workspace --profile ci
+
+      - name: Rust doctests
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --locked --doc --workspace
+
+      - name: Rust clippy
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy --locked --no-deps --workspace --all-targets -- -D warnings
+
+      - name: Rust formatting
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --check --all
+
+      - name: Build the stand-in engine
+        run: node tools/scripts/build-standin.mjs
+
+      - name: Replay workspace tests with the stand-in
+        env:
+          SITECMD_ENGINE_WASM: ${{ github.workspace }}/apps/desktop/src-tauri/target/standin/sitecmd_engine_standin.wasm
+          SITECMD_ENGINE_UNPINNED: "1"
+        working-directory: apps/desktop/src-tauri
+        run: cargo nextest run --locked --no-fail-fast --workspace --profile ci
+
+  prepare-candidate:
+    name: Prepare immutable release candidate
+    needs: preflight
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      candidate_hash: ${{ steps.candidate.outputs.candidate_hash }}
+      source_commit: ${{ steps.candidate.outputs.source_commit }}
+      version: ${{ steps.candidate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Build release candidate manifest
+        id: candidate
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        shell: bash
+        run: bash .github/scripts/release/build-candidate-manifest.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-candidate
+          path: release-candidate/
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    needs: [prepare-candidate, validate-updater-key, validate-publish-key]
+    permissions:
+      contents: read
+    # Require one human approval for all platform builds.
+    environment:
+      name: release-signing
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            target: darwin-universal
+            rust_target: universal-apple-darwin
+          - os: ubuntu-22.04
+            target: linux-x86_64
+            rust_target: x86_64-unknown-linux-gnu
+          # Pin the Windows toolchain instead of following windows-latest.
+          - os: windows-2025-vs2026
+            target: windows-x86_64
+            rust_target: x86_64-pc-windows-msvc
+          - os: ubuntu-22.04-arm
+            target: linux-aarch64
+            rust_target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    # Bound hung platform builds well below GitHub's default timeout.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare-candidate.outputs.source_commit }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-candidate
+          path: release-candidate
+
+      - name: Bind build to the human-reviewed candidate
+        env:
+          EXPECTED_CANDIDATE_HASH: ${{ needs.prepare-candidate.outputs.candidate_hash }}
+          EXPECTED_SOURCE_COMMIT: ${{ needs.prepare-candidate.outputs.source_commit }}
+          EXPECTED_VERSION: ${{ needs.prepare-candidate.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256_file() {
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$1" | awk '{print $1}'
+            else
+              shasum -a 256 "$1" | awk '{print $1}'
+            fi
+          }
+          ACTUAL_HASH=$(sha256_file release-candidate/manifest.json)
+          test "$ACTUAL_HASH" = "$EXPECTED_CANDIDATE_HASH"
+          test "$(jq -r '.source_commit' release-candidate/manifest.json)" = "$EXPECTED_SOURCE_COMMIT"
+          test "$(jq -r '.version' release-candidate/manifest.json)" = "$EXPECTED_VERSION"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_COMMIT"
+          test "$(sha256_file engine.lock)" = \
+            "$(jq -r '.engine_lock_sha256' release-candidate/manifest.json)"
+          test "$(sha256_file .github/workflows/release.yml)" = \
+            "$(jq -r '.workflow_sha256' release-candidate/manifest.json)"
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install the pinned Rust toolchain
+        shell: bash
+        working-directory: apps/desktop/src-tauri
+        run: |
+          rustc --version
+          rustup default "$(rustup show active-toolchain | cut -d ' ' -f 1)"
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Fetch the pinned engine
+        run: pnpm engine:fetch
+
+      - name: Install cargo-license
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-license@0.7.0
+
+      - name: Require configured platform signing
+        if: matrix.target == 'windows-x86_64' || startsWith(matrix.target, 'darwin')
+        env:
+          TARGET: ${{ matrix.target }}
+          AZURE_TENANT_ID: ${{ matrix.target == 'windows-x86_64' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ matrix.target == 'windows-x86_64' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ matrix.target == 'windows-x86_64' && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_SIGN_ENDPOINT: ${{ matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_ENDPOINT || '' }}
+          AZURE_SIGN_ACCOUNT: ${{ matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_ACCOUNT || '' }}
+          AZURE_SIGN_PROFILE: ${{ matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_PROFILE || '' }}
+          APPLE_CERTIFICATE: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_TEAM_ID: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_TEAM_ID || '' }}
+          KEYCHAIN_PASSWORD: ${{ startsWith(matrix.target, 'darwin') && secrets.KEYCHAIN_PASSWORD || '' }}
+          APPLE_API_ISSUER: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_API_ISSUER || '' }}
+          APPLE_API_KEY_ID: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_KEY_P8: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_API_KEY_P8 || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$TARGET" = "windows-x86_64" ]; then
+            required="AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_SIGN_ENDPOINT AZURE_SIGN_ACCOUNT AZURE_SIGN_PROFILE"
+          else
+            required="APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_TEAM_ID KEYCHAIN_PASSWORD APPLE_API_ISSUER APPLE_API_KEY_ID APPLE_API_KEY_P8"
+          fi
+          for name in $required; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required release-signing configuration: $name"
+              exit 1
+            fi
+          done
+
+      - name: Install artifact-signing-cli (Windows code signing)
+        if: matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_ENDPOINT != ''
+        working-directory: apps/desktop/src-tauri
+        run: cargo install artifact-signing-cli --version 0.11.0 --locked
+
+      - name: Verify Azure signing (fail fast with the real error)
+        id: azure
+        # Probe Azure directly so authentication failures retain their diagnostics.
+        if: matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_ENDPOINT != ''
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+        run: |
+          set -uo pipefail
+          cp /c/Windows/System32/whoami.exe sign-probe.exe
+          echo "Probing Azure Artifact Signing: ${AZURE_SIGN_ENDPOINT} (${AZURE_SIGN_ACCOUNT}/${AZURE_SIGN_PROFILE})"
+          artifact-signing-cli -e "$AZURE_SIGN_ENDPOINT" -a "$AZURE_SIGN_ACCOUNT" -c "$AZURE_SIGN_PROFILE" sign-probe.exe
+          status=$?
+          trap 'rm -f sign-probe.exe' EXIT
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Azure signing probe failed (exit $status). The error above is the real cause - check the service-principal client-secret expiry, the Trusted/Artifact Signing 'Certificate Profile Signer' role assignment, and the certificate profile status in the Azure portal."
+            exit "$status"
+          fi
+          thumbprint=$(powershell.exe -NoProfile -Command "
+            \$signature = Get-AuthenticodeSignature sign-probe.exe
+            if (\$signature.Status -ne 'Valid') { exit 1 }
+            \$signature.SignerCertificate.Thumbprint
+          " | tr -d '\r') || exit 1
+          test -n "$thumbprint" || exit 1
+          printf 'thumbprint=%s\n' "$thumbprint" >> "$GITHUB_OUTPUT"
+          echo "Azure signing probe succeeded."
+
+      - name: Verify Apple notarization credentials (fail fast with the real error)
+        # Probe Apple credentials before compiling; step conditions cannot read secrets.
+        if: startsWith(matrix.target, 'darwin')
+        shell: bash
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_P8_B64: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          set -uo pipefail
+          if [ -z "${APPLE_API_KEY_P8_B64:-}" ] || [ -z "${APPLE_API_KEY_ID:-}" ] || [ -z "${APPLE_API_ISSUER:-}" ]; then
+            echo "::error::Apple notarization credentials are required for a production release."
+            exit 1
+          fi
+          key="$RUNNER_TEMP/asc_api_key_probe.p8"
+          printf '%s' "$APPLE_API_KEY_P8_B64" | tr -d '\r' | base64 --decode > "$key"
+          echo "Probing the Apple notary service with the App Store Connect API key"
+          xcrun notarytool history --key "$key" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" >/dev/null
+          status=$?
+          rm -f "$key"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Apple notary probe failed (exit $status). The error above is the real cause. A 403 'A required agreement is missing or has expired' means the Account Holder must accept the updated agreement at developer.apple.com/account (and App Store Connect > Business > Agreements). Otherwise check APPLE_API_KEY_ID, APPLE_API_ISSUER, and APPLE_API_KEY_P8."
+            exit "$status"
+          fi
+          echo "Apple notary probe succeeded; notarization should work."
+
+      - name: Build CLI (headless scanner)
+        id: cli
+        env:
+          TARGET: ${{ matrix.target }}
+          RUST_TARGET: ${{ matrix.rust_target }}
+          # `sitecmd gate` needs the connected-service endpoint at compile time.
+          SITECMD_CONNECTED_ENDPOINT: "https://connect.sitecmd.com"
+          APPLE_CERTIFICATE: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          KEYCHAIN_PASSWORD: ${{ startsWith(matrix.target, 'darwin') && secrets.KEYCHAIN_PASSWORD || '' }}
+          APPLE_API_KEY_P8_B64: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_API_KEY_P8 || '' }}
+          APPLE_TEAM_ID: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_API_KEY_ID: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_API_ISSUER || '' }}
+          AZURE_TENANT_ID: ${{ matrix.target == 'windows-x86_64' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ matrix.target == 'windows-x86_64' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ matrix.target == 'windows-x86_64' && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_SIGN_ENDPOINT: ${{ matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_ENDPOINT || '' }}
+          AZURE_SIGN_ACCOUNT: ${{ matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_ACCOUNT || '' }}
+          AZURE_SIGN_PROFILE: ${{ matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_PROFILE || '' }}
+        shell: bash
+        run: bash .github/scripts/release/build-cli.sh
+      - name: Preserve CLI notarization evidence
+        if: ${{ always() && startsWith(matrix.target, 'darwin') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-notarization-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/cli-notarization/submission.json
+            ${{ runner.temp }}/cli-notarization/submission-id.txt
+            ${{ runner.temp }}/cli-notarization/notary-log.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Save platform fragment
+        env:
+          TARGET: ${{ matrix.target }}
+          CLI_ARCHIVE: ${{ steps.cli.outputs.archive }}
+          SIGNER_IDENTITY: ${{ matrix.target == 'windows-x86_64' && steps.azure.outputs.thumbprint || steps.cli.outputs.team_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact-info
+          jq -n \
+            --arg target "$TARGET" \
+            --arg cli_archive "$CLI_ARCHIVE" \
+            --arg signer_identity "$SIGNER_IDENTITY" \
+            '{target: $target, cli_archive: $cli_archive}
+              + (if $signer_identity != "" then {signer_identity: $signer_identity} else {} end)' \
+            > "artifact-info/${TARGET}.json"
+
+      - name: Stage unsigned release payload
+        env:
+          TARGET: ${{ matrix.target }}
+          CLI_ARCHIVE: ${{ steps.cli.outputs.archive }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="release-staging/$TARGET"
+          mkdir -p "$OUT"
+          cp "$CLI_ARCHIVE" "${CLI_ARCHIVE}.sha256" "$OUT/"
+          cp "artifact-info/${TARGET}.json" "$OUT/fragment.json"
+
+          : > "$OUT/SHA256SUMS"
+          for file in "$OUT"/*; do
+            [ "$(basename "$file")" = "SHA256SUMS" ] && continue
+            if command -v sha256sum >/dev/null 2>&1; then
+              hash=$(sha256sum "$file" | awk '{print $1}')
+            else
+              hash=$(shasum -a 256 "$file" | awk '{print $1}')
+            fi
+            printf '%s  %s\n' "$hash" "$(basename "$file")" >> "$OUT/SHA256SUMS"
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-platform-${{ matrix.target }}
+          path: release-staging/${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 1
+
+  sign-updaters:
+    name: Sign CLI archives in isolation
+    needs: [prepare-candidate, build]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    # Expose only the updater key after human-approved builds complete.
+    environment:
+      name: release-updater-signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare-candidate.outputs.source_commit }}
+          sparse-checkout: |
+            .github/scripts/release
+            .github/updater-signer
+            .nvmrc
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Provision the integrity-pinned standalone signer
+        working-directory: .github/updater-signer
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-candidate
+          path: release-candidate
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: unsigned-platform-*
+          path: unsigned
+
+      - name: Validate and stage signer inputs without secrets
+        env:
+          EXPECTED_CANDIDATE_HASH: ${{ needs.prepare-candidate.outputs.candidate_hash }}
+          EXPECTED_SOURCE_COMMIT: ${{ needs.prepare-candidate.outputs.source_commit }}
+        shell: bash
+        run: bash .github/scripts/release/stage-signer-inputs.sh
+      - name: Sign exact CLI bytes with the production key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is missing from release-updater-signing."
+            exit 1
+          fi
+          SIGNER="$GITHUB_WORKSPACE/.github/updater-signer/node_modules/.bin/tauri"
+          while IFS=$'\t' read -r target cli_archive; do
+            "$SIGNER" signer sign "$GITHUB_WORKSPACE/signing-input/$target/$cli_archive"
+          done < cli-signing-plan.tsv
+          # One checksum manifest for the whole release, signed by the same key.
+          MANIFEST="$GITHUB_WORKSPACE/signing-input/SHA256SUMS"
+          : > "$MANIFEST"
+          record_hash() {
+            printf '%s  %s\n' "$(sha256sum "$1" | awk '{print $1}')" "$(basename "$1")" >> "$MANIFEST"
+          }
+          while IFS=$'\t' read -r target cli_archive; do
+            record_hash "$GITHUB_WORKSPACE/signing-input/$target/$cli_archive"
+          done < cli-signing-plan.tsv
+          sort -k 2 -o "$MANIFEST" "$MANIFEST"
+          "$SIGNER" signer sign "$MANIFEST"
+          tr -d '\r' < "$MANIFEST.sig" | base64 --decode > "$MANIFEST.minisig"
+
+      - name: Record signed payload provenance without secrets
+        env:
+          CANDIDATE_HASH: ${{ needs.prepare-candidate.outputs.candidate_hash }}
+          SOURCE_COMMIT: ${{ needs.prepare-candidate.outputs.source_commit }}
+        shell: bash
+        run: bash .github/scripts/release/record-signed-payload.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-release-payload
+          path: signed-release-payload/
+          if-no-files-found: error
+          retention-days: 1
+
+  verify-release:
+    name: Verify signed release (${{ matrix.target }})
+    needs: [prepare-candidate, sign-updaters]
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            target: darwin-universal
+          - os: ubuntu-22.04
+            target: linux-x86_64
+          - os: windows-2025-vs2026
+            target: windows-x86_64
+          - os: ubuntu-22.04-arm
+            target: linux-aarch64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare-candidate.outputs.source_commit }}
+          sparse-checkout: |
+            .github/scripts/release
+            .github/updater-verifier
+            .github/actions/setup-sitecmd/updater-public-key.pub
+            .nvmrc
+            engine.lock
+            tools/scripts/verify-engine-pin.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Build the minimal secretless verifier
+        working-directory: .github/updater-verifier
+        shell: bash
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal
+          cargo +1.97.0 build --release --locked
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-candidate
+          path: release-candidate
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-release-payload
+          path: payload
+
+      - name: Verify payload hashes, provenance, and updater signature
+        env:
+          TARGET: ${{ matrix.target }}
+          EXPECTED_CANDIDATE_HASH: ${{ needs.prepare-candidate.outputs.candidate_hash }}
+          EXPECTED_SOURCE_COMMIT: ${{ needs.prepare-candidate.outputs.source_commit }}
+        shell: bash
+        run: bash .github/scripts/release/verify-signed-payload.sh
+      - name: Verify Unix CLI and macOS code signature
+        if: matrix.target != 'windows-x86_64'
+        env:
+          TARGET: ${{ matrix.target }}
+          EXPECTED_VERSION: ${{ needs.prepare-candidate.outputs.version }}
+        shell: bash
+        run: bash .github/scripts/release/verify-unix-artifacts.sh
+      - name: Verify Windows CLI and Authenticode signature
+        if: matrix.target == 'windows-x86_64'
+        env:
+          EXPECTED_VERSION: ${{ needs.prepare-candidate.outputs.version }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dir = Join-Path "payload" "windows-x86_64"
+          $fragment = Get-Content (Join-Path $dir "fragment.json") | ConvertFrom-Json
+          New-Item -ItemType Directory -Path "cli-check" | Out-Null
+          Expand-Archive (Join-Path $dir $fragment.cli_archive) "cli-check"
+          foreach ($legalFile in @("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES", "THIRD_PARTY_DEPENDENCIES.json", "THIRD_PARTY_LICENSES.txt", "THIRD_PARTY_LICENSES.tsv")) {
+            $legalPath = Join-Path "cli-check" $legalFile
+            if (!(Test-Path $legalPath) -or (Get-Item $legalPath).Length -eq 0) {
+              throw "CLI archive is missing $legalFile"
+            }
+          }
+          $cli = Join-Path "cli-check" "sitecmd.exe"
+          $cliSignature = Get-AuthenticodeSignature $cli
+          if ($cliSignature.Status -ne "Valid") {
+            throw "Windows CLI Authenticode status is $($cliSignature.Status)"
+          }
+          if (!$fragment.signer_identity -or $cliSignature.SignerCertificate.Thumbprint -ne $fragment.signer_identity) {
+            throw "Windows CLI signer certificate does not match the release signing probe"
+          }
+          $actual = & $cli --version
+          if ($actual -ne "sitecmd $env:EXPECTED_VERSION") {
+            throw "CLI version was '$actual'"
+          }
+
+      - name: Verify the embedded engine pin
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary=cli-check/sitecmd
+          if [ "$TARGET" = windows-x86_64 ]; then binary="$binary.exe"; fi
+          node tools/scripts/verify-engine-pin.mjs "$binary"
+          if [ "$TARGET" = darwin-universal ]; then
+            lipo "$binary" -thin x86_64 -output cli-check/sitecmd-x86_64
+            chmod +x cli-check/sitecmd-x86_64
+            node tools/scripts/verify-engine-pin.mjs cli-check/sitecmd-x86_64
+          fi
+
+  publish-release:
+    name: Publish verified release
+    needs: [prepare-candidate, verify-release]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      # Creating the GitHub Release needs write; the job still checks out nothing.
+      contents: write
+      # Sigstore provenance for the verified artifacts, and the OIDC token the
+      # releases worker accepts in place of any stored publish key.
+      id-token: write
+      attestations: write
+    # Publishing credentials are isolated from build and signer jobs.
+    environment:
+      name: release-publish
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-candidate
+          path: release-candidate
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-release-payload
+          path: payload
+
+      - name: Validate the verified tuple and prepare publication
+        env:
+          EXPECTED_CANDIDATE_HASH: ${{ needs.prepare-candidate.outputs.candidate_hash }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum release-candidate/manifest.json | awk '{print $1}')" = \
+            "$EXPECTED_CANDIDATE_HASH"
+          VERSION=$(jq -r '.version' release-candidate/manifest.json)
+          NOTES=$(jq -r '.notes' release-candidate/manifest.json)
+          PUB_DATE=$(jq -r '.pub_date' release-candidate/manifest.json)
+          ENGINE_VERSION=$(jq -er '.engine_version' release-candidate/manifest.json)
+          ENGINE_SHA256=$(jq -er '.engine_sha256' release-candidate/manifest.json)
+          mkdir -p publication
+          : > publication/upload-plan.tsv
+
+          safe_name() {
+            printf '%s' "$1" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+          }
+          add_upload() {
+            local_path=$1
+            object_name=$2
+            safe_name "$object_name"
+            test -f "$local_path" && test ! -L "$local_path"
+            hash=$(sha256sum "$local_path" | awk '{print $1}')
+            printf '%s\t%s\t%s\n' "$local_path" "v${VERSION}/${object_name}" "$hash" \
+              >> publication/upload-plan.tsv
+          }
+
+          for target in darwin-universal linux-x86_64 linux-aarch64 windows-x86_64; do
+            dir="payload/$target"
+            fragment="$dir/fragment.json"
+            (cd "$dir" && sha256sum -c SHA256SUMS)
+            test "$(jq -r '.candidate_hash' "$fragment")" = "$EXPECTED_CANDIDATE_HASH"
+            test "$(jq -r '.target' "$fragment")" = "$target"
+            cli_archive=$(jq -r '.cli_archive' "$fragment")
+            safe_name "$cli_archive"
+            add_upload "$dir/$cli_archive" "$cli_archive"
+            add_upload "$dir/$cli_archive.sig" "$cli_archive.sig"
+            add_upload "$dir/${cli_archive}.sha256" "${cli_archive}.sha256"
+          done
+
+          test -s payload/SHA256SUMS
+          while read -r hash name; do
+            grep -Fq "$(printf '\tv%s/%s\t%s' "$VERSION" "$name" "$hash")" publication/upload-plan.tsv
+          done < payload/SHA256SUMS
+          add_upload payload/SHA256SUMS SHA256SUMS
+          add_upload payload/SHA256SUMS.sig SHA256SUMS.sig
+          add_upload payload/SHA256SUMS.minisig SHA256SUMS.minisig
+          {
+            printf '%s\n\n' "$NOTES"
+            printf "Embedded engine module \`%s\` (SHA-256 \`%s\`).\n\n" "$ENGINE_VERSION" "$ENGINE_SHA256"
+            echo "## Verify"
+            echo
+            echo "CLI archives are served from https://releases.sitecmd.com/v${VERSION}/. The attached SHA256SUMS and SHA256SUMS.minisig are signed with the SiteCMD updater key; verification steps are in the README section https://github.com/${GITHUB_REPOSITORY}/blob/main/README.md#verify-your-download."
+          } > publication/release-notes.md
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "$NOTES" \
+            --arg pub_date "$PUB_DATE" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: {}}' \
+            > publication/manifest.json
+          jq '{version, pub_date}' publication/manifest.json
+
+      - name: Upload immutable release objects without executing them
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          # The AWS CLI requires a region even when the endpoint is R2.
+          AWS_DEFAULT_REGION: auto
+          # Pin checksum behavior for R2 compatibility across runner-image upgrades.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          while IFS=$'\t' read -r local_path object_key expected_hash; do
+            if aws s3api head-object --bucket sitecmd-releases --key "$object_key" \
+                 --endpoint-url "$ENDPOINT" >/dev/null 2>&1; then
+              existing=$(mktemp "$RUNNER_TEMP/sitecmd-existing.XXXXXX")
+              aws s3 cp "s3://sitecmd-releases/$object_key" "$existing" \
+                --endpoint-url "$ENDPOINT" >/dev/null
+              actual_hash=$(sha256sum "$existing" | awk '{print $1}')
+              rm -f "$existing"
+              if [ "$actual_hash" != "$expected_hash" ]; then
+                echo "::error::R2 object $object_key already exists with different bytes."
+                exit 1
+              fi
+              echo "R2 object $object_key already matches the verified payload."
+              continue
+            fi
+            aws s3 cp "$local_path" "s3://sitecmd-releases/$object_key" \
+              --endpoint-url "$ENDPOINT"
+          done < publication/upload-plan.tsv
+
+      - name: Advance the production release manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::GitHub gave this job no OIDC token endpoint; it needs permissions: id-token: write."
+            exit 1
+          fi
+          response=$(curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://releases.sitecmd.com") || {
+            echo "::error::Requesting the OIDC token from GitHub failed: ${response}"
+            exit 1
+          }
+          token=$(jq -r '.value // empty' <<<"$response" 2>/dev/null || true)
+          if [ -z "$token" ]; then
+            echo "::error::GitHub's OIDC token service answered without a token."
+            exit 1
+          fi
+          echo "::add-mask::${token}"
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${token}" \
+            -H "Content-Type: application/json" \
+            --data-binary @publication/manifest.json \
+            https://releases.sitecmd.com/api/releases-admin
+
+      - name: Publish the GitHub Release with notes and checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          VERSION: ${{ needs.prepare-candidate.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The release manifest already advanced, so clients are offered this
+          # version before the Release exists. An existing Release is repaired
+          # rather than left as it is.
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+               --json isDraft,assets > release-state.json 2>/dev/null; then
+            if [ "$(jq -r '.isDraft' release-state.json)" = "true" ]; then
+              echo "::error::Release $TAG_NAME is a draft while clients are already offered $VERSION. Publish or delete it, then re-run publish-release."
+              exit 1
+            fi
+            for asset in SHA256SUMS SHA256SUMS.minisig; do
+              if jq -e --arg name "$asset" '.assets | any(.name == $name)' release-state.json >/dev/null; then
+                continue
+              fi
+              echo "Release $TAG_NAME is missing $asset; attaching it."
+              gh release upload "$TAG_NAME" "payload/$asset" \
+                --repo "$GITHUB_REPOSITORY" --clobber
+            done
+            echo "GitHub Release $TAG_NAME exists with both checksum assets attached."
+            exit 0
+          fi
+          gh release create "$TAG_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "SiteCMD $VERSION" \
+            --notes-file publication/release-notes.md \
+            payload/SHA256SUMS payload/SHA256SUMS.minisig
+
+      - name: Attest build provenance for the published artifacts
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            payload/*/*.tar.gz
+            payload/*/*.zip
+            payload/SHA256SUMS
+
+      - name: Smoke test the public release surface
+        env:
+          VERSION: ${{ needs.prepare-candidate.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Every planned object must be publicly served with exactly the
+          # bytes the plan hashed. The User-Agent excludes this probe from analytics.
+          SMOKE_UA="SiteCMD-Release-Smoke/1"
+          fail=0
+          while IFS=$'\t' read -r _ object_key expected_hash; do
+            url="https://releases.sitecmd.com/${object_key}"
+            got=$(curl -fsSL -A "$SMOKE_UA" --retry 5 --retry-delay 3 "$url" | sha256sum | awk '{print $1}') \
+              || got="fetch-failed"
+            if [ "$got" != "$expected_hash" ]; then
+              echo "::error::${url} served ${got}, expected ${expected_hash}"
+              fail=1
+            fi
+          done < publication/upload-plan.tsv
+          latest=$(curl -fsSL -A "$SMOKE_UA" --retry 5 --retry-delay 3 https://releases.sitecmd.com/ \
+            | jq -r '.latest_version')
+          if [ "$latest" != "$VERSION" ]; then
+            echo "::error::Worker reports latest_version ${latest}, expected ${VERSION}"
+            fail=1
+          fi
+          exit "$fail"
+
+  publish-npm:
+    name: Publish the CLI to npm
+    needs: [prepare-candidate, publish-release]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # npm trusted publishing: npm exchanges this job's GitHub OIDC token for
+      # a short-lived publish token and attests provenance, so no npm token is
+      # stored anywhere. Each package's trusted publisher names release.yml
+      # and the npm-publish environment.
+      id-token: write
+    # Its own environment, never release-publish: every job there can mint the
+    # OIDC token the releases worker accepts, and publishing to npm needs none.
+    environment:
+      name: npm-publish
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-release-payload
+          path: payload
+      - name: Publish the verified binaries as @sitecmd/cli
+        env:
+          VERSION: ${{ needs.prepare-candidate.outputs.version }}
+        shell: bash
+        run: bash .github/scripts/release/publish-npm-packages.sh

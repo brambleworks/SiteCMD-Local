@@ -254,6 +254,15 @@
     "was": "dependency-audit.yml"
   },
   {
+    "check": "embedded-engine-pin",
+    "command": "pnpm engine:fetch\ncargo build --release --locked --manifest-path crates/cli/Cargo.toml\nnode tools/scripts/verify-engine-pin.mjs \"$binary\"",
+    "job": "verify-pin",
+    "workflow": "module-pin.yml",
+    "stages": ["pr", "push"],
+    "was": "nowhere",
+    "note": "Non-required check for same-repository PRs and pushes to main that change engine.lock."
+  },
+  {
     "check": "rust-coverage",
     "command": "cargo llvm-cov nextest --locked --workspace --no-fail-fast --lcov --output-path lcov.info\ncargo llvm-cov report --summary-only | tee coverage-summary.txt",
     "job": "coverage",

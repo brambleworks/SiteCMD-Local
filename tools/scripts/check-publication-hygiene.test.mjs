@@ -7,7 +7,7 @@ it("pins_the_owner_approved_publication_moves", () => {
   const source = readFileSync(new URL("./published-engine-moves.json", import.meta.url), "utf8");
   expect(JSON.parse(source)).toEqual({
     approved:
-      "Owner-approved 2026-11-25: moved out of the engine on purpose for the first public export.",
+      "Owner-approved 2026-11-25: moved out of the engine on purpose for the first public export. Owner-approved 2026-11-28: the restored release workflow's notarization test, which reads only the public release.yml.",
     moves: [
       {
         path: "apps/desktop/src-tauri/crates/protocol/src/log_sanitizer/authorization_tests.rs",
@@ -68,6 +68,10 @@ it("pins_the_owner_approved_publication_moves", () => {
       {
         path: "apps/desktop/src-tauri/src/core/audit/session_host/tests.rs",
         blob: "c66d9bba1e118d35453f2a0125e53098e546df2d",
+      },
+      {
+        path: "tools/scripts/release-workflow-notarization.test.mjs",
+        blob: "e936ba3ddc6629124cbda6980003efc807e4cb3b",
       },
     ],
   });

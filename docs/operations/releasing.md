@@ -1,20 +1,12 @@
 # Releasing the CLI
 
-How to prepare a CLI release through a protected pull request, create the
-signed tag on the merged commit, and read download / install numbers afterward.
-The push that actually ships is deliberately manual.
-
-> **First-publication boundary.** The existing repository will be rewritten in
-> place before its visibility changes. Follow the
-> [public repository cutover](publication-checklist.md). The local helper is
-> backup-first and never pushes, deletes refs, or changes visibility. A root
-> commit alone is insufficient while an old remote branch, tag, release,
-> artifact, or GitHub-side record still exposes private history.
+Prepare the CLI release through a protected pull request, then push a signed
+tag on the merged commit to start the public repository's
+[`release.yml`](../../.github/workflows/release.yml).
 
 ## One-time release trust setup
 
-The workflow fails closed until tag trust and four GitHub environments are
-configured. For the full tag-signing setup, the local proof steps, and
+The workflow uses five GitHub environments. For the full tag-signing setup, the local proof steps, and
 troubleshooting, follow
 [release-tag-signing.md](../engineering/release-tag-signing.md); the summary
 below is the short version.
@@ -116,32 +108,35 @@ Put `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, and `AZURE_SIGN_PROFILE` in the
 repository scope after the environments work. Duplicate repository secrets
 defeat the intended boundary.
 
-Configure `SITECMD_ENGINE_TOKEN` as a repository Actions secret with read
-access only to `brambleworks/SiteCMD-Engine-Releases`. The token is scoped to
-each fetch step. Without it, the fetch starts with the public module URL.
-
 While there is one maintainer, leave "prevent self-review" disabled on
 `release-signing`; otherwise the person who starts the release cannot approve
 it. Add a second reviewer and enable non-author review when a second qualified
 maintainer exists.
 
-On GitHub Free, Pro, and Team plans, required reviewers are available for
-public repositories only (the API answers 422 for a private repository; only
-Enterprise lifts this). Deployment branch and tag policies do work on private
-repositories with Pro or Team, so the `v*` restrictions and the tag-protection
-ruleset are the enforceable subset until the repository is public, where every
-protection rule above is free.
-
-Before the first real release, run a disposable prerelease tag through the
-workflow, confirm every environment gate and failure path, and withdraw the
-prerelease without advancing stable clients.
+Confirm the environment protections, signing credentials, and npm trusted
+publishers before pushing the first release tag. Treat every `v*` tag,
+including prerelease versions, as a production publish.
 
 ## Verify release readiness
 
-Run `pnpm verify:push` on the release commit. The protected `main` commit must
-also have a green Code Scan workflow at the High severity threshold. Confirm an
-automatic or scheduled Code Scan Postgres Integration run covers the latest
-database-inspection changes; manually dispatch it when no qualifying run does.
+Confirm that `pnpm engine:fetch` can download the module pinned by `engine.lock`
+without credentials. For the first CLI release after the split, follow
+[Bump the pinned engine](#bump-the-pinned-engine) once the module is public.
+After bumping the pin, run the workspace tests locally with the fetched module
+and `cargo-nextest` installed. This matches preflight's first test pass. The
+required public `CI` workflow tests against the stand-in.
+
+```bash
+pnpm engine:fetch
+(
+  unset SITECMD_ENGINE_WASM SITECMD_ENGINE_UNPINNED
+  cd apps/desktop/src-tauri
+  cargo nextest run --locked --no-fail-fast --workspace --profile ci
+)
+```
+
+Run `pnpm verify:push` on the release commit and merge through the queue with
+the required `CI` check.
 
 ## Cut a release
 
@@ -153,7 +148,7 @@ git add CHANGELOG.md apps/desktop/src-tauri/crates/cli/Cargo.toml \
   apps/desktop/src-tauri/crates/runtime/Cargo.toml \
   apps/desktop/src-tauri/Cargo.lock
 git commit -S -m "Prepare vX.Y.Z"
-# Push the branch and merge it through the protected pull-request path.
+# Push the branch, open a pull request, and queue it for squash merge.
 git switch main
 git pull --ff-only origin main
 pnpm release:tag
@@ -238,39 +233,25 @@ review workflow, and `pnpm release:tag` stops before pushing if signed-tag
 creation fails. Inspect `git status` and the tag list, then verify the tag with
 `git tag --verify vX.Y.Z` before the explicit tag push.
 
-## Prepare the in-place public root
-
-This is a one-time cutover operation, not part of an ordinary release. Follow
-the complete [public repository cutover](publication-checklist.md). The first
-command is a read-only dry run:
-
-```bash
-pnpm publication:prepare -- \
-  --backup /absolute/private/path/sitecmd-before-publication.bundle
-```
-
-Apply mode requires both `--apply` and `--confirm-rewrite-main`. It verifies an
-external all-ref bundle before moving local `main` to a signed root commit with
-the exact approved tree. The checklist owns remote cleanup, clean-clone proof,
-the visibility change, and restoration of GitHub rulesets.
-
 ## Bump the pinned engine
 
-Set `ENGINE_MINISIGN_PUBLIC_KEY` in `tools/scripts/fetch-engine.mjs` to the
-engine release public key before the first bump. With `minisign` installed,
-run these commands from the repository root.
+Once the module, licenses, and signatures are published on releases.sitecmd.com,
+run these commands from the repository root with `minisign` installed and the
+Node version in `.nvmrc` active.
 
 ```bash
 pnpm engine:fetch -- --bump <version>
 pnpm legal:generate
+(cd apps/desktop/src-tauri && cargo build --locked --release --manifest-path crates/cli/Cargo.toml)
+node tools/scripts/verify-engine-pin.mjs apps/desktop/src-tauri/target/release/sitecmd_cli
 ```
 
 The bump verifies signatures for the module and its licenses, updates
 `engine.lock` and `engine/local-engine.wasm.LICENSES.txt`, and stages the
 module locally. Include the lock, license sidecar, and regenerated legal
-artifacts in the pin change. The engine pin workflow builds and checks the CLI
-on macOS, Linux x86_64, Linux arm64, and Windows and reports the module load
-time on each runner.
+artifacts in the pin change. On Windows, pass the `sitecmd_cli.exe` path to the
+verifier. The release workflow checks the pin and reports the module load time
+on every release runner.
 
 ## What the signed tag triggers
 
@@ -278,10 +259,11 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`.
 
 1. **Tag verification** checks the version format, annotated tag signature,
    trusted signer, and ancestry from the repository default branch.
-2. **Preflight** fetches the module pinned in `engine.lock` and checks its
-   digest. It runs dependency audits, repository guardrails, legal artifact
+2. **Preflight** uses `pnpm engine:fetch` to download and verify the module pinned
+   in `engine.lock`. It runs dependency audits, repository guardrails, legal artifact
    checks, Rust tests, clippy, and formatting. It runs workspace tests with
-   the pinned module and replays them with the stand-in.
+   the pinned module and replays them with the stand-in. The updater-key and
+   Worker OIDC probes run before platform builds.
 3. **Candidate preparation** verifies the source version and binds the source
    commit, workflow hash, lockfile hashes, engine version and digest, changelog
    notes, and publication date into an immutable manifest.
@@ -302,7 +284,9 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`.
    release manifest with an OIDC token, and creates the GitHub Release with
    changelog notes, the engine version and digest, and the signed checksum
    manifest. It attests build provenance and checks every public object and
-   the advertised latest version. The npm job publishes the verified binaries.
+   the advertised latest version. The `publish-npm` job publishes the verified
+   binaries as platform packages, then publishes `@sitecmd/cli` through npm
+   trusted publishing.
 
 The candidate check now forces the tag, source files, and protected commit to
 agree. The version-sync guardrail separately prevents any release version
@@ -357,9 +341,8 @@ guardrail scans every workflow in `.github/workflows`, since any of them could b
 dispatched against a tag, and allows only the probe and `publish-release` in
 `release.yml` to use that environment.
 
-The releases worker must accept CLI release manifests with an empty
-`platforms` map before shipping a CLI-only tag. The publisher requires a
-successful manifest advance before creating the GitHub Release.
+The publisher requires a successful manifest advance before creating the
+GitHub Release.
 
 The probe posts an empty manifest and expects `400`: the worker accepted the
 token and refused the body, so nothing was published. Any other status fails
@@ -424,6 +407,11 @@ exist, within the 24-hour retention of the `signed-release-payload` artifact.
 Once the workflow is green, work through [launch-smoke.md](launch-smoke.md)
 with the exact signed artifacts. The public distribution service and download
 page have their own production pass maintained privately beside that service.
+
+Run `npx @sitecmd/cli@<version> engine info` and compare the reported SHA-256
+with `engine.lock`. Confirm it reports `imports: 0`. Install the exact release
+with `SITECMD_VERSION=<version> sh install.sh` and check that
+`sitecmd --version` prints the release version without `+unpinned`.
 
 Confirm the two public verification surfaces exist for the version:
 `https://releases.sitecmd.com/v<version>/SHA256SUMS` and

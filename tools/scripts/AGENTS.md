@@ -13,6 +13,8 @@ vitest suites. Maintainers and CI run them; nothing here ships in the CLI.
   `lib/guardrail-workflow-yaml.mjs` hold shared parsers.
 - `*.test.mjs`: vitest suites. `repo-guardrail-*.test.mjs` plant regressions to prove each rule
   fails; `guardrail-test-support.mjs` holds their shared fixture helpers.
+- `release-workflow-*.test.mjs` and `cli-release-*.test.mjs`: release workflow wiring, engine
+  provisioning, runner compatibility, and verification.
 - `audit/`: standalone checks CI runs directly, such as `audit/check-agents-md.mjs`,
   `audit/forbid-adhoc-rust-patterns.sh`, `audit/check-rust-toolchain.mjs`, and
   `audit/check-rust-dependency-policy.mjs`.
@@ -94,6 +96,8 @@ CLI.
   a GitHub release fallback, and verifies its SHA-256; `--bump` also verifies its signature.
 - CI runs these scripts from `/.github/workflows/ci.yml`; `/.github/ci-inventory.json` records which
   job runs each check.
+- `/.github/workflows/release.yml` runs the repository guardrails in preflight and runs
+  `verify-engine-pin.mjs` on the extracted CLI binaries before publication.
 
 ## Guide triggers
 

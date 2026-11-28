@@ -1,4 +1,5 @@
 import { conditionOf } from "./ci-step-pins.mjs";
+import { ENGINE_PIN_WORKFLOW } from "./ci-workflow-contract.mjs";
 import { VERIFY_PUSH_STEPS } from "./guardrail-ci-cost-rules.mjs";
 import {
   children,
@@ -23,7 +24,7 @@ function jobCommands(steps) {
   );
 }
 
-function inventoryHomes(steps, read) {
+function inventoryHomes(steps, read, exported) {
   const manualJobs = readJobs(workflowFields(read(`.github/workflows/manual.yml`)));
   const hooks = workflowFields(read("lefthook.yml"));
   const commands = children(children(hooks.get("pre-push")).get("commands"));
@@ -39,7 +40,7 @@ function inventoryHomes(steps, read) {
     commands: new Map([...jobSteps].map(([id, steps]) => [id, jobCommands(steps)])),
     stages,
   });
-  return new Map([
+  const homes = new Map([
     ["ci.yml", workflowHome(steps, ["pr", "queue"])],
     ["manual.yml", workflowHome(workflowJobSteps(manualJobs), ["manual"])],
     [
@@ -50,6 +51,11 @@ function inventoryHomes(steps, read) {
       },
     ],
   ]);
+  if (exported) {
+    const jobs = readJobs(workflowFields(read(ENGINE_PIN_WORKFLOW)));
+    homes.set("module-pin.yml", workflowHome(workflowJobSteps(jobs), ["pr", "push"]));
+  }
+  return homes;
 }
 
 export function checkInventory(steps, read, failures, { exported }) {
@@ -61,7 +67,7 @@ export function checkInventory(steps, read, failures, { exported }) {
   const inventoried = new Set();
   const checks = new Set();
   const localSteps = new Set();
-  const homes = inventoryHomes(steps, read);
+  const homes = inventoryHomes(steps, read, exported);
   const codeqlFailure = exported
     ? "The CodeQL inventory row must match the CodeQL job."
     : "The CodeQL inventory row must record the private deferral.";

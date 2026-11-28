@@ -85,3 +85,4 @@ pnpm exec prettier --check docs
 - `engineering/engine-boundary.md`
 - `qa/native-tests.md`
 - `engineering/ai-assisted-development.md`
+- `operations/releasing.md`

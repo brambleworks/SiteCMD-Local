@@ -62,7 +62,7 @@ Exit codes:
 - Help never attributes the local store to the removed desktop app: `tests/no_desktop_handoff.rs`.
 - A release binary never prints `+unpinned`, and `engine info --json` reports the digest in
   `/engine.lock`: `/tools/scripts/verify-engine-pin.mjs`, tested by `/tools/scripts/engine-pin.test.mjs`.
-  Only the release workflow runs it, and that workflow is not in this tree.
+  `/.github/workflows/release.yml` runs it on every release target.
 
 ## Testing
 
@@ -82,7 +82,7 @@ The integration tests find the binary through `CARGO_BIN_EXE_sitecmd_cli` or
 
 - Depends on `sitecmd-runtime` (`../runtime/Cargo.toml`) for every command.
 - README.md, `/tools/scripts/sitecmd.mjs`, the installers, and the Actions in `/.github/actions/`
-  call this binary; the release workflow, which is not in this tree, builds it as `sitecmd`.
+  call this binary. `/.github/workflows/release.yml` builds and packages it as `sitecmd`.
 - `/packaging/npm/cli/bin/sitecmd.js` launches the binary from the platform npm package.
 
 ## Guide triggers
