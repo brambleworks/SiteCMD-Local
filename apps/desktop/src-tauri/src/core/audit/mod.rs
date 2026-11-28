@@ -50,13 +50,6 @@ pub fn code_issue_category(
     Ok(rule_for_issue(issue, rules)?.category)
 }
 
-pub(crate) fn read_bounded_project_text(
-    root: &Path,
-    path: &Path,
-    max_bytes: u64,
-) -> Option<String> {
-    crate::core::safe_fs::read_bounded_text_under_root(root, path, max_bytes)
-}
 pub(super) mod audit_session;
 pub(super) mod session_host;
 

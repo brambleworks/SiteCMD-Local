@@ -109,7 +109,10 @@ fn normalize_url(url: String) -> Result<String, String> {
     } else {
         url
     };
-    url::Url::parse(&url).map_err(|e| format!("'{}' is not a valid URL: {}", url, e))?;
+    let parsed = url::Url::parse(&url).map_err(|e| format!("invalid URL: {e}"))?;
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("URLs cannot include a username or password".into());
+    }
     Ok(url)
 }
 
@@ -220,9 +223,8 @@ fn detect_framework_from_package_json(cwd: &std::path::Path) -> Option<String> {
 }
 
 fn write_gitignore(sitecmd_dir: &std::path::Path) -> Result<(), String> {
-    let path = sitecmd_dir.join(".gitignore");
     let content = "# SiteCMD - only config.json is committed\n*\n!.gitignore\n!config.json\n";
-    std::fs::write(&path, content).map_err(|e| format!("failed to write {}: {}", path.display(), e))
+    super::export::write_file(sitecmd_dir, ".gitignore", content)
 }
 
 fn print_summary(url: &str, name: &str, framework: Option<&str>, sitecmd_dir: &std::path::Path) {
@@ -277,6 +279,21 @@ mod tests {
     fn normalize_url_rejects_invalid() {
         let result = normalize_url("not a url !!!".to_string());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn normalize_url_rejects_userinfo_without_echoing_it() {
+        for url in [
+            "https://demo:sample@example.com",
+            "demo@example.com",
+            "https://:sample@example.com",
+        ] {
+            let error = normalize_url(url.into()).unwrap_err();
+            assert!(
+                !error.contains("demo") && !error.contains("sample"),
+                "{error}"
+            );
+        }
     }
 
     #[test]

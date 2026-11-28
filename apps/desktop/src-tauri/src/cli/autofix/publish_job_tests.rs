@@ -9,7 +9,8 @@ use crate::cli::autofix::artifact::{
 use crate::cli::autofix::repo::{self, init_test_repo};
 use crate::connected_service::autofix_jobs::Committer;
 use crate::connected_service::test_double::{
-    request_line, respond_in_sequence, ACCOUNT_INACTIVE_PROBLEM, ENTITLEMENT_SUSPENDED_PROBLEM,
+    request_line, respond_during, respond_in_sequence, ACCOUNT_INACTIVE_PROBLEM,
+    ENTITLEMENT_SUSPENDED_PROBLEM,
 };
 use crate::connected_service::{
     ClaimedFinding, ACCOUNT_INACTIVE_NOTICE, ACCOUNT_INACTIVE_RESULT_NOTICE,
@@ -111,6 +112,8 @@ fn args(origin: String, artifact_dir: &std::path::Path, root: &std::path::Path) 
         connect_origin: origin,
         job_id: "job_0123456789abcdef".into(),
         path: root.to_path_buf(),
+        export: ExportSource::Env("SITECMD_TEST_PUBLISH_EXPORT_MISSING".into()),
+        passphrase_env: "SITECMD_TEST_PUBLISH_PASSPHRASE_MISSING".into(),
     }
 }
 
@@ -499,15 +502,16 @@ async fn refuses_an_artifact_directory_inside_the_checkout() {
 }
 
 #[tokio::test]
-async fn reports_patch_rejected_for_an_artifact_it_cannot_read() {
+async fn artifact_rejection_sends_structured_result_without_manifest_diagnostics() {
     let (repo_dir, head) = init_test_repo(&[("vercel.json", "{}\n")]).unwrap();
     let workspace = tempfile::tempdir().unwrap();
     let artifact_dir = workspace.path().join("artifact");
     std::fs::create_dir_all(&artifact_dir).unwrap();
-    // A field this binary does not know is an artifact it never wrote.
+    let mut invalid = serde_json::to_value(manifest(&head)).unwrap();
+    invalid["fixture_private_field"] = true.into();
     std::fs::write(
         artifact_dir.join("manifest.json"),
-        r#"{"schema_version":1,"job_id":"job_0123456789abcdef","attempt":1,"base_sha":"0","outcome_code":null,"summary":"","write_set":[],"findings":[],"brief":null,"extra":1}"#,
+        serde_json::to_vec(&invalid).unwrap(),
     )
     .unwrap();
     std::fs::write(artifact_dir.join("patch.diff"), "").unwrap();
@@ -527,8 +531,11 @@ async fn reports_patch_rejected_for_an_artifact_it_cannot_read() {
 
     assert_eq!(code, 1);
     assert!(summary.contains("manifest is not valid"), "{summary}");
+    assert!(summary.contains("fixture_private_field"), "{summary}");
     let requests = captured.await.expect("capture");
     assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(!requests[1].contains("fixture_private_field"));
+    assert!(!requests[1].contains(r#""summary""#));
     assert!(
         requests[1].contains(r#""outcome_code":"patch_rejected""#),
         "{}",
@@ -757,10 +764,8 @@ async fn a_publish_token_refused_as_inactive_pushes_nothing_and_exits_zero() {
     );
 }
 
-#[tokio::test]
-async fn an_issue_token_refused_as_inactive_opens_no_issue_and_exits_zero() {
-    // A refused issue token can still open an issue or submit a result.
-    let route = "export async function GET(request: Request) {\n  const { searchParams } = new URL(request.url);\n  const returnTo = searchParams.get(\"returnTo\") ?? \"/\";\n  return Response.redirect(new URL(returnTo, request.url), 302);\n}\n";
+fn brief_publish_fixture() -> (tempfile::TempDir, tempfile::TempDir, PathBuf, String) {
+    let route = "Synthetic finding fixture.\n";
     let (repo_dir, head) = init_test_repo(&[
         ("package.json", "{\"name\":\"loop\"}"),
         ("app/api/signin/fixture-findings.txt", route),
@@ -797,9 +802,15 @@ async fn an_issue_token_refused_as_inactive_opens_no_issue_and_exits_zero() {
         "fallback_class": null,
         "identity": identity,
     }]);
+    (repo_dir, workspace, artifact_dir, claim.to_string())
+}
+
+#[tokio::test]
+async fn missing_export_rejects_the_brief_without_requesting_an_issue_token() {
+    let (repo_dir, _workspace, artifact_dir, claim) = brief_publish_fixture();
     let (origin, captured) = respond_in_sequence(vec![
-        (claim.to_string(), "200 OK"),
-        (ACCOUNT_INACTIVE_PROBLEM.to_string(), "403 Forbidden"),
+        (claim, "200 OK"),
+        (RESULT_RECEIPT.to_string(), "200 OK"),
     ])
     .await;
 
@@ -809,7 +820,59 @@ async fn an_issue_token_refused_as_inactive_opens_no_issue_and_exits_zero() {
         true,
     )
     .await
-    .expect("an inactive account is not a failure");
+    .unwrap();
+
+    let requests = captured.await.unwrap();
+    assert_eq!(code, 1);
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        request_line(&requests[1]),
+        "POST /v1/fix-jobs/job_0123456789abcdef/result HTTP/1.1"
+    );
+    assert!(requests[1].contains(r#""outcome_code":"brief_rejected""#));
+    assert!(!requests[1].contains(r#""summary""#));
+    assert!(summary.contains("SITECMD_CONNECTION_EXPORT"), "{summary}");
+    assert!(
+        summary.contains("SITECMD_CONNECTION_PASSPHRASE"),
+        "{summary}"
+    );
+    assert!(summary.contains("publish workflow"), "{summary}");
+}
+
+#[tokio::test]
+async fn an_issue_token_refused_as_inactive_opens_no_issue_and_exits_zero() {
+    let (repo_dir, workspace, artifact_dir, claim) = brief_publish_fixture();
+    let passphrase = "fixture passphrase";
+    let connection = crate::connected_export::encrypt_site_connection(
+        "site_publish_job",
+        "https://loop.example.com",
+        1,
+        [7_u8; 32],
+        passphrase,
+    )
+    .unwrap();
+    let connection_path = workspace.path().join("connection.json");
+    std::fs::write(&connection_path, connection).unwrap();
+    let passphrase_env = "SITECMD_TEST_PUBLISH_BRIEF_PASSPHRASE";
+    std::env::set_var(passphrase_env, passphrase);
+    let (result, requests) = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        respond_during(
+            vec![
+                (claim, "200 OK"),
+                (ACCOUNT_INACTIVE_PROBLEM.to_string(), "403 Forbidden"),
+            ],
+            async |origin| {
+                let mut args = args(origin, &artifact_dir, repo_dir.path());
+                args.export = ExportSource::File(connection_path);
+                args.passphrase_env = passphrase_env.into();
+                run_with_witness(&args, "witness-token", true).await
+            },
+        ),
+    )
+    .await
+    .expect("the brief publish exchange completed");
+    let (code, summary) = result.expect("an inactive account is not a failure");
 
     assert_eq!(code, 0);
     // The claim was accepted, so the job did run; only its result went unrecorded.
@@ -817,7 +880,6 @@ async fn an_issue_token_refused_as_inactive_opens_no_issue_and_exits_zero() {
         summary.starts_with(ACCOUNT_INACTIVE_RESULT_NOTICE),
         "{summary}"
     );
-    let requests = captured.await.expect("capture");
     assert_eq!(requests.len(), 2, "{requests:?}");
     assert_eq!(
         request_line(&requests[1]),

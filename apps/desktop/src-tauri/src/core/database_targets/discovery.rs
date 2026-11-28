@@ -1,6 +1,6 @@
 use crate::core::database_targets::{
-    canonicalize_local_sqlite_path, is_mysql_database_target, resolve_local_sqlite_path,
-    validate_local_database_target, LocalDatabaseKind,
+    is_mysql_database_target, resolve_local_sqlite_path, validate_local_database_target,
+    LocalDatabaseKind,
 };
 use crate::core::project_listing::ProjectListing;
 use sitecmd_engine_host::wants::is_portable_path;
@@ -8,7 +8,7 @@ use sitecmd_protocol::database_env::{
     is_local_dev_env_file, looks_like_database_url_key, looks_like_literal_database_url,
     EnvFileSnapshot,
 };
-use sitecmd_protocol::engine_abi::{AuditPathKind, DatabaseEngine, RelPath};
+use sitecmd_protocol::engine_abi::{DatabaseEngine, RelPath};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -71,7 +71,7 @@ pub(in crate::core) fn collect_local_targets(
             };
             match target.kind {
                 LocalDatabaseKind::Sqlite => {
-                    if let Some(path) = sqlite_path(audit_root, file, value, listing)
+                    if let Some(path) = sqlite_path(audit_root, &file.absolute_path, value)
                         .filter(|path| seen_sqlite.insert(path.clone()))
                     {
                         targets.push(Target::Sqlite(path));
@@ -96,19 +96,8 @@ pub(in crate::core) fn collect_local_targets(
     Ok(targets)
 }
 
-fn sqlite_path(
-    root: &Path,
-    file: &EnvFileSnapshot,
-    value: &str,
-    listing: &ProjectListing,
-) -> Option<PathBuf> {
-    let env_path = Some(file.absolute_path.as_path());
-    let path = resolve_local_sqlite_path(value, root, env_path)?;
-    let path = canonicalize_local_sqlite_path(&path, root, env_path)?;
-    if path.starts_with(listing.root()) && listing.observed_kind(&path) != Some(AuditPathKind::File)
-    {
-        return None;
-    }
+fn sqlite_path(root: &Path, env_file: &Path, value: &str) -> Option<PathBuf> {
+    let path = resolve_local_sqlite_path(value, root, Some(env_file))?;
     let metadata = fs::symlink_metadata(&path).ok()?;
     (metadata.is_file() && metadata.len() <= 50_000_000).then_some(path)
 }

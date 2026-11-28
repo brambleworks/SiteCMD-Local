@@ -193,8 +193,13 @@ pub fn find_config_dir() -> Option<PathBuf> {
     let mut current: &Path = &start;
     loop {
         let candidate = current.join(".sitecmd");
-        if candidate.is_dir() {
-            return Some(candidate);
+        if let Ok(metadata) = std::fs::symlink_metadata(&candidate) {
+            if metadata.is_symlink() {
+                return None;
+            }
+            if metadata.is_dir() {
+                return Some(candidate);
+            }
         }
         current = current.parent()?;
     }
@@ -216,8 +221,43 @@ pub fn read_config(sitecmd_dir: &Path) -> Result<CliConfig, String> {
 }
 
 fn read_cli_artifact(root: &Path, path: &Path, max_bytes: u64) -> Result<String, String> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("failed to inspect {}: {}", path.display(), error))?;
+    read_optional_cli_artifact(root, path, max_bytes)?
+        .ok_or_else(|| format!("{} does not exist", path.display()))
+}
+
+fn read_last_scan(dir: &Path) -> Result<Option<String>, String> {
+    read_optional_cli_artifact(
+        dir,
+        &dir.join("last-scan.json"),
+        crate::constants::MAX_CLI_SCAN_BYTES,
+    )
+}
+
+fn read_optional_cli_artifact(
+    root: &Path,
+    path: &Path,
+    max_bytes: u64,
+) -> Result<Option<String>, String> {
+    use crate::core::safe_fs::{open_project_dir, read_project_path};
+
+    let refusal = || {
+        format!(
+            "refused unsafe or unreadable CLI artifact {}",
+            path.display()
+        )
+    };
+    let relative = path.strip_prefix(root).map_err(|_| refusal())?;
+    let dir = match open_project_dir(root) {
+        Ok(dir) => dir,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(refusal()),
+    };
+    let metadata = match dir.symlink_metadata(relative) {
+        Ok(metadata) if metadata.is_file() => metadata,
+        Ok(_) => return Err(refusal()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("failed to inspect {}: {}", path.display(), error)),
+    };
     if metadata.len() > max_bytes {
         return Err(format!(
             "{} is too large ({} bytes; maximum {})",
@@ -226,12 +266,8 @@ fn read_cli_artifact(root: &Path, path: &Path, max_bytes: u64) -> Result<String,
             max_bytes
         ));
     }
-    crate::core::audit::read_bounded_project_text(root, path, max_bytes).ok_or_else(|| {
-        format!(
-            "refused unsafe or unreadable CLI artifact {}",
-            path.display()
-        )
-    })
+    let bytes = read_project_path(&dir, relative, max_bytes).map_err(|_| refusal())?;
+    String::from_utf8(bytes).map(Some).map_err(|_| refusal())
 }
 
 /// Serialize and write `config.json` into a `.sitecmd/` directory.
@@ -240,11 +276,9 @@ fn read_cli_artifact(root: &Path, path: &Path, max_bytes: u64) -> Result<String,
 pub fn write_config(sitecmd_dir: &Path, config: &CliConfig) -> Result<(), String> {
     std::fs::create_dir_all(sitecmd_dir)
         .map_err(|e| format!("failed to create {}: {}", sitecmd_dir.display(), e))?;
-    let path = sitecmd_dir.join("config.json");
     let contents = serde_json::to_string_pretty(config)
         .map_err(|e| format!("failed to serialize config: {}", e))?;
-    std::fs::write(&path, contents)
-        .map_err(|e| format!("failed to write {}: {}", path.display(), e))
+    export::write_file(sitecmd_dir, "config.json", &contents)
 }
 
 pub fn default_desktop_db_path() -> Option<PathBuf> {

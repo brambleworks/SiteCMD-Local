@@ -19,7 +19,7 @@ afterEach(() => {
 describe("CLI release notarization", () => {
   it("submits the signed universal bytes and packages them only after acceptance", () => {
     const created = fixture();
-    const result = created.run("build-cli.sh");
+    const result = created.buildAndSign();
     expect(result.status, result.stderr).toBe(0);
     const calls = created.calls();
     const submit = calls.find((call) => call.name === "xcrun" && call.args[1] === "submit");
@@ -70,7 +70,7 @@ describe("CLI release notarization", () => {
     ["unavailable notary log", { logFailure: true }],
   ])("refuses to package a CLI with %s", (_name, options) => {
     const created = fixture(options);
-    const result = created.run("build-cli.sh");
+    const result = created.buildAndSign();
     expect(result.status, result.stderr).not.toBe(0);
     expect(
       fs.existsSync(path.join(created.root, "sitecmd-cli_1.5.0_darwin-universal.tar.gz")),
@@ -79,7 +79,7 @@ describe("CLI release notarization", () => {
 
   it("assesses the standalone CLI's online notarization beside its signature", () => {
     const created = fixture();
-    expect(created.run("build-cli.sh").status).toBe(0);
+    expect(created.buildAndSign().status).toBe(0);
     created.prepareVerification();
     const result = created.run("verify-unix-artifacts.sh", { EXPECTED_VERSION: "1.5.0" });
     expect(result.status, result.stderr).toBe(0);
@@ -93,7 +93,7 @@ describe("CLI release notarization", () => {
   it("rejects a CLI signed by another macOS team before notarization", () => {
     // The builder can submit a CLI signed by the wrong Developer ID team.
     const created = fixture();
-    const result = created.run("build-cli.sh", { APPLE_TEAM_ID: "OTHERTEAM" });
+    const result = created.buildAndSign({ APPLE_TEAM_ID: "OTHERTEAM" });
     expect(result.status, result.stderr).not.toBe(0);
     expect(
       created.calls().some((call) => call.name === "codesign" && call.args.includes("-dv")),
@@ -107,7 +107,7 @@ describe("CLI release notarization", () => {
   it("rejects a signed macOS archive whose team differs from its fragment", () => {
     // Valid macOS signatures can belong to a team other than the one recorded for the release.
     const created = fixture();
-    expect(created.run("build-cli.sh").status).toBe(0);
+    expect(created.buildAndSign().status).toBe(0);
     created.prepareVerification("OTHERTEAM");
     const result = created.run("verify-unix-artifacts.sh", { EXPECTED_VERSION: "1.5.0" });
     expect(result.status, result.stderr).not.toBe(0);
@@ -119,7 +119,7 @@ describe("CLI release notarization", () => {
 
   it("fails artifact verification when the CLI's online notarization is refused", () => {
     const created = fixture({ assessmentFailure: true });
-    expect(created.run("build-cli.sh").status).toBe(0);
+    expect(created.buildAndSign().status).toBe(0);
     created.prepareVerification();
     const result = created.run("verify-unix-artifacts.sh", { EXPECTED_VERSION: "1.5.0" });
     expect(result.status, result.stderr).not.toBe(0);

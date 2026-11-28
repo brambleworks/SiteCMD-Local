@@ -89,17 +89,28 @@ export function releaseCliFixture(overrides = {}) {
     APPLE_API_KEY_ID: "fixture-key-id",
     APPLE_API_ISSUER: "fixture-issuer",
   };
+  const run = (script, scriptEnv) =>
+    spawnSync("bash", [path.join(ROOT, ".github/scripts/release", script)], {
+      cwd: root,
+      env: scriptEnv,
+      encoding: "utf8",
+      timeout: 15_000,
+    });
   return {
     root,
     runnerTemp,
     env,
     run(script, extraEnv = {}) {
-      return spawnSync("bash", [path.join(ROOT, ".github/scripts/release", script)], {
-        cwd: root,
-        env: { ...env, ...extraEnv },
-        encoding: "utf8",
-        timeout: 15_000,
-      });
+      return run(script, { ...env, ...extraEnv });
+    },
+    buildAndSign(signingEnv = {}) {
+      const buildEnv = Object.fromEntries(
+        Object.entries(env).filter(([key]) => !/^(APPLE_|AZURE_|KEYCHAIN_)/.test(key)),
+      );
+      const built = run("build-cli.sh", buildEnv);
+      if (built.status !== 0) return built;
+      fs.renameSync(path.join(src, "target/cli-dist"), path.join(runnerTemp, "cli-dist"));
+      return run("sign-cli.sh", { ...env, ...signingEnv });
     },
     calls() {
       return fs

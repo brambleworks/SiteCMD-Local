@@ -1,7 +1,6 @@
 //! Hosted score and findings, plus the local artifact used by fix and diff.
 
 use std::collections::BTreeMap;
-use std::io::Write;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -150,21 +149,14 @@ impl Artifact {
 }
 
 pub(in crate::cli) fn read_artifact(dir: &Path) -> Result<Artifact, String> {
-    let text = super::super::read_cli_artifact(
-        dir,
-        &dir.join("last-scan.json"),
-        crate::constants::MAX_CLI_SCAN_BYTES,
-    )?;
+    let text = super::super::read_last_scan(dir)?.ok_or("last-scan.json does not exist")?;
     serde_json::from_str(&text).map_err(|error| error.to_string())
 }
 
 fn write_artifact(dir: &Path, artifact: &Artifact) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
-    let mut file = tempfile::NamedTempFile::new_in(dir).map_err(|error| error.to_string())?;
-    serde_json::to_writer_pretty(&mut file, artifact).map_err(|error| error.to_string())?;
-    file.flush().map_err(|error| error.to_string())?;
-    file.persist(dir.join("last-scan.json"))
-        .map_err(|error| error.to_string())?;
+    let json = serde_json::to_string_pretty(artifact).map_err(|error| error.to_string())?;
+    crate::cli::export::write_file(dir, "last-scan.json", &json)?;
     super::export::write(dir, &artifact.hosted)
 }
 

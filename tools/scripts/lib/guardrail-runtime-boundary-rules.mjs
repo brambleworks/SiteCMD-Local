@@ -1,3 +1,4 @@
+import { sitecmdArtifactFailures } from "./guardrail-sitecmd-artifact-rules.mjs";
 import { codeScanSecurityFailures } from "./guardrail-code-scan-security-rules.mjs";
 import { releaseWorkflowSafetyFailures } from "./guardrail-release-workflow-rules.mjs";
 import { tracingInstrumentAttributes } from "./guardrail-text-utils.mjs";
@@ -72,7 +73,7 @@ export function runtimeBoundaryFailures(
     releaseWorkflowFailures.length === 0,
     `Release workflow guardrails failed: ${releaseWorkflowFailures.join("; ")}`,
   );
-  failures.push(...codeScanSecurityFailures(read));
+  failures.push(...codeScanSecurityFailures(read), ...sitecmdArtifactFailures(read, listFiles));
 
   const transactionalDbWrites = [
     ["apps/desktop/src-tauri/src/db/scan_runs.rs", "persist_run_batch"],

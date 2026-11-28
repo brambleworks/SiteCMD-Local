@@ -26,9 +26,9 @@ it("rejects a release workflow without per-job timeout caps or run cancellation"
       writeFixtureFile(
         fixtureRoot,
         workflowPath,
-        source.replace("  cancel-in-progress: true\n", ""),
+        source.replace("  cancel-in-progress: false\n", ""),
       );
     },
-    "release.yml must keep a concurrency group with cancel-in-progress",
+    "release.yml must queue all tags in one concurrency group without canceling",
   );
 });

@@ -14,7 +14,7 @@ access, and the Web Scan vocabulary.
   and `audit/report_views.rs` render the formats.
 - `project_listing.rs` and `project_listing/`: the bounded inventory of a project tree.
 - `scan_scope.rs`: ignore and scope decisions for the walker.
-- `safe_fs.rs`, `filesystem.rs`: bounded reads from untrusted project trees.
+- `safe_fs.rs`, `filesystem.rs`: bounded reads from untrusted project trees and the read cap.
 - `engine_facts/`: host facts offered to the session: file inventory, npm manifests and
   lockfiles, Git hook activation, path presence, and local database offers.
 - `engine_io.rs`: `ProjectIo`, the `HostIo` implementation that answers wants from the project.
@@ -43,7 +43,7 @@ access, and the Web Scan vocabulary.
 ## How it works
 
 1. `list_project` walks the root, skipping the directories in the engine host's
-   `walker_pruning`, and records files within file-count, byte, and depth budgets.
+   `walker_pruning`, and charges every visited entry against the traversal budget before applying scope, byte, and depth limits.
 2. `engine_facts::session_request` builds the `SessionBegin` request and the file offers. With
    `--inspect-local-databases` it also offers local database targets.
 3. `audit/audit_session.rs` begins an `Audit` task and loops: each want is answered through
@@ -57,8 +57,9 @@ access, and the Web Scan vocabulary.
 - Host reads go through the shared bounded readers, fact imports follow an explicit allowlist,
   and autofix uses only public engine host and protocol APIs:
   `/tools/scripts/lib/guardrail-code-scan-host-boundary.mjs`.
-- File collection keeps file-count, total-byte, and depth budgets; SQLite inspection stays inside
-  the project and refuses symlink escapes; outputs omit source excerpts and code lines:
+- File collection keeps directory-entry, total-byte, and depth budgets. SQLite inspection allows
+  files beneath the canonical project root, including files in ignored directories. Outputs omit
+  source excerpts and code lines:
   `/tools/scripts/lib/guardrail-code-scan-security-rules.mjs`.
 - Project detection uses shared bounded reads: `/tools/scripts/lib/guardrail-project-metadata-rules.mjs`.
 - Dependency manifests and lockfiles stay under the dependency byte limit, and
@@ -67,6 +68,11 @@ access, and the Web Scan vocabulary.
 - No reqwest client is constructed here: `/tools/scripts/audit/forbid-adhoc-rust-patterns.sh`.
 - PostgreSQL inspection reaches only loopback hosts or local sockets, and remote targets are
   refused: the tests in `database_targets.rs` and `engine_io_tests.rs`.
+- Checkout identity reads only HEAD. Provenance skips `git status` for a checkout that configures a
+  Git filter locally, so such a checkout reads as not clean, including LFS checkouts with a
+  locally installed filter, nbstripout, and git-crypt. For other checkouts it ignores submodule
+  worktree changes and still reads a moved submodule commit as dirty. See `checkout_with_a_configured_filter_never_requests_status` and
+  `a_clean_checkout_with_a_submodule_stays_clean` in `git_tests.rs`.
 - Fix-job subprocesses receive only `PATH`, `HOME`, and `CI`: the tests in
   `fix_templates/subprocess.rs`.
 
@@ -76,6 +82,7 @@ From `/apps/desktop/src-tauri`, with the stand-in built and the environment from
 
 ```bash
 cargo test --locked -p sitecmd-runtime core::
+cargo check --locked -p sitecmd-runtime --features test-support
 ```
 
 The live PostgreSQL test is ignored by default. To run it, point `SITECMD_POSTGRES_TEST_URL` at a

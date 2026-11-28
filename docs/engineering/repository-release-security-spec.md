@@ -16,26 +16,28 @@ those procedures establish.
 
 Official releases start from a signed `v*` tag on protected `main`. The release
 workflow binds artifact-producing and publication jobs to the tag's source
-commit and candidate-manifest hash, then separates platform builds, updater
-signing, verification, and publication.
+commit and candidate-manifest hash. Separate jobs build the CLI, handle
+platform signing, sign updater artifacts, verify, and publish.
 
 The current model provides:
 
 - A release commit reviewed through the normal pull-request path
 - A signed annotated tag verified against an externally configured signer list
 - A release-specific hosted preflight before platform builds
-- A configurable protected approval gate before the platform build matrix
-- Platform signing credentials scoped to their build jobs
-- The production updater key isolated in a minimal signer job
+- Updater-key and publication OIDC probe approvals before platform builds
+- Platform signing approval after the builds, with signing credentials scoped
+  to the separate signing jobs
+- The production updater key isolated in its probe and minimal signer job
 - Secretless verification of hashes, platform signatures, updater signatures,
   CLI version output, and packaged legal files
 - Publication credentials isolated from build and signing jobs
 - Immutable versioned objects followed by an atomic updater-manifest advance
 
-The workflow does not provide reproducible-build evidence. Human approval binds
-to the protected source commit and candidate manifest before the artifacts exist.
-A compromised approved build can still produce malicious signed bytes. Artifact
-signatures prove origin and integrity under a key, not safety.
+Tag verification runs automatically before the builds. Human approval of
+platform signing comes after the build artifacts exist and covers the protected
+source commit and candidate manifest. The signing jobs can sign malicious bytes
+from a compromised build. Artifact signatures attest to integrity under the
+signing key. Independent reproducible builds are a separate milestone.
 
 ## Repository controls
 
@@ -161,26 +163,27 @@ verifies the same candidate hash, source commit, and version.
 The candidate does not contain an SBOM, SBOM diff, advisory summary, or included
 pull-request manifest. SiteCMD does not claim that it does.
 
-### 5. Approve and build
+### 5. Build and sign on separate runners
 
-The `release-signing` environment must be configured to require one human
-approval. The approval screen presents the tag, version, source commit,
-candidate hash, and workflow hash. After approval, macOS, Linux, and Windows jobs
-check out only the candidate commit and build their platform artifacts.
+The build jobs check out only the candidate commit, compile the CLI, and run
+its version check without signing credentials. The `release-signing`
+environment requires a human approval for the platform signing jobs.
 
-Apple and Windows signing credentials are available only to their platform jobs.
-Build jobs cannot publish a release or advance the production updater manifest.
+Fresh runners verify the downloaded artifact digest and package the CLI
+without executing it. The macOS runner signs and notarizes the binary, and
+the Windows runner signs it with Azure Artifact Signing.
 
 ### 6. Sign updater artifacts in isolation
 
-Platform builds produce updater and CLI bytes without the production updater
-key. The `release-updater-signing` job:
+The platform signing jobs produce CLI archives before the isolated updater
+signing job starts. That job pauses for approval in `release-updater-signing`
+after the earlier probe and then proceeds as follows.
 
 - Uses a sparse checkout containing only the release helpers and pinned signer
 - Installs the signer with scripts disabled
 - Verifies the candidate and every input hash before exposing the key
-- Signs the exact updater and CLI bytes
-- Signs one release-wide `SHA256SUMS` covering every installer and archive
+- Signs each exact CLI archive
+- Signs one release-wide `SHA256SUMS` covering the archives
 - Records candidate, source, and artifact hashes in the signed payload
 
 This isolates the hardest-to-rotate credential from product build code. It does
@@ -217,9 +220,11 @@ different bytes, or any expected hash or signature differs.
 ## External configuration
 
 The checked-in workflow is not operational until these protected environments
-and values are configured and rehearsed:
+and values are configured and rehearsed. All five disable admin bypass and allow
+only `v*` tags. The signing and publication environments require approval.
 
-- `release-tag-trust`: reviewed allowed signers
+- `release-tag-trust`: the reviewed `RELEASE_ALLOWED_SIGNERS` variable, with no
+  required reviewers
 - `release-signing`: required human reviewer and platform signing credentials
 - `release-updater-signing`: production updater key
 - `release-publish`: R2 credentials; its jobs' OIDC tokens publish the updater

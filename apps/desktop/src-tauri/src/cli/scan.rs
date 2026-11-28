@@ -121,11 +121,10 @@ async fn run_diff(target: lane::Target, args: ScanArgs) -> Result<u8, String> {
 
 /// The local baseline, or None when the last scan was hosted.
 fn load_diff_baseline(sitecmd_dir: &std::path::Path) -> Result<Option<ScanResult>, String> {
-    let last_scan_path = sitecmd_dir.join("last-scan.json");
-    let contents = std::fs::read_to_string(&last_scan_path).map_err(|_| {
+    let contents = super::read_last_scan(sitecmd_dir)?.ok_or_else(|| {
         format!(
             "No previous scan found at {}. Run `sitecmd scan` first.",
-            last_scan_path.display()
+            sitecmd_dir.join("last-scan.json").display()
         )
     })?;
     if serde_json::from_str::<hosted::report::Artifact>(&contents).is_ok() {

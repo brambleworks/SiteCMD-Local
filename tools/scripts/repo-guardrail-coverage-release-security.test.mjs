@@ -47,11 +47,11 @@ it("fails when the permanent updater key reaches a product build", () => {
         ),
       );
     },
-    "release.yml CLI builds must require candidate approval, fetch the pinned engine before compiling",
+    "release.yml CLI builds must fetch the pinned engine before compiling",
   );
 });
 
-it("fails when production updater signing no longer depends on the approved build", () => {
+it("fails when production updater signing no longer depends on platform signing", () => {
   expectGuardrailFailure(
     releaseWorkflowSafetyFailures,
     (fixtureRoot) => {
@@ -61,7 +61,7 @@ it("fails when production updater signing no longer depends on the approved buil
         ".github/workflows/release.yml",
         mustMutate(
           workflow,
-          "    needs: [prepare-candidate, build]",
+          "    needs: [prepare-candidate, sign-platforms]",
           "    needs: prepare-candidate",
         ),
       );

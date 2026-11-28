@@ -52,7 +52,7 @@ it("fails when the CLI build stops baking in the connected-service endpoint", ()
     releaseWorkflowSafetyFailures,
     (fixtureRoot) => {
       const workflow = readFixtureFile(fixtureRoot, ".github/workflows/release.yml");
-      const cliStepStart = workflow.indexOf("        id: cli");
+      const cliStepStart = workflow.indexOf("      - name: Build CLI (headless scanner)");
       const endpoint = '          SITECMD_CONNECTED_ENDPOINT: "https://connect.sitecmd.com"\n';
       const endpointStart = workflow.indexOf(endpoint, cliStepStart);
       if (cliStepStart === -1 || endpointStart === -1) {

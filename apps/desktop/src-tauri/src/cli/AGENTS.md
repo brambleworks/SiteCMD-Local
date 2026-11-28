@@ -53,6 +53,22 @@ the scanned project's .sitecmd folder, talks to the connected service, and print
 
 - Command errors are sanitized; production code here never uses `.map_err(|e| e.to_string())`,
   and never constructs a reqwest client: `/tools/scripts/audit/forbid-adhoc-rust-patterns.sh`.
+- Scan artifacts use the shared bounded readers and atomic writer:
+  `/tools/scripts/lib/guardrail-sitecmd-artifact-rules.mjs`.
+  `fix_refuses_a_linked_scan_cache` in `fix.rs` checks linked reads.
+  `artifact_writer_refuses_a_linked_config_directory` and
+  `artifact_writer_replaces_the_link_without_changing_its_target` in `export/artifacts.rs`
+  check linked writes.
+- Local checks reuse fresh caches on the configured origin: the tests
+  `fresh_scan_cache_is_reused_for_the_requested_url_and_same_origin_redirect`,
+  `cache_for_a_different_url_requires_a_scan`, and `future_scan_timestamp_is_stale` in `check.rs`.
+- Autofix brief publication checks the audited location against the project fingerprint key:
+  `brief_refuses_a_different_file_for_the_claimed_identity` in `autofix/brief_publish.rs` and
+  `missing_export_rejects_the_brief_without_requesting_an_issue_token` in
+  `autofix/publish_job_tests.rs`.
+- Autofix reports structured outcomes to Connect and keeps diagnostics in the caller's logs:
+  `artifact_rejection_sends_structured_result_without_manifest_diagnostics` in
+  `autofix/publish_job_tests.rs`.
 - Code Scan outputs omit source excerpts and code lines:
   `/tools/scripts/lib/guardrail-code-scan-security-rules.mjs`.
 - Autofix uses only the public engine host and protocol APIs:

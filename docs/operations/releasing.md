@@ -93,24 +93,31 @@ for t in $(git tag --list 'v*'); do
 done
 ```
 
-Configure these GitHub environments:
+Disable administrator bypass and allow only tags matching `v*` in all five
+release environments. Require the maintainer's approval in the four environments
+that protect signing or publication. The `release-tag-trust` environment has
+no required reviewers and holds only the `RELEASE_ALLOWED_SIGNERS` variable.
+Keep that variable protected from workflow-authenticated writes. Run
+`pnpm protection:check:live` to verify the environment settings.
 
-| Environment               | Protection                                                                           | Values                                                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `release-tag-trust`       | Deployment tags limited to `v*`; protected from workflow-authenticated writes        | `RELEASE_ALLOWED_SIGNERS`, matching `.github/allowed-signers`                                                                             |
-| `release-signing`         | One required reviewer, admin bypass disabled, deployment tags limited to `v*`        | Apple credentials and Azure secrets                                                                                                       |
-| `release-updater-signing` | Deployment tags limited to `v*`; holds the signing key probe and the isolated signer | `TAURI_SIGNING_PRIVATE_KEY` and its optional password                                                                                     |
-| `release-publish`         | Deployment tags limited to `v*`; no reviewer or timer                                | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`; no releases-worker key, because publishing presents the job's OIDC token |
-| `npm-publish`             | Deployment tags limited to `v*`; no reviewer or timer                                | None; npm trusted publishing accepts the `publish-npm` job's OIDC token ([npm credential](#npm-credential))                               |
+| Environment               | Values                                                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `release-tag-trust`       | `RELEASE_ALLOWED_SIGNERS`, matching `.github/allowed-signers`                                                   |
+| `release-signing`         | Eight Apple secrets, three Azure secrets, and three Azure variables                                             |
+| `release-updater-signing` | `TAURI_SIGNING_PRIVATE_KEY` and its optional password                                                           |
+| `release-publish`         | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`. The releases worker uses the job's OIDC token. |
+| `npm-publish`             | The `publish-npm` job uses its OIDC token ([npm credential](#npm-credential)).                                  |
 
-Put `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, and `AZURE_SIGN_PROFILE` in the
-`release-signing` environment as variables. Move the listed secrets out of
-repository scope after the environments work. Duplicate repository secrets
+The owner keeps only the secrets and variables listed in the
+[macOS signing runbook](../engineering/macos-code-signing.md) and
+[Windows signing runbook](../engineering/windows-code-signing.md) in
+`release-signing` and removes leftover entries. Move the listed secrets out
+of repository scope after the environments work. Duplicate repository secrets
 defeat the intended boundary.
 
-While there is one maintainer, leave "prevent self-review" disabled on
-`release-signing`; otherwise the person who starts the release cannot approve
-it. Add a second reviewer and enable non-author review when a second qualified
+While there is one maintainer, leave "prevent self-review" disabled on the
+environments that require approval so that maintainer can approve the release.
+Add a second reviewer and enable non-author review when a second qualified
 maintainer exists.
 
 Confirm the environment protections, signing credentials, and npm trusted
@@ -255,54 +262,84 @@ on every release runner.
 
 ## What the signed tag triggers
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`.
+Pushing a `v*` tag runs `.github/workflows/release.yml`. Releases run one at a
+time. GitHub keeps one pending run, so a newer tag cancels a run still waiting
+to start. That canceled tag stays unpublished. Cut the next version for those
+changes. An active run paused for approval holds the release slot and blocks
+later tags until the run finishes. [GitHub Actions concurrency](https://docs.github.com/en/actions/concepts/workflows-and-actions/concurrency)
 
 1. **Tag verification** checks the version format, annotated tag signature,
-   trusted signer, and ancestry from the repository default branch.
+   trusted signer, and ancestry from the repository default branch. It runs in
+   `release-tag-trust` without a reviewer.
 2. **Preflight** uses `pnpm engine:fetch` to download and verify the module pinned
    in `engine.lock`. It runs dependency audits, repository guardrails, legal artifact
    checks, Rust tests, clippy, and formatting. It runs workspace tests with
-   the pinned module and replays them with the stand-in. The updater-key and
-   Worker OIDC probes run before platform builds.
+   the pinned module and replays them with the stand-in. In parallel, approve
+   `release-updater-signing` for the updater-key probe and `release-publish` for
+   the Worker OIDC probe. Platform builds wait for both probes to pass.
 3. **Candidate preparation** verifies the source version and binds the source
    commit, workflow hash, lockfile hashes, engine version and digest, changelog
    notes, and publication date into an immutable manifest.
-4. **Human approval** pauses the `release-signing` environment. Check the
-   candidate manifest hash, source commit, and engine pin before approval.
-5. **Platform builds** fetch the pinned module and build CLI archives for
-   macOS universal, Linux x86_64, Linux arm64, and Windows x86_64. Apple
-   signing and notarization and Azure Authenticode signing apply to the CLI.
-6. **Archive signing** validates and stages the allowlisted payload before
-   passing the production key to the isolated signer. It signs each CLI archive
+4. **Platform builds** fetch the pinned module, build the CLI for macOS
+   universal, Linux x86_64, Linux arm64, and Windows x86_64, and run the
+   binaries with `--version` on credential-free runners.
+5. **Platform signing** pauses for approval in the `release-signing`
+   environment. Check the candidate manifest hash, source commit, and engine
+   pin before approval. Fresh runners verify the artifact digest, sign and
+   notarize for macOS or sign for Windows, and package the CLI without
+   executing it.
+6. **Archive signing** pauses for a second `release-updater-signing` approval.
+   The job validates and stages the allowlisted payload before passing the
+   production key to the isolated signer. It signs each CLI archive
    and one release-wide `SHA256SUMS`. The decoded `SHA256SUMS.minisig` is
    the detached signature read by `minisign -V`.
 7. **Secretless verification** checks payload hashes, provenance, archive
    signatures, CLI versions, platform signatures, and the embedded engine pin
    in every archive, including both macOS architectures.
-8. **Publication** begins after every verifier passes. A checkout-free job
-   hash-compares existing objects before uploading to R2, advances the
-   release manifest with an OIDC token, and creates the GitHub Release with
+8. **Publication** pauses for a second `release-publish` approval after every
+   verifier passes. A checkout-free job hash-compares existing objects before
+   uploading to R2, advances the release manifest with an OIDC token, and
+   creates the GitHub Release with
    changelog notes, the engine version and digest, and the signed checksum
    manifest. It attests build provenance and checks every public object and
-   the advertised latest version. The `publish-npm` job publishes the verified
-   binaries as platform packages, then publishes `@sitecmd/cli` through npm
-   trusted publishing.
+   the advertised latest version.
+9. **npm publication** pauses for `npm-publish` approval. The job publishes the
+   verified binaries as platform packages, then publishes `@sitecmd/cli` through
+   npm trusted publishing.
+
+Each release artifact used downstream expires seven days after upload. The
+approval windows share those deadlines.
+
+- Approve both probes before platform builds need the `release-candidate`
+  artifact. Preflight and candidate preparation can finish while the probes wait.
+- Approve platform signing while all `built-cli-*` artifacts are available.
+- Approve archive signing while `release-candidate` and every
+  `unsigned-platform-*` artifact are available.
+- Approve publication while `release-candidate` and `signed-release-payload`
+  are available.
+- Approve npm publication before `signed-release-payload` expires. A later
+  approval leaves that version off npm for good. A full rerun can produce
+  different bytes, and publication refuses to replace existing immutable
+  objects in R2. Cut a new version to publish to npm.
+
+Use the earliest expiration among a job's inputs and leave time for the job
+to download them. [GitHub Actions artifact retention](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/remove-workflow-artifacts)
 
 The candidate check now forces the tag, source files, and protected commit to
 agree. The version-sync guardrail separately prevents any release version
 carrier from drifting.
 
-Human approval in this interim model covers the candidate manifest and source
-commit. The platform artifacts are built afterward, so their hashes are
-post-build provenance, not bytes the reviewer inspected. Isolating the
-permanent updater key limits key theft; it does not prove a compromised build
-produced safe bytes. The post-publication reproducible-build milestone in the
+Signing approval covers the candidate manifest and source commit after platform
+builds complete. The signing runner checks the downloaded artifact against the
+digest GitHub recorded at upload. Isolating signing credentials limits their
+exposure. It does not prove a compromised build produced safe bytes. The
+post-publication reproducible-build milestone in the
 [repository and release security specification](../engineering/repository-release-security-spec.md)
 addresses that remaining source-to-bytes gap.
 
 Cost: the repository is public, and every release job runs on a standard
-GitHub-hosted runner, so a release bills no Actions minutes and a failed job is
-recovered by re-running it. Signing runbooks live in
+GitHub-hosted runner, so a release bills no Actions minutes. Re-run failed
+jobs while their inputs are still available. Signing runbooks live in
 [macos-code-signing.md](../engineering/macos-code-signing.md) and
 [windows-code-signing.md](../engineering/windows-code-signing.md); key rotation
 in [release-signing-key-rotation.md](../engineering/release-signing-key-rotation.md).
@@ -354,7 +391,7 @@ or claim. Fix whichever side moved, then use **Re-run failed jobs**.
 There is no manual publish path. When the manifest advance fails, fix the cause
 and re-run the failed `publish-release` job the same way. It rebuilds nothing,
 skips R2 objects that already hold the verified bytes, and must run within the
-24-hour retention of the `signed-release-payload` artifact, as
+retention windows of both `release-candidate` and `signed-release-payload`, as
 [Verify the release](#verify-the-release) describes.
 
 Nothing reads `RELEASE_ADMIN_KEY` any more. Once the releases worker that
@@ -377,7 +414,8 @@ under `.github/`.
 
 Set up once, before the first tag that carries this workflow:
 
-1. Create the `npm-publish` environment with deployment tags limited to `v*`.
+1. Create the `npm-publish` environment with a required reviewer, admin bypass
+   disabled, and deployment tags limited to `v*`.
 2. Add the trusted publisher above to each of `@sitecmd/cli`,
    `@sitecmd/cli-darwin-universal`, `@sitecmd/cli-linux-arm64`,
    `@sitecmd/cli-linux-x64` and `@sitecmd/cli-win32-x64`, either on npmjs.com
@@ -400,7 +438,8 @@ npm cannot create a package through trusted publishing, so a platform package
 added later is published by hand once, then given the same trusted publisher.
 If a tag runs before step 2, only `publish-npm` fails: the release is already
 live, and **Re-run failed jobs** publishes to npm once the trusted publishers
-exist, within the 24-hour retention of the `signed-release-payload` artifact.
+exist, within the seven-day retention of the `signed-release-payload` artifact.
+After it expires, cut the next version for npm.
 
 ## Verify the release
 
@@ -420,15 +459,16 @@ Confirm the two public verification surfaces exist for the version:
 
 If the attestation step fails, R2, the release manifest, and the Release are
 already live and correct; only the attestation is missing. Re-running
-`publish-release` recovers it as long as the `signed-release-payload` artifact
-is still within its 24-hour retention window; once that artifact has expired,
-`sign-updaters` must run again to produce a new one.
+`publish-release` recovers it while both `release-candidate` and
+`signed-release-payload` are within their seven-day retention windows. If an
+input expires after publication, cut a new version instead of trying to
+recreate the immutable payload.
 
 A failed or asset-less Release recovers the same way, and is more urgent. The
 release manifest advances before the Release is created, so from that step on
 the new version is already offered to every client while the Release they are
 pointed at may not exist or may carry no checksums. Re-run `publish-release`
-within the same 24-hour window: it creates the Release when there is none, and
+while its inputs are available. It creates the Release when there is none and
 attaches a missing `SHA256SUMS` or `SHA256SUMS.minisig` to one that already
 exists. A Release left in draft fails the step instead of passing silently,
 because clients cannot read it; publish or delete it, then re-run.

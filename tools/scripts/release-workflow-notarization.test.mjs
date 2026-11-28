@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { expect, it } from "vitest";
 
-it("supplies notary credentials and retains evidence even when the CLI build fails", () => {
+it("supplies notary credentials and retains evidence even when platform signing fails", () => {
   const workflow = fs.readFileSync(
     new URL("../../.github/workflows/release.yml", import.meta.url),
     "utf8",
@@ -11,11 +11,11 @@ it("supplies notary credentials and retains evidence even when the CLI build fai
     expect(start, name).toBeGreaterThan(-1);
     return workflow.slice(start, workflow.indexOf("\n      - ", start + 1));
   };
-  const build = step("Build CLI (headless scanner)");
-  expect(build).toContain("APPLE_API_KEY_ID:");
-  expect(build).toContain("secrets.APPLE_API_KEY_ID");
-  expect(build).toContain("APPLE_API_ISSUER:");
-  expect(build).toContain("secrets.APPLE_API_ISSUER");
+  const signer = step("Sign and package the CLI");
+  expect(signer).toContain("APPLE_API_KEY_ID:");
+  expect(signer).toContain("secrets.APPLE_API_KEY_ID");
+  expect(signer).toContain("APPLE_API_ISSUER:");
+  expect(signer).toContain("secrets.APPLE_API_ISSUER");
   const evidence = step("Preserve CLI notarization evidence");
   expect(evidence).toContain("always()");
   expect(evidence).toContain("startsWith(matrix.target, 'darwin')");

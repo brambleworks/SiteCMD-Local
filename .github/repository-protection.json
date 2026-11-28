@@ -3,6 +3,17 @@
   "repositories": {
     "brambleworks/SiteCMD-Local": {
       "privateVulnerabilityReporting": true,
+      "releaseEnvironments": {
+        "requiredReviewers": {
+          "release-tag-trust": [],
+          "release-updater-signing": ["User:kpiontek"],
+          "release-publish": ["User:kpiontek"],
+          "release-signing": ["User:kpiontek"],
+          "npm-publish": ["User:kpiontek"]
+        },
+        "canAdminsBypass": false,
+        "deploymentTagPattern": "v*"
+      },
       "securityAndAnalysis": {
         "secret_scanning": "enabled",
         "secret_scanning_push_protection": "enabled"

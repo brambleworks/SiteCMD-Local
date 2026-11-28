@@ -118,8 +118,7 @@ fn absolute_audit_targets_use_the_audit_root_in_report_titles() {
 }
 
 #[test]
-fn standin_database_offer_findings_are_relative_to_each_audit_root() {
-    // Findings for a database outside the listing can inherit the selected root's absolute path.
+fn standin_database_offer_findings_for_ignored_databases_are_relative_to_each_audit_root() {
     let project = local_database_project();
     std::fs::write(project.path().join(".gitignore"), "prisma/\n").unwrap();
     for root in audit_roots(&project) {

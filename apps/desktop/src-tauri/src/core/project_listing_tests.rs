@@ -19,6 +19,7 @@ fn host_file_order_prefers_the_project_root_then_lexical_paths() {
         let mut walker = Walker {
             root: root.path(),
             max_files: MAX_PROJECT_FILES,
+            visited_entries: 0,
             max_depth: MAX_PROJECT_DEPTH,
             files: order
                 .map(|path| NativeFile {
@@ -184,6 +185,7 @@ fn a_losing_directory_cannot_list_children_under_the_winning_file() {
     let mut walker = Walker {
         root: root.path(),
         max_files: MAX_PROJECT_FILES,
+        visited_entries: 0,
         max_depth: MAX_PROJECT_DEPTH,
         files: vec![
             NativeFile {
@@ -294,12 +296,11 @@ fn unix_listing_keeps_ordinary_names_and_counts_unrepresentable_paths() {
 }
 
 #[test]
-fn directories_do_not_consume_the_project_file_limit() {
-    // Directory entries can exhaust a budget that only counts files.
+fn listing_allows_exactly_the_directory_entry_limit() {
     let root = tempdir().unwrap();
     fs::create_dir_all(root.path().join("src/empty")).unwrap();
     fs::write(root.path().join("src/app.rs"), "local").unwrap();
-    let listing = list_project_with_limits(root.path(), 1, 8).unwrap();
+    let listing = list_project_with_limits(root.path(), 3, 8).unwrap();
     assert_eq!(paths(&listing), ["src", "src/app.rs", "src/empty"]);
 }
 
@@ -435,8 +436,8 @@ fn security_regression_inventory_read_rejects_file_replaced_by_symlink() {
 // Guards fixed-path reads against symlink escape and unbounded files.
 #[cfg(unix)]
 #[test]
-fn security_regression_read_text_under_root_rejects_symlink_escape() {
-    use crate::core::filesystem::{read_text_under_root, read_under_root, MAX_FILE_BYTES};
+fn security_regression_read_relative_file_rejects_symlink_escape() {
+    use crate::core::filesystem::MAX_FILE_BYTES;
     use std::os::unix::fs::symlink;
 
     let project = tempdir().expect("temp dir");
@@ -444,29 +445,16 @@ fn security_regression_read_text_under_root_rejects_symlink_escape() {
     let secret = outside.path().join("id_rsa");
     fs::write(&secret, "SECRET_MARKER\n").expect("write secret");
 
-    // A real instruction file under the root reads normally.
-    let real = project.path().join("AGENTS.md");
-    fs::write(&real, "# Agents\nreal guidance\n").expect("write real");
-    assert_eq!(
-        read_text_under_root(project.path(), &real).as_deref(),
-        Some("# Agents\nreal guidance\n"),
-    );
+    fs::write(project.path().join("AGENTS.md"), "real guidance\n").unwrap();
+    symlink(&secret, project.path().join("CLAUDE.md")).unwrap();
+    let big = fs::File::create(project.path().join("BIG.md")).unwrap();
+    big.set_len(MAX_FILE_BYTES + 16).unwrap();
+    let listing = list_project(project.path()).unwrap();
+    let read = |name: &str| listing.read_relative_file(Path::new(name), MAX_FILE_BYTES);
 
-    // A symlinked instruction file pointing outside the root is refused.
-    let linked = project.path().join("CLAUDE.md");
-    symlink(&secret, &linked).expect("symlink");
-    assert!(
-        read_text_under_root(project.path(), &linked).is_none(),
-        "fixed-path reads must not follow a symlink out of the project"
-    );
-
-    // An oversized file is refused (a link to /dev/zero would otherwise OOM).
-    let big = project.path().join("BIG.md");
-    fs::write(&big, vec![b'a'; (MAX_FILE_BYTES + 1) as usize]).expect("write big");
-    assert!(
-        read_under_root(project.path(), &big, MAX_FILE_BYTES).is_none(),
-        "fixed-path reads must enforce the size budget"
-    );
+    assert_eq!(read("AGENTS.md").unwrap(), b"real guidance\n");
+    assert!(read("CLAUDE.md").is_err());
+    assert_eq!(read("BIG.md").unwrap().len() as u64, MAX_FILE_BYTES + 1);
 }
 
 #[test]
@@ -480,4 +468,16 @@ fn project_listing_rejects_a_second_file_over_its_budget() {
         panic!("the second source file must exceed the limit");
     };
     assert!(error.to_string().contains("project-file budget"));
+}
+
+#[test]
+fn traversal_budget_counts_directories_and_skipped_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("nested")).unwrap();
+    std::fs::create_dir(dir.path().join("node_modules")).unwrap();
+
+    assert!(matches!(
+        list_project_with_limits(dir.path(), 1, 3),
+        Err(ListingError::Files(1))
+    ));
 }

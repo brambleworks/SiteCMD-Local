@@ -16,11 +16,10 @@ use super::artifact::{
     ARTIFACT_SCHEMA_VERSION,
 };
 use super::brief::{brief_artifact, code_slug, locate_findings};
-use super::secrets::{read_env_secret, read_export, ExportSource};
+use super::secrets::{site_fingerprint_key, ExportSource};
 use super::template_plan::TemplateFix;
 use super::{repo, template_plan};
 use crate::cli::{settle, ConnectStop};
-use crate::connected_export::decrypt_site_connection;
 use crate::connected_service::deployment_ordering::CiSubmissionAttestation;
 use crate::connected_service::{
     ClaimedJob, ConnectedServiceClient, FindingOutcomeReport, ResultReport,
@@ -387,26 +386,6 @@ fn checkout_root(args: &RunJobArgs) -> Result<PathBuf, String> {
         .map_err(|error| format!("cannot resolve {}: {error}", args.path.display()))
 }
 
-/// The site's fingerprint key, copied out of the decrypted connection so
-/// everything else the export carries is dropped where it was read.
-///
-/// A failure answers with a reason built here rather than the underlying
-/// error: it names the variable that is missing or says the export could not
-/// be decrypted, and never any part of a value.
-fn site_fingerprint_key(args: &RunJobArgs) -> Result<ProjectFingerprintKey, String> {
-    let serialized = read_export(&args.export).map_err(|_| match &args.export {
-        ExportSource::Env(name) => format!("{name} is missing or empty"),
-        ExportSource::File(_) => "the connection export could not be read".to_string(),
-    })?;
-    let passphrase = read_env_secret(&args.passphrase_env)
-        .map_err(|_| format!("{} is missing or empty", args.passphrase_env))?;
-    let connection = decrypt_site_connection(&serialized, &passphrase)
-        .map_err(|_| "could not decrypt the connection export".to_string())?;
-    let key = ProjectFingerprintKey::from_bytes(connection.fingerprint_key);
-    drop(connection);
-    Ok(key)
-}
-
 /// Report one result under the execute token and answer with the state the
 /// job moved to.
 async fn report_result(
@@ -494,7 +473,7 @@ async fn attempt(
         Err(error) => return Err(ConnectStop::refused_as(&error, "claim")),
     };
 
-    let key = match site_fingerprint_key(args) {
+    let key = match site_fingerprint_key(&args.export, &args.passphrase_env) {
         Ok(key) => key,
         Err(reason) => {
             // The workflow reads `publish` whatever happens next, so it is

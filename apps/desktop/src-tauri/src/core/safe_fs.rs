@@ -6,11 +6,12 @@ use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt, OpenOptionsMaybeD
 use cap_std::fs::{Dir, File, Metadata, OpenOptions};
 use sitecmd_protocol::engine_abi::AuditPathKind;
 use std::ffi::OsStr;
+#[cfg(any(test, feature = "test-support"))]
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 
-pub(super) fn open_project_dir(root: &Path) -> io::Result<Dir> {
+pub(crate) fn open_project_dir(root: &Path) -> io::Result<Dir> {
     let mut options = OpenOptions::new();
     options
         .read(true)
@@ -28,7 +29,7 @@ pub(super) fn open_project_dir(root: &Path) -> io::Result<Dir> {
     Ok(Dir::from_std_file(file.into_std()))
 }
 
-pub(super) fn read_project_path(root: &Dir, relative: &Path, limit: u64) -> io::Result<Vec<u8>> {
+pub(crate) fn read_project_path(root: &Dir, relative: &Path, limit: u64) -> io::Result<Vec<u8>> {
     let ProjectPath::Entry(parent, name) = project_path(root, relative)? else {
         return Err(io::ErrorKind::InvalidInput.into());
     };
@@ -199,6 +200,7 @@ pub(super) fn read_file_limited(file: &mut File, limit: u64) -> io::Result<Vec<u
     Ok(bytes)
 }
 
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn read_bounded_file(path: &Path, max_bytes: u64) -> Option<Vec<u8>> {
     let initial_metadata = fs::symlink_metadata(path).ok()?;
     if initial_metadata.file_type().is_symlink()
@@ -243,79 +245,33 @@ pub(crate) fn read_bounded_file(path: &Path, max_bytes: u64) -> Option<Vec<u8>> 
     (bytes.len() as u64 <= max_bytes).then_some(bytes)
 }
 
-pub(crate) fn read_bounded_file_under_root(
-    root: &Path,
-    path: &Path,
-    max_bytes: u64,
-) -> Option<Vec<u8>> {
-    let canonical_root = fs::canonicalize(root).ok()?;
-    let canonical_path = fs::canonicalize(path).ok()?;
-    if !canonical_path.starts_with(&canonical_root) {
-        return None;
-    }
-    // Read the verified canonical target so in-root symlinks work without
-    // re-resolving an untrusted caller path during the bounded read.
-    read_bounded_file(&canonical_path, max_bytes)
-}
-
-pub(crate) fn read_bounded_text_under_root(
-    root: &Path,
-    path: &Path,
-    max_bytes: u64,
-) -> Option<String> {
-    String::from_utf8(read_bounded_file_under_root(root, path, max_bytes)?).ok()
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::core::safe_fs::{read_bounded_file_under_root, read_bounded_text_under_root};
+    use crate::core::safe_fs::{open_project_dir, read_bounded_file, read_project_path};
     use std::fs;
+    use std::path::Path;
 
     #[test]
-    fn bounded_project_read_accepts_regular_file_and_rejects_oversize() {
-        let project = tempfile::tempdir().expect("project");
-        let manifest = project.path().join("package.json");
-        fs::write(&manifest, b"{\"name\":\"site\"}").expect("write manifest");
+    fn test_support_reader_refuses_oversized_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("metadata.json");
+        fs::write(&path, b"{}").unwrap();
 
         assert_eq!(
-            read_bounded_text_under_root(project.path(), &manifest, 64).as_deref(),
-            Some("{\"name\":\"site\"}")
+            read_bounded_file(&path, 2).as_deref(),
+            Some(b"{}".as_slice())
         );
-        assert!(read_bounded_file_under_root(project.path(), &manifest, 4).is_none());
+        assert!(read_bounded_file(&path, 1).is_none());
     }
 
-    #[cfg(unix)]
     #[test]
-    fn bounded_project_read_rejects_symlink_escape() {
-        use std::os::unix::fs::symlink;
+    fn bounded_project_read_returns_at_most_the_overflow_byte() {
+        let project = tempfile::tempdir().unwrap();
+        fs::write(project.path().join("package.json"), b"{ }").unwrap();
 
-        let project = tempfile::tempdir().expect("project");
-        let outside = tempfile::NamedTempFile::new().expect("outside file");
-        fs::write(outside.path(), b"APP_URL=https://private.example").expect("write outside file");
-        let linked = project.path().join(".env");
-        symlink(outside.path(), &linked).expect("create symlink");
-
-        assert!(
-            read_bounded_text_under_root(project.path(), &linked, 1024).is_none(),
-            "repository metadata reads must not follow symlinks outside the project"
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn bounded_project_read_follows_in_project_symlink() {
-        use std::os::unix::fs::symlink;
-
-        let project = tempfile::tempdir().expect("project");
-        let real = project.path().join("config.real.json");
-        fs::write(&real, b"{\"name\":\"linked\"}").expect("write real target");
-        let linked = project.path().join("package.json");
-        symlink(&real, &linked).expect("create in-project symlink");
-
-        assert_eq!(
-            read_bounded_text_under_root(project.path(), &linked, 1024).as_deref(),
-            Some("{\"name\":\"linked\"}"),
-            "an in-project symlink must resolve to its in-project target so monorepo layouts still detect config"
-        );
+        let dir = open_project_dir(project.path()).unwrap();
+        let path = Path::new("package.json");
+        assert_eq!(read_project_path(&dir, path, 3).unwrap(), b"{ }");
+        assert_eq!(read_project_path(&dir, path, 1).unwrap(), b"{ ");
     }
 }

@@ -14,7 +14,7 @@ the settings contracts that tooling checks against the live repository.
   pin, and reports the module load time on all four runner platforms.
 - `workflows/manual.yml`: an on-demand Rust coverage report.
 - `workflows/weekly-advisories.yml`: the weekly dependency advisory audit.
-- `workflows/release.yml`: verifies signed release tags, builds and signs the CLI, checks the
+- `workflows/release.yml`: verifies signed release tags, builds and signs the CLI in separate jobs, checks the
   embedded engine pin, and publishes the verified payload.
 - `actions/setup-sitecmd/`: installs an exact CLI release after verifying its updater-key
   signature (`actions/setup-sitecmd/install.sh`, `actions/setup-sitecmd/updater-public-key.pub`).
@@ -25,7 +25,7 @@ the settings contracts that tooling checks against the live repository.
 - `updater-signer/` and `updater-verifier/`: the pinned updater signer package and the secretless
   verifier crate used in releases.
 - `ci-inventory.json`: which job and stage runs each check.
-- `repository-protection.json` and `repository-labels.json`: the branch protection and label
+- `repository-protection.json` and `repository-labels.json`: the ruleset, release environment, and label
   contracts.
 - `allowed-signers`: the public mirror of the release tag signer list.
 - `CODEOWNERS`, `dependabot.yml`, `actionlint.yaml`, `ISSUE_TEMPLATE/`,
@@ -51,15 +51,24 @@ the settings contracts that tooling checks against the live repository.
 
 Rust jobs build the stand-in with `node tools/scripts/build-standin.mjs` and set
 `SITECMD_ENGINE_WASM` and `SITECMD_ENGINE_UNPINNED`, so CI never needs the engine module. The
-public tree job runs only for pull requests in brambleworks/SiteCMD-Local; it runs the base
-commit's copy of the history guard over the pull request's commits. The gate Action installs the
+Rust test job also compiles the runtime with `test-support` for downstream crates. The public tree
+job runs only for pull requests in brambleworks/SiteCMD-Local and uses the base commit's copy of the
+history guard to check the pull request's commits. The gate Action installs the
 CLI with `actions/setup-sitecmd/install.sh`, writes the connection export to an owner-only
 runner file, and runs `sitecmd gate` with the inputs as environment variables.
 
 Release preflight and platform builds fetch the module pinned by `/engine.lock` with
-`pnpm engine:fetch`. Each platform verifier checks the signed archive and embedded pin before
-the checkout-free publisher uploads to R2, advances the release manifest with GitHub OIDC,
-and creates the GitHub Release. The `publish-npm` job uses npm trusted publishing.
+`pnpm engine:fetch`. The build checks `--version` without signing credentials. The separate
+platform signing job verifies the artifact digest and signs and packages the binaries without
+executing them. One workflow concurrency group serializes releases across all tags. The tag
+verification environment runs without review, and the four signing and publishing environments
+require approval. Downstream release artifacts are retained for seven days. Each platform verifier
+checks the signed archive and embedded pin before publication. The Windows verifier also matches
+the embedded Authenticode signer's subject and durable Azure profile EKU to the probe.
+[Azure certificate profile EKU](https://learn.microsoft.com/en-us/azure/artifact-signing/concept-certificate-management#certificate-profile-eku)
+
+The checkout-free publisher uploads to R2, advances the release manifest with GitHub OIDC, and
+creates the GitHub Release. The `publish-npm` job uses npm trusted publishing.
 
 ## Invariants
 
@@ -75,6 +84,9 @@ and creates the GitHub Release. The `publish-npm` job uses npm trusted publishin
   `/tools/scripts/lib/guardrail-ci-credential-disclosure-rules.mjs`.
 - No stored npm token or static release publishing key appears anywhere here; publishing uses
   OIDC: `/tools/scripts/lib/guardrail-release-rules.mjs`.
+- Windows release verification requires trusted embedded Authenticode and matches the signer
+  subject and Public Trust profile EKU before execution:
+  `/tools/scripts/lib/guardrail-release-pipeline-rules.mjs`.
 - `CODEOWNERS` covers every release, dependency, network, and privacy boundary:
   `/tools/scripts/lib/guardrail-codeowners-rules.mjs`.
 - The installers stay valid shell and pass their tests: `pnpm installer:check`.
@@ -111,6 +123,7 @@ pnpm exec vitest run tools/scripts/actions-inputs.test.mjs tools/scripts/release
 - `actions/*/action.yml`
 - `actions/setup-sitecmd/install.sh`
 - `scripts/release/*.sh`
+- `scripts/release/*.ps1`
 - `ci-inventory.json`
 - `repository-protection.json`
 - `CODEOWNERS`

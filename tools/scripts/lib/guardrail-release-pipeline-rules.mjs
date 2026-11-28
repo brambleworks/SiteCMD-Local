@@ -7,10 +7,12 @@ export function releasePipelineSafetyFailures(read) {
   const releaseWorkflow = read(".github/workflows/release.yml");
   const candidateScript = read(".github/scripts/release/build-candidate-manifest.sh");
   const buildCliScript = read(".github/scripts/release/build-cli.sh");
+  const signCliScript = read(".github/scripts/release/sign-cli.sh");
   const signerInputScript = read(".github/scripts/release/stage-signer-inputs.sh");
   const signerRecordScript = read(".github/scripts/release/record-signed-payload.sh");
   const verifyPayloadScript = read(".github/scripts/release/verify-signed-payload.sh");
   const verifyUnixScript = read(".github/scripts/release/verify-unix-artifacts.sh");
+  const windowsSignerPath = ".github/scripts/release/windows-signer-identity.ps1";
   const failures = [];
   const check = (condition, message) => {
     if (!condition) failures.push(message);
@@ -36,6 +38,7 @@ export function releasePipelineSafetyFailures(read) {
   const preflightJob = jobSection("preflight");
   const candidateJob = jobSection("prepare-candidate");
   const buildJob = jobSection("build");
+  const platformSignerJob = jobSection("sign-platforms");
   const signerJob = jobSection("sign-updaters");
   const verifierJob = jobSection("verify-release");
   const publisherJob = jobSection("publish-release");
@@ -43,10 +46,15 @@ export function releasePipelineSafetyFailures(read) {
   const validatePublishKeyJob = jobSection("validate-publish-key");
   const candidateCommands = `${candidateJob}\n${candidateScript}`;
   const signerCommands = `${signerJob}\n${signerInputScript}\n${signerRecordScript}`;
-  const verifierCommands = `${verifierJob}\n${verifyPayloadScript}\n${verifyUnixScript}`
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("#"))
-    .join("\n");
+  const activeLines = (source) =>
+    source
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("#"))
+      .join("\n");
+  const verifierCommands = activeLines(
+    `${verifierJob}\n${verifyPayloadScript}\n${verifyUnixScript}`,
+  );
+  const windowsSignerCommands = activeLines(read(windowsSignerPath));
 
   for (const [job, script] of [
     [candidateJob, ".github/scripts/release/build-candidate-manifest.sh"],
@@ -146,19 +154,33 @@ export function releasePipelineSafetyFailures(read) {
 
   const fetchStep = workflowStepIndex(buildJob, "run: pnpm engine:fetch");
   check(
-    buildJob.includes("name: release-signing") &&
-      buildJob.includes("Bind build to the human-reviewed candidate") &&
+    !/^ {4}environment:/m.test(buildJob) &&
+      !/\bsecrets\b/.test(buildJob) &&
+      buildJob.includes("Bind build to the release candidate") &&
       fetchStep >= 0 &&
       fetchStep < workflowStepIndex(buildJob, "run: bash .github/scripts/release/build-cli.sh") &&
       /^unset SITECMD_ENGINE_UNPINNED$/m.test(buildCliScript.split("\nbuild_cli()", 1)[0]) &&
-      !buildJob.includes("${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}") &&
-      !buildJob.includes("${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}"),
-    "release.yml CLI builds must require candidate approval, fetch the pinned engine before compiling, and exclude reusable updater secrets.",
+      buildCliScript.includes('GOT=$("$BIN" --version)') &&
+      buildJob.includes("name: built-cli-${{ matrix.target }}"),
+    "release.yml CLI builds must fetch the pinned engine before compiling, bind the release candidate, and run the CLI version check without secrets.",
+  );
+  check(
+    platformSignerJob.includes("needs: [prepare-candidate, build]") &&
+      platformSignerJob.includes("name: release-signing") &&
+      platformSignerJob.includes("name: built-cli-${{ matrix.target }}") &&
+      orderedBefore(
+        platformSignerJob,
+        "digest-mismatch: error",
+        "run: bash .github/scripts/release/sign-cli.sh",
+      ) &&
+      !/cargo build/.test(platformSignerJob + signCliScript) &&
+      !/--version/.test(signCliScript),
+    "release.yml must sign on a separate approved runner that checks the build artifact digest and never runs the CLI.",
   );
 
   // Expose the permanent updater key only to its probe and isolated signer.
   check(
-    signerJob.includes("needs: [prepare-candidate, build]") &&
+    signerJob.includes("needs: [prepare-candidate, sign-platforms]") &&
       signerJob.includes("name: release-updater-signing") &&
       signerJob.includes("${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}") &&
       signerJob.includes("${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}") &&
@@ -222,24 +244,48 @@ export function releasePipelineSafetyFailures(read) {
     "release.yml must verify archives with the installer trust root and bind the checked-out engine lock to the approved candidate.",
   );
 
+  const windowsSignerLoad = `. ./${windowsSignerPath}`;
+  const windowsSignerMatch = "$cliSigner -cne $fragment.signer_identity";
+  const windowsProbeCopy = 'cp "$RUNNER_TEMP/cli-dist/sitecmd.exe" sign-probe.exe || exit 1';
+  check(
+    orderedBefore(platformSignerJob, "digest-mismatch: error", windowsProbeCopy) &&
+      orderedBefore(platformSignerJob, windowsProbeCopy, windowsSignerLoad),
+    "release.yml must use a copy of the digest-checked unsigned Windows CLI for the Azure probe.",
+  );
   check(
     verifierCommands.includes("codesign --verify --strict cli-check/sitecmd") &&
       verifierCommands.includes('test "$cli_team" = "$expected_team"') &&
-      verifierCommands.includes("$cliSignature = Get-AuthenticodeSignature $cli") &&
-      verifierCommands.includes('$cliSignature.Status -ne "Valid"') &&
-      verifierCommands.includes(
-        "$cliSignature.SignerCertificate.Thumbprint -ne $fragment.signer_identity",
+      sparseCheckoutPaths(platformSignerJob).includes(windowsSignerPath) &&
+      orderedBefore(
+        platformSignerJob,
+        windowsSignerLoad,
+        "Get-WindowsSignerIdentity -Path 'sign-probe.exe'",
       ) &&
+      platformSignerJob.includes("steps.azure.outputs.signer_identity") &&
+      windowsSignerCommands.includes("$signature = Get-AuthenticodeSignature -LiteralPath $Path") &&
+      windowsSignerCommands.includes('$signature.Status -ne "Valid"') &&
+      windowsSignerCommands.includes('$signature.SignatureType -ne "Authenticode"') &&
+      windowsSignerCommands.includes(
+        "Get-WindowsCertificateIdentity -Certificate $signature.SignerCertificate",
+      ) &&
+      windowsSignerCommands.includes("$Certificate.SubjectName.RawData") &&
+      windowsSignerCommands.includes('$publicTrustEku = "1.3.6.1.4.1.311.97.1.0"') &&
+      windowsSignerCommands.includes("$ekus -notcontains $publicTrustEku") &&
+      windowsSignerCommands.includes('$ekus -notcontains "1.3.6.1.5.5.7.3.3"') &&
+      windowsSignerCommands.includes("$profileEku.Count -ne 1") &&
+      windowsSignerCommands.includes('return "${subject}:$($profileEku[0])"') &&
       orderedBefore(
         verifierCommands,
         "codesign --verify --strict cli-check/sitecmd",
         'test "$(cli-check/sitecmd --version)"',
       ) &&
+      orderedBefore(verifierCommands, windowsSignerLoad, "$actual = & $cli --version") &&
       orderedBefore(
         verifierCommands,
-        "$cliSignature = Get-AuthenticodeSignature $cli",
-        "$actual = & $cli --version",
-      ),
+        "$cliSigner = Get-WindowsSignerIdentity -Path $cli",
+        windowsSignerMatch,
+      ) &&
+      orderedBefore(verifierCommands, windowsSignerMatch, "$actual = & $cli --version"),
     "release.yml must verify the extracted macOS CLI with codesign and the extracted Windows CLI with Authenticode, bind each to its expected signer, and do so before executing either binary.",
   );
 
@@ -293,6 +339,7 @@ export function releasePipelineSafetyFailures(read) {
   for (const [file, source] of [
     [".github/workflows/release.yml", releaseWorkflow],
     [".github/scripts/release/build-cli.sh", buildCliScript],
+    [".github/scripts/release/sign-cli.sh", signCliScript],
     [".github/scripts/release/verify-signed-payload.sh", verifyPayloadScript],
   ]) {
     for (const [index, line] of source.split("\n").entries()) {
@@ -313,13 +360,6 @@ export function releasePipelineSafetyFailures(read) {
           cliStepStart,
           buildJob.indexOf("run: bash .github/scripts/release/build-cli.sh", cliStepStart),
         );
-  const cliBuildBlock =
-    cliStepStart === -1
-      ? ""
-      : `${buildJob.slice(
-          cliStepStart,
-          buildJob.indexOf("\n      - name: Save platform fragment", cliStepStart),
-        )}\n${buildCliScript}`;
   check(
     cliStepStart !== -1,
     "release.yml: the standalone CLI build step is gone or renamed, so its required compile-time configuration cannot be checked.",
@@ -340,10 +380,10 @@ export function releasePipelineSafetyFailures(read) {
 
   check(
     buildJob.includes("tool: cargo-license") &&
-      cliBuildBlock.includes("cargo license --manifest-path") &&
-      cliBuildBlock.includes('"$GITHUB_WORKSPACE/THIRD_PARTY_DEPENDENCIES.json"') &&
-      cliBuildBlock.includes('"$GITHUB_WORKSPACE/THIRD_PARTY_LICENSES.txt"') &&
-      cliBuildBlock.includes(
+      buildCliScript.includes("cargo license --manifest-path") &&
+      buildCliScript.includes('"$GITHUB_WORKSPACE/THIRD_PARTY_DEPENDENCIES.json"') &&
+      buildCliScript.includes('"$GITHUB_WORKSPACE/THIRD_PARTY_LICENSES.txt"') &&
+      signCliScript.includes(
         "CLI_LEGAL_FILES=(LICENSE NOTICE THIRD_PARTY_NOTICES THIRD_PARTY_DEPENDENCIES.json THIRD_PARTY_LICENSES.txt THIRD_PARTY_LICENSES.tsv)",
       ) &&
       verifierCommands.includes(

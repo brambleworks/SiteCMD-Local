@@ -12,10 +12,10 @@ on:
 permissions:
   contents: read
 
-# Cancel superseded runs to avoid duplicate platform-build spend.
+# Serialize all tags so only one release can advance the live manifest at a time.
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release
+  cancel-in-progress: false
 
 jobs:
   tag-gate:
@@ -364,9 +364,6 @@ jobs:
     needs: [prepare-candidate, validate-updater-key, validate-publish-key]
     permissions:
       contents: read
-    # Require one human approval for all platform builds.
-    environment:
-      name: release-signing
     strategy:
       fail-fast: false
       matrix:
@@ -398,7 +395,7 @@ jobs:
           name: release-candidate
           path: release-candidate
 
-      - name: Bind build to the human-reviewed candidate
+      - name: Bind build to the release candidate
         env:
           EXPECTED_CANDIDATE_HASH: ${{ needs.prepare-candidate.outputs.candidate_hash }}
           EXPECTED_SOURCE_COMMIT: ${{ needs.prepare-candidate.outputs.source_commit }}
@@ -448,6 +445,61 @@ jobs:
         with:
           tool: cargo-license@0.7.0
 
+      - name: Build CLI (headless scanner)
+        env:
+          TARGET: ${{ matrix.target }}
+          RUST_TARGET: ${{ matrix.rust_target }}
+          # `sitecmd gate` needs the connected-service endpoint at compile time.
+          SITECMD_CONNECTED_ENDPOINT: "https://connect.sitecmd.com"
+        shell: bash
+        run: bash .github/scripts/release/build-cli.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: built-cli-${{ matrix.target }}
+          path: apps/desktop/src-tauri/target/cli-dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  sign-platforms:
+    name: Sign and package CLI (${{ matrix.target }})
+    needs: [prepare-candidate, build]
+    permissions:
+      contents: read
+    environment:
+      name: release-signing
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            target: darwin-universal
+          - os: ubuntu-22.04
+            target: linux-x86_64
+          # Pin the Windows toolchain instead of following windows-latest.
+          - os: windows-2025-vs2026
+            target: windows-x86_64
+          - os: ubuntu-22.04-arm
+            target: linux-aarch64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare-candidate.outputs.source_commit }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts/release/sign-cli.sh
+            .github/scripts/release/windows-signer-identity.ps1
+            apps/desktop/src-tauri/rust-toolchain.toml
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: built-cli-${{ matrix.target }}
+          path: ${{ runner.temp }}/cli-dist
+          digest-mismatch: error
+
       - name: Require configured platform signing
         if: matrix.target == 'windows-x86_64' || startsWith(matrix.target, 'darwin')
         env:
@@ -488,7 +540,7 @@ jobs:
 
       - name: Verify Azure signing (fail fast with the real error)
         id: azure
-        # Probe Azure directly so authentication failures retain their diagnostics.
+        # Sign a copy of the downloaded CLI to get the Azure profile's durable EKU.
         if: matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_ENDPOINT != ''
         shell: bash
         env:
@@ -500,26 +552,26 @@ jobs:
           AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
         run: |
           set -uo pipefail
-          cp /c/Windows/System32/whoami.exe sign-probe.exe
+          trap 'rm -f sign-probe.exe' EXIT
+          cp "$RUNNER_TEMP/cli-dist/sitecmd.exe" sign-probe.exe || exit 1
           echo "Probing Azure Artifact Signing: ${AZURE_SIGN_ENDPOINT} (${AZURE_SIGN_ACCOUNT}/${AZURE_SIGN_PROFILE})"
           artifact-signing-cli -e "$AZURE_SIGN_ENDPOINT" -a "$AZURE_SIGN_ACCOUNT" -c "$AZURE_SIGN_PROFILE" sign-probe.exe
           status=$?
-          trap 'rm -f sign-probe.exe' EXIT
           if [ "$status" -ne 0 ]; then
             echo "::error::Azure signing probe failed (exit $status). The error above is the real cause - check the service-principal client-secret expiry, the Trusted/Artifact Signing 'Certificate Profile Signer' role assignment, and the certificate profile status in the Azure portal."
             exit "$status"
           fi
-          thumbprint=$(powershell.exe -NoProfile -Command "
-            \$signature = Get-AuthenticodeSignature sign-probe.exe
-            if (\$signature.Status -ne 'Valid') { exit 1 }
-            \$signature.SignerCertificate.Thumbprint
+          signer_identity=$(pwsh.exe -NoProfile -Command "
+            \$ErrorActionPreference = 'Stop'
+            . ./.github/scripts/release/windows-signer-identity.ps1
+            Get-WindowsSignerIdentity -Path 'sign-probe.exe'
           " | tr -d '\r') || exit 1
-          test -n "$thumbprint" || exit 1
-          printf 'thumbprint=%s\n' "$thumbprint" >> "$GITHUB_OUTPUT"
+          test -n "$signer_identity" || exit 1
+          printf 'signer_identity=%s\n' "$signer_identity" >> "$GITHUB_OUTPUT"
           echo "Azure signing probe succeeded."
 
       - name: Verify Apple notarization credentials (fail fast with the real error)
-        # Probe Apple credentials before compiling; step conditions cannot read secrets.
+        # Step conditions cannot read secrets.
         if: startsWith(matrix.target, 'darwin')
         shell: bash
         env:
@@ -544,13 +596,10 @@ jobs:
           fi
           echo "Apple notary probe succeeded; notarization should work."
 
-      - name: Build CLI (headless scanner)
+      - name: Sign and package the CLI
         id: cli
         env:
           TARGET: ${{ matrix.target }}
-          RUST_TARGET: ${{ matrix.rust_target }}
-          # `sitecmd gate` needs the connected-service endpoint at compile time.
-          SITECMD_CONNECTED_ENDPOINT: "https://connect.sitecmd.com"
           APPLE_CERTIFICATE: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_CERTIFICATE || '' }}
           APPLE_CERTIFICATE_PASSWORD: ${{ startsWith(matrix.target, 'darwin') && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
           KEYCHAIN_PASSWORD: ${{ startsWith(matrix.target, 'darwin') && secrets.KEYCHAIN_PASSWORD || '' }}
@@ -566,7 +615,7 @@ jobs:
           AZURE_SIGN_ACCOUNT: ${{ matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_ACCOUNT || '' }}
           AZURE_SIGN_PROFILE: ${{ matrix.target == 'windows-x86_64' && vars.AZURE_SIGN_PROFILE || '' }}
         shell: bash
-        run: bash .github/scripts/release/build-cli.sh
+        run: bash .github/scripts/release/sign-cli.sh
       - name: Preserve CLI notarization evidence
         if: ${{ always() && startsWith(matrix.target, 'darwin') }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -582,7 +631,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           CLI_ARCHIVE: ${{ steps.cli.outputs.archive }}
-          SIGNER_IDENTITY: ${{ matrix.target == 'windows-x86_64' && steps.azure.outputs.thumbprint || steps.cli.outputs.team_id }}
+          SIGNER_IDENTITY: ${{ matrix.target == 'windows-x86_64' && steps.azure.outputs.signer_identity || steps.cli.outputs.team_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -623,16 +672,16 @@ jobs:
           name: unsigned-platform-${{ matrix.target }}
           path: release-staging/${{ matrix.target }}/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   sign-updaters:
     name: Sign CLI archives in isolation
-    needs: [prepare-candidate, build]
+    needs: [prepare-candidate, sign-platforms]
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     permissions:
       contents: read
-    # Expose only the updater key after human-approved builds complete.
+    # Expose only the updater key after platform signing completes.
     environment:
       name: release-updater-signing
     steps:
@@ -710,7 +759,7 @@ jobs:
           name: signed-release-payload
           path: signed-release-payload/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   verify-release:
     name: Verify signed release (${{ matrix.target }})
@@ -799,12 +848,10 @@ jobs:
             }
           }
           $cli = Join-Path "cli-check" "sitecmd.exe"
-          $cliSignature = Get-AuthenticodeSignature $cli
-          if ($cliSignature.Status -ne "Valid") {
-            throw "Windows CLI Authenticode status is $($cliSignature.Status)"
-          }
-          if (!$fragment.signer_identity -or $cliSignature.SignerCertificate.Thumbprint -ne $fragment.signer_identity) {
-            throw "Windows CLI signer certificate does not match the release signing probe"
+          . ./.github/scripts/release/windows-signer-identity.ps1
+          $cliSigner = Get-WindowsSignerIdentity -Path $cli
+          if (!$fragment.signer_identity -or $cliSigner -cne $fragment.signer_identity) {
+            throw "Windows CLI signer subject or Azure profile EKU does not match the release signing probe"
           }
           $actual = & $cli --version
           if ($actual -ne "sitecmd $env:EXPECTED_VERSION") {

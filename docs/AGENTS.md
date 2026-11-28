@@ -18,10 +18,11 @@ and accepted decisions only.
 - `engineering/ai-assisted-development.md`: how coding agents are directed here.
 - `engineering/repository-release-security-spec.md`, `engineering/release-tag-signing.md`,
   `engineering/release-signing-key-rotation.md`, `engineering/macos-code-signing.md`,
-  `engineering/windows-code-signing.md`: release trust and signing.
+  `engineering/windows-code-signing.md`: release trust, platform signing, and credential rotation.
 - `engineering/entitlement-threat-model.md`, `engineering/security-review-cadence.md`,
   `engineering/naming-conventions.md`: threat model, review cadence, and naming.
-- `operations/releasing.md` and `operations/launch-smoke.md`: release and smoke runbooks.
+- `operations/releasing.md` and `operations/launch-smoke.md`: release environment setup,
+  approval stops and artifact deadlines, isolated signing, and smoke runbooks.
   `operations/publication-checklist.md` is the historical record of the public cutover.
 - `product/scanner-accuracy-log.md`: scanner accuracy notes.
 - `qa/native-tests.md`: how to run the Rust workspace tests.

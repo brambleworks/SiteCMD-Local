@@ -34,7 +34,7 @@ pub enum ListingError {
     Entry(io::Error),
     #[error("Code Scan stopped because the project folder is nested deeper than {0} directories. Choose a smaller project root or exclude generated folders.")]
     Depth(usize),
-    #[error("Code Scan stopped after reaching the {0} project-file budget. Choose a smaller project root or exclude generated folders.")]
+    #[error("Code Scan stopped after reaching the {0} project-file budget for directory traversal. Choose a smaller project root or exclude generated folders.")]
     Files(usize),
 }
 
@@ -223,6 +223,7 @@ pub(super) fn list_project_with_limits(
     let mut walker = Walker {
         root: &canonical_root,
         max_files,
+        visited_entries: 0,
         max_depth,
         files: Vec::new(),
         skipped_paths: 0,
@@ -275,6 +276,7 @@ impl PendingEntry {
 struct Walker<'a> {
     root: &'a Path,
     max_files: usize,
+    visited_entries: usize,
     max_depth: usize,
     files: Vec<NativeFile>,
     skipped_paths: u64,
@@ -376,6 +378,10 @@ impl Walker<'_> {
         })?;
         for entry in entries {
             let entry = entry.map_err(ListingError::Entry)?;
+            if self.visited_entries >= self.max_files {
+                return Err(ListingError::Files(self.max_files));
+            }
+            self.visited_entries += 1;
             let name = entry.file_name();
             let Ok(kind) = entry.file_type() else {
                 continue;
@@ -417,9 +423,6 @@ impl Walker<'_> {
                 self.visit(&child, &relative, &child_scope, depth + 1)?;
                 self.record(PendingEntry::Dir(relative));
             } else {
-                if self.files.len() >= self.max_files {
-                    return Err(ListingError::Files(self.max_files));
-                }
                 if !kind.is_file() {
                     self.omitted.insert(relative);
                     continue;

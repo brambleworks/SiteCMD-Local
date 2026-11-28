@@ -244,3 +244,15 @@ fn diff_cache_with_retired_categories_explains_how_to_refresh() {
     assert!(error.contains("last-scan.json"));
     assert!(error.contains("Run `sitecmd scan` to refresh the cache."));
 }
+
+#[test]
+fn scan_diff_baseline_refuses_oversized_regular_files() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::File::create(dir.path().join("last-scan.json"))
+        .unwrap()
+        .set_len(crate::constants::MAX_CLI_SCAN_BYTES + 1)
+        .unwrap();
+
+    let error = load_diff_baseline(dir.path()).unwrap_err();
+    assert!(error.contains("too large"), "{error}");
+}

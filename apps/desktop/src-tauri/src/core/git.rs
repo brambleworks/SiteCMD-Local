@@ -12,9 +12,9 @@ const GIT_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_GIT_OUTPUT_BYTES: usize = 1024 * 1024;
 
 /// Command-line overrides applied to every git spawn. A registered project
-/// tree may carry a hostile `.git/config`, so every repository key that names
-/// an executable is neutralized before the subcommand, optional index writes
-/// are skipped, and no transport protocol may be negotiated. `run_git_command`
+/// tree may carry a hostile `.git/config`, so hooks, fsmonitor, and external
+/// diff drivers are disabled, optional index writes are skipped, and no
+/// transport protocol may be negotiated. `run_git_command`
 /// re-enables https alone, for one authenticated invocation, as the single
 /// documented exception.
 const GIT_HARDENING_ARGS: &[&str] = &[
@@ -307,9 +307,8 @@ pub(crate) fn run_git_command(
     })
 }
 
-/// Capture the current checkout, including merge heads, and whether it is clean.
-pub fn checkout_head_and_clean(project_path: &str) -> Option<(String, bool)> {
-    let dir = Path::new(project_path);
+/// Read the current commit without comparing working-tree files.
+pub(crate) fn checkout_head(dir: &Path) -> Option<String> {
     let head = run_git(dir, &["rev-parse", "HEAD"])?;
     let head = head.trim();
     if head.len() < 7
@@ -320,8 +319,35 @@ pub fn checkout_head_and_clean(project_path: &str) -> Option<(String, bool)> {
     {
         return None;
     }
-    let status = run_git(dir, &["status", "--porcelain"])?;
-    Some((head.to_string(), status.trim().is_empty()))
+    Some(head.to_owned())
+}
+
+/// Capture the current commit and certify cleanliness only when Git can check
+/// it without invoking working-tree filters or entering submodule configs.
+pub fn checkout_head_and_clean(project_path: &str) -> Option<(String, bool)> {
+    let dir = Path::new(project_path);
+    let head = checkout_head(dir)?;
+    Some((head, worktree_is_clean(dir, run_git)))
+}
+
+fn worktree_is_clean(dir: &Path, run: impl Fn(&Path, &[&str]) -> Option<String>) -> bool {
+    let Some(keys) = run(dir, &["config", "--null", "--name-only", "--list"]) else {
+        return false;
+    };
+    if keys.split('\0').any(|key| key.starts_with("filter.")) {
+        return false;
+    }
+    run(
+        dir,
+        &[
+            "-c",
+            "status.submoduleSummary=false",
+            "status",
+            "--porcelain",
+            "--ignore-submodules=dirty",
+        ],
+    )
+    .is_some_and(|status| status.trim().is_empty())
 }
 
 #[cfg(test)]

@@ -10,6 +10,7 @@ use super::artifact::{read_artifact, Manifest, TEMPLATE_PLAN};
 use super::exit_check::{check_publish_brief, HandedLines};
 use super::github_api::GitHubApi;
 use super::repo;
+use super::secrets::ExportSource;
 use crate::cli::{settle, ConnectStop};
 use crate::connected_service::deployment_ordering::CiSubmissionAttestation;
 use crate::connected_service::{
@@ -28,6 +29,8 @@ pub struct PublishJobArgs {
     pub connect_origin: String,
     pub artifact_dir: PathBuf,
     pub path: PathBuf,
+    pub export: ExportSource,
+    pub passphrase_env: String,
 }
 
 pub(super) fn parse(mut args: impl Iterator<Item = String>) -> Result<PublishJobArgs, String> {
@@ -38,6 +41,8 @@ pub(super) fn parse(mut args: impl Iterator<Item = String>) -> Result<PublishJob
     let mut connect_origin = None;
     let mut artifact_dir = None;
     let mut path = PathBuf::from(".");
+    let mut export = ExportSource::Env("SITECMD_CONNECTION_EXPORT".into());
+    let mut passphrase_env = "SITECMD_CONNECTION_PASSPHRASE".into();
     while let Some(token) = args.next() {
         match token.as_str() {
             "--connect-origin" => {
@@ -49,6 +54,12 @@ pub(super) fn parse(mut args: impl Iterator<Item = String>) -> Result<PublishJob
                     "--artifact-dir",
                 )?))
             }
+            "--connection-export-env" => {
+                export = ExportSource::Env(super::next_value(&mut args, "--connection-export-env")?)
+            }
+            "--passphrase-env" => {
+                passphrase_env = super::next_value(&mut args, "--passphrase-env")?
+            }
             "--path" => path = PathBuf::from(super::next_value(&mut args, "--path")?),
             other => return Err(format!("Unknown option: {other}")),
         }
@@ -58,6 +69,8 @@ pub(super) fn parse(mut args: impl Iterator<Item = String>) -> Result<PublishJob
         connect_origin: connect_origin.ok_or("publish-job needs --connect-origin")?,
         job_id,
         path,
+        export,
+        passphrase_env,
     })
 }
 
@@ -423,6 +436,7 @@ async fn publish_patch(
 /// replaces both. A patch and a brief are the two classes a fix job produces
 /// and one job is only ever one of them.
 async fn publish_artifact(
+    args: &PublishJobArgs,
     root: &Path,
     claimed: &ClaimedJob,
     manifest: &Manifest,
@@ -460,7 +474,8 @@ async fn publish_artifact(
         return publish_patch(root, claimed, manifest, job_client).await;
     }
     if manifest.brief.is_some() {
-        return super::brief_publish::publish_brief(root, claimed, manifest, job_client).await;
+        return super::brief_publish::publish_brief(args, root, claimed, manifest, job_client)
+            .await;
     }
     // A decline, like every other, exits zero: nothing failed, and there was
     // nothing here for this job to publish.
@@ -540,7 +555,7 @@ async fn publish(
     // would leave the job waiting out its window.
     let (code, result) = match read_artifact(&args.artifact_dir) {
         Ok((manifest, patch)) => {
-            publish_artifact(&root, &claimed, &manifest, &patch, &job_client).await?
+            publish_artifact(args, &root, &claimed, &manifest, &patch, &job_client).await?
         }
         Err(error) => (
             1,
